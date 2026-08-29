@@ -54,21 +54,32 @@
       ],
       p.kind, function (v) { p.kind = v; renderDynamic(); }
     );
-    var catSeg = ui.segmented(
-      [{ value: 'manga', label: '漫画', icon: 'manga' }, { value: 'illust', label: 'イラスト', icon: 'illust' }],
-      p.category, function (v) { p.category = v; renderQty(); renderCatHint(); }
-    );
-    var catField = ui.field('内容', catSeg, '選んだ内容に応じて基本タスクが変わります');
-    var catHint = catField.querySelector('.field-hint');
-    function renderCatHint() {
-      catHint.textContent = p.kind === 'support'
+    // 内容の選択肢（「デザイン」は仕事のときだけ出す）
+    var catWrap = el('div');
+    var catSeg;
+    function renderCat() {
+      U.clear(catWrap);
+      var opts = [
+        { value: 'manga', label: '漫画', icon: 'manga' },
+        { value: 'illust', label: 'イラスト', icon: 'illust' }
+      ];
+      if (p.kind === 'work') opts.push({ value: 'design', label: 'デザイン', icon: 'design' });
+      else if (p.category === 'design') p.category = 'illust';   // 仕事以外に切り替えたら戻す
+      catSeg = ui.segmented(opts, p.category, function (v) {
+        p.category = v; renderQty();
+      });
+      var hint = p.kind === 'support'
         ? '投稿ごとに漫画・イラストを選べます。選んだ内容に応じて基本タスクが変わります'
-        : '選んだ内容に応じて基本タスクが変わります';
+        : p.category === 'design'
+          ? 'デザインは工程が案件ごとに違うため、基本タスクは用意していません（あとから追加できます）'
+          : '選んだ内容に応じて基本タスクが変わります';
+      catWrap.appendChild(ui.field('内容', catSeg, hint));
     }
+    function renderCatHint() { renderCat(); }
 
     body.appendChild(ui.field('種別', kindSeg));
     body.appendChild(ui.field('タイトル', titleInput));
-    body.appendChild(catField);
+    body.appendChild(catWrap);
     body.appendChild(qtyWrap);
     body.appendChild(dynamic);
     body.appendChild(startWrap);
@@ -92,15 +103,26 @@
 
     /* --- 数量欄 --- */
     var qtyInput;
+    var QTY_FIELD = {
+      manga: ['合計ページ数', '1日ごとのノルマ計算に使います', 20],
+      illust: ['枚数（カット数）', '複数枚の依頼はまとめて枚数で指定できます', 1],
+      design: ['点数', 'ロゴ案・バナーなどの制作点数。1日ごとのノルマ計算に使います', 1]
+    };
     function renderQty() {
       U.clear(qtyWrap);
-      var isManga = p.category === 'manga';
-      qtyInput = ui.input({ type: 'number', inputmode: 'numeric', min: 0, value: U.num(p.qty, isManga ? 20 : 1) });
-      qtyWrap.appendChild(ui.field(
-        isManga ? '合計ページ数' : '枚数（カット数）',
-        qtyInput,
-        isManga ? '1日ごとのノルマ計算に使います' : '複数枚の依頼はまとめて枚数で指定できます'
-      ));
+      var f2 = QTY_FIELD[p.category] || QTY_FIELD.manga;
+      qtyInput = ui.input({ type: 'number', inputmode: 'numeric', min: 0, value: U.num(p.qty, f2[2]) });
+      qtyWrap.appendChild(ui.field(f2[0], qtyInput, f2[1]));
+      if (catSeg) renderCatHintText();
+    }
+    function renderCatHintText() {
+      var hint = catWrap.querySelector('.field-hint');
+      if (!hint) return;
+      hint.textContent = p.kind === 'support'
+        ? '投稿ごとに漫画・イラストを選べます。選んだ内容に応じて基本タスクが変わります'
+        : p.category === 'design'
+          ? 'デザインは工程が案件ごとに違うため、基本タスクは用意していません（あとから追加できます）'
+          : '選んだ内容に応じて基本タスクが変わります';
     }
 
     /* --- 種別ごとの欄 --- */
@@ -188,6 +210,7 @@
       ]));
     }
 
+    renderCat();
     renderQty();
     renderDynamic();
 
@@ -235,8 +258,10 @@
             var np = S.createProject(data);
             if (autoCheck && autoCheck.checked) {
               np.tasks = S.templateTasks(np.category, np.qty);
-              var r = sc.autoSchedule(np, { start: np.startDate, end: np.deadline });
-              if (!r.ok) ui.toast(r.reason, 'warn');
+              if (np.tasks.length) {
+                var r = sc.autoSchedule(np, { start: np.startDate, end: np.deadline });
+                if (!r.ok) ui.toast(r.reason, 'warn');
+              }
             }
             S.save();
             close();
@@ -349,13 +374,14 @@
     if (!p) return;
     var existing = taskId ? S.getTask(pid, taskId) : null;
     var t = existing ? U.clone(existing) : {
-      name: '', unit: p.category === 'manga' ? 'page' : 'cut',
+      name: '', unit: p.category === 'manga' ? 'page' : p.category === 'design' ? 'item' : 'cut',
       qty: U.num(p.qty, 0), start: U.today(), end: U.today(), weight: 10, note: ''
     };
 
     var nameI = ui.input({ value: t.name, placeholder: '例）下書き' });
     var unitSeg = ui.segmented([
-      { value: 'page', label: 'ページ' }, { value: 'cut', label: '枚' }, { value: 'none', label: '数量なし' }
+      { value: 'page', label: 'ページ' }, { value: 'cut', label: '枚' },
+      { value: 'item', label: '点' }, { value: 'none', label: 'なし' }
     ], t.unit, function (v) { t.unit = v; renderQty(); renderPreview(); });
     var qtyBox = el('div');
     var startI = ui.input({ type: 'date', value: t.start || '' });
@@ -511,6 +537,75 @@
     });
   }
 
+  /* =============== 任意の日に実績を足す =============== */
+
+  function addProgressSheet(pid, tid) {
+    var p = S.getProject(pid), t = S.getTask(pid, tid);
+    if (!p || !t) return;
+    var unit = S.UNIT_LABEL[t.unit] || '';
+    var dateI = ui.input({ type: 'date', value: U.today() });
+    var step = ui.stepper({ value: 0 });
+    var note = el('div', { class: 'preview' });
+
+    function preview() {
+      U.clear(note);
+      var d = dateI.value;
+      var cur = U.num(t.progress[d], 0);
+      var plan = sc.taskPlan(p, t);
+      var inRange = plan.byDate[d] !== undefined;
+      note.appendChild(el('div', { class: 'preview-main' }, [
+        el('strong', { text: cur ? 'この日の記録済み ' + cur + unit : 'この日の記録はまだありません' }),
+        el('span', { class: 'muted', text: inRange ? '　予定に入っている日です' : '　予定外の日（前倒し・巻き返し）' })
+      ]));
+      step.setValue(cur);
+    }
+    dateI.addEventListener('change', preview);
+    preview();
+
+    var body = el('div', { class: 'form' }, [
+      el('div', { class: 'prog-head' }, [
+        el('div', { class: 'dot', style: { background: p.color } }),
+        el('div', {}, [el('strong', { text: p.title }), el('div', { class: 'muted small', text: t.name })])
+      ]),
+      ui.field('日付', dateI, '予定に入っていない日でも記録できます'),
+      note,
+      ui.field('実績（' + (unit || '完了数') + '）', step)
+    ]);
+
+    var close = ui.sheet({
+      title: '実績を追加', body: body,
+      actions: [
+        ui.btn('キャンセル', 'ghost', function () { close(); }),
+        ui.btn('記録する', 'primary', function () {
+          if (!U.isISO(dateI.value)) { ui.toast('日付を入れてください', 'warn'); return; }
+          S.setProgress(pid, tid, dateI.value, step.getValue());
+          close(); ui.toast(U.fmtMD(dateI.value) + ' に記録しました');
+        })
+      ]
+    });
+  }
+
+  /* この日にできなかった分を翌日以降へ回す */
+  function deferSheet(pid, tid, date) {
+    var p = S.getProject(pid), t = S.getTask(pid, tid);
+    if (!p || !t) return;
+    var plan = sc.taskPlan(p, t);
+    var quota = plan.byDate[date] || 0;
+    var done = U.num(t.progress[date], 0);
+    var unit = S.UNIT_LABEL[t.unit] || '';
+    ui.confirm(
+      U.fmtMDW(date) + ' の「' + t.name + '」を実績どおり（' + done + unit + '）で確定し、残り ' +
+      Math.max(0, quota - done) + unit + ' を翌日以降に配分し直します。',
+      { okText: '回す' }
+    ).then(function (ok) {
+      if (!ok) return;
+      var r = sc.deferDay(p, t, date);
+      ui.toast(r.ok
+        ? (r.nextDate ? U.fmtMD(r.nextDate) + ' は ' + r.nextQty + unit + ' になりました' : '配分し直しました')
+        : r.reason, r.ok ? '' : 'warn');
+    });
+  }
+
   /* =============== ノルマの手動調整 =============== */
 
   function planOverrideSheet(pid, tid, date) {
@@ -641,13 +736,22 @@
   function templateSheet(pid) {
     var p = S.getProject(pid);
     if (!p) return;
-    var catSeg = ui.segmented([{ value: 'manga', label: '漫画' }, { value: 'illust', label: 'イラスト' }], p.category, function (v) { render(v); });
+    var catSeg = ui.segmented([
+      { value: 'manga', label: '漫画', icon: 'manga' },
+      { value: 'illust', label: 'イラスト', icon: 'illust' },
+      { value: 'design', label: 'デザイン', icon: 'design' }
+    ], p.category, function (v) { render(v); });
     var list = el('div', { class: 'tpl-list' });
     var picked = {};
 
     function render(cat) {
       U.clear(list); picked = {};
-      (S.settings.templates[cat] || []).forEach(function (tp, i) {
+      var tpl = S.settings.templates[cat] || [];
+      if (!tpl.length) {
+        list.appendChild(el('p', { class: 'muted small', text: 'この内容にはテンプレートがありません。設定画面で自分の工程を登録するか、「タスクを追加」で1つずつ作れます。' }));
+        return;
+      }
+      tpl.forEach(function (tp, i) {
         var cb = el('input', { type: 'checkbox', class: 'check', checked: true });
         picked[i] = { def: tp, cb: cb };
         list.appendChild(el('label', { class: 'row-check' }, [
@@ -689,6 +793,7 @@
   DL.forms = {
     projectForm: projectForm, taskForm: taskForm, progressSheet: progressSheet,
     planOverrideSheet: planOverrideSheet, autoScheduleSheet: autoScheduleSheet,
+    addProgressSheet: addProgressSheet, deferSheet: deferSheet,
     templateSheet: templateSheet, startDateSheet: startDateSheet
   };
 })(window.DL);

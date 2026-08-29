@@ -167,7 +167,13 @@
     if (pace.plan.dayCount) chips.push(ui.chip(pace.plan.dayCount + '日', 'ghosty'));
     if (!complete && pace.behind > 0) chips.push(ui.chip('遅れ' + pace.behind + unit, 'danger'));
     if (!complete && pace.overdue) chips.push(ui.chip('期間超過', 'danger'));
-    if (!complete && pace.remainingDays > 0 && t.unit !== 'none') chips.push(ui.chip('要' + pace.perDay + unit + '/日', 'warn'));
+    if (!complete && pace.remainingDays > 0 && t.unit !== 'none') {
+      var real = sc.actualPace(60, today);
+      // 必要ペースが実績の平均を上回っていたら強めに出す
+      var tough = real.activeDays >= 3 && pace.perDay > real.perActiveDay;
+      chips.push(ui.chip('要' + pace.perDay + unit + '/日', tough ? 'danger' : 'warn'));
+      if (tough) chips.push(ui.chip('実績平均 ' + real.perActiveDay + '/日', 'ghosty'));
+    }
 
     var head = el('div', { class: 'row-main', onclick: function () { expanded[t.id] = !open; DL.app.render(); } }, [
       el('div', { class: 'row-title' }, [
@@ -217,6 +223,7 @@
 
     detail.appendChild(el('div', { class: 'row-wrap' }, [
       ui.btn('今日の進捗', 'ghost tiny', function () { DL.forms.progressSheet(p.id, t.id, today); }),
+      ui.btn('実績を追加', 'ghost tiny', function () { DL.forms.addProgressSheet(p.id, t.id); }),
       ui.btn('編集', 'ghost tiny', function () { DL.forms.taskForm(p.id, t.id); }),
       ui.btn(t.done ? '未完了に戻す' : '完了にする', 'ghost tiny', function () { S.updateTask(p.id, t.id, { done: !t.done }); }),
       (t.unit !== 'none' && pace.remainingDays > 0)
@@ -241,7 +248,12 @@
     past.forEach(function (d) { t.planOverride[d.date] = U.num(t.progress[d.date], 0); });
     S.save();
     var after = sc.taskPace(p, t, today);
-    ui.toast('今日から1日あたり ' + after.perDay + sc.unit(t) + ' に組み直しました');
+    var real = sc.actualPace(60, today);
+    var msg = '今日から1日あたり ' + after.perDay + sc.unit(t) + ' に組み直しました';
+    if (real.activeDays >= 3 && after.perDay > real.perActiveDay) {
+      msg += '（実績平均は ' + real.perActiveDay + '/日）';
+    }
+    ui.toast(msg);
   }
 
   /* ---------------- ガントチャート ---------------- */

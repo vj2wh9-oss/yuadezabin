@@ -80,7 +80,7 @@
   }
 
   /* 「5〜8P」のような範囲の表示 */
-  var UNIT_RANGE = { page: 'P', cut: '枚目', none: '' };
+  var UNIT_RANGE = { page: 'P', cut: '枚目', item: '点目', none: '' };
   function rangeText(task, from, to, opts) {
     opts = opts || {};
     if (!from || !to) return '';
@@ -244,6 +244,24 @@
   function alerts(today) {
     today = today || U.today();
     var out = [];
+
+    // バックアップ忘れ
+    var age = DL.store.backupAgeDays();
+    if (DL.store.projects().length && (age === null || age >= 14)) {
+      out.push({
+        level: 'info', backup: true,
+        text: age === null ? 'バックアップをまだ書き出していません' : '最後のバックアップから ' + age + '日 経ちました'
+      });
+    }
+
+    // 1日の作業量が上限を超える日
+    overloadedDays(today, 14).slice(0, 2).forEach(function (d) {
+      out.push({
+        level: 'warn', date: d.date,
+        text: U.fmtMD(d.date) + ' は合計 ' + d.qty + '（上限 ' + d.limit + '）を超えています'
+      });
+    });
+
     DL.store.projects().forEach(function (p) {
       if (p.status !== 'active') return;
       var st = projectStatus(p, today);
@@ -332,6 +350,72 @@
     return { ok: true };
   }
 
+  /**
+   * 実績から自分の作業ペースを出す。
+   * 「作業した日」だけを母数にするので、休んだ日で薄まらない。
+   */
+  function actualPace(days, today) {
+    today = today || U.today();
+    var from = U.addDays(today, -(days || 60));
+    var byDate = {};
+    DL.store.projects().forEach(function (p) {
+      (p.tasks || []).forEach(function (t) {
+        Object.keys(t.progress || {}).forEach(function (d) {
+          if (U.cmp(d, from) < 0 || U.cmp(d, today) > 0) return;
+          byDate[d] = (byDate[d] || 0) + U.num(t.progress[d], 0);
+        });
+      });
+    });
+    var dates = Object.keys(byDate);
+    var total = U.sum(dates, function (d) { return byDate[d]; });
+    var best = dates.length ? Math.max.apply(null, dates.map(function (d) { return byDate[d]; })) : 0;
+    return {
+      total: total, activeDays: dates.length, best: best,
+      perActiveDay: dates.length ? Math.round(total / dates.length * 10) / 10 : 0,
+      spanDays: days || 60
+    };
+  }
+
+  /* 1日の上限を超えている日か */
+  function isOverloaded(date) {
+    var limit = U.num(DL.store.settings.dailyLimit, 0);
+    if (limit <= 0) return false;
+    return loadOfDay(date).qty > limit;
+  }
+
+  /* これから上限を超える日（ホームの警告用） */
+  function overloadedDays(today, days) {
+    var limit = U.num(DL.store.settings.dailyLimit, 0);
+    var out = [];
+    if (limit <= 0) return out;
+    for (var i = 0; i < (days || 14); i++) {
+      var d = U.addDays(today || U.today(), i);
+      var q = loadOfDay(d).qty;
+      if (q > limit) out.push({ date: d, qty: q, limit: limit });
+    }
+    return out;
+  }
+
+  /**
+   * その日にできなかった分を、翌日以降へ回す。
+   * 過ぎた日と対象日は実績どおりに固定し、残量を残りの稼働日へ配分し直す。
+   */
+  function deferDay(project, task, date) {
+    var plan = taskPlan(project, task);
+    var idx = plan.days.findIndex(function (d) { return d.date === date; });
+    if (idx < 0) return { ok: false, reason: 'この日はこのタスクの期間に入っていません' };
+    if (idx === plan.days.length - 1) {
+      return { ok: false, reason: '最終日なので、期間を延ばすか締切を見直してください' };
+    }
+    plan.days.slice(0, idx + 1).forEach(function (d) {
+      task.planOverride[d.date] = U.num(task.progress[d.date], 0);
+    });
+    DL.store.save();
+    var after = taskPlan(project, task);
+    var next = after.days[idx + 1] || {};
+    return { ok: true, nextDate: next.date, nextQty: next.qty };
+  }
+
   /* 今日／指定期間のノルマ合計 */
   function loadOfDay(date) {
     var entries = dayEntries(date);
@@ -343,15 +427,38 @@
   }
 
   /* iPhone のカレンダーに取り込むための ICS を生成 */
+  var ICS_ALARMS = [
+    { value: '', label: 'なし' },
+    { value: 'PT0S', label: '前日の9時' },
+    { value: 'P1D', label: '1日前の9時' },
+    { value: 'P3D', label: '3日前の9時' },
+    { value: 'P7D', label: '1週間前の9時' }
+  ];
+
   function buildICS(opts) {
     opts = opts || {};
     var lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//shimekiri-calendar//JP', 'CALSCALE:GREGORIAN', 'X-WR-CALNAME:締切カレンダー'];
     function esc(s) { return String(s || '').replace(/([,;\\])/g, '\\$1').replace(/\n/g, '\\n'); }
     function dt(iso) { return iso.replace(/-/g, ''); }
-    function ev(uid, date, title, desc) {
+    // 終日予定なので、通知は「何日前の朝9時」という形にする
+    var ALARMS = {
+      'PT0S': { trigger: '-PT15H', label: '前日の9時' },
+      'P1D': { trigger: '-P1DT15H', label: '1日前の9時' },
+      'P3D': { trigger: '-P3DT15H', label: '3日前の9時' },
+      'P7D': { trigger: '-P7DT15H', label: '1週間前の9時' }
+    };
+    var alarm = (opts.alarm === undefined) ? DL.store.settings.icsAlarm : opts.alarm;
+    var al = ALARMS[alarm];
+
+    function ev(uid, date, title, desc, withAlarm) {
       lines.push('BEGIN:VEVENT', 'UID:' + uid + '@shimekiri', 'DTSTAMP:' + dt(U.today()) + 'T000000Z',
         'DTSTART;VALUE=DATE:' + dt(date), 'DTEND;VALUE=DATE:' + dt(U.addDays(date, 1)),
-        'SUMMARY:' + esc(title), 'DESCRIPTION:' + esc(desc || ''), 'END:VEVENT');
+        'SUMMARY:' + esc(title), 'DESCRIPTION:' + esc(desc || ''));
+      if (al && withAlarm !== false) {
+        lines.push('BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:' + esc(title),
+          'TRIGGER;VALUE=DURATION:' + al.trigger, 'END:VALARM');
+      }
+      lines.push('END:VEVENT');
     }
     DL.store.projects().forEach(function (p) {
       if (p.status === 'archived') return;
@@ -367,7 +474,7 @@
             if (!d.qty) return;
             var rt = rangeText(t, d.from, d.to);
             ev(p.id + '-' + t.id + '-' + d.date, d.date,
-              '[作業] ' + p.title + '：' + t.name + (rt ? ' ' + rt : ''), '');
+              '[作業] ' + p.title + '：' + t.name + (rt ? ' ' + rt : ''), '', false);
           });
         });
       }
@@ -384,6 +491,8 @@
     projectProgress: projectProgress, projectStatus: projectStatus, STATUS_LABEL: STATUS_LABEL,
     deadlineLabel: deadlineLabel, deadlineShort: deadlineShort,
     dayEntries: dayEntries, dayMarks: dayMarks, timeline: timeline, alerts: alerts,
-    autoSchedule: autoSchedule, loadOfDay: loadOfDay, buildICS: buildICS
+    actualPace: actualPace, isOverloaded: isOverloaded, overloadedDays: overloadedDays,
+    deferDay: deferDay,
+    autoSchedule: autoSchedule, loadOfDay: loadOfDay, buildICS: buildICS, ICS_ALARMS: ICS_ALARMS
   };
 })(window.DL);

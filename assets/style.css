@@ -296,6 +296,7 @@ h1, h2, h3, p { margin: 0; }
   background: color-mix(in srgb, var(--accent) 20%, transparent); font-variant-numeric: tabular-nums;
 }
 .cal-sum.done { color: var(--ok); background: color-mix(in srgb, var(--ok) 20%, transparent); }
+.cal-sum.over { color: var(--warn); background: color-mix(in srgb, var(--warn) 26%, transparent); }
 
 /* 日ごとの中身（数行だけ載せる） */
 .cal-lines { display: flex; flex-direction: column; gap: 1px; overflow: hidden; min-height: 0; }
@@ -362,7 +363,8 @@ h1, h2, h3, p { margin: 0; }
 .phead-prog { display: flex; align-items: center; gap: 8px; }
 .phead-prog .bar { flex: 1; }
 
-.info { display: flex; flex-direction: column; gap: 0; padding: 0; }
+/* 案件詳細などの情報カード（.alert.info と衝突しないよう .card 配下に限定） */
+.card.info { display: flex; flex-direction: column; gap: 0; padding: 0; }
 .info-row { display: flex; gap: 10px; font-size: 13.5px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
 .info-row:last-child { border-bottom: 0; }
 .info-k { color: var(--muted); min-width: 74px; flex: none; }
@@ -476,6 +478,9 @@ h1, h2, h3, p { margin: 0; }
 .prog-head { display: flex; gap: 10px; align-items: center; }
 .prog-head .dot { width: 10px; height: 10px; flex: none; }
 .quota-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.quota-row.four { grid-template-columns: repeat(2, 1fr); }
+.quota-box.over { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); }
+.quota-box.over b { color: var(--warn); }
 .quota-box { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-s); padding: 8px 6px; text-align: center; }
 .quota-box span { display: block; font-size: 10.5px; color: var(--muted); }
 .quota-box b { font-size: 15px; font-variant-numeric: tabular-nums; }
@@ -501,6 +506,7 @@ h1, h2, h3, p { margin: 0; }
 }
 .menu-item:last-child { border-bottom: 0; }
 .menu-item .icon { color: var(--accent); }
+.menu-item .dot { width: 10px; height: 10px; flex: none; }
 
 /* ---------------- ボトムシート ---------------- */
 .sheet-back {

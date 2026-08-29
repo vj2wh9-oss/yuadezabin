@@ -22,11 +22,13 @@
     if (al.length) {
       var box = el('div', { class: 'alerts' });
       al.slice(0, 5).forEach(function (a) {
-        box.appendChild(el('a', {
-          class: 'alert ' + a.level, href: '#/project/' + a.project.id
-        }, [
+        var href = a.project ? '#/project/' + a.project.id : a.date ? '#/day/' + a.date : '#/settings';
+        box.appendChild(el('a', { class: 'alert ' + a.level, href: href }, [
           el('span', { class: 'alert-icon' }, ui.icon(a.level === 'info' ? 'info' : 'alert', 17)),
-          el('span', {}, [el('b', { text: a.project.title }), el('span', { text: '　' + a.text })])
+          el('span', {}, [
+            a.project ? el('b', { text: a.project.title }) : null,
+            el('span', { text: (a.project ? '　' : '') + a.text })
+          ])
         ]));
       });
       if (al.length > 5) box.appendChild(el('div', { class: 'muted small pad', text: 'ほか ' + (al.length - 5) + '件' }));
@@ -146,10 +148,20 @@
       planned += l.qty; done += l.done;
     }
     var rate = planned ? Math.round(done / planned * 100) : 100;
-    return el('div', { class: 'quota-row' }, [
+    var pace = sc.actualPace(60, today);
+    var limit = U.num(S.settings.dailyLimit, 0);
+    var over = limit > 0 && todayLoad.qty > limit;
+    return el('div', { class: 'quota-row four' }, [
       el('div', { class: 'quota-box' }, [el('span', { text: '進行中の案件' }), el('b', { text: String(S.activeProjects().length) })]),
-      el('div', { class: 'quota-box' }, [el('span', { text: '今日のノルマ' }), el('b', { text: todayLoad.done + '/' + todayLoad.qty })]),
-      el('div', { class: 'quota-box' }, [el('span', { text: '直近7日の達成' }), el('b', { text: rate + '%' })])
+      el('div', { class: 'quota-box' + (over ? ' over' : '') }, [
+        el('span', { text: '今日のノルマ' + (limit ? '（上限' + limit + '）' : '') }),
+        el('b', { text: todayLoad.done + '/' + todayLoad.qty })
+      ]),
+      el('div', { class: 'quota-box' }, [el('span', { text: '直近7日の達成' }), el('b', { text: rate + '%' })]),
+      el('div', { class: 'quota-box' }, [
+        el('span', { text: '実績ペース(60日)' }),
+        el('b', { text: pace.activeDays ? pace.perActiveDay + '/日' : '—' })
+      ])
     ]);
   }
 

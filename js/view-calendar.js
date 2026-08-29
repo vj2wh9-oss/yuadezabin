@@ -153,7 +153,10 @@
     return el('a', { class: cls, href: '#/day/' + date }, [
       el('span', { class: 'cal-top' }, [
         el('span', { class: 'cal-n', text: String(+date.slice(8)) }),
-        load.qty > 0 ? el('span', { class: 'cal-sum' + (load.done >= load.qty ? ' done' : ''), text: String(load.qty) }) : null
+        load.qty > 0 ? el('span', {
+        class: 'cal-sum' + (load.done >= load.qty ? ' done' : sc.isOverloaded(date) ? ' over' : ''),
+        text: String(load.qty)
+      }) : null
       ]),
       lines
     ]);
@@ -210,13 +213,18 @@
       load.entries.forEach(function (e) {
         var row = DL.views.home.quotaRow(e, date);
         row.appendChild(el('button', {
-          class: 'iconbtn small', 'aria-label': 'ノルマ調整',
-          onclick: function () { DL.forms.planOverrideSheet(e.project.id, e.task.id, date); }
+          class: 'iconbtn small', 'aria-label': 'この予定の操作',
+          onclick: function () { entryMenu(e, date); }
         }, ui.icon('more', 18)));
         list.appendChild(row);
       });
       wrap.appendChild(list);
     }
+
+    /* この日に実績を足す */
+    wrap.appendChild(el('div', { class: 'pad' },
+      ui.btn('この日の実績を追加', 'ghost full', function () { pickTaskSheet(date); }, 'plus')
+    ));
 
     /* 休業日設定 */
     var isHoliday = (S.settings.holidays || []).indexOf(date) >= 0;
@@ -230,6 +238,43 @@
     ]));
 
     root.appendChild(wrap);
+  }
+
+  /* 予定1件の操作メニュー */
+  function entryMenu(e, date) {
+    var close = ui.sheet({
+      title: e.task.name + '（' + U.fmtMD(date) + '）',
+      body: el('div', { class: 'menu' }, [
+        el('button', { class: 'menu-item', onclick: function () { close(); DL.forms.progressSheet(e.project.id, e.task.id, date); } },
+          [ui.icon('check', 18), el('span', { text: '実績を記録する' })]),
+        el('button', { class: 'menu-item', onclick: function () { close(); DL.forms.deferSheet(e.project.id, e.task.id, date); } },
+          [ui.icon('arrowRight', 18), el('span', { text: 'できなかった → 翌日以降に回す' })]),
+        el('button', { class: 'menu-item', onclick: function () { close(); DL.forms.planOverrideSheet(e.project.id, e.task.id, date); } },
+          [ui.icon('edit', 18), el('span', { text: 'この日のノルマを調整' })]),
+        el('a', { class: 'menu-item', href: '#/project/' + e.project.id, onclick: function () { close(); } },
+          [ui.icon('projects', 18), el('span', { text: '案件を開く' })])
+      ])
+    });
+  }
+
+  /* その日に実績を足すタスクを選ぶ */
+  function pickTaskSheet(date) {
+    var rows = [];
+    S.activeProjects().forEach(function (p) {
+      (p.tasks || []).forEach(function (t) {
+        if (sc.taskIsComplete(t)) return;
+        rows.push(el('button', {
+          class: 'menu-item', onclick: function () { close(); DL.forms.progressSheet(p.id, t.id, date); }
+        }, [
+          el('span', { class: 'dot', style: { background: p.color } }),
+          el('span', {}, [el('b', { text: t.name }), el('span', { class: 'muted small', text: '　' + p.title })])
+        ]));
+      });
+    });
+    var close = ui.sheet({
+      title: U.fmtMDW(date) + ' の実績を追加',
+      body: rows.length ? el('div', { class: 'menu' }, rows) : ui.empty('記録できるタスクがありません。')
+    });
   }
 
   DL.views = DL.views || {};

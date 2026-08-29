@@ -4,6 +4,7 @@
   var U = DL.util;
 
   var KEY = 'shimekiri-calendar.v1';
+  var PREV_KEY = KEY + '.prev';   // 読み込み前の状態を1世代だけ退避しておく
   var SCHEMA = 1;
 
   /* ------- 既定のタスクテンプレート ------- */
@@ -23,10 +24,12 @@
       { name: '下塗り', weight: 12, unit: 'cut' },
       { name: '塗り', weight: 25, unit: 'cut' },
       { name: '仕上げ', weight: 13, unit: 'cut' }
-    ]
+    ],
+    // デザインは案件ごとに工程が違うため、初期テンプレートは空にしておく
+    design: []
   };
 
-  var UNIT_LABEL = { page: 'P', cut: '枚', none: '' };
+  var UNIT_LABEL = { page: 'P', cut: '枚', item: '点', none: '' };
 
   // 支援サイトのよく使う投稿先
   var SUPPORT_SITES = ['pixivFANBOX', 'Fantia', 'Ci-en', 'Patreon'];
@@ -45,6 +48,9 @@
     bufferDays: 1,         // 締切の何日前までに終わらせるか
     warnDays: 14,          // 締切が近いと警告する日数
     weekStart: 0,          // 0=日曜はじまり 1=月曜はじまり
+    dailyLimit: 0,         // 1日の作業量の上限（0で無効）
+    icsAlarm: 'P1D',       // .ics に入れる通知のタイミング
+    lastBackupAt: '',      // 最後にバックアップを書き出した日
     templates: U.clone(TEMPLATES)
   };
 
@@ -82,7 +88,7 @@
     p = p || {};
     p.id = p.id || U.uid();
     p.kind = (p.kind === 'work' || p.kind === 'support') ? p.kind : 'event';
-    p.category = p.category === 'illust' ? 'illust' : 'manga';
+    p.category = (p.category === 'illust' || p.category === 'design') ? p.category : 'manga';
     p.title = p.title || '(無題)';
     p.status = p.status || 'active';
     p.startDate = p.startDate || '';   // 作業開始日（スケジュール算出の起点）
@@ -252,16 +258,67 @@
 
   /* ---------------- 入出力 ---------------- */
 
-  function exportJSON() { return JSON.stringify(state, null, 2); }
-
-  function importJSON(text) {
-    var data = JSON.parse(text);
-    if (!data || !Array.isArray(data.projects)) throw new Error('形式が違います');
-    state = migrate(data);
+  function exportJSON() {
+    state.settings.lastBackupAt = U.today();
     save();
+    return JSON.stringify(state, null, 2);
   }
 
-  function clearAll() {
+  // 最後にバックアップしてからの日数（一度もなければ null）
+  function backupAgeDays() {
+    var d = state.settings.lastBackupAt;
+    return U.isISO(d) ? U.diffDays(d, U.today()) : null;
+  }
+
+  function snapshot() {
+    try { localStorage.setItem(PREV_KEY, JSON.stringify(state)); } catch (e) { /* 容量不足なら諦める */ }
+  }
+
+  function hasSnapshot() {
+    try { return !!localStorage.getItem(PREV_KEY); } catch (e) { return false; }
+  }
+
+  // 直前の状態（読み込み・全削除の前）に戻す
+  function restoreSnapshot() {
+    var raw = null;
+    try { raw = localStorage.getItem(PREV_KEY); } catch (e) { /* 読めなければ諦める */ }
+    if (!raw) return false;
+    var cur = JSON.stringify(state);
+    state = migrate(JSON.parse(raw));
+    try { localStorage.setItem(PREV_KEY, cur); } catch (e) { /* 戻す操作自体も取り消せるようにする */ }
+    save();
+    return true;
+  }
+
+  /**
+   * バックアップの読み込み
+   * @param {string} text JSON
+   * @param {'replace'|'merge'} mode replace=全置き換え / merge=無い案件だけ追加
+   */
+  function importJSON(text, mode) {
+    var data = JSON.parse(text);
+    if (!data || !Array.isArray(data.projects)) throw new Error('形式が違います');
+    snapshot();
+    if (mode === 'merge') {
+      var incoming = migrate(U.clone(data)).projects;
+      var have = {};
+      state.projects.forEach(function (p) { have[p.id] = true; });
+      var added = 0, skipped = 0;
+      incoming.forEach(function (p) {
+        if (have[p.id]) { skipped++; return; }
+        state.projects.push(p); added++;
+      });
+      save();
+      return { mode: 'merge', added: added, skipped: skipped };
+    }
+    var before = state.projects.length;
+    state = migrate(data);
+    save();
+    return { mode: 'replace', total: state.projects.length, replaced: before };
+  }
+
+  function clearAll(keepSnapshot) {
+    if (!keepSnapshot) snapshot();
     state = defaultState();
     save();
   }
@@ -311,6 +368,14 @@
     save();
   }
 
+  /* ブラウザに「このデータは消さないで」と申請する（対応していない環境では何もしない） */
+  function requestPersistence() {
+    if (!navigator.storage || !navigator.storage.persist) return Promise.resolve(null);
+    return navigator.storage.persisted().then(function (already) {
+      return already ? true : navigator.storage.persist();
+    }).catch(function () { return null; });
+  }
+
   DL.store = {
     KEY: KEY, TEMPLATES: TEMPLATES, UNIT_LABEL: UNIT_LABEL, PRINT_PRESETS: PRINT_PRESETS,
     SUPPORT_SITES: SUPPORT_SITES,
@@ -324,6 +389,8 @@
     moveTask: moveTask, setProgress: setProgress, bumpProgress: bumpProgress,
     templateTasks: templateTasks, updateSettings: updateSettings,
     exportJSON: exportJSON, importJSON: importJSON, clearAll: clearAll, seedSample: seedSample,
+    backupAgeDays: backupAgeDays, hasSnapshot: hasSnapshot, restoreSnapshot: restoreSnapshot,
+    requestPersistence: requestPersistence,
     pickColor: pickColor
   };
 })(window.DL);
