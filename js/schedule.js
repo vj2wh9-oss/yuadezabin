@@ -42,7 +42,7 @@
    * 戻り値: { days:[{date,qty,fixed}], byDate:{date:qty}, total, dayCount }
    */
   function taskPlan(project, task) {
-    var empty = { days: [], byDate: {}, total: 0, dayCount: 0 };
+    var empty = { days: [], byDate: {}, rangeByDate: {}, total: 0, dayCount: 0 };
     if (!U.isISO(task.start) || !U.isISO(task.end)) return empty;
     if (U.cmp(task.start, task.end) > 0) return empty;
 
@@ -51,7 +51,7 @@
 
     if (task.unit === 'none' || task.qty === null || task.qty === undefined) {
       days.forEach(function (d) { out.push({ date: d, qty: 0, fixed: false }); byDate[d] = 0; });
-      return { days: out, byDate: byDate, total: 0, dayCount: days.length };
+      return { days: out, byDate: byDate, rangeByDate: {}, total: 0, dayCount: days.length };
     }
 
     var ov = task.planOverride || {};
@@ -61,13 +61,32 @@
     var rest = Math.max(0, U.num(task.qty, 0) - fixedTotal);
     var spread = distribute(rest, freeDays.length);
 
-    var i = 0;
+    var i = 0, acc = 0;
+    var rangeByDate = {};
     days.forEach(function (d) {
       var q = (ov[d] !== undefined) ? U.num(ov[d], 0) : spread[i++];
       byDate[d] = q;
-      out.push({ date: d, qty: q, fixed: ov[d] !== undefined });
+      // その日に進める範囲（通し番号）。例：5〜8ページ目
+      var from = q > 0 ? acc + 1 : null;
+      var to = q > 0 ? acc + q : null;
+      acc += q;
+      rangeByDate[d] = { from: from, to: to };
+      out.push({ date: d, qty: q, fixed: ov[d] !== undefined, from: from, to: to });
     });
-    return { days: out, byDate: byDate, total: U.sum(out, function (x) { return x.qty; }), dayCount: days.length };
+    return {
+      days: out, byDate: byDate, rangeByDate: rangeByDate,
+      total: U.sum(out, function (x) { return x.qty; }), dayCount: days.length
+    };
+  }
+
+  /* 「5〜8P」のような範囲の表示 */
+  var UNIT_RANGE = { page: 'P', cut: '枚目', none: '' };
+  function rangeText(task, from, to, opts) {
+    opts = opts || {};
+    if (!from || !to) return '';
+    var u = opts.noUnit ? '' : (UNIT_RANGE[task.unit] || '');
+    var sep = opts.sep || '〜';
+    return from === to ? from + u : from + sep + to + u;
   }
 
   function taskDone(task) {
@@ -165,9 +184,11 @@
       (p.tasks || []).forEach(function (t) {
         var plan = taskPlan(p, t);
         if (plan.byDate[date] === undefined) return;
+        var rg = plan.rangeByDate[date] || {};
         out.push({
           project: p, task: t,
           qty: plan.byDate[date],
+          from: rg.from, to: rg.to,
           done: U.num((t.progress || {})[date], 0),
           isFirst: plan.days.length && plan.days[0].date === date,
           isLast: plan.days.length && plan.days[plan.days.length - 1].date === date
@@ -344,7 +365,9 @@
           var plan = taskPlan(p, t);
           plan.days.forEach(function (d) {
             if (!d.qty) return;
-            ev(p.id + '-' + t.id + '-' + d.date, d.date, '[作業] ' + p.title + '：' + t.name + ' ' + d.qty + unit(t), '');
+            var rt = rangeText(t, d.from, d.to);
+            ev(p.id + '-' + t.id + '-' + d.date, d.date,
+              '[作業] ' + p.title + '：' + t.name + (rt ? ' ' + rt : ''), '');
           });
         });
       }
@@ -356,6 +379,7 @@
   DL.schedule = {
     isWorkday: isWorkday, workdays: workdays, distribute: distribute,
     taskPlan: taskPlan, taskDone: taskDone, taskTotal: taskTotal, taskPct: taskPct,
+    rangeText: rangeText, UNIT_RANGE: UNIT_RANGE,
     taskIsComplete: taskIsComplete, taskPace: taskPace, unit: unit,
     projectProgress: projectProgress, projectStatus: projectStatus, STATUS_LABEL: STATUS_LABEL,
     deadlineLabel: deadlineLabel, deadlineShort: deadlineShort,

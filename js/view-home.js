@@ -80,11 +80,13 @@
     var doneAll = sc.taskIsComplete(t);
     var pct = e.qty ? Math.min(100, Math.round(e.done / e.qty * 100)) : (e.done ? 100 : 0);
 
+    var range = sc.rangeText(t, e.from, e.to);
     var row = el('div', { class: 'row quota' + (doneAll ? ' is-done' : '') }, [
       el('div', { class: 'row-bar', style: { background: p.color } }),
       el('div', { class: 'row-main', onclick: function () { DL.forms.progressSheet(p.id, t.id, date); } }, [
         el('div', { class: 'row-title' }, [
           el('span', { text: t.name }),
+          range ? el('span', { class: 'range', text: range }) : null,
           el('span', { class: 'muted small', text: '　' + p.title })
         ]),
         el('div', { class: 'row-sub' }, [

@@ -396,7 +396,8 @@
       plan.days.slice(0, 31).forEach(function (d) {
         strip.appendChild(el('div', { class: 'daychip' }, [
           el('b', { text: U.fmtMD(d.date) }),
-          el('span', { text: tmp.unit === 'none' ? '作業' : d.qty + S.UNIT_LABEL[tmp.unit] })
+          el('span', { text: tmp.unit === 'none' ? '作業' : (sc.rangeText(tmp, d.from, d.to, { noUnit: true }) || '—') }),
+          d.qty ? el('u', { text: d.qty + S.UNIT_LABEL[tmp.unit] }) : null
         ]));
       });
       preview.appendChild(strip);
@@ -462,6 +463,7 @@
     if (!p || !t) return;
     var plan = sc.taskPlan(p, t);
     var quota = plan.byDate[date] || 0;
+    var range = plan.rangeByDate[date] || {};
     var unit = S.UNIT_LABEL[t.unit] || '';
     var pace = sc.taskPace(p, t);
 
@@ -479,7 +481,10 @@
         el('div', { class: 'quota-box' }, [el('span', { text: '期間' }), el('b', { text: U.fmtMD(t.start) + '〜' + U.fmtMD(t.end) })]),
         el('div', { class: 'quota-box' }, [el('span', { text: '残り日数' }), el('b', { text: pace.remainingDays + '日' })])
       ] : [
-        el('div', { class: 'quota-box' }, [el('span', { text: 'この日のノルマ' }), el('b', { text: quota + unit })]),
+        el('div', { class: 'quota-box' }, [
+          el('span', { text: 'この日のノルマ' + (quota ? '（' + quota + unit + '）' : '') }),
+          el('b', { text: sc.rangeText(t, range.from, range.to) || (quota + unit) })
+        ]),
         el('div', { class: 'quota-box' }, [el('span', { text: '残り' }), el('b', { text: pace.remaining + unit })]),
         el('div', { class: 'quota-box' }, [el('span', { text: '必要ペース' }), el('b', { text: pace.perDay + unit + '/日' })])
       ]),
@@ -514,8 +519,14 @@
     var plan = sc.taskPlan(p, t);
     var cur = plan.byDate[date] || 0;
     var step = ui.stepper({ value: cur });
+    var rg = plan.rangeByDate[date] || {};
+    var rt = sc.rangeText(t, rg.from, rg.to);
     var body = el('div', { class: 'form' }, [
       el('p', { class: 'muted small', text: U.fmtYMDW(date) + ' のノルマを固定します。残りの量は他の稼働日へ自動で配分し直されます。' }),
+      rt ? el('div', { class: 'preview' }, el('div', { class: 'preview-main' }, [
+        el('strong', { text: t.name + ' ' + rt }),
+        el('span', { class: 'muted', text: '　現在 ' + cur + (S.UNIT_LABEL[t.unit] || '') })
+      ])) : null,
       ui.field('この日のノルマ', step)
     ]);
     var close = ui.sheet({

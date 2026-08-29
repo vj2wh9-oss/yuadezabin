@@ -139,10 +139,11 @@
       if (shown >= MAX) return;
       shown++;
       var doneAll = e.qty > 0 ? e.done >= e.qty : e.done > 0;
+      var rt = sc.rangeText(e.task, e.from, e.to, { noUnit: true, sep: '-' });
       lines.appendChild(el('span', { class: 'cal-line' + (doneAll ? ' done' : '') }, [
         el('i', { style: { background: e.project.color } }),
         el('span', { class: 'nm', text: e.task.name }),
-        e.qty ? el('b', { text: String(e.qty) }) : null
+        rt ? el('b', { text: rt }) : null
       ]));
     });
 

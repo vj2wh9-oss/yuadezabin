@@ -201,11 +201,13 @@
         if (d.qty > 0 && done >= d.qty) cls += ' ok';
         else if (U.cmp(d.date, today) < 0 && d.qty > 0 && done < d.qty) cls += ' miss';
         if (d.fixed) cls += ' fixed';
+        var rt = sc.rangeText(t, d.from, d.to, { noUnit: true });
         strip.appendChild(el('button', {
           class: cls, onclick: function () { DL.forms.progressSheet(p.id, t.id, d.date); }
         }, [
           el('b', { text: U.fmtMD(d.date) }),
-          el('span', { text: t.unit === 'none' ? '作業' : (done ? done + '/' + d.qty : String(d.qty)) })
+          el('span', { text: t.unit === 'none' ? '作業' : (rt || '—') }),
+          d.qty ? el('u', { text: d.qty + sc.unit(t) + (done ? '／済' + done : '') }) : null
         ]));
       });
       detail.appendChild(strip);
