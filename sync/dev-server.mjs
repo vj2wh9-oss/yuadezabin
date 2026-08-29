@@ -38,7 +38,54 @@ const KV = {
   async delete(key) { store.delete(key); persist(); }
 };
 
-const env = { SYNC: KV, ALLOW_ORIGIN: process.env.ALLOW_ORIGIN || '*' };
+/* R2 の代わり。worker.js が使う put / get / delete / list だけを真似る */
+const blobs = new Map();
+const R2 = {
+  async put(key, body, opts) {
+    const buf = body instanceof Uint8Array ? Buffer.from(body)
+      : body && typeof body.getReader === 'function' ? await readStream(body)
+        : Buffer.from(body || '');
+    blobs.set(key, { body: buf, size: buf.length, uploaded: new Date().toISOString(), ...opts });
+    return { key, size: buf.length };
+  },
+  async get(key) {
+    const o = blobs.get(key);
+    if (!o) return null;
+    return {
+      key, size: o.size, body: o.body,
+      customMetadata: o.customMetadata,
+      httpMetadata: o.httpMetadata,
+      writeHttpMetadata(headers) {
+        if (o.httpMetadata && o.httpMetadata.contentType) {
+          headers.set('content-type', o.httpMetadata.contentType);
+        }
+      }
+    };
+  },
+  async delete(key) { blobs.delete(key); },
+  async list({ prefix }) {
+    const objects = [...blobs.entries()]
+      .filter(([k]) => k.startsWith(prefix))
+      .map(([key, o]) => ({
+        key, size: o.size, uploaded: o.uploaded,
+        customMetadata: o.customMetadata, httpMetadata: o.httpMetadata
+      }));
+    return { objects, truncated: false };
+  }
+};
+
+async function readStream(stream) {
+  const parts = [];
+  const reader = stream.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    parts.push(Buffer.from(value));
+  }
+  return Buffer.concat(parts);
+}
+
+const env = { SYNC: KV, FILES: R2, ALLOW_ORIGIN: process.env.ALLOW_ORIGIN || '*' };
 
 createServer(async (req, res) => {
   const chunks = [];

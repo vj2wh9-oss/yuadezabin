@@ -16,6 +16,11 @@
     { "binding": "SYNC", "id": "7d206a966f0c418788dab80279599ea4" }
   ],
 
+  // 共有ファイルの置き場。ファイル共有を使うときだけ必要
+  "r2_buckets": [
+    { "binding": "FILES", "bucket_name": "anken-portal-files" }
+  ],
+
   // 失敗したときにダッシュボードでログを追えるようにする
   "observability": {
     "enabled": true

@@ -11,6 +11,7 @@
 
   var route = { name: 'home', params: {} };
   var lastKey = '';
+  var prevRoute = '';
 
   function parseHash() {
     var h = (location.hash || '#/home').replace(/^#\/?/, '');
@@ -38,15 +39,21 @@
     var titles = {
       home: '締切カレンダー', calendar: 'カレンダー', projects: '案件',
       settings: '設定', day: '日別', project: '案件の詳細',
-      docs: '請求書・領収書', doc: '書類', sales: '売上'
+      docs: '請求書・領収書', doc: '書類', sales: '売上', files: 'ファイル'
     };
     titleEl.textContent = titles[route.name] || '締切カレンダー';
 
-    var tab = { home: 'home', calendar: 'calendar', day: 'calendar', projects: 'projects', project: 'projects', docs: 'projects', doc: 'projects', sales: 'projects', settings: 'settings' }[route.name];
+    var tab = { home: 'home', calendar: 'calendar', day: 'calendar', projects: 'projects', project: 'projects', docs: 'projects', doc: 'projects', sales: 'projects', files: 'files', settings: 'settings' }[route.name];
     U.$$('.tab').forEach(function (t) { t.classList.toggle('on', t.dataset.tab === tab); });
 
     var showBack = ['project', 'day', 'docs', 'doc', 'sales'].indexOf(route.name) >= 0;
     backBtn.hidden = !showBack;
+
+    // 画面が切り替わった瞬間を捉える（一覧を取り直したい画面のため）
+    if (route.name !== prevRoute) {
+      prevRoute = route.name;
+      if (route.name === 'files') DL.views.files.entered();
+    }
 
     // 同期ボタン（つないでいるときだけ）
     if (DL.sync.active()) actionsEl.appendChild(syncBtn());
@@ -64,6 +71,7 @@
       case 'docs': DL.views.doc.renderList(view, route.params); break;
       case 'doc': DL.views.doc.renderDoc(view, route.params); break;
       case 'sales': DL.views.sales.render(view); break;
+      case 'files': DL.views.files.render(view); break;
       case 'settings': DL.views.settings.render(view); break;
       default: DL.views.home.render(view);
     }
@@ -160,7 +168,7 @@
 
   function updateFab() {
     // カレンダーは画面いっぱいに出すので、重なるボタンは置かない
-    if (['settings', 'calendar', 'docs', 'doc', 'sales'].indexOf(route.name) >= 0) { fab.hidden = true; return; }
+    if (['settings', 'calendar', 'docs', 'doc', 'sales', 'files'].indexOf(route.name) >= 0) { fab.hidden = true; return; }
     fab.hidden = false;
     fab.onclick = function () {
       if (route.name === 'project') {

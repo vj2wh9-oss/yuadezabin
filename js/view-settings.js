@@ -240,7 +240,7 @@
     /* ---- 情報 ---- */
     wrap.appendChild(ui.section('このアプリについて'));
     wrap.appendChild(el('div', { class: 'card info' }, [
-      el('p', { class: 'muted small', text: 'データはこの端末のブラウザ内（IndexedDB。使えない環境では localStorage）にのみ保存されます。サーバーには一切送りません。機種変更や履歴の削除で消えるため、ときどき iCloud へ書き出してください。' }),
+      el('p', { class: 'muted small', text: 'データはこの端末のブラウザ内（IndexedDB。使えない環境では localStorage）に保存されます。同期をつないだときだけ、自分で立てたサーバーにも預けます。機種変更や履歴の削除で消えるため、ときどき iCloud へ書き出してください。' }),
       el('p', { class: 'muted small', text: 'iPhone では Safari の共有ボタン →「ホーム画面に追加」でアプリのように使えます（オフラインでも動きます）。' }),
       el('p', { class: 'muted small', text: '案件数：' + S.projects().length + '　取引先：' + S.clients().length + '件　バージョン：0.2' })
     ]));

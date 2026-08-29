@@ -41,6 +41,26 @@ wrangler deploy
 
 `https://anken-portal-sync.<あなたのサブドメイン>.workers.dev` という URL が出ます。**これが接続先です。** 控えておいてください。
 
+## 4.5 ファイル共有を使う場合（任意）
+
+「ファイル」タブを使うときだけ必要です。使わないなら飛ばして構いません。
+
+```sh
+wrangler r2 bucket create anken-portal-files
+wrangler deploy
+```
+
+`wrangler.jsonc` にはこのバケット名がすでに書いてあるので、作るだけで繋がります。
+別の名前にしたいときは `wrangler.jsonc` の `bucket_name` を合わせて書き換えてください。
+
+ダッシュボードから作る場合は **R2 object storage → Create bucket** で `anken-portal-files` を作り、
+Worker の **Settings → Bindings → Add → R2 bucket** で Variable name を `FILES`、バケットを選びます。
+
+**注意**
+
+- R2 を初めて有効にするとき、**有料プランの登録（カード登録）を求められる場合があります**。無料枠（10GB保存・転送量無料）に収まっていれば請求は発生しません。
+- **1ファイル100MBまで**です。これは R2 ではなく Workers の受信上限（無料・Proプラン）によるものです。大きな制作データは分割するか、R2 のダッシュボードから直接入れてください。
+
 ## 5. アプリにつなぐ
 
 1. iPhone（または PC）でアプリを開き、設定 →「同期」

@@ -111,7 +111,7 @@ h1, h2, h3, p { margin: 0; }
 /* ---------------- タブバー ---------------- */
 .tabbar {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 40;
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(5, 1fr);
   padding-bottom: env(safe-area-inset-bottom);
   background: var(--bg);
   border-top: 1px solid var(--line);
@@ -736,3 +736,29 @@ h1, h2, h3, p { margin: 0; }
 @media (prefers-reduced-motion: reduce) {
   .syncbtn.busy .icon { animation: none; opacity: .5; }
 }
+
+/* ---------------- 共有ファイル ---------------- */
+.dropzone {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 22px 14px; text-align: center; cursor: pointer;
+  background: var(--card); border: 1px dashed var(--line2); border-radius: var(--radius-s);
+  color: var(--muted);
+}
+.dropzone strong { font-size: 14px; color: var(--text); }
+.dropzone .icon { color: var(--accent); }
+.dropzone.over { border-color: var(--accent); border-style: solid; background: color-mix(in srgb, var(--accent) 10%, var(--card)); }
+
+.uploads { display: flex; flex-direction: column; gap: 8px; }
+.upload-row { display: flex; flex-direction: column; gap: 5px; }
+.upload-row .row-title { align-items: center; gap: 6px; font-size: 12.5px; }
+.upload-row.failed { color: var(--danger); }
+.upload-row.failed .icon { color: var(--danger); }
+
+.row.file { display: flex; align-items: center; gap: 8px; padding: 9px 10px; }
+.file-icon { flex: none; color: var(--accent); display: flex; }
+.file-main {
+  flex: 1; min-width: 0; text-align: left; background: transparent; border: 0;
+  color: var(--text); cursor: pointer; padding: 0;
+}
+.file-main .row-title { word-break: break-all; }
+.row.file .iconbtn { flex: none; }
