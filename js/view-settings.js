@@ -422,25 +422,42 @@
 
   /* 読み込み方法（置き換え／統合）を選ぶ */
   function importSheet(text) {
-    var data;
+    var info;
     try {
-      data = JSON.parse(text);
-      if (!data || !Array.isArray(data.projects)) throw new Error('形式が違います');
+      info = S.inspectBackup(text);
     } catch (e) {
       ui.toast('読み込めませんでした：' + e.message, 'danger');
       return;
     }
+
+    // どちらが新しいかを言い切る。取り違えて上書きするのがいちばん怖いので
+    var verdict = info.newer === true
+      ? { text: 'ファイルのほうが新しいデータです。「全て置き換え」で問題ありません。', cls: 'info' }
+      : info.newer === false
+        ? { text: 'この端末のほうが新しいデータです。「全て置き換え」を選ぶと、この端末の新しい変更が消えます。', cls: 'warn' }
+        : { text: '保存日時が入っていないファイルです。どちらが新しいか判断できないので、中身をよく確かめてください。', cls: 'warn' };
+
     var body = el('div', { class: 'form' }, [
-      el('div', { class: 'preview' }, el('div', { class: 'preview-main' }, [
-        el('strong', { text: 'ファイル内の案件 ' + data.projects.length + '件' }),
-        el('span', { class: 'muted', text: '　いまの案件 ' + S.projects().length + '件' })
-      ])),
+      el('div', { class: 'cmp' }, [
+        cmpCol('ファイル', info.savedAt ? fmtAt(info.savedAt) : '日時なし',
+          [info.projects + '件の案件', info.docs + '件の書類', info.issuers + 'つの屋号', info.clients + '件の取引先']),
+        cmpCol('この端末', S.state.savedAt ? fmtAt(S.state.savedAt) : '—',
+          [S.projects().length + '件の案件',
+           S.allDocs().length + '件の書類',
+           S.issuers().length + 'つの屋号',
+           S.clients().length + '件の取引先'])
+      ]),
+      el('div', { class: 'alert ' + verdict.cls }, [
+        el('span', { class: 'alert-icon' }, ui.icon(verdict.cls === 'warn' ? 'alert' : 'info', 17)),
+        el('span', { text: verdict.text })
+      ]),
+      el('p', { class: 'muted small', text: '「統合」は、いま無い案件・屋号・取引先だけを足します。両方の端末で別々に足したものを合流させたいときはこちら。既にあるものの中身は書き換えません。' }),
       el('p', { class: 'muted small', text: 'どちらを選んでも、実行前の状態は控えとして残ります（自動バックアップ →「控えの一覧から戻す」）。' })
     ]);
     var close = ui.sheet({
       title: 'バックアップの読み込み', body: body,
       actions: [
-        ui.btn('統合（無い案件だけ追加）', 'ghost', function () { run('merge'); }),
+        ui.btn('統合（無いものだけ追加）', 'ghost', function () { run('merge'); }),
         ui.btn('全て置き換え', 'danger', function () { run('replace'); })
       ]
     });
@@ -448,9 +465,15 @@
       try {
         var r = S.importJSON(text, mode);
         close();
-        ui.toast(r.mode === 'merge'
-          ? r.added + '件を追加しました' + (r.skipped ? '（' + r.skipped + '件は既にあるため変更なし）' : '')
-          : r.total + '件に置き換えました');
+        if (r.mode === 'merge') {
+          var parts = [];
+          if (r.added) parts.push('案件 ' + r.added + '件');
+          if (r.issuers) parts.push('屋号 ' + r.issuers + 'つ');
+          if (r.clients) parts.push('取引先 ' + r.clients + '件');
+          ui.toast(parts.length ? parts.join('・') + 'を追加しました' : '追加するものはありませんでした');
+        } else {
+          ui.toast(r.total + '件に置き換えました');
+        }
         DL.app.render();
       } catch (e) {
         ui.toast('読み込みに失敗しました：' + e.message, 'danger');
@@ -458,6 +481,14 @@
     }
   }
 
+  function cmpCol(title, when, lines) {
+    return el('div', { class: 'cmp-col' }, [
+      el('span', { class: 'cmp-t', text: title }),
+      el('strong', { class: 'cmp-when', text: when }),
+      el('div', { class: 'cmp-lines' }, lines.map(function (t) { return el('span', { text: t }); }))
+    ]);
+  }
+
   DL.views = DL.views || {};
-  DL.views.settings = { render: render };
+  DL.views.settings = { render: render, importSheet: importSheet };
 })(window.DL);

@@ -691,3 +691,14 @@ h1, h2, h3, p { margin: 0; }
 .backup-row .row-main { flex: 1; min-width: 0; }
 .backup-row .btn.tiny { flex: none; }
 .tpl-summary .row-sub { margin-top: 3px; }
+
+/* 読み込み前の突き合わせ */
+.cmp { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.cmp-col {
+  background: var(--card2); border: 1px solid var(--line); border-radius: var(--radius-s);
+  padding: 9px 8px; display: flex; flex-direction: column; gap: 3px; min-width: 0;
+}
+.cmp-t { font-size: 10.5px; color: var(--muted); }
+.cmp-when { font-size: 13px; font-variant-numeric: tabular-nums; word-break: break-all; }
+.cmp-lines { display: flex; flex-direction: column; gap: 1px; }
+.cmp-lines span { font-size: 11.5px; color: var(--muted); }

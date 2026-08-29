@@ -775,26 +775,72 @@
   }
 
   /**
+   * ファイルの中身を、読み込まずに確かめる。どちらの端末が新しいかの判断に使う。
+   * @param {string} text JSON
+   */
+  function inspectBackup(text) {
+    var data = JSON.parse(text);
+    if (!data || !Array.isArray(data.projects)) throw new Error('形式が違います');
+    var s = data.settings || {};
+    return {
+      savedAt: data.savedAt || '',
+      projects: data.projects.length,
+      issuers: (s.issuers || []).length,
+      clients: (s.clients || []).length,
+      docs: data.projects.reduce(function (n, p) { return n + ((p.docs || []).length); }, 0),
+      // この端末より新しいか（savedAt が無い古いファイルは判定しない）
+      newer: data.savedAt && state.savedAt ? U.cmp(data.savedAt, state.savedAt) > 0 : null
+    };
+  }
+
+  /* id をキーに、いま無いものだけ足す */
+  function mergeById(current, incoming) {
+    var have = {};
+    current.forEach(function (x) { have[x.id] = true; });
+    var added = 0;
+    incoming.forEach(function (x) {
+      if (have[x.id]) return;
+      current.push(x); added++;
+    });
+    return added;
+  }
+
+  /**
    * バックアップの読み込み
    * @param {string} text JSON
-   * @param {'replace'|'merge'} mode replace=全置き換え / merge=無い案件だけ追加
+   * @param {'replace'|'merge'} mode replace=全置き換え / merge=いま無いものだけ追加
    */
   function importJSON(text, mode) {
     var data = JSON.parse(text);
     if (!data || !Array.isArray(data.projects)) throw new Error('形式が違います');
     makeBackup('before-import', '読み込む前の状態');
+
     if (mode === 'merge') {
-      var incoming = migrate(U.clone(data)).projects;
+      var incoming = migrate(U.clone(data));
+      var r = {
+        mode: 'merge',
+        added: 0, skipped: 0,
+        issuers: mergeById(state.settings.issuers, incoming.settings.issuers || []),
+        clients: mergeById(state.settings.clients, incoming.settings.clients || [])
+      };
       var have = {};
       state.projects.forEach(function (p) { have[p.id] = true; });
-      var added = 0, skipped = 0;
-      incoming.forEach(function (p) {
-        if (have[p.id]) { skipped++; return; }
-        state.projects.push(p); added++;
+      incoming.projects.forEach(function (p) {
+        if (have[p.id]) { r.skipped++; return; }
+        state.projects.push(p); r.added++;
+      });
+      // 書類番号の連番は、両方の大きいほうを採用して重複を防ぐ
+      ['invoice', 'receipt'].forEach(function (t) {
+        var from = (incoming.settings.docSeq || {})[t] || {};
+        var to = state.settings.docSeq[t] || (state.settings.docSeq[t] = {});
+        Object.keys(from).forEach(function (y) {
+          to[y] = Math.max(U.num(to[y], 0), U.num(from[y], 0));
+        });
       });
       save();
-      return { mode: 'merge', added: added, skipped: skipped };
+      return r;
     }
+
     var before = state.projects.length;
     state = migrate(data);
     save();
@@ -881,7 +927,8 @@
     docs: docs, getDoc: getDoc, addDoc: addDoc, updateDoc: updateDoc, removeDoc: removeDoc,
     issueNumber: issueNumber, peekNumber: peekNumber, allDocs: allDocs,
     templateTasks: templateTasks, updateSettings: updateSettings,
-    exportJSON: exportJSON, importJSON: importJSON, clearAll: clearAll, seedSample: seedSample,
+    exportJSON: exportJSON, importJSON: importJSON, inspectBackup: inspectBackup,
+    clearAll: clearAll, seedSample: seedSample,
     backupAgeDays: backupAgeDays,
     makeBackup: makeBackup, listBackups: listBackups, restoreBackup: restoreBackup,
     removeBackup: removeBackup, pruneBackups: pruneBackups, restoreLatest: restoreLatest,
