@@ -48,6 +48,9 @@
     var showBack = ['project', 'day', 'docs', 'doc', 'sales'].indexOf(route.name) >= 0;
     backBtn.hidden = !showBack;
 
+    // 同期ボタン（つないでいるときだけ）
+    if (DL.sync.active()) actionsEl.appendChild(syncBtn());
+
     // 屋号の切り替え（2つ以上登録しているときだけ出す）
     if (S.issuers().length > 1 && SCOPE_VIEWS.indexOf(route.name) >= 0) {
       actionsEl.appendChild(scopeBtn());
@@ -71,6 +74,33 @@
     lastKey = key;
 
     updateFab();
+  }
+
+  /* ---------------- 同期ボタン ---------------- */
+
+  /**
+   * 画面上部の同期ボタン。
+   * 送っていない変更があるときは印を付け、実行中は回す。
+   */
+  function syncBtn() {
+    var pending = S.changedSinceSync();
+    var b = el('button', {
+      class: 'syncbtn' + (pending ? ' pending' : ''),
+      'aria-label': pending ? '同期する（未送信の変更あり）' : '同期する',
+      onclick: function () {
+        if (b.classList.contains('busy')) return;
+        b.classList.add('busy');
+        DL.sync.run({ force: true }).then(function (r) {
+          b.classList.remove('busy');
+          if (r.status === 'error' || r.status === 'conflict') return;   // それぞれ側で知らせる
+          ui.toast(r.status === 'pushed' ? '送りました'
+            : r.status === 'pulled' ? '受け取りました'
+            : r.status === 'merged' ? '統合しました' : '最新です');
+          render();
+        });
+      }
+    }, DL.icons.icon('refresh', 19));
+    return b;
   }
 
   /* ---------------- 屋号の切り替え ---------------- */
@@ -182,6 +212,13 @@
     if (!location.hash) location.hash = '#/home';
 
     // 本体は IndexedDB。読み込みが終わってから描画する
+    // 自動同期の最中もボタンを回す
+    DL.sync.on(function (ev) {
+      var b = U.$('.syncbtn');
+      if (!b) return;
+      b.classList.toggle('busy', ev.phase === 'start');
+    });
+
     S.init().then(function () {
       render();
       DL.sync.start();

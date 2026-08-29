@@ -715,3 +715,24 @@ h1, h2, h3, p { margin: 0; }
 .choice.primary strong { color: var(--accent); }
 .choice strong { display: block; font-size: 14px; margin-bottom: 2px; }
 .choice .chev { flex: none; color: var(--muted); display: flex; }
+
+/* ---------------- 同期ボタン ---------------- */
+.syncbtn {
+  display: inline-flex; align-items: center; justify-content: center; position: relative;
+  width: 32px; height: 32px; flex: none;
+  background: transparent; border: 0; color: var(--muted); cursor: pointer;
+}
+.syncbtn:active { color: var(--accent); }
+/* 未送信の変更があるしるし */
+.syncbtn.pending { color: var(--accent); }
+.syncbtn.pending::after {
+  content: ''; position: absolute; top: 4px; right: 3px;
+  width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+}
+.syncbtn.busy { color: var(--accent); }
+.syncbtn.busy .icon { animation: spin .9s linear infinite; }
+.syncbtn.busy::after { display: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .syncbtn.busy .icon { animation: none; opacity: .5; }
+}
