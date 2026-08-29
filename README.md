@@ -43,15 +43,49 @@ iPhone での利用を第一に設計しています（ビルド不要・オフ�
 - **.ics 書き出し**（iPhone の標準カレンダーに締切やノルマを取り込めます）
 - ダークモード対応（端末の設定に追従）
 
-## 使い方
+## 公開のしかた（Vercel）
 
-### iPhone で使う
-1. このリポジトリを GitHub Pages などの HTTPS で公開します
-   （リポジトリの Settings → Pages → Branch にこのブランチを指定するだけで動きます）
-2. Safari で開き、共有ボタン →「**ホーム画面に追加**」
-3. アプリのように全画面で起動し、オフラインでも動作します
+ビルド不要の静的サイトなので、リポジトリをインポートするだけで動きます（`vercel.json` に設定済み）。
 
-### 手元で試す
+> **既存の「room reserve」プロジェクトへの影響について**
+> Vercel はプロジェクト単位で完全に独立しています（ドメイン・環境変数・デプロイ履歴はすべて別管理）。
+> 下記のとおり **「Add New → Project」から新規プロジェクトとして作成** すれば、既存プロジェクトの設定・URL・デプロイには一切影響しません。
+> 気をつけるのは次の2点だけです。
+> - 既存プロジェクトを開いて設定を変更しない（必ず新規作成から始める）
+> - **room reserve が使っているカスタムドメインをこのプロジェクトに追加しない**（ドメインは1つのプロジェクトにしか割り当てられないため、ここだけが唯一の衝突ポイントです）
+
+### 手順
+
+1. [vercel.com](https://vercel.com) → **Add New…** → **Project**
+2. **Import Git Repository** で `vj2wh9-oss/yuadezabin` を選ぶ
+3. 設定はこのとおり（ほぼ既定のままです）
+   - **Project Name**: `shimekiri-calendar` など、`room-reserve` と**違う名前**にする
+   - **Framework Preset**: `Other`
+   - **Root Directory**: `./`
+   - **Build Command / Output Directory / Install Command**: 空のまま（`vercel.json` が指定します）
+4. **Deploy** を押すと `https://<プロジェクト名>.vercel.app` が発行されます
+5. デプロイ元のブランチを指定します
+   - **Settings → Git → Production Branch** を `claude/deadline-management-app-prototype-jptdj6` に変更
+   - （または、このブランチを `main` にマージすれば `main` のままで構いません）
+
+CLI から行う場合も、**既存プロジェクトにリンクしない**ことだけ注意してください。
+
+```sh
+npx vercel            # → Link to existing project? … No を選び、新しい名前を入力する
+npx vercel --prod
+```
+
+### iPhone にインストールする
+1. 発行された URL を **Safari** で開く
+2. 共有ボタン →「**ホーム画面に追加**」
+3. アプリのように全画面で起動し、電波がなくても動作します（Service Worker によるオフライン対応）
+
+検索エンジンには載らないように `noindex` と `robots.txt` を設定してあります。URL を知っている人は開けるので、共有には注意してください（データは各自の端末内にしか保存されないため、他人に自分の予定が見えることはありません）。
+
+### GitHub Pages で公開する場合
+Vercel を使わない場合は、リポジトリの **Settings → Pages → Branch** にこのブランチ（`/root`）を指定するだけでも同じように動きます。
+
+## 手元で試す
 静的ファイルのみなので、適当なサーバーで開くだけです。
 
 ```sh

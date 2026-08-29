@@ -9,7 +9,14 @@ var ASSETS = [
 ];
 
 self.addEventListener('install', function (e) {
-  e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(ASSETS); }).then(function () { return self.skipWaiting(); }));
+  // 1つでも取得に失敗するとインストール全体が失敗するため、個別に登録する
+  e.waitUntil(
+    caches.open(CACHE).then(function (c) {
+      return Promise.all(ASSETS.map(function (url) {
+        return c.add(url).catch(function () { /* 取得できないものは後で取りに行く */ });
+      }));
+    }).then(function () { return self.skipWaiting(); })
+  );
 });
 
 self.addEventListener('activate', function (e) {
@@ -23,8 +30,11 @@ self.addEventListener('activate', function (e) {
 // ネットワーク優先・失敗時はキャッシュ（更新を取りこぼさないため）
 self.addEventListener('fetch', function (e) {
   if (e.request.method !== 'GET') return;
+  if (new URL(e.request.url).origin !== self.location.origin) return;
   e.respondWith(
     fetch(e.request).then(function (res) {
+      // リダイレクトや部分応答はキャッシュに入れない
+      if (!res || res.status !== 200 || res.type !== 'basic') return res;
       var copy = res.clone();
       caches.open(CACHE).then(function (c) { c.put(e.request, copy); }).catch(function () {});
       return res;
