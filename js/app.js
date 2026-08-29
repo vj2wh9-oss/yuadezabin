@@ -49,10 +49,13 @@
     var showBack = ['project', 'day', 'docs', 'doc', 'sales'].indexOf(route.name) >= 0;
     backBtn.hidden = !showBack;
 
-    // 画面が切り替わった瞬間を捉える（一覧を取り直したい画面のため）
+    // 画面が切り替わった瞬間を、同期のきっかけにする
     if (route.name !== prevRoute) {
       prevRoute = route.name;
       if (route.name === 'files') DL.views.files.entered();
+      DL.sync.touch().then(function (r) {
+        if (r.status === 'pulled' || r.status === 'merged') render();
+      });
     }
 
     // 同期ボタン（つないでいるときだけ）

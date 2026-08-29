@@ -10,7 +10,9 @@
   var U = DL.util, S = DL.store;
 
   var TIMEOUT = 15000;
+  var MIN_GAP = 8000;      // 画面を行き来しても、これより短い間隔では走らせない
   var busy = false;
+  var lastRunAt = 0;
   var pushTimer = null;
   var listeners = [];
 
@@ -120,6 +122,7 @@
     if (!active() && !opts.force) return Promise.resolve({ status: 'off' });
     if (busy) return Promise.resolve({ status: 'busy' });
     busy = true;
+    lastRunAt = Date.now();
     emit({ phase: 'start' });
 
     return meta().then(function (m) {
@@ -273,6 +276,23 @@
     }, 8000);
   }
 
+  /**
+   * 画面を移ったときなど「ついでに合わせておきたい」場面で呼ぶ。
+   * この端末に変更があるときは必ず送り、無いときは受け取りのために
+   * 一定の間隔をあけて走らせる（タブを行き来するたびに叩かないため）。
+   * 画面には何も出さないが、ぶつかったときだけは選んでもらう。
+   */
+  function touch() {
+    if (!active()) return Promise.resolve({ status: 'off' });
+    if (!S.changedSinceSync() && (Date.now() - lastRunAt) < MIN_GAP) {
+      return Promise.resolve({ status: 'skipped' });
+    }
+    return run({ silent: true }).then(function (r) {
+      if (r.status === 'conflict') askConflict(r.remote);
+      return r;
+    });
+  }
+
   function flush() {
     if (!active() || !S.changedSinceSync()) return Promise.resolve({ status: 'off' });
     if (pushTimer) { clearTimeout(pushTimer); pushTimer = null; }
@@ -304,7 +324,7 @@
   }
 
   DL.sync = {
-    ready: ready, active: active, run: run, flush: flush, start: start,
+    ready: ready, active: active, run: run, touch: touch, flush: flush, start: start,
     test: test, makeToken: makeToken, deviceName: deviceName, on: on,
     fmtAt: fmtAt
   };
