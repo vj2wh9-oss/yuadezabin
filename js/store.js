@@ -51,6 +51,11 @@
     dailyLimit: 0,         // 1日の作業量の上限（0で無効）
     icsAlarm: 'P1D',       // .ics に入れる通知のタイミング
     lastBackupAt: '',      // 最後にバックアップを書き出した日
+    issuers: [],           // 屋号（発行元）
+    defaultIssuerId: '',   // 既定の屋号
+    docSeq: { invoice: 0, receipt: 0 },   // 書類番号の連番
+    taxRate: 10,           // 消費税率(%)
+    withholdingRate: 10.21,// 源泉徴収税率(%)
     templates: U.clone(TEMPLATES)
   };
 
@@ -102,6 +107,7 @@
     p.memo = p.memo || '';
     p.site = p.site || '';     // 支援サイト名
     p.plan = p.plan || '';     // 支援プラン
+    p.docs = (p.docs || []).map(normalizeDoc);   // 請求書・領収書
     p.createdAt = p.createdAt || new Date().toISOString();
     // 作業開始日が未設定の既存データは、一番早いタスクの開始日で補う
     if (!p.startDate) {
@@ -122,6 +128,149 @@
     t.done = !!t.done;
     t.note = t.note || '';
     return t;
+  }
+
+  function normalizeIssuer(x) {
+    x = x || {};
+    x.id = x.id || U.uid();
+    x.name = x.name || '';
+    x.ownerName = x.ownerName || '';
+    x.zip = x.zip || '';
+    x.address = x.address || '';
+    x.tel = x.tel || '';
+    x.email = x.email || '';
+    x.web = x.web || '';
+    x.invoiceNo = x.invoiceNo || '';           // インボイス登録番号
+    x.bank = Object.assign({ name: '', branch: '', type: '普通', number: '', holder: '' }, x.bank || {});
+    x.logo = x.logo || '';                     // dataURL
+    x.seal = x.seal || '';                     // 印影 dataURL
+    x.note = x.note || '';
+    return x;
+  }
+
+  function normalizeDoc(d) {
+    d = d || {};
+    d.id = d.id || U.uid();
+    d.type = d.type === 'receipt' ? 'receipt' : 'invoice';
+    d.number = d.number || '';
+    d.issuerId = d.issuerId || '';
+    d.issueDate = d.issueDate || U.today();
+    d.dueDate = d.dueDate || '';
+    d.clientName = d.clientName || '';
+    d.honorific = d.honorific || '御中';
+    d.clientZip = d.clientZip || '';
+    d.clientAddress = d.clientAddress || '';
+    d.subject = d.subject || '';
+    d.items = (d.items || []).map(function (it) {
+      return {
+        name: (it && it.name) || '',
+        qty: U.num(it && it.qty, 1),
+        unit: (it && it.unit) || '式',
+        price: U.num(it && it.price, 0)
+      };
+    });
+    if (!d.items.length) d.items = [{ name: '', qty: 1, unit: '式', price: 0 }];
+    d.taxMode = ['exclusive', 'inclusive', 'none'].indexOf(d.taxMode) >= 0 ? d.taxMode : 'exclusive';
+    d.taxRate = U.num(d.taxRate, 10);
+    d.withholding = !!d.withholding;
+    d.withholdingRate = d.withholdingRate === undefined ? 10.21 : Number(d.withholdingRate);
+    d.note = d.note || '';
+    d.proviso = d.proviso || '';               // 領収書の但し書き
+    d.paymentMethod = d.paymentMethod || '';   // 領収書のお支払方法
+    d.status = ['draft', 'issued', 'paid'].indexOf(d.status) >= 0 ? d.status : 'draft';
+    d.createdAt = d.createdAt || new Date().toISOString();
+    return d;
+  }
+
+  /* ---------------- 屋号 ---------------- */
+
+  function issuers() { return state.settings.issuers || []; }
+
+  function getIssuer(id) {
+    var list = issuers();
+    return list.filter(function (x) { return x.id === id; })[0]
+      || list.filter(function (x) { return x.id === state.settings.defaultIssuerId; })[0]
+      || list[0] || null;
+  }
+
+  function addIssuer(data) {
+    var x = normalizeIssuer(Object.assign({ id: U.uid() }, data));
+    state.settings.issuers = issuers().concat([x]);
+    if (!state.settings.defaultIssuerId) state.settings.defaultIssuerId = x.id;
+    save();
+    return x;
+  }
+
+  function updateIssuer(id, patch) {
+    var x = getIssuer(id);
+    if (!x) return null;
+    Object.assign(x, patch);
+    normalizeIssuer(x);
+    save();
+    return x;
+  }
+
+  function removeIssuer(id) {
+    state.settings.issuers = issuers().filter(function (x) { return x.id !== id; });
+    if (state.settings.defaultIssuerId === id) {
+      state.settings.defaultIssuerId = (issuers()[0] || {}).id || '';
+    }
+    save();
+  }
+
+  /* ---------------- 書類（請求書・領収書） ---------------- */
+
+  function docs(pid) {
+    var p = getProject(pid);
+    return p ? (p.docs || []) : [];
+  }
+
+  function getDoc(pid, did) {
+    return docs(pid).filter(function (d) { return d.id === did; })[0] || null;
+  }
+
+  function addDoc(pid, data) {
+    var p = getProject(pid);
+    if (!p) return null;
+    var d = normalizeDoc(Object.assign({ id: U.uid() }, data));
+    p.docs.push(d);
+    save();
+    return d;
+  }
+
+  function updateDoc(pid, did, patch) {
+    var d = getDoc(pid, did);
+    if (!d) return null;
+    Object.assign(d, patch);
+    normalizeDoc(d);
+    save();
+    return d;
+  }
+
+  function removeDoc(pid, did) {
+    var p = getProject(pid);
+    if (!p) return;
+    p.docs = (p.docs || []).filter(function (d) { return d.id !== did; });
+    save();
+  }
+
+  // 書類番号を採番する（種類ごとの年間連番）
+  function issueNumber(type) {
+    var seq = state.settings.docSeq || (state.settings.docSeq = { invoice: 0, receipt: 0 });
+    seq[type] = U.num(seq[type], 0) + 1;
+    save();
+    return (type === 'receipt' ? 'RCP' : 'INV') + '-' + U.today().slice(0, 4) + '-' +
+      String(seq[type]).padStart(4, '0');
+  }
+
+  /* 全案件の書類を新しい順に */
+  function allDocs() {
+    var out = [];
+    state.projects.forEach(function (p) {
+      (p.docs || []).forEach(function (d) { out.push({ project: p, doc: d }); });
+    });
+    out.sort(function (a, b) { return U.cmp(b.doc.issueDate, a.doc.issueDate); });
+    return out;
   }
 
   // 案件の識別色（青系で濃淡と色相を少しずつ変えて区別する）
@@ -387,6 +536,10 @@
     createProject: createProject, updateProject: updateProject, removeProject: removeProject,
     addTask: addTask, getTask: getTask, updateTask: updateTask, removeTask: removeTask,
     moveTask: moveTask, setProgress: setProgress, bumpProgress: bumpProgress,
+    issuers: issuers, getIssuer: getIssuer, addIssuer: addIssuer,
+    updateIssuer: updateIssuer, removeIssuer: removeIssuer,
+    docs: docs, getDoc: getDoc, addDoc: addDoc, updateDoc: updateDoc, removeDoc: removeDoc,
+    issueNumber: issueNumber, allDocs: allDocs,
     templateTasks: templateTasks, updateSettings: updateSettings,
     exportJSON: exportJSON, importJSON: importJSON, clearAll: clearAll, seedSample: seedSample,
     backupAgeDays: backupAgeDays, hasSnapshot: hasSnapshot, restoreSnapshot: restoreSnapshot,

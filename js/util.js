@@ -140,6 +140,37 @@ window.DL = window.DL || {};
     return m;
   }
 
+  /**
+   * 画像ファイルを読み込み、長辺を maxSize に縮小した dataURL を返す。
+   * localStorage に入れるので、大きな写真をそのまま抱えないようにする。
+   */
+  function readImage(file, maxSize, mime, quality) {
+    maxSize = maxSize || 480;
+    return new Promise(function (resolve, reject) {
+      if (!file || file.size > 12 * 1024 * 1024) { reject(new Error('画像が大きすぎます')); return; }
+      var reader = new FileReader();
+      reader.onerror = function () { reject(new Error('読み込めませんでした')); };
+      reader.onload = function () {
+        var img = new Image();
+        img.onerror = function () { reject(new Error('画像として読めませんでした')); };
+        img.onload = function () {
+          var w = img.naturalWidth, h = img.naturalHeight;
+          var scale = Math.min(1, maxSize / Math.max(w, h));
+          var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+          var cv = document.createElement('canvas');
+          cv.width = cw; cv.height = ch;
+          var ctx = cv.getContext('2d');
+          ctx.drawImage(img, 0, 0, cw, ch);
+          try {
+            resolve(cv.toDataURL(mime || 'image/png', quality || 0.9));
+          } catch (e) { reject(new Error('変換できませんでした')); }
+        };
+        img.src = String(reader.result);
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
   DL.util = {
     WD: WD, pad: pad, toISO: toISO, parse: parse, isISO: isISO, today: today,
     addDays: addDays, addMonths: addMonths, diffDays: diffDays, dow: dow,
@@ -148,6 +179,6 @@ window.DL = window.DL || {};
     fmtMD: fmtMD, fmtMDW: fmtMDW, fmtYMD: fmtYMD, fmtYMDW: fmtYMDW,
     wdName: wdName, untilLabel: untilLabel,
     el: el, append: append, clear: clear, $: $, $$: $$,
-    uid: uid, clone: clone, num: num, sum: sum, groupBy: groupBy
+    uid: uid, clone: clone, num: num, sum: sum, groupBy: groupBy, readImage: readImage
   };
 })(window.DL);

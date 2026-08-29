@@ -75,6 +75,24 @@
       })));
     }
 
+    /* ---- 請求書・領収書（仕事のみ） ---- */
+    if (p.kind === 'work') {
+      var ds = DL.docs.summary(p);
+      wrap.appendChild(el('a', { class: 'row docs-entry', href: '#/docs/' + p.id }, [
+        el('div', { class: 'row-main' }, [
+          el('div', { class: 'row-title' }, [
+            ui.icon('invoice', 17), el('span', { text: '請求書・領収書' })
+          ]),
+          el('div', { class: 'row-sub' }, ds.count ? [
+            ui.chip('請求書 ' + ds.invoice, 'soft'),
+            ui.chip('領収書 ' + ds.receipt, 'ghosty'),
+            ds.unpaid ? ui.chip('未入金 ' + ds.unpaid, 'warn') : ui.chip('入金済み', 'ok')
+          ] : [ui.chip('まだ作成していません', 'ghosty')])
+        ]),
+        el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+      ]));
+    }
+
     /* ---- 印刷所プラン ---- */
     if (p.kind === 'event' && (p.printings || []).length) {
       wrap.appendChild(ui.section('印刷所の締切'));

@@ -843,11 +843,247 @@
     });
   }
 
+  /* =============== 屋号（発行元） =============== */
+
+  function issuerSheet(id) {
+    var existing = id ? S.getIssuer(id) : null;
+    var x = existing ? U.clone(existing) : {
+      name: '', ownerName: '', zip: '', address: '', tel: '', email: '', web: '',
+      invoiceNo: '', bank: { name: '', branch: '', type: '普通', number: '', holder: '' },
+      logo: '', seal: '', note: ''
+    };
+
+    function t(key, ph) {
+      var i = ui.input({ value: x[key] || '', placeholder: ph || '' });
+      i.addEventListener('input', function () { x[key] = i.value; });
+      return i;
+    }
+    function bank(key, ph) {
+      var i = ui.input({ value: x.bank[key] || '', placeholder: ph || '' });
+      i.addEventListener('input', function () { x.bank[key] = i.value; });
+      return i;
+    }
+
+    // ロゴ・印影の登録（縮小して保存する）
+    function imageField(key, label, hint, maxSize) {
+      var box = el('div', { class: 'imgfield' });
+      var file = el('input', { type: 'file', accept: 'image/*', style: { display: 'none' } });
+      file.addEventListener('change', function () {
+        var f = file.files[0];
+        file.value = '';
+        if (!f) return;
+        U.readImage(f, maxSize || 480, 'image/png').then(function (url) {
+          x[key] = url;
+          render();
+          ui.toast('読み込みました');
+        }).catch(function (e) { ui.toast(e.message, 'danger'); });
+      });
+      function render() {
+        U.clear(box);
+        box.appendChild(x[key]
+          ? el('img', { class: 'imgfield-prev' + (key === 'seal' ? ' seal' : ''), src: x[key], alt: '' })
+          : el('div', { class: 'imgfield-empty' }, ui.icon('illust', 22)));
+        box.appendChild(el('div', { class: 'row-wrap' }, [
+          ui.btn(x[key] ? '選び直す' : '画像を選ぶ', 'ghost tiny', function () { file.click(); }, 'plus'),
+          x[key] ? ui.btn('削除', 'ghost tiny', function () { x[key] = ''; render(); }) : null
+        ]));
+        box.appendChild(file);
+      }
+      render();
+      return ui.field(label, box, hint);
+    }
+
+    var body = el('div', { class: 'form' }, [
+      ui.field('屋号', t('name', '例）スタジオ○○'), '書類に大きく出る名前です'),
+      ui.field('代表者名', t('ownerName', '例）山田 太郎')),
+      el('div', { class: 'grid2' }, [
+        ui.field('郵便番号', t('zip', '000-0000')),
+        ui.field('電話番号', t('tel', '000-0000-0000'))
+      ]),
+      ui.field('住所', t('address', '例）東京都○○区○○ 1-2-3')),
+      el('div', { class: 'grid2' }, [
+        ui.field('メール', t('email')),
+        ui.field('Web', t('web'))
+      ]),
+      ui.field('インボイス登録番号', t('invoiceNo', 'T1234567890123'), '登録している場合のみ。書類に記載されます'),
+      imageField('logo', 'ロゴ', '書類の右上に入ります（長辺480pxに縮小して保存）'),
+      imageField('seal', '印影', '発行元の右下に重ねて表示します（背景が白い画像でも構いません）', 300),
+      ui.section('お振込先'),
+      el('div', { class: 'grid2' }, [
+        ui.field('金融機関', bank('name', '例）○○銀行')),
+        ui.field('支店', bank('branch', '例）○○支店'))
+      ]),
+      el('div', { class: 'grid2' }, [
+        ui.field('種別', bank('type', '普通')),
+        ui.field('口座番号', bank('number', '1234567'))
+      ]),
+      ui.field('口座名義', bank('holder', 'ヤマダ タロウ')),
+      ui.field('備考の既定値', t('note', '請求書の備考に初期表示したい文言'))
+    ]);
+
+    if (existing) {
+      body.appendChild(ui.btn('この屋号を削除', 'danger full mt', function () {
+        ui.confirm('「' + (existing.name || '(名称未設定)') + '」を削除します。発行済みの書類の表示にも影響します。', { danger: true, okText: '削除' })
+          .then(function (ok) {
+            if (!ok) return;
+            S.removeIssuer(existing.id); close(); ui.toast('削除しました');
+          });
+      }, 'trash'));
+    }
+
+    var close = ui.sheet({
+      title: existing ? '屋号を編集' : '屋号を登録', body: body,
+      actions: [
+        ui.btn('キャンセル', 'ghost', function () { close(); }),
+        ui.btn('保存', 'primary', function () {
+          if (!x.name.trim()) { ui.toast('屋号を入れてください', 'warn'); return; }
+          if (existing) S.updateIssuer(existing.id, x); else S.addIssuer(x);
+          close(); ui.toast('保存しました');
+        })
+      ]
+    });
+  }
+
+  /* =============== 書類の内容 =============== */
+
+  function docSheet(pid, did) {
+    var p = S.getProject(pid);
+    var d = p && S.getDoc(pid, did);
+    if (!d) return;
+    var work = U.clone(d);
+    var isInvoice = work.type === 'invoice';
+
+    function bind(key, node, asNum) {
+      node.addEventListener('input', function () { work[key] = asNum ? U.num(node.value, 0) : node.value; });
+      node.addEventListener('change', function () { work[key] = asNum ? U.num(node.value, 0) : node.value; });
+      return node;
+    }
+    function txt(key, ph) { return bind(key, ui.input({ value: work[key] || '', placeholder: ph || '' })); }
+    function date(key) { return bind(key, ui.input({ type: 'date', value: work[key] || '' })); }
+
+    /* 明細 */
+    var itemsBox = el('div', { class: 'items' });
+    var totalBox = el('div', { class: 'preview' });
+
+    function renderTotals() {
+      U.clear(totalBox);
+      var c = DL.docs.calc(work);
+      totalBox.appendChild(el('div', { class: 'preview-main' }, [
+        el('strong', { text: (isInvoice ? 'ご請求金額 ' : '領収金額 ') + DL.docs.yen(isInvoice ? c.payable : c.total) })
+      ]));
+      totalBox.appendChild(el('div', { class: 'muted small', text:
+        '小計 ' + DL.docs.yen(c.subtotal) +
+        (work.taxMode === 'none' ? '' : '　消費税 ' + DL.docs.yen(c.tax)) +
+        (work.withholding ? '　源泉 -' + DL.docs.yen(c.withholding) : '') }));
+    }
+
+    function renderItems() {
+      U.clear(itemsBox);
+      work.items.forEach(function (it, i) {
+        var name = ui.input({ value: it.name, placeholder: '品目' });
+        var qty = ui.input({ type: 'number', inputmode: 'decimal', value: it.qty, placeholder: '数量' });
+        var unit = ui.input({ value: it.unit, placeholder: '単位' });
+        var price = ui.input({ type: 'number', inputmode: 'numeric', value: it.price, placeholder: '単価' });
+        [[name, 'name'], [unit, 'unit']].forEach(function (pair) {
+          pair[0].addEventListener('input', function () { it[pair[1]] = pair[0].value; });
+        });
+        [[qty, 'qty'], [price, 'price']].forEach(function (pair) {
+          pair[0].addEventListener('input', function () { it[pair[1]] = U.num(pair[0].value, 0); renderTotals(); });
+        });
+        var amount = el('span', { class: 'item-amount' });
+        function renderAmount() {
+          amount.textContent = DL.docs.yen(U.num(it.qty, 0) * U.num(it.price, 0));
+        }
+        [qty, price].forEach(function (n) { n.addEventListener('input', renderAmount); });
+        renderAmount();
+
+        itemsBox.appendChild(el('div', { class: 'item-row' }, [
+          el('div', { class: 'item-head' }, [
+            el('span', { class: 'field-label', text: '品目 ' + (i + 1) }),
+            amount,
+            el('button', {
+              class: 'iconbtn small danger', 'aria-label': '削除',
+              onclick: function () {
+                work.items.splice(i, 1);
+                if (!work.items.length) work.items.push({ name: '', qty: 1, unit: '式', price: 0 });
+                renderItems(); renderTotals();
+              }
+            }, ui.icon('close', 16))
+          ]),
+          name,
+          el('div', { class: 'grid3' }, [
+            ui.field('数量', qty), ui.field('単位', unit), ui.field('単価', price)
+          ])
+        ]));
+      });
+      itemsBox.appendChild(ui.btn('明細を追加', 'ghost full', function () {
+        work.items.push({ name: '', qty: 1, unit: '式', price: 0 });
+        renderItems(); renderTotals();
+      }, 'plus'));
+    }
+    renderItems();
+    renderTotals();
+
+    var taxSeg = ui.segmented([
+      { value: 'exclusive', label: '税抜' }, { value: 'inclusive', label: '税込' }, { value: 'none', label: '非課税' }
+    ], work.taxMode, function (v) { work.taxMode = v; renderTotals(); });
+
+    var taxRate = ui.input({ type: 'number', inputmode: 'numeric', value: work.taxRate });
+    taxRate.addEventListener('input', function () { work.taxRate = U.num(taxRate.value, 10); renderTotals(); });
+
+    var wh = el('input', { type: 'checkbox', class: 'check', checked: work.withholding });
+    wh.addEventListener('change', function () { work.withholding = wh.checked; renderTotals(); });
+    var whRate = ui.input({ type: 'number', inputmode: 'decimal', step: '0.01', value: work.withholdingRate });
+    whRate.addEventListener('input', function () { work.withholdingRate = Number(whRate.value) || 0; renderTotals(); });
+
+    var honorific = ui.segmented(
+      DL.docs.HONORIFICS.map(function (h) { return { value: h, label: h }; }),
+      work.honorific, function (v) { work.honorific = v; }
+    );
+
+    var body = el('div', { class: 'form' }, [
+      ui.field('宛名', txt('clientName', '例）株式会社○○')),
+      ui.field('敬称', honorific),
+      el('div', { class: 'grid2' }, [
+        ui.field('先方の郵便番号', txt('clientZip', '000-0000')),
+        ui.field('発行日', date('issueDate'))
+      ]),
+      ui.field('先方の住所', txt('clientAddress')),
+      isInvoice ? ui.field('お支払期限', date('dueDate')) : null,
+      isInvoice ? ui.field('件名', txt('subject', '例）表紙イラスト制作')) : null,
+      ui.section('明細'),
+      itemsBox,
+      totalBox,
+      ui.field('消費税', taxSeg),
+      ui.field('税率（%）', taxRate),
+      el('label', { class: 'row-check' }, [wh, el('span', { text: '源泉徴収税を差し引く' })]),
+      ui.field('源泉徴収税率（%）', whRate, '報酬が100万円以下の場合は 10.21% です'),
+      !isInvoice ? ui.field('但し書き', txt('proviso', '例）イラスト制作費として')) : null,
+      !isInvoice ? ui.field('お支払方法', txt('paymentMethod', '例）銀行振込')) : null,
+      ui.field('備考', ui.textarea({ value: work.note, placeholder: '任意' }))
+    ]);
+    // 備考は textarea を直接ひもづける
+    var noteEl = body.querySelector('textarea');
+    noteEl.addEventListener('input', function () { work.note = noteEl.value; });
+
+    var close = ui.sheet({
+      title: DL.docs.TYPE_LABEL[work.type] + 'の内容', body: body, wide: true,
+      actions: [
+        ui.btn('キャンセル', 'ghost', function () { close(); }),
+        ui.btn('保存', 'primary', function () {
+          S.updateDoc(pid, did, work);
+          close(); ui.toast('保存しました');
+        })
+      ]
+    });
+  }
+
   DL.forms = {
     projectForm: projectForm, taskForm: taskForm, progressSheet: progressSheet,
     planOverrideSheet: planOverrideSheet, autoScheduleSheet: autoScheduleSheet,
     addProgressSheet: addProgressSheet, deferSheet: deferSheet,
     planSnapshot: planSnapshot, offerReschedule: offerReschedule,
+    issuerSheet: issuerSheet, docSheet: docSheet,
     templateSheet: templateSheet, startDateSheet: startDateSheet
   };
 })(window.DL);

@@ -78,6 +78,36 @@
       tplSummary('design', 'デザイン', 'design')
     ]));
 
+    /* ---- 屋号 ---- */
+    wrap.appendChild(ui.section('屋号（請求書・領収書の発行元）',
+      el('a', { class: 'link', href: '#/projects', text: '' })));
+    var issuerBox = el('div', { class: 'card' });
+    var list = S.issuers();
+    if (!list.length) {
+      issuerBox.appendChild(el('p', { class: 'muted small', text: '登録するとお仕事の案件から請求書・領収書を発行できます。屋号ごとに住所・ロゴ・振込先を持てます。' }));
+    }
+    list.forEach(function (x) {
+      var isDefault = S.settings.defaultIssuerId === x.id;
+      issuerBox.appendChild(el('div', { class: 'issuer-row' }, [
+        el('button', { class: 'tpl-summary', onclick: function () { DL.forms.issuerSheet(x.id); } }, [
+          el('div', { class: 'issuer-main' }, [
+            x.logo ? el('img', { class: 'issuer-logo', src: x.logo, alt: '' }) : null,
+            el('div', {}, [
+              el('strong', {}, [el('span', { text: x.name || '(名称未設定)' }), isDefault ? ui.chip('既定', 'ok') : null]),
+              el('div', { class: 'muted small', text: [x.ownerName, x.address].filter(Boolean).join('　') || '住所未設定' })
+            ])
+          ]),
+          el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+        ]),
+        isDefault ? null : ui.btn('既定にする', 'ghost tiny', function () {
+          S.updateSettings({ defaultIssuerId: x.id });
+          ui.toast('既定の屋号にしました');
+        })
+      ]));
+    });
+    issuerBox.appendChild(ui.btn('屋号を追加', 'ghost full', function () { DL.forms.issuerSheet(null); }, 'plus'));
+    wrap.appendChild(issuerBox);
+
     /* ---- データ ---- */
     wrap.appendChild(ui.section('データ'));
     var file = el('input', { type: 'file', accept: '.json,application/json', style: { display: 'none' } });

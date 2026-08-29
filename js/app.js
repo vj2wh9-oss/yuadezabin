@@ -18,6 +18,8 @@
     var name = parts[0] || 'home';
     var params = {};
     if (name === 'project') params.id = parts[1];
+    if (name === 'docs') params.id = parts[1];
+    if (name === 'doc') { params.id = parts[1]; params.docId = parts[2]; }
     if (name === 'day') params.date = parts[1];
     if (name === 'calendar' && parts[1]) params.month = parts[1] + '-01';
     return { name: name, params: params };
@@ -34,14 +36,15 @@
 
     var titles = {
       home: '締切カレンダー', calendar: 'カレンダー', projects: '案件',
-      settings: '設定', day: '日別', project: '案件の詳細'
+      settings: '設定', day: '日別', project: '案件の詳細',
+      docs: '請求書・領収書', doc: '書類'
     };
     titleEl.textContent = titles[route.name] || '締切カレンダー';
 
-    var tab = { home: 'home', calendar: 'calendar', day: 'calendar', projects: 'projects', project: 'projects', settings: 'settings' }[route.name];
+    var tab = { home: 'home', calendar: 'calendar', day: 'calendar', projects: 'projects', project: 'projects', docs: 'projects', doc: 'projects', settings: 'settings' }[route.name];
     U.$$('.tab').forEach(function (t) { t.classList.toggle('on', t.dataset.tab === tab); });
 
-    var showBack = route.name === 'project' || route.name === 'day';
+    var showBack = ['project', 'day', 'docs', 'doc'].indexOf(route.name) >= 0;
     backBtn.hidden = !showBack;
 
     switch (route.name) {
@@ -49,6 +52,8 @@
       case 'day': DL.views.calendar.renderDay(view, route.params); break;
       case 'projects': DL.views.projects.render(view); break;
       case 'project': DL.views.detail.render(view, route.params); break;
+      case 'docs': DL.views.doc.renderList(view, route.params); break;
+      case 'doc': DL.views.doc.renderDoc(view, route.params); break;
       case 'settings': DL.views.settings.render(view); break;
       default: DL.views.home.render(view);
     }
@@ -63,7 +68,7 @@
 
   function updateFab() {
     // カレンダーは画面いっぱいに出すので、重なるボタンは置かない
-    if (route.name === 'settings' || route.name === 'calendar') { fab.hidden = true; return; }
+    if (['settings', 'calendar', 'docs', 'doc'].indexOf(route.name) >= 0) { fab.hidden = true; return; }
     fab.hidden = false;
     fab.onclick = function () {
       if (route.name === 'project') {

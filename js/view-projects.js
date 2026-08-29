@@ -89,7 +89,7 @@
     if (p.client) sub.push(ui.chip(p.client, 'ghosty'));
     if (p.site) sub.push(ui.chip(p.site, 'ghosty'));
 
-    return el('a', { class: 'row proj card-row st-' + st, href: '#/project/' + p.id }, [
+    var row = el('a', { class: 'row proj card-row st-' + st, href: '#/project/' + p.id }, [
       el('div', { class: 'row-bar', style: { background: p.color } }),
       el('div', { class: 'row-main' }, [
         el('div', { class: 'row-title' }, [
@@ -106,6 +106,15 @@
       ]),
       el('span', { class: 'pct', text: prog.pct + '%' })
     ]);
+
+    // 仕事の案件は書類画面へワンタップで行けるようにする
+    if (p.kind === 'work') {
+      row.appendChild(el('a', {
+        class: 'iconbtn small doc-shortcut', href: '#/docs/' + p.id, 'aria-label': '請求書・領収書',
+        onclick: function (e) { e.stopPropagation(); }
+      }, ui.icon('invoice', 18)));
+    }
+    return row;
   }
 
   DL.views = DL.views || {};

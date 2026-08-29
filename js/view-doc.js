@@ -1,0 +1,172 @@
+/* 請求書・領収書：案件ごとの一覧と、編集＋プレビュー */
+(function (DL) {
+  'use strict';
+  var U = DL.util, ui = DL.ui, S = DL.store, D = DL.docs, el = U.el;
+
+  /* ---------------- 案件ごとの書類一覧 ---------------- */
+
+  function renderList(root, params) {
+    var p = S.getProject(params.id);
+    if (!p) {
+      root.appendChild(ui.empty('案件が見つかりません。', ui.btn('一覧へ', 'primary', function () { location.hash = '#/projects'; })));
+      return;
+    }
+    var wrap = el('div', { class: 'page' });
+
+    wrap.appendChild(el('div', { class: 'card doc-head' }, [
+      el('div', { class: 'row-title' }, [
+        el('span', { class: 'dot', style: { background: p.color } }),
+        el('span', { text: p.title })
+      ]),
+      el('div', { class: 'row-sub' }, [
+        p.client ? ui.chip(p.client, 'ghosty') : null,
+        p.fee ? ui.chip('報酬 ' + D.yen(p.fee), 'soft') : null
+      ])
+    ]));
+
+    if (!S.issuers().length) {
+      wrap.appendChild(el('div', { class: 'alert warn' }, [
+        el('span', { class: 'alert-icon' }, ui.icon('alert', 17)),
+        el('span', { text: '屋号（発行元）がまだありません。先に登録してください。' })
+      ]));
+      wrap.appendChild(ui.btn('屋号を登録する', 'primary full', function () {
+        DL.forms.issuerSheet(null);
+      }, 'plus'));
+    }
+
+    wrap.appendChild(el('div', { class: 'row-wrap doc-new' }, [
+      ui.btn('請求書を作る', 'primary', function () { create(p, 'invoice'); }, 'invoice'),
+      ui.btn('領収書を作る', 'ghost', function () { create(p, 'receipt'); }, 'receipt')
+    ]));
+
+    var list = (p.docs || []).slice().sort(function (a, b) { return U.cmp(b.issueDate, a.issueDate); });
+    wrap.appendChild(ui.section('この案件の書類', el('span', { class: 'muted small', text: list.length + '件' })));
+    if (!list.length) {
+      wrap.appendChild(ui.empty('まだ書類がありません。'));
+    } else {
+      var box = el('div', { class: 'list' });
+      list.forEach(function (d) { box.appendChild(docRow(p, d)); });
+      wrap.appendChild(box);
+    }
+
+    root.appendChild(wrap);
+  }
+
+  function create(p, type) {
+    if (!S.issuers().length) { ui.toast('先に屋号を登録してください', 'warn'); return; }
+    var d = S.addDoc(p.id, D.blank(type, p));
+    location.hash = '#/doc/' + p.id + '/' + d.id;
+  }
+
+  function docRow(p, d) {
+    var c = D.calc(d);
+    return el('a', { class: 'row doc', href: '#/doc/' + p.id + '/' + d.id }, [
+      el('div', { class: 'row-main' }, [
+        el('div', { class: 'row-title' }, [
+          ui.icon(D.TYPE_ICON[d.type], 16),
+          el('span', { text: D.TYPE_LABEL[d.type] }),
+          d.number ? el('span', { class: 'muted small', text: d.number }) : null
+        ]),
+        el('div', { class: 'row-sub' }, [
+          ui.chip(U.fmtYMD(d.issueDate), 'soft'),
+          ui.chip(D.yen(d.type === 'invoice' ? c.payable : c.total), 'ghosty'),
+          ui.chip(D.STATUS_LABEL[d.status], d.status === 'paid' ? 'ok' : d.status === 'issued' ? 'soft' : 'ghosty')
+        ])
+      ]),
+      el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+    ]);
+  }
+
+  /* ---------------- 1件の編集とプレビュー ---------------- */
+
+  function renderDoc(root, params) {
+    var p = S.getProject(params.id);
+    var d = p && S.getDoc(p.id, params.docId);
+    if (!p || !d) {
+      root.appendChild(ui.empty('書類が見つかりません。', ui.btn('戻る', 'primary', function () { history.back(); })));
+      return;
+    }
+    var issuer = S.getIssuer(d.issuerId);
+    var wrap = el('div', { class: 'page doc-page' });
+
+    /* 操作 */
+    wrap.appendChild(el('div', { class: 'doc-actions row-wrap' }, [
+      ui.btn('印刷 / PDF', 'primary', function () { printDoc(d); }, 'printer'),
+      ui.btn('内容を編集', 'ghost', function () { DL.forms.docSheet(p.id, d.id); }, 'edit'),
+      d.type === 'invoice'
+        ? ui.btn('この請求書から領収書', 'ghost', function () {
+            var nd = S.addDoc(p.id, D.fromInvoice(d, p));
+            location.hash = '#/doc/' + p.id + '/' + nd.id;
+            ui.toast('領収書を作りました');
+          }, 'receipt')
+        : null,
+      ui.btn('複製', 'ghost', function () {
+        var copy = U.clone(d); delete copy.id; copy.number = ''; copy.status = 'draft';
+        copy.issueDate = U.today();
+        var nd = S.addDoc(p.id, copy);
+        location.hash = '#/doc/' + p.id + '/' + nd.id;
+        ui.toast('複製しました');
+      }, 'projects')
+    ]));
+
+    /* 状態 */
+    var statusSeg = ui.segmented(
+      Object.keys(D.STATUS_LABEL).map(function (k) { return { value: k, label: D.STATUS_LABEL[k] }; }),
+      d.status, function (v) {
+        var patch = { status: v };
+        // 発行済みにするときに番号が無ければ採番する
+        if (v !== 'draft' && !d.number) patch.number = S.issueNumber(d.type);
+        S.updateDoc(p.id, d.id, patch);
+        ui.toast(v === 'draft' ? '下書きに戻しました' : D.STATUS_LABEL[v] + 'にしました');
+      }
+    );
+    wrap.appendChild(el('div', { class: 'card' }, [
+      ui.field('状態', statusSeg, '下書き以外にすると書類番号が自動で振られます'),
+      ui.field('屋号（発行元）', issuerSelect(p, d), '案件ごとに切り替えられます')
+    ]));
+
+    /* プレビュー */
+    wrap.appendChild(ui.section('プレビュー', el('span', { class: 'muted small', text: 'A4' })));
+    wrap.appendChild(el('div', { class: 'doc-preview' }, D.sheet(d, p, issuer)));
+
+    wrap.appendChild(el('div', { class: 'actions' }, [
+      ui.btn('この書類を削除', 'danger', function () {
+        ui.confirm(D.TYPE_LABEL[d.type] + (d.number ? '（' + d.number + '）' : '') + ' を削除します。', { danger: true, okText: '削除' })
+          .then(function (ok) {
+            if (!ok) return;
+            S.removeDoc(p.id, d.id);
+            location.hash = '#/docs/' + p.id;
+            ui.toast('削除しました');
+          });
+      }, 'trash')
+    ]));
+
+    root.appendChild(wrap);
+  }
+
+  function issuerSelect(p, d) {
+    var list = S.issuers();
+    if (!list.length) {
+      return ui.btn('屋号を登録する', 'ghost full', function () { DL.forms.issuerSheet(null); }, 'plus');
+    }
+    var sel = ui.select(
+      list.map(function (x) { return { value: x.id, label: x.name || '(名称未設定)' }; }),
+      (S.getIssuer(d.issuerId) || {}).id,
+      function () { S.updateDoc(p.id, d.id, { issuerId: sel.value }); ui.toast('屋号を切り替えました'); }
+    );
+    return sel;
+  }
+
+  /* 印刷（iPhone では共有シートから「PDFとして保存」できる） */
+  function printDoc(d) {
+    if (!d.number) ui.toast('下書きのままです。番号は「発行済み」にすると振られます');
+    document.body.classList.add('printing');
+    setTimeout(function () {
+      window.print();
+      setTimeout(function () { document.body.classList.remove('printing'); }, 500);
+    }, 60);
+  }
+
+  DL.views = DL.views || {};
+  DL.views.doc = { renderList: renderList, renderDoc: renderDoc };
+})(window.DL);
