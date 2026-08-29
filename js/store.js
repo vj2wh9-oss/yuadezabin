@@ -82,6 +82,7 @@
     p.category = p.category === 'illust' ? 'illust' : 'manga';
     p.title = p.title || '(無題)';
     p.status = p.status || 'active';
+    p.startDate = p.startDate || '';   // 作業開始日（スケジュール算出の起点）
     p.color = p.color || pickColor();
     p.tasks = (p.tasks || []).map(normalizeTask);
     p.printings = p.printings || [];
@@ -89,6 +90,11 @@
     p.holidays = p.holidays || [];
     p.memo = p.memo || '';
     p.createdAt = p.createdAt || new Date().toISOString();
+    // 作業開始日が未設定の既存データは、一番早いタスクの開始日で補う
+    if (!p.startDate) {
+      var starts = p.tasks.map(function (t) { return t.start; }).filter(U.isISO).sort();
+      if (starts.length) p.startDate = starts[0];
+    }
     return p;
   }
 
@@ -262,7 +268,7 @@
       title: '春の新刊（コピー本）',
       eventName: 'サンプル即売会', eventDate: eventDay,
       venue: '東京ビッグサイト', space: 'あ-12b',
-      deadline: printDue,
+      deadline: printDue, startDate: t,
       printings: [
         { id: U.uid(), label: '早割', printer: 'サンプル印刷', due: printDue, copies: 100, note: '30%OFF', primary: true },
         { id: U.uid(), label: '通常', printer: 'サンプル印刷', due: U.addDays(eventDay, -14), copies: 100, note: '', primary: false }
@@ -276,7 +282,7 @@
       kind: 'work', category: 'illust',
       title: 'カバーイラスト（書籍）',
       client: 'サンプル出版',
-      deadline: U.addDays(t, 21),
+      deadline: U.addDays(t, 21), startDate: t,
       qty: 1, fee: 60000, memo: 'ラフ提出は1週間前'
     });
     work.tasks = templateTasks('illust', 1);

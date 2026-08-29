@@ -10,14 +10,38 @@
     var p = existing ? U.clone(existing) : {
       kind: 'event', category: 'manga', title: '', status: 'active',
       eventName: '', eventDate: '', venue: '', space: '',
-      client: '', fee: '', deadline: '', qty: 20, memo: '',
+      client: '', fee: '', deadline: '', startDate: U.today(), qty: 20, memo: '',
       printings: [], color: S.pickColor()
     };
 
     var body = el('div', { class: 'form' });
     var dynamic = el('div');           // 種別で切り替わる部分
     var qtyWrap = el('div');           // 数量（ページ数／枚数）
+    var startWrap = el('div');         // 作業開始日
     var autoWrap = el('div');
+
+    /* --- 作業開始日（スケジュール算出の起点） --- */
+    var startInput = ui.input({ type: 'date', value: p.startDate || U.today() });
+    var startNote = el('div', { class: 'preview' });
+    function updateStartNote() {
+      U.clear(startNote);
+      var s = startInput.value, d = (f && f.deadline) ? f.deadline.value : '';
+      if (!U.isISO(s) || !U.isISO(d)) {
+        startNote.appendChild(el('span', { class: 'muted small', text: '開始日と締切日を入れると、作業できる日数を表示します。' }));
+        return;
+      }
+      if (U.cmp(s, d) > 0) {
+        startNote.appendChild(el('span', { class: 'muted small', text: '開始日が締切より後になっています。' }));
+        return;
+      }
+      startNote.appendChild(el('div', { class: 'preview-main' }, [
+        el('strong', { text: '作業できる日数 ' + sc.workdays(p, s, d).length + '日' }),
+        el('span', { class: 'muted', text: '　' + U.fmtMD(s) + '〜' + U.fmtMD(d) })
+      ]));
+    }
+    startInput.addEventListener('change', updateStartNote);
+    startWrap.appendChild(ui.field('作業開始日', startInput, 'ここを起点に各タスクの期間と1日のノルマを計算します'));
+    startWrap.appendChild(startNote);
 
     var titleInput = ui.input({ value: p.title, placeholder: '例）夏の新刊 / 表紙イラスト', maxlength: 60 });
     var memoInput = ui.textarea({ value: p.memo, placeholder: 'サイズ・仕様・連絡事項など' });
@@ -36,6 +60,7 @@
     body.appendChild(ui.field('内容', catSeg, '選んだ内容に応じて基本タスクが変わります'));
     body.appendChild(qtyWrap);
     body.appendChild(dynamic);
+    body.appendChild(startWrap);
     body.appendChild(ui.field('メモ', memoInput));
 
     // 色
@@ -68,7 +93,7 @@
     }
 
     /* --- 種別ごとの欄 --- */
-    var f = {};
+    var f = { onDeadlineChange: updateStartNote };
     function renderDynamic() {
       U.clear(dynamic);
       if (p.kind === 'event') {
@@ -85,6 +110,7 @@
               onclick: function () {
                 if (!U.isISO(f.eventDate.value)) { ui.toast('先に開催日を入れてください', 'warn'); return; }
                 f.deadline.value = U.addDays(f.eventDate.value, -pr.days);
+                updateStartNote();
                 ui.toast(pr.label + '＝' + U.fmtMDW(f.deadline.value) + ' に設定');
               }
             });
@@ -108,19 +134,25 @@
         dynamic.appendChild(ui.field('納品日（締切）', f.deadline));
         dynamic.appendChild(ui.field('報酬（円）', f.fee));
       }
+      f.deadline.addEventListener('change', updateStartNote);
+      updateStartNote();
       renderAuto();
     }
 
-    /* --- 新規作成時の自動タスク生成 --- */
-    var autoCheck, autoStart;
+    /* --- タスクの自動割り当て --- */
+    var autoCheck;
     function renderAuto() {
       U.clear(autoWrap);
-      if (!isNew) return;
       autoCheck = el('input', { type: 'checkbox', class: 'check', checked: true });
-      autoStart = ui.input({ type: 'date', value: U.today() });
       autoWrap.appendChild(el('div', { class: 'panel' }, [
-        el('label', { class: 'row-check' }, [autoCheck, el('span', { text: '基本タスクを自動生成してスケジュールを割り振る' })]),
-        ui.field('作業開始日', autoStart, '開始日〜締切の稼働日に、各タスクを自動配分します')
+        el('label', { class: 'row-check' }, [
+          autoCheck,
+          el('span', { text: isNew ? '基本タスクを自動生成してスケジュールを割り振る' : '開始日・締切を変えたらタスクを再計算する' })
+        ]),
+        el('span', {
+          class: 'field-hint',
+          text: '作業開始日〜締切の稼働日に、各タスクの期間と1日のノルマを配分し直します'
+        })
       ]));
     }
 
@@ -131,7 +163,7 @@
       var data = {
         kind: p.kind, category: p.category, color: p.color,
         title: titleInput.value.trim(), memo: memoInput.value,
-        qty: U.num(qtyInput.value, 0)
+        startDate: startInput.value, qty: U.num(qtyInput.value, 0)
       };
       if (p.kind === 'event') {
         Object.assign(data, {
@@ -157,12 +189,16 @@
           var data = collect();
           if (!data.title) { ui.toast('タイトルを入れてください', 'warn'); return; }
           if (!U.isISO(data.deadline)) { ui.toast('締切日を入れてください', 'warn'); return; }
+          if (!U.isISO(data.startDate)) { ui.toast('作業開始日を入れてください', 'warn'); return; }
+          if (U.cmp(data.startDate, data.deadline) > 0) {
+            ui.toast('作業開始日は締切より前にしてください', 'warn'); return;
+          }
 
           if (isNew) {
             var np = S.createProject(data);
             if (autoCheck && autoCheck.checked) {
               np.tasks = S.templateTasks(np.category, np.qty);
-              var r = sc.autoSchedule(np, { start: autoStart.value || U.today(), end: np.deadline });
+              var r = sc.autoSchedule(np, { start: np.startDate, end: np.deadline });
               if (!r.ok) ui.toast(r.reason, 'warn');
             }
             S.save();
@@ -170,11 +206,20 @@
             location.hash = '#/project/' + np.id;
             ui.toast('案件を作成しました');
           } else {
-            var before = U.num(existing.qty, 0);
+            var beforeQty = U.num(existing.qty, 0);
+            var scheduleChanged = existing.startDate !== data.startDate || existing.deadline !== data.deadline;
             S.updateProject(existing.id, data);
-            if (before !== data.qty) syncTaskQty(existing.id, data.qty);
+            var saved = S.getProject(existing.id);
+
+            // 作業開始日／締切が変わったら、タスクの期間とノルマを計算し直す
+            if (scheduleChanged && autoCheck && autoCheck.checked && (saved.tasks || []).length) {
+              var r2 = sc.autoSchedule(saved, { start: data.startDate, end: data.deadline });
+              ui.toast(r2.ok ? '開始日に合わせてタスクを再計算しました' : r2.reason, r2.ok ? '' : 'warn');
+            } else {
+              ui.toast('保存しました');
+            }
+            if (beforeQty !== data.qty) syncTaskQty(existing.id, data.qty);
             close();
-            ui.toast('保存しました');
           }
         })
       ]
@@ -220,7 +265,10 @@
           onclick: function () {
             p.printings.forEach(function (x) { x.primary = false; });
             pr.primary = true;
-            if (U.isISO(pr.due) && f.deadline) f.deadline.value = pr.due;
+            if (U.isISO(pr.due) && f.deadline) {
+              f.deadline.value = pr.due;
+              if (f.onDeadlineChange) f.onDeadlineChange();
+            }
             render();
           }
         });
@@ -451,14 +499,14 @@
   function autoScheduleSheet(pid) {
     var p = S.getProject(pid);
     if (!p) return;
-    var startI = ui.input({ type: 'date', value: U.today() });
+    var startI = ui.input({ type: 'date', value: p.startDate || U.today() });
     var endI = ui.input({ type: 'date', value: p.deadline || '' });
     var bufI = ui.input({ type: 'number', inputmode: 'numeric', min: 0, value: U.num(S.settings.bufferDays, 1) });
     var scope = ui.segmented([{ value: 'all', label: '全タスク' }, { value: 'empty', label: '未設定のみ' }], 'all');
 
     var body = el('div', { class: 'form' }, [
-      el('p', { class: 'muted small', text: '重みに応じて稼働日を配分し、各タスクの期間を順番に割り当てます。' }),
-      el('div', { class: 'grid2' }, [ui.field('開始日', startI), ui.field('締切日', endI)]),
+      el('p', { class: 'muted small', text: '重みに応じて稼働日を配分し、各タスクの期間を順番に割り当てます。ここで指定した開始日は案件の「作業開始日」として保存されます。' }),
+      el('div', { class: 'grid2' }, [ui.field('作業開始日', startI), ui.field('締切日', endI)]),
       ui.field('締切前の予備日', bufI, 'この日数だけ手前で作業を終える計画にします'),
       ui.field('対象', scope)
     ]);
@@ -473,8 +521,68 @@
             buffer: U.num(bufI.value, 0), onlyEmpty: scope.dataset.value === 'empty'
           });
           if (!r.ok) { ui.toast(r.reason, 'warn'); return; }
+          S.updateProject(p.id, { startDate: startI.value, deadline: endI.value });
           close();
           ui.toast(r.tight ? '日数が足りないため詰めて配置しました' : 'スケジュールを割り当てました');
+        })
+      ]
+    });
+  }
+
+  /* =============== 作業開始日の変更 =============== */
+
+  function startDateSheet(pid) {
+    var p = S.getProject(pid);
+    if (!p) return;
+    var startI = ui.input({ type: 'date', value: p.startDate || U.today() });
+    var note = el('div', { class: 'preview' });
+    var recalc = el('input', { type: 'checkbox', class: 'check', checked: true });
+
+    function preview() {
+      U.clear(note);
+      var s = startI.value;
+      if (!U.isISO(s) || !U.isISO(p.deadline)) {
+        note.appendChild(el('span', { class: 'muted small', text: '締切日が未設定です。' }));
+        return;
+      }
+      if (U.cmp(s, p.deadline) > 0) {
+        note.appendChild(el('span', { class: 'muted small', text: '開始日が締切より後になっています。' }));
+        return;
+      }
+      var days = sc.workdays(p, s, p.deadline).length;
+      var per = (p.tasks || []).length ? Math.ceil(days / p.tasks.length) : 0;
+      note.appendChild(el('div', { class: 'preview-main' }, [
+        el('strong', { text: '作業できる日数 ' + days + '日' }),
+        el('span', { class: 'muted', text: '　' + U.fmtMD(s) + '〜' + U.fmtMD(p.deadline) + (per ? '（1タスクあたり約' + per + '日）' : '') })
+      ]));
+    }
+    startI.addEventListener('change', preview);
+    preview();
+
+    var body = el('div', { class: 'form' }, [
+      ui.field('作業開始日', startI, 'ここを起点に各タスクの期間と1日のノルマを計算します'),
+      note,
+      el('label', { class: 'row-check' }, [recalc, el('span', { text: 'タスクの期間とノルマを計算し直す' })]),
+      el('p', { class: 'muted small', text: '計算し直すと、手動で固定したノルマは自動配分に戻ります。記録済みの実績はそのまま残ります。' })
+    ]);
+
+    var close = ui.sheet({
+      title: '作業開始日', body: body,
+      actions: [
+        ui.btn('キャンセル', 'ghost', function () { close(); }),
+        ui.btn('保存', 'primary', function () {
+          if (!U.isISO(startI.value)) { ui.toast('日付を入れてください', 'warn'); return; }
+          if (U.isISO(p.deadline) && U.cmp(startI.value, p.deadline) > 0) {
+            ui.toast('作業開始日は締切より前にしてください', 'warn'); return;
+          }
+          S.updateProject(pid, { startDate: startI.value });
+          if (recalc.checked && (p.tasks || []).length) {
+            var r = sc.autoSchedule(S.getProject(pid), { start: startI.value, end: p.deadline });
+            ui.toast(r.ok ? '開始日に合わせてタスクを再計算しました' : r.reason, r.ok ? '' : 'warn');
+          } else {
+            ui.toast('作業開始日を変更しました');
+          }
+          close();
         })
       ]
     });
@@ -533,6 +641,6 @@
   DL.forms = {
     projectForm: projectForm, taskForm: taskForm, progressSheet: progressSheet,
     planOverrideSheet: planOverrideSheet, autoScheduleSheet: autoScheduleSheet,
-    templateSheet: templateSheet
+    templateSheet: templateSheet, startDateSheet: startDateSheet
   };
 })(window.DL);

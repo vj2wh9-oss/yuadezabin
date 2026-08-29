@@ -35,6 +35,19 @@
         ]),
         el('div', { class: 'cd-left ' + st, text: U.untilLabel(p.deadline, today) })
       ]),
+      el('button', {
+        class: 'workspan', onclick: function () { DL.forms.startDateSheet(p.id); }
+      }, [
+        el('span', { class: 'cd-label', text: '作業開始日' }),
+        el('span', { class: 'workspan-main' }, [
+          el('b', { text: U.isISO(p.startDate) ? U.fmtMDW(p.startDate) : '未設定' }),
+          el('span', { class: 'muted', text: ' → ' + U.fmtMD(p.deadline) }),
+          U.isISO(p.startDate) && U.isISO(p.deadline) && U.cmp(p.startDate, p.deadline) <= 0
+            ? ui.chip('稼働' + sc.workdays(p, p.startDate, p.deadline).length + '日', 'ghosty')
+            : null
+        ]),
+        el('span', { class: 'chev', text: '›' })
+      ]),
       el('div', { class: 'phead-prog' }, [
         ui.progress(prog.pct, p.color),
         el('span', { class: 'pct', text: prog.pct + '%' })
