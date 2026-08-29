@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="format-detection" content="telephone=no,date=no,address=no,email=no,url=no">
-<meta name="theme-color" content="#0f1115" media="(prefers-color-scheme: dark)">
-<meta name="theme-color" content="#f6f7fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b0f15" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#eaeff5" media="(prefers-color-scheme: light)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -22,7 +22,7 @@
 
 <header class="appbar" id="appbar">
   <div class="appbar-inner">
-    <button class="iconbtn" id="backBtn" hidden aria-label="戻る">‹</button>
+    <button class="iconbtn" id="backBtn" hidden aria-label="戻る" data-icon="chevronLeft" data-size="22"></button>
     <h1 class="appbar-title" id="appTitle">締切カレンダー</h1>
     <div class="appbar-actions" id="appActions"></div>
   </div>
@@ -30,19 +30,20 @@
 
 <main id="view" class="view" role="main"></main>
 
-<button class="fab" id="fab" aria-label="新規作成">＋</button>
+<button class="fab" id="fab" aria-label="新規作成" data-icon="plus" data-size="26"></button>
 
 <nav class="tabbar" id="tabbar" role="navigation">
-  <a class="tab" href="#/home"      data-tab="home">     <span class="tabicon">◉</span><span>ホーム</span></a>
-  <a class="tab" href="#/calendar"  data-tab="calendar"> <span class="tabicon">▦</span><span>カレンダー</span></a>
-  <a class="tab" href="#/projects"  data-tab="projects"> <span class="tabicon">☰</span><span>案件</span></a>
-  <a class="tab" href="#/settings"  data-tab="settings"> <span class="tabicon">⚙</span><span>設定</span></a>
+  <a class="tab" href="#/home"     data-tab="home"><span class="tabicon" data-icon="home"></span><span>ホーム</span></a>
+  <a class="tab" href="#/calendar" data-tab="calendar"><span class="tabicon" data-icon="calendar"></span><span>カレンダー</span></a>
+  <a class="tab" href="#/projects" data-tab="projects"><span class="tabicon" data-icon="projects"></span><span>案件</span></a>
+  <a class="tab" href="#/settings" data-tab="settings"><span class="tabicon" data-icon="settings"></span><span>設定</span></a>
 </nav>
 
 <div id="sheetRoot"></div>
 <div id="toastRoot" class="toast-root"></div>
 
 <script src="js/util.js"></script>
+<script src="js/icons.js"></script>
 <script src="js/store.js"></script>
 <script src="js/schedule.js"></script>
 <script src="js/ui.js"></script>

@@ -328,17 +328,17 @@
     }
     DL.store.projects().forEach(function (p) {
       if (p.status === 'archived') return;
-      if (p.kind === 'event' && U.isISO(p.eventDate)) ev(p.id + '-event', p.eventDate, '🎪 ' + (p.eventName || p.title), p.venue || '');
-      if (U.isISO(p.deadline)) ev(p.id + '-dl', p.deadline, '⏰ ' + (p.kind === 'event' ? '入稿' : '納品') + '：' + p.title, p.memo || '');
+      if (p.kind === 'event' && U.isISO(p.eventDate)) ev(p.id + '-event', p.eventDate, '[イベント] ' + (p.eventName || p.title), p.venue || '');
+      if (U.isISO(p.deadline)) ev(p.id + '-dl', p.deadline, '[' + (p.kind === 'event' ? '入稿' : '納品') + '] ' + '：' + p.title, p.memo || '');
       (p.printings || []).forEach(function (pr, i) {
-        if (U.isISO(pr.due) && pr.due !== p.deadline) ev(p.id + '-pr' + i, pr.due, '🖨 ' + (pr.label || '入稿') + '：' + p.title, pr.printer || '');
+        if (U.isISO(pr.due) && pr.due !== p.deadline) ev(p.id + '-pr' + i, pr.due, '[' + (pr.label || '入稿') + '] ' + p.title, pr.printer || '');
       });
       if (opts.withTasks) {
         (p.tasks || []).forEach(function (t) {
           var plan = taskPlan(p, t);
           plan.days.forEach(function (d) {
             if (!d.qty) return;
-            ev(p.id + '-' + t.id + '-' + d.date, d.date, '✎ ' + p.title + '：' + t.name + ' ' + d.qty + unit(t), '');
+            ev(p.id + '-' + t.id + '-' + d.date, d.date, '[作業] ' + p.title + '：' + t.name + ' ' + d.qty + unit(t), '');
           });
         });
       }

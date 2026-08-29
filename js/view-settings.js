@@ -66,8 +66,8 @@
     /* ---- テンプレート ---- */
     wrap.appendChild(ui.section('基本タスクのテンプレート'));
     wrap.appendChild(el('div', { class: 'card' }, [
-      tplSummary('manga', '📕 漫画'),
-      tplSummary('illust', '🎨 イラスト')
+      tplSummary('manga', '漫画', 'manga'),
+      tplSummary('illust', 'イラスト', 'illust')
     ]));
 
     /* ---- データ ---- */
@@ -94,18 +94,18 @@
       ui.btn('バックアップを書き出す（JSON）', 'ghost', function () {
         ui.download('shimekiri-' + U.today() + '.json', S.exportJSON(), 'application/json');
         ui.toast('書き出しました');
-      }),
-      ui.btn('バックアップを読み込む', 'ghost', function () { file.click(); }),
-      ui.btn('カレンダー用ファイル（.ics）', 'ghost', function () { icsSheet(); }),
+      }, 'arrowDown'),
+      ui.btn('バックアップを読み込む', 'ghost', function () { file.click(); }, 'arrowUp'),
+      ui.btn('カレンダー用ファイル（.ics）', 'ghost', function () { icsSheet(); }, 'calendar'),
       ui.btn('サンプルデータを追加', 'ghost', function () {
         S.seedSample(); ui.toast('サンプルを追加しました');
-      }),
+      }, 'plus'),
       ui.btn('すべて削除', 'danger', function () {
         ui.confirm('すべての案件と設定を削除します。元に戻せません。', { danger: true, okText: '削除' }).then(function (ok) {
           if (!ok) return;
           S.clearAll(); ui.toast('削除しました');
         });
-      }),
+      }, 'trash'),
       file
     ]));
 
@@ -126,11 +126,14 @@
     return i;
   }
 
-  function tplSummary(cat, label) {
+  function tplSummary(cat, label, iconName) {
     var list = (S.settings.templates[cat] || []).map(function (t) { return t.name; }).join(' → ');
     return el('button', { class: 'tpl-summary', onclick: function () { tplSheet(cat, label); } }, [
-      el('div', {}, [el('strong', { text: label }), el('div', { class: 'muted small', text: list })]),
-      el('span', { class: 'chev', text: '›' })
+      el('div', {}, [
+        el('strong', {}, [ui.icon(iconName, 16), el('span', { text: label })]),
+        el('div', { class: 'muted small', text: list })
+      ]),
+      el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
     ]);
   }
 
@@ -157,12 +160,12 @@
             el('div', { class: 'row-end' }, [
               el('button', { class: 'iconbtn small', text: '↑', onclick: function () { if (i > 0) { var x = items[i - 1]; items[i - 1] = items[i]; items[i] = x; render(); } } }),
               el('button', { class: 'iconbtn small', text: '↓', onclick: function () { if (i < items.length - 1) { var x = items[i + 1]; items[i + 1] = items[i]; items[i] = x; render(); } } }),
-              el('button', { class: 'iconbtn small danger', text: '×', onclick: function () { items.splice(i, 1); render(); } })
+              el('button', { class: 'iconbtn small danger', 'aria-label': '削除', onclick: function () { items.splice(i, 1); render(); } }, ui.icon('close', 16))
             ])
           ])
         ]));
       });
-      list.appendChild(ui.btn('＋ 行を追加', 'ghost full', function () {
+      list.appendChild(ui.btn('行を追加', 'ghost full', function () {
         items.push({ name: '新しい工程', weight: 10, unit: cat === 'manga' ? 'page' : 'cut' });
         render();
       }));

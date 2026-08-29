@@ -63,7 +63,6 @@
   function updateFab() {
     if (route.name === 'settings') { fab.hidden = true; return; }
     fab.hidden = false;
-    fab.textContent = '＋';
     fab.onclick = function () {
       if (route.name === 'project') {
         var p = S.getProject(route.params.id);
@@ -77,16 +76,18 @@
     var close = ui.sheet({
       title: '追加',
       body: el('div', { class: 'menu' }, [
-        menuItem('＋ タスクを追加', function () { close(); DL.forms.taskForm(p.id); }),
-        menuItem('基本タスクをまとめて追加', function () { close(); DL.forms.templateSheet(p.id); }),
-        menuItem('自動スケジュールを実行', function () { close(); DL.forms.autoScheduleSheet(p.id); }),
-        menuItem('新しい案件を作る', function () { close(); DL.forms.projectForm(); })
+        menuItem('plus', 'タスクを追加', function () { close(); DL.forms.taskForm(p.id); }),
+        menuItem('task', '基本タスクをまとめて追加', function () { close(); DL.forms.templateSheet(p.id); }),
+        menuItem('refresh', '自動スケジュールを実行', function () { close(); DL.forms.autoScheduleSheet(p.id); }),
+        menuItem('projects', '新しい案件を作る', function () { close(); DL.forms.projectForm(); })
       ])
     });
   }
 
-  function menuItem(text, onclick) {
-    return el('button', { class: 'menu-item', text: text, onclick: onclick });
+  function menuItem(iconName, text, onclick) {
+    return el('button', { class: 'menu-item', onclick: onclick }, [
+      DL.icons.icon(iconName, 18), el('span', { text: text })
+    ]);
   }
 
   backBtn.addEventListener('click', function () {
@@ -99,8 +100,17 @@
   // データが変わったら再描画（シートは開いたまま）
   S.subscribe(function () { render(); });
 
+  // data-icon が付いた要素にアイコンを流し込む
+  function mountIcons() {
+    U.$$('[data-icon]').forEach(function (n) {
+      if (n.querySelector('svg')) return;
+      n.appendChild(DL.icons.icon(n.dataset.icon, U.num(n.dataset.size, 22)));
+    });
+  }
+
   function init() {
     S.load();
+    mountIcons();
     if (!location.hash) location.hash = '#/home';
     render();
 

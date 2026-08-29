@@ -47,11 +47,11 @@
     var memoInput = ui.textarea({ value: p.memo, placeholder: 'サイズ・仕様・連絡事項など' });
 
     var kindSeg = ui.segmented(
-      [{ value: 'event', label: '🎪 即売会' }, { value: 'work', label: '💼 仕事' }],
+      [{ value: 'event', label: '即売会', icon: 'event' }, { value: 'work', label: '仕事', icon: 'work' }],
       p.kind, function (v) { p.kind = v; renderDynamic(); }
     );
     var catSeg = ui.segmented(
-      [{ value: 'manga', label: '📕 漫画' }, { value: 'illust', label: '🎨 イラスト' }],
+      [{ value: 'manga', label: '漫画', icon: 'manga' }, { value: 'illust', label: 'イラスト', icon: 'illust' }],
       p.category, function (v) { p.category = v; renderQty(); }
     );
 
@@ -285,7 +285,7 @@
       });
 
       var add = el('button', {
-        type: 'button', class: 'btn ghost full', text: '＋ 印刷プランを追加',
+        type: 'button', class: 'btn ghost full', text: '印刷プランを追加',
         onclick: function () {
           var ev = f.eventDate ? f.eventDate.value : '';
           var preset = S.PRINT_PRESETS[Math.min(p.printings.length, S.PRINT_PRESETS.length - 1)];

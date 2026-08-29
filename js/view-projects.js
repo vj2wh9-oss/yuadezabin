@@ -10,12 +10,12 @@
     var today = U.today();
     var wrap = el('div', { class: 'page' });
 
-    var search = ui.input({ value: keyword, placeholder: '🔍 タイトル・イベント名・クライアントで検索', class: 'input search' });
+    var search = ui.input({ value: keyword, placeholder: 'タイトル・イベント名・クライアントで検索' });
     search.addEventListener('input', function () {
       keyword = search.value;
       renderList();
     });
-    wrap.appendChild(el('div', { class: 'pad' }, search));
+    wrap.appendChild(el('div', { class: 'searchbox' }, [ui.icon('search', 17), search]));
 
     var tabs = el('div', { class: 'filters' });
     [
@@ -56,7 +56,7 @@
       if (!items.length) {
         listBox.appendChild(ui.empty(
           S.projects().length ? '該当する案件はありません。' : 'まだ案件がありません。',
-          ui.btn('＋ 案件を作成', 'primary', function () { DL.forms.projectForm(); })
+          ui.btn('案件を作成', 'primary', function () { DL.forms.projectForm(); })
         ));
         if (!S.projects().length) {
           listBox.appendChild(el('div', { class: 'pad' },
@@ -84,7 +84,7 @@
 
     var sub = [ui.kindChip(p), ui.catChip(p)];
     if (p.qty) sub.push(ui.chip(p.qty + unit, 'ghosty'));
-    if (p.kind === 'event' && U.isISO(p.eventDate)) sub.push(ui.chip('🎪' + U.fmtMD(p.eventDate), 'ghosty'));
+    if (p.kind === 'event' && U.isISO(p.eventDate)) sub.push(ui.iconChip('event', U.fmtMD(p.eventDate), 'ghosty'));
     if (p.client) sub.push(ui.chip(p.client, 'ghosty'));
 
     return el('a', { class: 'row proj card-row st-' + st, href: '#/project/' + p.id }, [
@@ -97,7 +97,7 @@
         ]),
         el('div', { class: 'row-sub' }, sub),
         el('div', { class: 'row-sub' }, [
-          ui.chip('⏰' + U.fmtMDW(p.deadline), st === 'overdue' ? 'danger' : st === 'urgent' ? 'warn' : 'soft'),
+          ui.iconChip('deadline', U.fmtMDW(p.deadline), st === 'overdue' ? 'danger' : st === 'urgent' ? 'warn' : 'soft'),
           ui.chip(U.untilLabel(p.deadline, today), 'ghosty')
         ]),
         ui.progress(prog.pct, p.color)

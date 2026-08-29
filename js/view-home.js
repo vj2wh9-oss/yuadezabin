@@ -25,7 +25,7 @@
         box.appendChild(el('a', {
           class: 'alert ' + a.level, href: '#/project/' + a.project.id
         }, [
-          el('span', { class: 'alert-icon', text: a.level === 'danger' ? '!' : a.level === 'warn' ? '▲' : 'i' }),
+          el('span', { class: 'alert-icon' }, ui.icon(a.level === 'info' ? 'info' : 'alert', 17)),
           el('span', {}, [el('b', { text: a.project.title }), el('span', { text: '　' + a.text })])
         ]));
       });
@@ -105,7 +105,7 @@
           var target = e.qty || 1;
           S.setProgress(p.id, t.id, date, e.done >= target ? 0 : target);
         }
-      }, '✓')
+      }, ui.icon('check', 17))
     ]);
     return row;
   }
@@ -156,14 +156,15 @@
     var p = item.project;
     var left = U.diffDays(today, item.date);
     var cls = left < 0 ? 'danger' : left <= 3 ? 'urgent' : left <= (S.settings.warnDays || 14) ? 'soon' : '';
-    var icon = item.type === 'event' ? '🎪' : item.type === 'printing' ? '🖨' : '⏰';
+    var iconName = item.type === 'event' ? 'event' : item.type === 'printing' ? 'printer' : 'deadline';
     var prog = sc.projectProgress(p);
     return el('a', { class: 'row deadline ' + cls, href: '#/project/' + p.id }, [
       el('div', { class: 'row-bar', style: { background: p.color } }),
       el('div', { class: 'row-main' }, [
         el('div', { class: 'row-title' }, [
-          el('span', { text: icon + ' ' + p.title }),
-          el('span', { class: 'muted small', text: '　' + item.label })
+          ui.icon(iconName, 16),
+          el('span', { text: p.title }),
+          el('span', { class: 'muted small', text: item.label })
         ]),
         el('div', { class: 'row-sub' }, [
           ui.chip(U.fmtMDW(item.date), 'soft'),
@@ -171,7 +172,7 @@
           ui.chip('進捗 ' + prog.pct + '%', 'ghosty')
         ])
       ]),
-      el('span', { class: 'chev', text: '›' })
+      el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
     ]);
   }
 
@@ -186,7 +187,7 @@
         ]),
         el('div', { class: 'row-sub' }, [
           ui.kindChip(p), ui.catChip(p),
-          ui.chip(U.fmtMD(p.deadline) + '　' + U.untilLabel(p.deadline, today), 'ghosty')
+          ui.iconChip('deadline', U.fmtMD(p.deadline) + '　' + U.untilLabel(p.deadline, today), 'ghosty')
         ]),
         ui.progress(prog.pct, p.color)
       ]),

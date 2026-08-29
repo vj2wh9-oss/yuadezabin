@@ -84,6 +84,8 @@
     p.status = p.status || 'active';
     p.startDate = p.startDate || '';   // 作業開始日（スケジュール算出の起点）
     p.color = p.color || pickColor();
+    var oldIdx = OLD_PALETTE.indexOf(p.color);
+    if (oldIdx >= 0) p.color = PALETTE[oldIdx];   // 旧配色は青系へ置き換える
     p.tasks = (p.tasks || []).map(normalizeTask);
     p.printings = p.printings || [];
     p.offDays = p.offDays || null;      // null = 全体設定を継承
@@ -111,7 +113,10 @@
     return t;
   }
 
-  var PALETTE = ['#ff6b8a', '#5b8cff', '#a06bff', '#26c6a6', '#ffa64d', '#4dc3ff', '#ff7ac4', '#8bd450'];
+  // 案件の識別色（青系で濃淡と色相を少しずつ変えて区別する）
+  var PALETTE = ['#3b82f6', '#0ea5e9', '#6172e8', '#12a5b8', '#2563eb', '#0891b2', '#8093f1', '#1e40af'];
+  // 旧配色からの読み替え（同じ並び順で対応させる）
+  var OLD_PALETTE = ['#ff6b8a', '#5b8cff', '#a06bff', '#26c6a6', '#ffa64d', '#4dc3ff', '#ff7ac4', '#8bd450'];
   function pickColor() {
     var used = (state && state.projects || []).map(function (p) { return p.color; });
     for (var i = 0; i < PALETTE.length; i++) if (used.indexOf(PALETTE[i]) < 0) return PALETTE[i];

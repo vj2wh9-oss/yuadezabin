@@ -21,7 +21,7 @@
     wrap.appendChild(el('div', { class: 'phead st-' + st, style: { '--pc': p.color } }, [
       el('div', { class: 'phead-top' }, [
         el('h2', { class: 'phead-title', text: p.title }),
-        el('button', { class: 'iconbtn', text: '✎', 'aria-label': '編集', onclick: function () { DL.forms.projectForm(p); } })
+        el('button', { class: 'iconbtn', 'aria-label': '編集', onclick: function () { DL.forms.projectForm(p); } }, ui.icon('edit', 19))
       ]),
       el('div', { class: 'row-sub' }, [
         ui.kindChip(p), ui.catChip(p),
@@ -46,7 +46,7 @@
             ? ui.chip('稼働' + sc.workdays(p, p.startDate, p.deadline).length + '日', 'ghosty')
             : null
         ]),
-        el('span', { class: 'chev', text: '›' })
+        el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
       ]),
       el('div', { class: 'phead-prog' }, [
         ui.progress(prog.pct, p.color),
@@ -81,7 +81,7 @@
         pl.appendChild(el('div', { class: 'row plan' + (pr.primary ? ' is-primary' : '') }, [
           el('div', { class: 'row-main' }, [
             el('div', { class: 'row-title' }, [
-              el('span', { text: '🖨 ' + (pr.label || 'プラン') }),
+              ui.icon('printer', 16), el('span', { text: pr.label || 'プラン' }),
               pr.primary ? ui.chip('メイン', 'ok') : null
             ]),
             el('div', { class: 'row-sub' }, [
@@ -124,9 +124,9 @@
 
     /* ---- 操作 ---- */
     wrap.appendChild(el('div', { class: 'actions' }, [
-      ui.btn('＋ タスクを追加', 'ghost', function () { DL.forms.taskForm(p.id); }),
-      ui.btn('基本タスクを追加', 'ghost', function () { DL.forms.templateSheet(p.id); }),
-      ui.btn('自動スケジュール', 'primary', function () { DL.forms.autoScheduleSheet(p.id); }),
+      ui.btn('タスクを追加', 'ghost', function () { DL.forms.taskForm(p.id); }, 'plus'),
+      ui.btn('基本タスクを追加', 'ghost', function () { DL.forms.templateSheet(p.id); }, 'task'),
+      ui.btn('自動スケジュール', 'primary', function () { DL.forms.autoScheduleSheet(p.id); }, 'refresh'),
       ui.btn(p.status === 'done' ? '進行中に戻す' : '案件を完了にする', 'ghost', function () {
         S.updateProject(p.id, { status: p.status === 'done' ? 'active' : 'done' });
         ui.toast(p.status === 'done' ? '完了にしました' : '進行中に戻しました');
@@ -142,7 +142,7 @@
           location.hash = '#/projects';
           ui.toast('削除しました');
         });
-      })
+      }, 'trash')
     ]));
 
     root.appendChild(wrap);
@@ -179,7 +179,7 @@
     var row = el('div', { class: 'row task' + (complete ? ' is-done' : '') }, [
       el('div', { class: 'row-bar', style: { background: p.color } }),
       head,
-      el('span', { class: 'chev', text: open ? '⌄' : '›' })
+      el('span', { class: 'chev' }, ui.icon(open ? 'chevronDown' : 'chevronRight', 16))
     ]);
 
     if (!open) return row;

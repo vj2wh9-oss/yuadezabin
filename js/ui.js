@@ -22,7 +22,7 @@
     var root = U.$('#sheetRoot');
     var body = opts.body instanceof Node ? opts.body : el('div', { text: String(opts.body || '') });
 
-    var closeBtn = el('button', { class: 'iconbtn', text: '×', 'aria-label': '閉じる', onclick: close });
+    var closeBtn = el('button', { class: 'iconbtn', 'aria-label': '閉じる', onclick: close }, DL.icons.icon('close', 20));
     var head = el('div', { class: 'sheet-head' }, [
       el('h2', { class: 'sheet-title', text: opts.title || '' }), closeBtn
     ]);
@@ -108,14 +108,14 @@
     var wrap = el('div', { class: 'segmented' });
     options.forEach(function (o) {
       var b = el('button', {
-        type: 'button', class: 'seg' + (String(o.value) === String(value) ? ' on' : ''), text: o.label,
+        type: 'button', class: 'seg' + (String(o.value) === String(value) ? ' on' : ''),
         onclick: function () {
           U.$$('.seg', wrap).forEach(function (x) { x.classList.remove('on'); });
           b.classList.add('on');
           wrap.dataset.value = o.value;
           if (onchange) onchange(o.value);
         }
-      });
+      }, [o.icon ? icon(o.icon, 16) : null, el('span', { text: o.label })]);
       wrap.appendChild(b);
     });
     wrap.dataset.value = value;
@@ -136,9 +136,9 @@
       if (fire !== false && opts.onChange) opts.onChange(v);
     }
     var wrap = el('div', { class: 'stepper' }, [
-      el('button', { type: 'button', class: 'stepbtn', text: '−', onclick: function () { set(value - 1); } }),
+      el('button', { type: 'button', class: 'stepbtn', 'aria-label': '減らす', onclick: function () { set(value - 1); } }, DL.icons.icon('minus', 20)),
       inp,
-      el('button', { type: 'button', class: 'stepbtn', text: '＋', onclick: function () { set(value + 1); } })
+      el('button', { type: 'button', class: 'stepbtn', 'aria-label': '増やす', onclick: function () { set(value + 1); } }, DL.icons.icon('plus', 20))
     ]);
     wrap.getValue = function () { return U.num(inp.value, 0); };
     wrap.setValue = function (v) { set(v, false); };
@@ -151,8 +151,15 @@
     return el('div', { class: 'bar' }, el('i', { style: { width: Math.max(0, Math.min(100, pct)) + '%', background: color || 'var(--accent)' } }));
   }
 
+  function icon(name, size, cls) { return DL.icons.icon(name, size, cls); }
+
   function chip(text, cls, style) {
     return el('span', { class: 'chip ' + (cls || ''), text: text, style: style || null });
+  }
+
+  // アイコン付きのチップ
+  function iconChip(name, text, cls) {
+    return el('span', { class: 'chip ' + (cls || '') }, [icon(name, 13), el('span', { text: text })]);
   }
 
   function section(title, right) {
@@ -170,19 +177,24 @@
     return el('div', { class: 'empty' }, [el('p', { text: text }), action || null]);
   }
 
-  function btn(text, cls, onclick) {
-    return el('button', { type: 'button', class: 'btn ' + (cls || ''), text: text, onclick: onclick });
+  function btn(text, cls, onclick, iconName) {
+    return el('button', { type: 'button', class: 'btn ' + (cls || ''), onclick: onclick }, [
+      iconName ? icon(iconName, 16) : null,
+      el('span', { text: text })
+    ]);
   }
 
   /* カテゴリ・種別のラベル */
   var KIND_LABEL = { event: '即売会', work: '仕事' };
   var CAT_LABEL = { manga: '漫画', illust: 'イラスト' };
+  var KIND_ICON = { event: 'event', work: 'work' };
+  var CAT_ICON = { manga: 'manga', illust: 'illust' };
 
   function kindChip(p) {
-    return chip(KIND_LABEL[p.kind], 'kind-' + p.kind);
+    return iconChip(KIND_ICON[p.kind], KIND_LABEL[p.kind], 'kind-' + p.kind);
   }
   function catChip(p) {
-    return chip(CAT_LABEL[p.category], 'cat-' + p.category);
+    return iconChip(CAT_ICON[p.category], CAT_LABEL[p.category], 'cat-' + p.category);
   }
 
   /* ファイル保存（iOS では新規タブ／共有シートに回る場合がある） */
@@ -198,8 +210,10 @@
   DL.ui = {
     toast: toast, sheet: sheet, closeAllSheets: closeAllSheets, confirm: confirmSheet,
     field: field, input: input, textarea: textarea, select: select, segmented: segmented,
-    stepper: stepper, progress: progress, chip: chip, section: section, card: card,
+    stepper: stepper, progress: progress, chip: chip, iconChip: iconChip, icon: icon,
+    section: section, card: card,
     empty: empty, btn: btn, kindChip: kindChip, catChip: catChip,
-    KIND_LABEL: KIND_LABEL, CAT_LABEL: CAT_LABEL, download: download
+    KIND_LABEL: KIND_LABEL, CAT_LABEL: CAT_LABEL, KIND_ICON: KIND_ICON, CAT_ICON: CAT_ICON,
+    download: download
   };
 })(window.DL);

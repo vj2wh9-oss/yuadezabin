@@ -14,10 +14,10 @@
 
     /* 月ナビ */
     wrap.appendChild(el('div', { class: 'monthnav' }, [
-      el('button', { class: 'iconbtn', text: '‹', 'aria-label': '前の月', onclick: function () { cursor = U.addMonths(cursor, -1); DL.app.render(); } }),
+      el('button', { class: 'iconbtn', 'aria-label': '前の月', onclick: function () { cursor = U.addMonths(cursor, -1); DL.app.render(); } }, ui.icon('chevronLeft', 20)),
       el('div', { class: 'monthlabel', text: cursor.slice(0, 4) + '年' + (+cursor.slice(5, 7)) + '月' }),
-      el('button', { class: 'iconbtn', text: '›', 'aria-label': '次の月', onclick: function () { cursor = U.addMonths(cursor, 1); DL.app.render(); } }),
-      el('button', { class: 'btn tiny ghost', text: '今日', onclick: function () { cursor = U.monthStart(today); DL.app.render(); } })
+      el('button', { class: 'iconbtn', 'aria-label': '次の月', onclick: function () { cursor = U.addMonths(cursor, 1); DL.app.render(); } }, ui.icon('chevronRight', 20)),
+      ui.btn('今日', 'tiny ghost', function () { cursor = U.monthStart(today); DL.app.render(); })
     ]));
 
     /* 曜日見出し */
@@ -92,7 +92,12 @@
     }
 
     // その日のメイン締切を小さく表示
-    var label = marks.length ? el('span', { class: 'cal-mark ' + marks[0].type, text: shortLabel(marks[0]) }) : null;
+    var label = marks.length
+      ? el('span', { class: 'cal-mark ' + marks[0].type }, [
+          ui.icon(marks[0].type === 'event' ? 'event' : marks[0].type === 'printing' ? 'printer' : 'deadline', 9),
+          el('span', { text: shortLabel(marks[0]) })
+        ])
+      : null;
 
     return el('a', { class: cls, href: '#/day/' + date }, [
       el('span', { class: 'cal-n', text: String(+date.slice(8)) }),
@@ -101,9 +106,8 @@
   }
 
   function shortLabel(m) {
-    if (m.type === 'event') return '🎪' + (m.project.eventName || m.project.title).slice(0, 5);
-    if (m.type === 'printing') return '🖨' + (m.project.title).slice(0, 5);
-    return '⏰' + m.project.title.slice(0, 5);
+    if (m.type === 'event') return (m.project.eventName || m.project.title).slice(0, 5);
+    return m.project.title.slice(0, 5);
   }
 
   /* ---------------- 日別 ---------------- */
@@ -114,12 +118,12 @@
     var wrap = el('div', { class: 'page' });
 
     wrap.appendChild(el('div', { class: 'daynav' }, [
-      el('a', { class: 'iconbtn', text: '‹', href: '#/day/' + U.addDays(date, -1), 'aria-label': '前の日' }),
+      el('a', { class: 'iconbtn', href: '#/day/' + U.addDays(date, -1), 'aria-label': '前の日' }, ui.icon('chevronLeft', 20)),
       el('div', { class: 'daytitle' }, [
         el('div', { class: 'today-date', text: U.fmtYMDW(date) }),
         el('div', { class: 'today-sub', text: U.untilLabel(date, today) })
       ]),
-      el('a', { class: 'iconbtn', text: '›', href: '#/day/' + U.addDays(date, 1), 'aria-label': '次の日' })
+      el('a', { class: 'iconbtn', href: '#/day/' + U.addDays(date, 1), 'aria-label': '次の日' }, ui.icon('chevronRight', 20))
     ]));
 
     var marks = sc.dayMarks(date);
@@ -129,10 +133,13 @@
         ml.appendChild(el('a', { class: 'row deadline ' + (m.type === 'event' ? 'urgent' : 'soon'), href: '#/project/' + m.project.id }, [
           el('div', { class: 'row-bar', style: { background: m.project.color } }),
           el('div', { class: 'row-main' }, [
-            el('div', { class: 'row-title', text: (m.type === 'event' ? '🎪 ' : m.type === 'printing' ? '🖨 ' : '⏰ ') + m.label }),
+            el('div', { class: 'row-title' }, [
+              ui.icon(m.type === 'event' ? 'event' : m.type === 'printing' ? 'printer' : 'deadline', 16),
+              el('span', { text: m.label })
+            ]),
             el('div', { class: 'row-sub' }, [ui.kindChip(m.project), ui.catChip(m.project)])
           ]),
-          el('span', { class: 'chev', text: '›' })
+          el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
         ]));
       });
       wrap.appendChild(ml);
@@ -147,9 +154,9 @@
       load.entries.forEach(function (e) {
         var row = DL.views.home.quotaRow(e, date);
         row.appendChild(el('button', {
-          class: 'iconbtn small', text: '⋯', 'aria-label': 'ノルマ調整',
+          class: 'iconbtn small', 'aria-label': 'ノルマ調整',
           onclick: function () { DL.forms.planOverrideSheet(e.project.id, e.task.id, date); }
-        }));
+        }, ui.icon('more', 18)));
         list.appendChild(row);
       });
       wrap.appendChild(list);
