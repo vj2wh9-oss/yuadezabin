@@ -185,9 +185,9 @@
   }
 
   /* カテゴリ・種別のラベル */
-  var KIND_LABEL = { event: '即売会', work: '仕事' };
+  var KIND_LABEL = { event: '即売会', work: '仕事', support: '支援サイト' };
   var CAT_LABEL = { manga: '漫画', illust: 'イラスト' };
-  var KIND_ICON = { event: 'event', work: 'work' };
+  var KIND_ICON = { event: 'event', work: 'work', support: 'support' };
   var CAT_ICON = { manga: 'manga', illust: 'illust' };
 
   function kindChip(p) {

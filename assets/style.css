@@ -194,8 +194,10 @@ h1, h2, h3, p { margin: 0; }
 .chip.ghosty { background: transparent; border-color: var(--line2); }
 .chip.kind-event { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
 .chip.kind-work { background: color-mix(in srgb, var(--accent2) 16%, transparent); color: var(--accent2); }
-.chip.cat-manga { background: color-mix(in srgb, var(--indigo) 16%, transparent); color: var(--indigo); }
-.chip.cat-illust { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
+.chip.kind-support { background: color-mix(in srgb, var(--indigo) 18%, transparent); color: var(--indigo); }
+/* 内容（漫画／イラスト）は種別と区別できるよう枠線だけの表現にする */
+.chip.cat-manga { background: transparent; border-color: color-mix(in srgb, var(--indigo) 55%, transparent); color: var(--indigo); }
+.chip.cat-illust { background: transparent; border-color: color-mix(in srgb, var(--ok) 55%, transparent); color: var(--ok); }
 .chip.removable { border-color: var(--line2); cursor: pointer; }
 
 /* ---------------- 進捗バー ---------------- */

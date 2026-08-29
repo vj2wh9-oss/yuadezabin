@@ -28,6 +28,9 @@
 
   var UNIT_LABEL = { page: 'P', cut: '枚', none: '' };
 
+  // 支援サイトのよく使う投稿先
+  var SUPPORT_SITES = ['pixivFANBOX', 'Fantia', 'Ci-en', 'Patreon'];
+
   // 早割プリセット（イベント日から逆算する日数）
   var PRINT_PRESETS = [
     { label: '超早割', days: 35 },
@@ -78,7 +81,7 @@
   function normalizeProject(p) {
     p = p || {};
     p.id = p.id || U.uid();
-    p.kind = p.kind === 'work' ? 'work' : 'event';
+    p.kind = (p.kind === 'work' || p.kind === 'support') ? p.kind : 'event';
     p.category = p.category === 'illust' ? 'illust' : 'manga';
     p.title = p.title || '(無題)';
     p.status = p.status || 'active';
@@ -91,6 +94,8 @@
     p.offDays = p.offDays || null;      // null = 全体設定を継承
     p.holidays = p.holidays || [];
     p.memo = p.memo || '';
+    p.site = p.site || '';     // 支援サイト名
+    p.plan = p.plan || '';     // 支援プラン
     p.createdAt = p.createdAt || new Date().toISOString();
     // 作業開始日が未設定の既存データは、一番早いタスクの開始日で補う
     if (!p.startDate) {
@@ -293,11 +298,22 @@
     work.tasks = templateTasks('illust', 1);
     DL.schedule.autoSchedule(work, { start: t, end: U.addDays(t, 21) });
 
+    var support = createProject({
+      kind: 'support', category: 'manga',
+      title: '支援サイト・今月のおまけ漫画',
+      site: 'pixivFANBOX', plan: '500円プラン向け',
+      deadline: U.addDays(t, 12), startDate: t,
+      qty: 8, memo: '月末までに投稿'
+    });
+    support.tasks = templateTasks('manga', 8);
+    DL.schedule.autoSchedule(support, { start: t, end: U.addDays(t, 12) });
+
     save();
   }
 
   DL.store = {
     KEY: KEY, TEMPLATES: TEMPLATES, UNIT_LABEL: UNIT_LABEL, PRINT_PRESETS: PRINT_PRESETS,
+    SUPPORT_SITES: SUPPORT_SITES,
     PALETTE: PALETTE,
     load: load, save: save, subscribe: subscribe,
     get state() { return state; },

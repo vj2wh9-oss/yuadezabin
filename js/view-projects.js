@@ -10,7 +10,7 @@
     var today = U.today();
     var wrap = el('div', { class: 'page' });
 
-    var search = ui.input({ value: keyword, placeholder: 'タイトル・イベント名・クライアントで検索' });
+    var search = ui.input({ value: keyword, placeholder: 'タイトル・イベント名・クライアント・サイトで検索' });
     search.addEventListener('input', function () {
       keyword = search.value;
       renderList();
@@ -20,7 +20,7 @@
     var tabs = el('div', { class: 'filters' });
     [
       { v: 'active', l: '進行中' }, { v: 'event', l: '即売会' }, { v: 'work', l: '仕事' },
-      { v: 'done', l: '完了' }, { v: 'all', l: 'すべて' }
+      { v: 'support', l: '支援サイト' }, { v: 'done', l: '完了' }, { v: 'all', l: 'すべて' }
     ].forEach(function (o) {
       tabs.appendChild(el('button', {
         class: 'filter' + (filter === o.v ? ' on' : ''), text: o.l,
@@ -39,12 +39,13 @@
         if (filter === 'done') return p.status === 'done';
         if (filter === 'event') return p.kind === 'event' && p.status !== 'archived';
         if (filter === 'work') return p.kind === 'work' && p.status !== 'archived';
+        if (filter === 'support') return p.kind === 'support' && p.status !== 'archived';
         return true;
       });
       if (keyword.trim()) {
         var k = keyword.trim().toLowerCase();
         items = items.filter(function (p) {
-          return [p.title, p.eventName, p.client, p.venue, p.memo].join(' ').toLowerCase().indexOf(k) >= 0;
+          return [p.title, p.eventName, p.client, p.venue, p.site, p.plan, p.memo].join(' ').toLowerCase().indexOf(k) >= 0;
         });
       }
       items.sort(function (a, b) {
@@ -86,6 +87,7 @@
     if (p.qty) sub.push(ui.chip(p.qty + unit, 'ghosty'));
     if (p.kind === 'event' && U.isISO(p.eventDate)) sub.push(ui.iconChip('event', U.fmtMD(p.eventDate), 'ghosty'));
     if (p.client) sub.push(ui.chip(p.client, 'ghosty'));
+    if (p.site) sub.push(ui.chip(p.site, 'ghosty'));
 
     return el('a', { class: 'row proj card-row st-' + st, href: '#/project/' + p.id }, [
       el('div', { class: 'row-bar', style: { background: p.color } }),

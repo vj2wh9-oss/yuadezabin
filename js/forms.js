@@ -10,8 +10,8 @@
     var p = existing ? U.clone(existing) : {
       kind: 'event', category: 'manga', title: '', status: 'active',
       eventName: '', eventDate: '', venue: '', space: '',
-      client: '', fee: '', deadline: '', startDate: U.today(), qty: 20, memo: '',
-      printings: [], color: S.pickColor()
+      client: '', fee: '', site: '', plan: '', deadline: '', startDate: U.today(),
+      qty: 20, memo: '', printings: [], color: S.pickColor()
     };
 
     var body = el('div', { class: 'form' });
@@ -47,17 +47,28 @@
     var memoInput = ui.textarea({ value: p.memo, placeholder: 'サイズ・仕様・連絡事項など' });
 
     var kindSeg = ui.segmented(
-      [{ value: 'event', label: '即売会', icon: 'event' }, { value: 'work', label: '仕事', icon: 'work' }],
+      [
+        { value: 'event', label: '即売会', icon: 'event' },
+        { value: 'work', label: '仕事', icon: 'work' },
+        { value: 'support', label: '支援サイト', icon: 'support' }
+      ],
       p.kind, function (v) { p.kind = v; renderDynamic(); }
     );
     var catSeg = ui.segmented(
       [{ value: 'manga', label: '漫画', icon: 'manga' }, { value: 'illust', label: 'イラスト', icon: 'illust' }],
-      p.category, function (v) { p.category = v; renderQty(); }
+      p.category, function (v) { p.category = v; renderQty(); renderCatHint(); }
     );
+    var catField = ui.field('内容', catSeg, '選んだ内容に応じて基本タスクが変わります');
+    var catHint = catField.querySelector('.field-hint');
+    function renderCatHint() {
+      catHint.textContent = p.kind === 'support'
+        ? '投稿ごとに漫画・イラストを選べます。選んだ内容に応じて基本タスクが変わります'
+        : '選んだ内容に応じて基本タスクが変わります';
+    }
 
     body.appendChild(ui.field('種別', kindSeg));
     body.appendChild(ui.field('タイトル', titleInput));
-    body.appendChild(ui.field('内容', catSeg, '選んだ内容に応じて基本タスクが変わります'));
+    body.appendChild(catField);
     body.appendChild(qtyWrap);
     body.appendChild(dynamic);
     body.appendChild(startWrap);
@@ -126,6 +137,26 @@
           el('span', { class: 'field-label', text: '開催日から逆算' }), presets
         ]));
         dynamic.appendChild(printingsEditor(p, f));
+      } else if (p.kind === 'support') {
+        f.site = ui.input({ value: p.site, placeholder: '例）FANBOX / Fantia / Ci-en' });
+        f.plan = ui.input({ value: p.plan, placeholder: '例）500円プラン向け' });
+        f.deadline = ui.input({ type: 'date', value: p.deadline || '' });
+
+        var sitePresets = el('div', { class: 'presets' },
+          S.SUPPORT_SITES.map(function (name) {
+            return el('button', {
+              type: 'button', class: 'preset', text: name,
+              onclick: function () { f.site.value = name; }
+            });
+          })
+        );
+
+        dynamic.appendChild(ui.field('サイト', f.site));
+        dynamic.appendChild(el('div', { class: 'field' }, [
+          el('span', { class: 'field-label', text: 'よく使うサイト' }), sitePresets
+        ]));
+        dynamic.appendChild(ui.field('プラン・支援者向け', f.plan));
+        dynamic.appendChild(ui.field('公開日（締切）', f.deadline, 'この日までに投稿できるようスケジュールを組みます'));
       } else {
         f.client = ui.input({ value: p.client, placeholder: '例）○○出版 / 個人依頼' });
         f.deadline = ui.input({ type: 'date', value: p.deadline || '' });
@@ -136,6 +167,7 @@
       }
       f.deadline.addEventListener('change', updateStartNote);
       updateStartNote();
+      renderCatHint();
       renderAuto();
     }
 
@@ -172,6 +204,11 @@
           deadline: f.deadline.value, printings: p.printings
         });
         if (!data.title) data.title = data.eventName ? data.eventName + 'の新刊' : '';
+      } else if (p.kind === 'support') {
+        Object.assign(data, {
+          site: f.site.value.trim(), plan: f.plan.value.trim(), deadline: f.deadline.value
+        });
+        if (!data.title && data.site) data.title = data.site + 'の投稿';
       } else {
         Object.assign(data, {
           client: f.client.value.trim(), deadline: f.deadline.value, fee: U.num(f.fee.value, 0)

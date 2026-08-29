@@ -18,6 +18,8 @@
     /* 種別・内容 */
     event: '<path d="M6 3v18"/><path d="M6 4.5h13l-3.2 4.6L19 13.7H6z"/>',
     work: '<path d="M3 7.5h18v13H3z"/><path d="M9 7.5V4.5h6v3"/><path d="M3 13h18"/><path d="M11 12h2v2.4h-2z"/>',
+    // 支援サイト：「F」を角ばった枠に収めたマーク
+    support: '<path d="M3.2 3.2h17.6v17.6H3.2z"/><path d="M8.9 17.6V6.9h6.6"/><path d="M8.9 11.9h5.1"/>',
     manga: '<path d="M3.5 5h8v14h-8zM12.5 5h8v14h-8z"/><path d="M6 8.5h3M6 11.5h3M15 8.5h3M15 11.5h3"/>',
     illust: '<path d="M3.5 4.5h17v15h-17z"/><path d="M3.5 16.2 9 10.7l4 4 3-3 4.5 4.5"/><path d="M14.6 7.2h2.6v2.6h-2.6z"/>',
 

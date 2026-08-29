@@ -1,7 +1,7 @@
 {
   "name": "締切カレンダー",
   "short_name": "締切",
-  "description": "即売会・印刷所締切・イラストの仕事の納期を一元管理する個人用カレンダー",
+  "description": "即売会・印刷所締切・イラストの仕事の納期・支援サイトの投稿を一元管理する個人用カレンダー",
   "lang": "ja",
   "start_url": "./index.html#/home",
   "scope": "./",

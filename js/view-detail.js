@@ -30,7 +30,7 @@
       ]),
       el('div', { class: 'countdown' }, [
         el('div', { class: 'cd-main' }, [
-          el('span', { class: 'cd-label', text: p.kind === 'event' ? '入稿締切' : '納品日' }),
+          el('span', { class: 'cd-label', text: sc.deadlineLabel(p) }),
           el('b', { text: U.fmtYMDW(p.deadline) })
         ]),
         el('div', { class: 'cd-left ' + st, text: U.untilLabel(p.deadline, today) })
@@ -61,6 +61,9 @@
       if (U.isISO(p.eventDate)) info.push(['開催日', U.fmtYMDW(p.eventDate) + '（' + U.untilLabel(p.eventDate, today) + '）']);
       if (p.venue) info.push(['会場', p.venue]);
       if (p.space) info.push(['スペース', p.space]);
+    } else if (p.kind === 'support') {
+      if (p.site) info.push(['サイト', p.site]);
+      if (p.plan) info.push(['プラン', p.plan]);
     } else {
       if (p.client) info.push(['クライアント', p.client]);
       if (p.fee) info.push(['報酬', '¥' + Number(p.fee).toLocaleString('ja-JP')]);

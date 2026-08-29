@@ -144,6 +144,12 @@
     return 'ok';
   }
 
+  /* 種別ごとの「締切」の呼び名 */
+  var DEADLINE_LABEL = { event: '入稿締切', work: '納品日', support: '公開日' };
+  var DEADLINE_SHORT = { event: '入稿', work: '納品', support: '公開' };
+  function deadlineLabel(p) { return DEADLINE_LABEL[p.kind] || '締切'; }
+  function deadlineShort(p) { return DEADLINE_SHORT[p.kind] || '締切'; }
+
   var STATUS_LABEL = {
     overdue: '締切超過', urgent: '直前', soon: '締切間近', ok: '進行中',
     done: '完了', archived: '保管', nodate: '日付未設定'
@@ -180,7 +186,7 @@
         marks.push({ type: 'event', project: p, label: p.eventName || p.title });
       }
       if (p.deadline === date) {
-        marks.push({ type: 'deadline', project: p, label: (p.kind === 'event' ? '入稿' : '納品') + '：' + p.title });
+        marks.push({ type: 'deadline', project: p, label: deadlineShort(p) + '：' + p.title });
       }
       (p.printings || []).forEach(function (pr) {
         if (pr.due === date && !(pr.primary && p.deadline === date)) {
@@ -203,7 +209,7 @@
         if (U.cmp(date, from) < 0 || U.cmp(date, to) > 0) return;
         out.push({ type: type, date: date, project: p, label: label });
       }
-      push('deadline', p.deadline, p.kind === 'event' ? '入稿締切' : '納品');
+      push('deadline', p.deadline, deadlineLabel(p));
       if (p.kind === 'event') push('event', p.eventDate, 'イベント当日');
       (p.printings || []).forEach(function (pr) {
         if (pr.due !== p.deadline) push('printing', pr.due, (pr.label || 'プラン') + '締切');
@@ -329,7 +335,7 @@
     DL.store.projects().forEach(function (p) {
       if (p.status === 'archived') return;
       if (p.kind === 'event' && U.isISO(p.eventDate)) ev(p.id + '-event', p.eventDate, '[イベント] ' + (p.eventName || p.title), p.venue || '');
-      if (U.isISO(p.deadline)) ev(p.id + '-dl', p.deadline, '[' + (p.kind === 'event' ? '入稿' : '納品') + '] ' + '：' + p.title, p.memo || '');
+      if (U.isISO(p.deadline)) ev(p.id + '-dl', p.deadline, '[' + deadlineShort(p) + '] ' + p.title, p.memo || '');
       (p.printings || []).forEach(function (pr, i) {
         if (U.isISO(pr.due) && pr.due !== p.deadline) ev(p.id + '-pr' + i, pr.due, '[' + (pr.label || '入稿') + '] ' + p.title, pr.printer || '');
       });
@@ -352,6 +358,7 @@
     taskPlan: taskPlan, taskDone: taskDone, taskTotal: taskTotal, taskPct: taskPct,
     taskIsComplete: taskIsComplete, taskPace: taskPace, unit: unit,
     projectProgress: projectProgress, projectStatus: projectStatus, STATUS_LABEL: STATUS_LABEL,
+    deadlineLabel: deadlineLabel, deadlineShort: deadlineShort,
     dayEntries: dayEntries, dayMarks: dayMarks, timeline: timeline, alerts: alerts,
     autoSchedule: autoSchedule, loadOfDay: loadOfDay, buildICS: buildICS
   };
