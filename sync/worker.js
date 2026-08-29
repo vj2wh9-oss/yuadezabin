@@ -33,6 +33,19 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
     const url = new URL(request.url);
+
+    // 生存確認。ブラウザでURLを開いたときに「動いているか」が分かるようにする。
+    // 合鍵は要らないが、データは一切返さない（バインドの有無だけ）。
+    if (url.pathname === '/' || url.pathname === '/health') {
+      return json({
+        ok: true,
+        service: '案件ポータルの同期API',
+        bindings: { kv: !!env.SYNC, r2: !!env.FILES },
+        endpoints: ['/v1/meta', '/v1/state', '/v1/files'],
+        note: '各 /v1/... は Authorization: Bearer <合鍵> が必要です'
+      }, 200, cors);
+    }
+
     const token = bearer(request);
     if (!token || token.length < MIN_TOKEN) {
       return json({ error: 'unauthorized' }, 401, cors);
