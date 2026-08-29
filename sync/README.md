@@ -17,8 +17,9 @@ Vercel には一切触れないので、`room reserve` に影響はありませ�
 PC のターミナルで（Node.js が必要です）:
 
 ```sh
-npm install -g wrangler
-wrangler login          # ブラウザが開くので許可する
+npm install -g wrangler   # v4 以上
+wrangler --version
+wrangler login            # ブラウザが開くので許可する
 ```
 
 ## 3. 置き場（KV 名前空間）を作る
@@ -30,7 +31,7 @@ cd sync
 wrangler kv namespace create SYNC
 ```
 
-`id = "xxxxxxxx..."` という行が出るので、その **id を `wrangler.toml` の `id = "ここに KV 名前空間の id"` に貼り替えます**。
+`id` が表示されるので、その **id を `wrangler.jsonc` の `"id": "ここに KV 名前空間の id"` に貼り替えます**。
 
 ## 4. 公開する
 

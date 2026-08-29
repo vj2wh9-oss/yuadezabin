@@ -1,0 +1,23 @@
+{
+  // 同期サーバーの設定。Cloudflare の推奨に合わせて JSON（jsonc）で書く。
+  "name": "anken-portal-sync",
+  "main": "worker.js",
+
+  // 新しく作るときは、そのときの日付にする
+  "compatibility_date": "2026-08-29",
+
+  // アプリの URL。ここ以外からのリクエストはブラウザ側で弾かれる
+  "vars": {
+    "ALLOW_ORIGIN": "https://vj2wh9-oss.github.io"
+  },
+
+  // wrangler kv namespace create SYNC で作った id を入れる
+  "kv_namespaces": [
+    { "binding": "SYNC", "id": "ここに KV 名前空間の id" }
+  ],
+
+  // 失敗したときにダッシュボードでログを追えるようにする
+  "observability": {
+    "enabled": true
+  }
+}

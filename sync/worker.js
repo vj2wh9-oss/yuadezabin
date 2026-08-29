@@ -9,7 +9,7 @@
  *   PUT  /v1/state  → { rev, savedAt, data, by, force }
  *                     rev が食い違えば 409 と現在の内容を返す（勝手に上書きしない）
  *
- * 設定（wrangler.toml）
+ * 設定（wrangler.jsonc）
  *   KV 名前空間 SYNC を bind する
  *   ALLOW_ORIGIN にアプリの URL（省略時はどこからでも許可。合鍵で守る前提）
  */
