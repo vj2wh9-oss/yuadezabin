@@ -40,7 +40,7 @@
       startNote.appendChild(el('div', { class: 'preview-main' }, [
         el('strong', { text: '作業できる日数 ' + wd + '日' }),
         el('span', { class: 'muted', text: '　' + U.fmtMD(s) + '〜' + U.fmtMD(d) +
-          (wd ? '' : '（すべて休みです。曜日や休業日の設定を見直してください）') })
+          (wd ? '' : '（すべて休業日です。カレンダーから休みを見直してください）') })
       ]));
     }
     startInput.addEventListener('change', updateStartNote);

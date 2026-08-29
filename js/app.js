@@ -202,6 +202,17 @@
     ]);
   }
 
+  /* 開いている画面のタブをもう一度押したときの動き。
+     ファイルはフォルダを開いていればひとつ上へ戻す（いちばん上なら何もしない）。
+     同じ hash への移動では hashchange が起きないので、ここで拾う。 */
+  U.$$('.tab').forEach(function (t) {
+    t.addEventListener('click', function (e) {
+      if (t.dataset.tab !== 'files' || route.name !== 'files') return;
+      e.preventDefault();
+      DL.views.files.up();
+    });
+  });
+
   backBtn.addEventListener('click', function () {
     if (history.length > 1) history.back();
     else location.hash = '#/home';

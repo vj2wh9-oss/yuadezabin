@@ -3,21 +3,13 @@
   'use strict';
   var U = DL.util;
 
-  /* 作業しない曜日／日 */
-  function offDaysOf(project) {
-    var s = DL.store.settings;
-    var list = (project && project.offDays) ? project.offDays : (s.offDays || []);
-    // 7曜日すべてが休みだと何も割り当てられなくなるので、その場合だけ無視する
-    return list.length >= 7 ? [] : list;
-  }
+  /* 休業日（カレンダーの日別画面から指定する。曜日単位の設定は持たない） */
   function holidaysOf(project) {
     var s = DL.store.settings;
     return (s.holidays || []).concat((project && project.holidays) || []);
   }
   function isWorkday(project, iso) {
-    if (offDaysOf(project).indexOf(U.dow(iso)) >= 0) return false;
-    if (holidaysOf(project).indexOf(iso) >= 0) return false;
-    return true;
+    return holidaysOf(project).indexOf(iso) < 0;
   }
 
   // 期間内の稼働日一覧。全部が休みなら空を返す（勝手に休みへ割り当てない）

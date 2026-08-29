@@ -326,6 +326,8 @@ h1, h2, h3, p { margin: 0; }
 
 .daynav { display: flex; align-items: center; gap: 6px; }
 .daytitle { flex: 1; text-align: center; }
+/* 休業日の印を日付の横に並べる */
+.daytitle .today-date { display: flex; align-items: center; justify-content: center; gap: 7px; flex-wrap: wrap; }
 
 /* ---------------- 案件詳細 ---------------- */
 .phead {
@@ -684,9 +686,6 @@ h1, h2, h3, p { margin: 0; }
 .quota-row.three { grid-template-columns: repeat(3, 1fr); }
 
 /* ---------------- 取引先・バックアップ ---------------- */
-.backup-banner { display: flex; flex-direction: column; gap: 7px; border-left: 3px solid var(--accent); }
-.backup-banner .row-title { align-items: center; gap: 6px; font-weight: 700; }
-.backup-banner .btn { flex: 1; }
 .backup-row { display: flex; align-items: center; gap: 6px; padding: 8px 10px; }
 .backup-row .row-main { flex: 1; min-width: 0; }
 .backup-row .btn.tiny { flex: none; }

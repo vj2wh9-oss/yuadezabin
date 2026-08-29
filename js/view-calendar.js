@@ -174,12 +174,16 @@
   function renderDay(root, params) {
     var date = U.isISO(params.date) ? params.date : U.today();
     var today = U.today();
+    var isHoliday = (S.settings.holidays || []).indexOf(date) >= 0;
     var wrap = el('div', { class: 'page' });
 
     wrap.appendChild(el('div', { class: 'daynav' }, [
       el('a', { class: 'iconbtn', href: '#/day/' + U.addDays(date, -1), 'aria-label': '前の日' }, ui.icon('chevronLeft', 20)),
       el('div', { class: 'daytitle' }, [
-        el('div', { class: 'today-date', text: U.fmtYMDW(date) }),
+        el('div', { class: 'today-date' }, [
+          el('span', { text: U.fmtYMDW(date) }),
+          isHoliday ? ui.chip('休業日', 'soft') : null
+        ]),
         el('div', { class: 'today-sub', text: U.untilLabel(date, today) })
       ]),
       el('a', { class: 'iconbtn', href: '#/day/' + U.addDays(date, 1), 'aria-label': '次の日' }, ui.icon('chevronRight', 20))
@@ -207,7 +211,9 @@
     var load = sc.loadOfDay(date);
     wrap.appendChild(ui.section('この日のノルマ', load.qty ? ui.chip('合計 ' + load.done + ' / ' + load.qty, load.done >= load.qty ? 'ok' : 'soft') : null));
     if (!load.entries.length) {
-      wrap.appendChild(ui.empty('この日に割り当てられたタスクはありません。'));
+      wrap.appendChild(isHoliday
+        ? ui.empty('休業日')
+        : ui.empty('この日に割り当てられたタスクはありません。'));
     } else {
       var list = el('div', { class: 'list' });
       load.entries.forEach(function (e) {
@@ -227,7 +233,6 @@
     ));
 
     /* 休業日設定 */
-    var isHoliday = (S.settings.holidays || []).indexOf(date) >= 0;
     wrap.appendChild(el('div', { class: 'pad' }, [
       ui.btn(isHoliday ? 'この日の休みを解除' : 'この日を休みにする', 'ghost full', function () {
         var before = DL.forms.planSnapshot();

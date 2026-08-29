@@ -45,8 +45,7 @@
   ];
 
   var DEFAULT_SETTINGS = {
-    offDays: [],           // 作業しない曜日 0=日〜6=土
-    holidays: [],          // 作業しない個別日 'YYYY-MM-DD'
+    holidays: [],          // 休業日 'YYYY-MM-DD'（カレンダーの日別画面から指定する）
     bufferDays: 1,         // 締切の何日前までに終わらせるか
     warnDays: 14,          // 締切が近いと警告する日数
     weekStart: 0,          // 0=日曜はじまり 1=月曜はじまり
@@ -172,6 +171,7 @@
     var s = data || {};
     s.schema = SCHEMA;
     s.settings = Object.assign(U.clone(DEFAULT_SETTINGS), s.settings || {});
+    delete s.settings.offDays;   // 曜日単位の休みは廃止した（古いデータから取り除く）
     s.settings.templates = Object.assign(U.clone(TEMPLATES), s.settings.templates || {});
     s.settings.sync = Object.assign(U.clone(DEFAULT_SETTINGS.sync), s.settings.sync || {});
     s.settings.clients = (s.settings.clients || []).map(normalizeClient);
@@ -211,7 +211,7 @@
     if (oldIdx >= 0) p.color = PALETTE[oldIdx];   // 旧配色は青系へ置き換える
     p.tasks = (p.tasks || []).map(normalizeTask);
     p.printings = p.printings || [];
-    p.offDays = p.offDays || null;      // null = 全体設定を継承
+    delete p.offDays;                   // 曜日単位の休みは廃止した
     p.holidays = p.holidays || [];
     p.memo = p.memo || '';
     p.site = p.site || '';     // 支援サイト名

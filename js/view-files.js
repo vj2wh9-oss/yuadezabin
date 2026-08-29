@@ -112,6 +112,19 @@
     ]);
   }
 
+  /**
+   * ひとつ上の階層へ戻る。下のタブの「ファイル」を押したときに呼ばれる。
+   * いちばん上まで来ていたら何もしない（押しても画面はそのまま）。
+   * @returns {boolean} 戻ったら true
+   */
+  function up() {
+    if (!cwd) return false;
+    var f = S.getFolder(cwd);
+    cwd = (f && f.parentId) ? f.parentId : '';   // いまは入れ子にしていないので、たいていは上まで戻る
+    DL.app.render();
+    return true;
+  }
+
   function countIn(folderId) {
     return ((cache && cache.files) || []).filter(function (x) { return S.fileFolder(x.id) === folderId; }).length;
   }
@@ -611,6 +624,7 @@
   DL.views.files = {
     render: render,
     pickFiles: pickFiles,
+    up: up,
     // タブに入るたびに取り直す（もう片方の端末が上げたものをすぐ見せる）
     entered: function () { if (F.ready()) load(true); },
     reset: function () { cache = null; fetchedAt = 0; error = ''; cwd = ''; dropThumbs(); }

@@ -11,26 +11,7 @@
     /* ---- 稼働設定 ---- */
     wrap.appendChild(ui.section('作業の設定'));
 
-    var offWrap = el('div', { class: 'wdays' });
-    for (var i = 0; i < 7; i++) {
-      (function (d) {
-        var on = (s.offDays || []).indexOf(d) >= 0;
-        offWrap.appendChild(el('button', {
-          class: 'wday' + (on ? ' on' : ''), text: U.wdName(d),
-          onclick: function () {
-            var before = DL.forms.planSnapshot();
-            var list = (S.settings.offDays || []).slice();
-            var idx = list.indexOf(d);
-            var adding = idx < 0;
-            if (adding) list.push(d); else list.splice(idx, 1);
-            S.updateSettings({ offDays: list });
-            if (adding) DL.forms.offerReschedule(before);
-          }
-        }));
-      })(i);
-    }
     wrap.appendChild(el('div', { class: 'card' }, [
-      ui.field('作業しない曜日', offWrap, '選んだ曜日にはノルマを割り当てません'),
       ui.field('締切前の予備日', numInput(s.bufferDays, function (v) { S.updateSettings({ bufferDays: v }); }), '自動スケジュールの既定値'),
       ui.field('締切が近いと知らせる日数', numInput(s.warnDays, function (v) { S.updateSettings({ warnDays: v }); })),
       ui.field('1日の作業量の上限', numInput(s.dailyLimit, function (v) { S.updateSettings({ dailyLimit: v }); }),
@@ -41,35 +22,7 @@
       ))
     ]));
 
-    /* ---- 休業日 ---- */
-    wrap.appendChild(ui.section('休業日'));
-    var holiBox = el('div', { class: 'card' });
-    var addDate = ui.input({ type: 'date' });
-    holiBox.appendChild(el('div', { class: 'row-end gap' }, [
-      addDate,
-      ui.btn('追加', 'primary', function () {
-        if (!U.isISO(addDate.value)) return;
-        var before = DL.forms.planSnapshot();
-        var list = (S.settings.holidays || []).slice();
-        if (list.indexOf(addDate.value) < 0) list.push(addDate.value);
-        list.sort();
-        S.updateSettings({ holidays: list });
-        ui.toast('休業日を追加しました');
-        DL.forms.offerReschedule(before);
-      })
-    ]));
-    var chips = el('div', { class: 'row-wrap' });
-    (s.holidays || []).slice().sort().forEach(function (d) {
-      chips.appendChild(el('button', {
-        class: 'chip removable', text: U.fmtMDW(d) + ' ×',
-        onclick: function () {
-          S.updateSettings({ holidays: S.settings.holidays.filter(function (x) { return x !== d; }) });
-        }
-      }));
-    });
-    if (!(s.holidays || []).length) chips.appendChild(el('span', { class: 'muted small', text: '登録なし' }));
-    holiBox.appendChild(chips);
-    wrap.appendChild(holiBox);
+    /* 休業日はカレンダーの日別画面から指定する（ここには置かない） */
 
     /* ---- テンプレート ---- */
     wrap.appendChild(ui.section('基本タスクのテンプレート'));
