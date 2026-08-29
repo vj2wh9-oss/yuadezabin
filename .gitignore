@@ -1,3 +1,6 @@
 .vercel
 .DS_Store
 node_modules/
+
+# 同期の開発用サーバーの保存ファイル
+.sync-dev.json

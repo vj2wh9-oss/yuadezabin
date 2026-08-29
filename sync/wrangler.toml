@@ -1,0 +1,12 @@
+name = "anken-portal-sync"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+# アプリの URL。ここ以外からのリクエストはブラウザ側で弾かれる
+[vars]
+ALLOW_ORIGIN = "https://vj2wh9-oss.github.io"
+
+# wrangler kv namespace create SYNC で作った id を入れる
+[[kv_namespaces]]
+binding = "SYNC"
+id = "ここに KV 名前空間の id"

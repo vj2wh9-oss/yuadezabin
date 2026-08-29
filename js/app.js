@@ -184,6 +184,7 @@
     // 本体は IndexedDB。読み込みが終わってから描画する
     S.init().then(function () {
       render();
+      DL.sync.start();
       return S.autoBackupIfDue();
     }).catch(function (e) {
       console.error('読み込みに失敗しました', e);
@@ -200,10 +201,17 @@
 
     // 復帰したときも（日をまたいでアプリを開きっぱなしにしていた場合）
     document.addEventListener('visibilitychange', function () {
-      if (document.visibilityState === 'visible') S.autoBackupIfDue();
-      else S.flush();
+      if (document.visibilityState === 'visible') {
+        S.autoBackupIfDue();
+        DL.sync.run({ silent: true }).then(function (r) {
+          if (r.status === 'pulled' || r.status === 'merged') render();
+        });
+      } else {
+        S.flush();
+        DL.sync.flush();
+      }
     });
-    window.addEventListener('pagehide', function () { S.flush(); });
+    window.addEventListener('pagehide', function () { S.flush(); DL.sync.flush(); });
 
     var secure = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
     if ('serviceWorker' in navigator && secure) {

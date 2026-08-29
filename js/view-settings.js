@@ -176,6 +176,11 @@
       });
     });
 
+    /* ---- 同期 ---- */
+    wrap.appendChild(ui.section('PC・iPhone の同期',
+      DL.sync.active() ? ui.chip('有効', 'ok') : ui.chip('未接続', 'ghosty')));
+    wrap.appendChild(syncCard(s));
+
     /* ---- iCloud へ書き出す ---- */
     wrap.appendChild(ui.section('iCloud への書き出し'));
     wrap.appendChild(el('div', { class: 'card' }, [
@@ -241,6 +246,119 @@
     ]));
 
     root.appendChild(wrap);
+  }
+
+  /* 同期の設定カード */
+  function syncCard(s) {
+    var c = s.sync;
+    var card = el('div', { class: 'card' });
+
+    if (!DL.sync.ready()) {
+      card.appendChild(el('p', { class: 'muted small', text: '接続先と合鍵を入れると、PC と iPhone でデータが自動で揃うようになります。接続先は自分で立てたサーバーです（sync/README.md に手順があります）。まだの場合は、いまのまま iCloud への書き出しで受け渡しできます。' }));
+    }
+
+    var urlInput = ui.input({ value: c.url, placeholder: 'https://....workers.dev', inputmode: 'url', autocapitalize: 'off', autocorrect: 'off', spellcheck: false });
+    urlInput.addEventListener('change', function () {
+      S.updateSync({ url: urlInput.value.trim(), rev: 0, baseSavedAt: '', lastError: '' });
+    });
+    card.appendChild(ui.field('接続先', urlInput, 'wrangler deploy のあとに出る URL'));
+
+    var tokenInput = ui.input({
+      value: c.token, placeholder: '（未設定）', type: 'password',
+      autocapitalize: 'off', autocorrect: 'off', spellcheck: false
+    });
+    tokenInput.addEventListener('change', function () {
+      S.updateSync({ token: tokenInput.value.trim(), rev: 0, baseSavedAt: '', lastError: '' });
+    });
+    card.appendChild(ui.field('合鍵', tokenInput, '両方の端末で同じものを入れます。サーバーには保存されません'));
+    card.appendChild(el('div', { class: 'row-wrap' }, [
+      ui.btn(c.token ? '合鍵を作り直す' : '合鍵を作る', 'ghost tiny', function () {
+        var make = function () {
+          var t = DL.sync.makeToken();
+          S.updateSync({ token: t, rev: 0, baseSavedAt: '', lastError: '' });
+          ui.toast('合鍵を作りました。もう一方の端末にも同じものを入れてください');
+        };
+        if (!c.token) { make(); return; }
+        ui.confirm('作り直すと、いまサーバーにあるデータは読めなくなります（各端末のデータは残ります）。', { danger: true, okText: '作り直す' })
+          .then(function (ok) { if (ok) make(); });
+      }, 'refresh'),
+      c.token ? ui.btn('合鍵をコピー', 'ghost tiny', function () {
+        copyText(c.token).then(function (ok) {
+          ui.toast(ok ? 'コピーしました' : 'コピーできませんでした。合鍵の欄を長押しして選択してください', ok ? '' : 'warn');
+        });
+      }, 'projects') : null,
+      c.token ? ui.btn('合鍵を表示', 'ghost tiny', function () {
+        tokenInput.type = tokenInput.type === 'password' ? 'text' : 'password';
+      }) : null
+    ]));
+
+    if (!DL.sync.ready()) return card;
+
+    var enable = el('input', { type: 'checkbox', class: 'check', checked: !!c.enabled });
+    enable.addEventListener('change', function () {
+      S.updateSync({ enabled: enable.checked });
+      if (enable.checked) {
+        DL.sync.run().then(function (r) {
+          if (r.status === 'error') return;
+          if (r.status !== 'conflict') ui.toast('同期しました');
+          DL.app.render();
+        });
+      }
+    });
+    card.appendChild(el('label', { class: 'row-check' }, [enable, el('span', { text: '自動で同期する' })]));
+    card.appendChild(el('span', { class: 'field-hint', text: 'アプリを開いたとき・閉じるとき・編集して少し経ったときに、自動で送受信します。' }));
+
+    card.appendChild(el('div', { class: 'info-row' }, [
+      el('span', { class: 'info-k', text: 'この端末' }),
+      el('span', { class: 'info-v', text: c.deviceName || DL.sync.deviceName() })
+    ]));
+    card.appendChild(el('div', { class: 'info-row' }, [
+      el('span', { class: 'info-k', text: '最後の同期' }),
+      el('span', { class: 'info-v', text: c.lastAt ? DL.sync.fmtAt(c.lastAt) + '（版 ' + c.rev + '）' : 'まだありません' })
+    ]));
+    if (c.lastError) {
+      card.appendChild(el('div', { class: 'info-row' }, [
+        el('span', { class: 'info-k', text: '前回のエラー' }),
+        el('span', { class: 'info-v danger-text', text: c.lastError })
+      ]));
+    }
+
+    card.appendChild(el('div', { class: 'row-wrap' }, [
+      ui.btn('いま同期', 'primary', function () {
+        DL.sync.run({ force: true }).then(function (r) {
+          if (r.status === 'error' || r.status === 'conflict') return;
+          ui.toast(r.status === 'pushed' ? 'この端末の内容を送りました'
+            : r.status === 'pulled' ? 'サーバーの内容を取り込みました'
+            : r.status === 'merged' ? '統合しました' : '変更はありませんでした');
+          DL.app.render();
+        });
+      }, 'refresh'),
+      ui.btn('接続をたしかめる', 'ghost', function () {
+        DL.sync.test().then(function (r) {
+          ui.toast(r.ok
+            ? (r.exists ? 'つながりました（版 ' + r.rev + '・' + (r.by || '不明な端末') + 'が最後に保存）' : 'つながりました（サーバーはまだ空です）')
+            : 'つながりません：' + r.message, r.ok ? '' : 'danger');
+          DL.app.render();
+        });
+      }, 'cloud'),
+      ui.btn('接続を解除', 'ghost', function () {
+        ui.confirm('この端末の同期をやめます。端末内のデータもサーバーのデータもそのまま残ります。', { okText: '解除' })
+          .then(function (ok) {
+            if (!ok) return;
+            S.updateSync({ enabled: false, url: '', token: '', rev: 0, baseSavedAt: '', lastAt: '', lastError: '' });
+            ui.toast('解除しました');
+          });
+      })
+    ]));
+
+    return card;
+  }
+
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).then(function () { return true; }).catch(function () { return false; });
+    }
+    return Promise.resolve(false);
   }
 
   function mb(n) {

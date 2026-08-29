@@ -60,14 +60,32 @@
     defaultIssuerId: '',   // 既定の屋号
     scopeIssuerId: '',     // 表示を絞り込む屋号（空＝すべて）
     clients: [],           // 取引先
+    sync: {                // 同期サーバーの接続情報（この端末だけのもの）
+      url: '', token: '', enabled: false, deviceName: '',
+      rev: 0,              // 最後にやりとりした版番号
+      baseSavedAt: '',     // 同期した時点の savedAt（以後の変更の有無を見る）
+      lastAt: '', lastError: ''
+    },
     docSeq: { invoice: {}, receipt: {} },  // 書類番号の連番（年ごと）
     taxRate: 10,           // 消費税率(%)
     withholdingRate: 10.21,// 源泉徴収税率(%)
     templates: U.clone(TEMPLATES)
   };
 
+  /* 端末ごとの設定。同期・読み込み・復元で持ち込まず、この端末のものを守る */
+  var LOCAL_SETTING_KEYS = ['sync', 'scopeIssuerId', 'lastBackupAt', 'lastAutoBackupAt'];
+
   var state = null;
   var listeners = [];
+
+  /* next の中の端末ごとの設定を、prev（いまの端末の値）で上書きする */
+  function keepLocal(prev, next) {
+    LOCAL_SETTING_KEYS.forEach(function (k) {
+      if (prev && prev[k] !== undefined) next[k] = prev[k];
+      else delete next[k];
+    });
+    return next;
+  }
 
   function defaultState() {
     return { schema: SCHEMA, settings: U.clone(DEFAULT_SETTINGS), projects: [] };
@@ -150,6 +168,7 @@
     s.schema = SCHEMA;
     s.settings = Object.assign(U.clone(DEFAULT_SETTINGS), s.settings || {});
     s.settings.templates = Object.assign(U.clone(TEMPLATES), s.settings.templates || {});
+    s.settings.sync = Object.assign(U.clone(DEFAULT_SETTINGS.sync), s.settings.sync || {});
     s.settings.clients = (s.settings.clients || []).map(normalizeClient);
     s.settings.docSeq = migrateDocSeq(s.settings.docSeq);
     s.projects = (s.projects || []).map(normalizeProject);
@@ -514,8 +533,15 @@
   var idbTimer = null;
   var mirrorWarned = false;
 
-  function save() {
-    state.savedAt = new Date().toISOString();
+  /**
+   * 保存する。
+   * @param {object} [opts]
+   * @param {boolean} [opts.quiet] savedAt を進めない。
+   *   同期の版番号など「中身ではない情報」を書くときに使う。これを進めてしまうと、
+   *   同期した直後の端末が「変更あり」に見えて、毎回ぶつかったことになってしまう。
+   */
+  function save(opts) {
+    if (!opts || !opts.quiet) state.savedAt = new Date().toISOString();
     writeMirror();
     scheduleIDB();
     emit();
@@ -745,7 +771,9 @@
     return DL.db.get('backups', id).then(function (rec) {
       if (!rec || !rec.data) return false;
       return makeBackup('before-restore', '復元する前の状態').then(function () {
+        var mine = state.settings;
         state = migrate(JSON.parse(rec.data));
+        keepLocal(mine, state.settings);   // 古い控えの合鍵で上書きしない
         save();
         return true;
       });
@@ -842,15 +870,71 @@
     }
 
     var before = state.projects.length;
+    var mine = state.settings;
     state = migrate(data);
+    keepLocal(mine, state.settings);      // 同期の合鍵などはこの端末のものを残す
     save();
     return { mode: 'replace', total: state.projects.length, replaced: before };
   }
 
+  /**
+   * すべて削除する。
+   * 接続先と合鍵は残すが同期は止める（空の状態をサーバーへ押し出さないため）。
+   */
   function clearAll(skipBackup) {
     if (!skipBackup) makeBackup('before-clear', '全削除する前の状態');
+    var sync = state && state.settings ? state.settings.sync : null;
     state = defaultState();
+    if (sync) {
+      state.settings.sync = Object.assign({}, sync, {
+        enabled: false, rev: 0, baseSavedAt: '', lastAt: '', lastError: ''
+      });
+    }
     save();
+  }
+
+  /* ---------------- 同期 ---------------- */
+
+  /* サーバーへ送る中身。端末ごとの設定は外す */
+  function syncPayload() {
+    var s = U.clone(state);
+    LOCAL_SETTING_KEYS.forEach(function (k) { delete s.settings[k]; });
+    return s;
+  }
+
+  /* サーバーの内容で置き換える（端末ごとの設定は残す） */
+  function applyRemote(remote) {
+    var mine = state.settings;
+    state = migrate(U.clone(remote));
+    keepLocal(mine, state.settings);
+    save();
+    return state;
+  }
+
+  /* サーバーの内容を、いま無いものだけ足す形で取り込む */
+  function mergeRemote(remote) {
+    return importJSON(JSON.stringify(remote), 'merge');
+  }
+
+  function syncSettings() { return state.settings.sync; }
+
+  function updateSync(patch) {
+    Object.assign(state.settings.sync, patch);
+    save({ quiet: true });      // 同期の記録で「変更あり」にしない
+    return state.settings.sync;
+  }
+
+  /* まだ何も入っていない端末か（失うものが無いので、サーバーの内容をそのまま受け取れる） */
+  function isEmpty() {
+    return !state.projects.length && !issuers().length && !clients().length;
+  }
+
+  /* 最後に同期してから、この端末で変更があったか */
+  function changedSinceSync() {
+    if (isEmpty()) return false;
+    var sy = state.settings.sync;
+    if (!sy.baseSavedAt) return true;      // 一度も同期していない＆中身がある
+    return String(state.savedAt || '') !== sy.baseSavedAt;
   }
 
   /* ---------------- サンプルデータ ---------------- */
@@ -933,6 +1017,9 @@
     makeBackup: makeBackup, listBackups: listBackups, restoreBackup: restoreBackup,
     removeBackup: removeBackup, pruneBackups: pruneBackups, restoreLatest: restoreLatest,
     autoBackupIfDue: autoBackupIfDue,
+    syncPayload: syncPayload, applyRemote: applyRemote, mergeRemote: mergeRemote,
+    syncSettings: syncSettings, updateSync: updateSync,
+    changedSinceSync: changedSinceSync, isEmpty: isEmpty,
     requestPersistence: requestPersistence,
     pickColor: pickColor
   };
