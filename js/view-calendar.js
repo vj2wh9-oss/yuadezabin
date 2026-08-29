@@ -230,11 +230,13 @@
     var isHoliday = (S.settings.holidays || []).indexOf(date) >= 0;
     wrap.appendChild(el('div', { class: 'pad' }, [
       ui.btn(isHoliday ? 'この日の休みを解除' : 'この日を休みにする', 'ghost full', function () {
+        var before = DL.forms.planSnapshot();
         var hs = S.settings.holidays || [];
         S.updateSettings({ holidays: isHoliday ? hs.filter(function (x) { return x !== date; }) : hs.concat([date]) });
-        ui.toast(isHoliday ? '休みを解除しました' : '休みに設定し、ノルマを再配分しました');
+        ui.toast(isHoliday ? '休みを解除しました' : '休みに設定しました');
+        if (!isHoliday) DL.forms.offerReschedule(before);
       }),
-      el('p', { class: 'muted small', text: '休みにすると、その日のノルマは他の稼働日へ自動で振り分けられます。' })
+      el('p', { class: 'muted small', text: '休みにすると、その日のノルマはまずタスクの期間内で振り分け直します。期間内に収まらないときは、締切までの稼働日へ組み直すか確認します。' })
     ]));
 
     root.appendChild(wrap);

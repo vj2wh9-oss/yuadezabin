@@ -6,7 +6,9 @@
   /* 作業しない曜日／日 */
   function offDaysOf(project) {
     var s = DL.store.settings;
-    return (project && project.offDays) ? project.offDays : (s.offDays || []);
+    var list = (project && project.offDays) ? project.offDays : (s.offDays || []);
+    // 7曜日すべてが休みだと何も割り当てられなくなるので、その場合だけ無視する
+    return list.length >= 7 ? [] : list;
   }
   function holidaysOf(project) {
     var s = DL.store.settings;
@@ -18,11 +20,9 @@
     return true;
   }
 
-  // 期間内の稼働日一覧。稼働日が0になる場合は全日を返す（設定ミスで破綻させない）
+  // 期間内の稼働日一覧。全部が休みなら空を返す（勝手に休みへ割り当てない）
   function workdays(project, from, to) {
-    var all = U.rangeDays(from, to);
-    var w = all.filter(function (d) { return isWorkday(project, d); });
-    return w.length ? w : all;
+    return U.rangeDays(from, to).filter(function (d) { return isWorkday(project, d); });
   }
 
   /* 数量 qty を n 日に均等配分（合計は必ず qty と一致） */
@@ -47,6 +47,7 @@
     if (U.cmp(task.start, task.end) > 0) return empty;
 
     var days = workdays(project, task.start, task.end);
+    if (!days.length) return empty;      // 期間内がすべて休み
     var byDate = {}, out = [];
 
     if (task.unit === 'none' || task.qty === null || task.qty === undefined) {
@@ -277,6 +278,10 @@
           return;
         }
         var pace = taskPace(p, t, today);
+        if (U.isISO(t.end) && !pace.plan.dayCount) {
+          out.push({ level: 'danger', project: p, task: t, text: t.name + ' の期間内がすべて休みです' });
+          return;
+        }
         if (pace.overdue) {
           out.push({ level: 'danger', project: p, task: t, text: t.name + ' が期間を過ぎています（残り ' + pace.remaining + unit(t) + '）' });
         } else if (pace.behind > 0) {
@@ -301,14 +306,17 @@
     if (U.num(opts.buffer, 0) > 0) end = U.addDays(end, -U.num(opts.buffer, 0));
     if (U.cmp(start, end) > 0) return { ok: false, reason: '期間が足りません（開始日が締切を過ぎています）' };
 
+    var only = opts.only || (opts.onlyEmpty ? 'empty' : 'all');
     var targets = (project.tasks || []).filter(function (t) {
-      if (opts.onlyEmpty) return !U.isISO(t.start) || !U.isISO(t.end);
+      if (only === 'empty') return !U.isISO(t.start) || !U.isISO(t.end);
+      if (only === 'incomplete') return !taskIsComplete(t);
       return true;
     });
     if (!targets.length) return { ok: false, reason: '対象のタスクがありません' };
 
     var days = workdays(project, start, end);
     var n = days.length;
+    if (!n) return { ok: false, reason: '期間内に作業できる日がありません（休みの設定を見直してください）' };
 
     if (n < targets.length) {
       // 日数がタスク数より少ない場合は1日ずつ（最終日に寄せる）
@@ -416,6 +424,19 @@
     return { ok: true, nextDate: next.date, nextQty: next.qty };
   }
 
+  /**
+   * 未完了の工程を「今日（または作業開始日）〜締切」の稼働日へ割り振り直す。
+   * 休みを増やしてタスクの枠内に収まらなくなったときに使う。
+   */
+  function rescheduleRemaining(project, today) {
+    today = today || U.today();
+    var from = U.maxDate(today, U.isISO(project.startDate) ? project.startDate : today);
+    var to = project.deadline;
+    if (!U.isISO(to)) return { ok: false, reason: '締切が未設定です' };
+    if (U.cmp(from, to) > 0) return { ok: false, reason: '締切を過ぎているため組み直せません' };
+    return autoSchedule(project, { start: from, end: to, only: 'incomplete' });
+  }
+
   /* 今日／指定期間のノルマ合計 */
   function loadOfDay(date) {
     var entries = dayEntries(date);
@@ -492,7 +513,7 @@
     deadlineLabel: deadlineLabel, deadlineShort: deadlineShort,
     dayEntries: dayEntries, dayMarks: dayMarks, timeline: timeline, alerts: alerts,
     actualPace: actualPace, isOverloaded: isOverloaded, overloadedDays: overloadedDays,
-    deferDay: deferDay,
+    deferDay: deferDay, rescheduleRemaining: rescheduleRemaining,
     autoSchedule: autoSchedule, loadOfDay: loadOfDay, buildICS: buildICS, ICS_ALARMS: ICS_ALARMS
   };
 })(window.DL);

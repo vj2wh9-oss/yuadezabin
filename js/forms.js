@@ -34,9 +34,11 @@
         startNote.appendChild(el('span', { class: 'muted small', text: '開始日が締切より後になっています。' }));
         return;
       }
+      var wd = sc.workdays(p, s, d).length;
       startNote.appendChild(el('div', { class: 'preview-main' }, [
-        el('strong', { text: '作業できる日数 ' + sc.workdays(p, s, d).length + '日' }),
-        el('span', { class: 'muted', text: '　' + U.fmtMD(s) + '〜' + U.fmtMD(d) })
+        el('strong', { text: '作業できる日数 ' + wd + '日' }),
+        el('span', { class: 'muted', text: '　' + U.fmtMD(s) + '〜' + U.fmtMD(d) +
+          (wd ? '' : '（すべて休みです。曜日や休業日の設定を見直してください）') })
       ]));
     }
     startInput.addEventListener('change', updateStartNote);
@@ -637,6 +639,53 @@
     });
   }
 
+  /* =============== 休みの変更にともなう組み直し =============== */
+
+  // 変更前の「各タスクが使える稼働日数」を控えておく
+  function planSnapshot() {
+    var m = {};
+    S.activeProjects().forEach(function (p) {
+      (p.tasks || []).forEach(function (t) {
+        if (sc.taskIsComplete(t)) return;
+        m[p.id + '|' + t.id] = sc.taskPlan(p, t).dayCount;
+      });
+    });
+    return m;
+  }
+
+  /**
+   * 休みを増やして作業できる日が減った案件を見つけ、組み直しを提案する。
+   * @param {object} before planSnapshot() の戻り値
+   */
+  function offerReschedule(before) {
+    var hit = {};
+    S.activeProjects().forEach(function (p) {
+      (p.tasks || []).forEach(function (t) {
+        if (sc.taskIsComplete(t)) return;
+        var key = p.id + '|' + t.id;
+        if (before[key] === undefined) return;
+        if (sc.taskPlan(p, t).dayCount < before[key]) hit[p.id] = p;
+      });
+    });
+    var ids = Object.keys(hit);
+    if (!ids.length) return;
+
+    var names = ids.map(function (id) { return hit[id].title; });
+    ui.confirm(
+      '休みの設定で ' + names.join('、') + ' の作業できる日が減りました。' +
+      '今日から締切までの稼働日に、未完了の工程を割り振り直しますか？（そのままだと1日のノルマだけが増えます）',
+      { title: 'スケジュールの組み直し', okText: '組み直す', cancelText: 'そのまま' }
+    ).then(function (ok) {
+      if (!ok) return;
+      var done = 0, failed = [];
+      ids.forEach(function (id) {
+        var r = sc.rescheduleRemaining(S.getProject(id));
+        if (r.ok) done++; else failed.push(hit[id].title + '：' + r.reason);
+      });
+      ui.toast(failed.length ? failed[0] : done + '件のスケジュールを組み直しました', failed.length ? 'warn' : '');
+    });
+  }
+
   /* =============== 自動スケジュール =============== */
 
   function autoScheduleSheet(pid) {
@@ -645,7 +694,11 @@
     var startI = ui.input({ type: 'date', value: p.startDate || U.today() });
     var endI = ui.input({ type: 'date', value: p.deadline || '' });
     var bufI = ui.input({ type: 'number', inputmode: 'numeric', min: 0, value: U.num(S.settings.bufferDays, 1) });
-    var scope = ui.segmented([{ value: 'all', label: '全タスク' }, { value: 'empty', label: '未設定のみ' }], 'all');
+    var scope = ui.segmented([
+      { value: 'all', label: '全タスク' },
+      { value: 'incomplete', label: '未完了のみ' },
+      { value: 'empty', label: '未設定のみ' }
+    ], 'all');
 
     var body = el('div', { class: 'form' }, [
       el('p', { class: 'muted small', text: '重みに応じて稼働日を配分し、各タスクの期間を順番に割り当てます。ここで指定した開始日は案件の「作業開始日」として保存されます。' }),
@@ -661,7 +714,7 @@
         ui.btn('割り当てる', 'primary', function () {
           var r = sc.autoSchedule(p, {
             start: startI.value, end: endI.value,
-            buffer: U.num(bufI.value, 0), onlyEmpty: scope.dataset.value === 'empty'
+            buffer: U.num(bufI.value, 0), only: scope.dataset.value
           });
           if (!r.ok) { ui.toast(r.reason, 'warn'); return; }
           S.updateProject(p.id, { startDate: startI.value, deadline: endI.value });
@@ -693,7 +746,7 @@
         return;
       }
       var days = sc.workdays(p, s, p.deadline).length;
-      var per = (p.tasks || []).length ? Math.ceil(days / p.tasks.length) : 0;
+      var per = (p.tasks || []).length && days ? Math.ceil(days / p.tasks.length) : 0;
       note.appendChild(el('div', { class: 'preview-main' }, [
         el('strong', { text: '作業できる日数 ' + days + '日' }),
         el('span', { class: 'muted', text: '　' + U.fmtMD(s) + '〜' + U.fmtMD(p.deadline) + (per ? '（1タスクあたり約' + per + '日）' : '') })
@@ -794,6 +847,7 @@
     projectForm: projectForm, taskForm: taskForm, progressSheet: progressSheet,
     planOverrideSheet: planOverrideSheet, autoScheduleSheet: autoScheduleSheet,
     addProgressSheet: addProgressSheet, deferSheet: deferSheet,
+    planSnapshot: planSnapshot, offerReschedule: offerReschedule,
     templateSheet: templateSheet, startDateSheet: startDateSheet
   };
 })(window.DL);

@@ -17,10 +17,13 @@
         offWrap.appendChild(el('button', {
           class: 'wday' + (on ? ' on' : ''), text: U.wdName(d),
           onclick: function () {
+            var before = DL.forms.planSnapshot();
             var list = (S.settings.offDays || []).slice();
             var idx = list.indexOf(d);
-            if (idx >= 0) list.splice(idx, 1); else list.push(d);
+            var adding = idx < 0;
+            if (adding) list.push(d); else list.splice(idx, 1);
             S.updateSettings({ offDays: list });
+            if (adding) DL.forms.offerReschedule(before);
           }
         }));
       })(i);
@@ -45,11 +48,13 @@
       addDate,
       ui.btn('追加', 'primary', function () {
         if (!U.isISO(addDate.value)) return;
+        var before = DL.forms.planSnapshot();
         var list = (S.settings.holidays || []).slice();
         if (list.indexOf(addDate.value) < 0) list.push(addDate.value);
         list.sort();
         S.updateSettings({ holidays: list });
         ui.toast('休業日を追加しました');
+        DL.forms.offerReschedule(before);
       })
     ]));
     var chips = el('div', { class: 'row-wrap' });

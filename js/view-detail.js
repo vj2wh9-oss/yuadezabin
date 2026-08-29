@@ -130,6 +130,14 @@
       ui.btn('タスクを追加', 'ghost', function () { DL.forms.taskForm(p.id); }, 'plus'),
       ui.btn('基本タスクを追加', 'ghost', function () { DL.forms.templateSheet(p.id); }, 'task'),
       ui.btn('自動スケジュール', 'primary', function () { DL.forms.autoScheduleSheet(p.id); }, 'refresh'),
+      ui.btn('未完了の工程を今日から組み直す', 'ghost', function () {
+        ui.confirm('未完了の工程を、今日から締切までの稼働日に割り振り直します。完了済みの工程はそのままです。', { okText: '組み直す' })
+          .then(function (ok) {
+            if (!ok) return;
+            var r = sc.rescheduleRemaining(p);
+            ui.toast(r.ok ? '組み直しました' : r.reason, r.ok ? '' : 'warn');
+          });
+      }, 'arrowRight'),
       ui.btn(p.status === 'done' ? '進行中に戻す' : '案件を完了にする', 'ghost', function () {
         S.updateProject(p.id, { status: p.status === 'done' ? 'active' : 'done' });
         ui.toast(p.status === 'done' ? '完了にしました' : '進行中に戻しました');
@@ -165,6 +173,7 @@
     else chips.push(ui.chip('期間未設定', 'warn'));
     if (t.unit !== 'none') chips.push(ui.chip(pace.done + '/' + pace.total + unit, complete ? 'ok' : 'ghosty'));
     if (pace.plan.dayCount) chips.push(ui.chip(pace.plan.dayCount + '日', 'ghosty'));
+    else if (U.isISO(t.start)) chips.push(ui.chip('期間内がすべて休み', 'danger'));
     if (!complete && pace.behind > 0) chips.push(ui.chip('遅れ' + pace.behind + unit, 'danger'));
     if (!complete && pace.overdue) chips.push(ui.chip('期間超過', 'danger'));
     if (!complete && pace.remainingDays > 0 && t.unit !== 'none') {
