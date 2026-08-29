@@ -41,6 +41,10 @@
     cloud: '<path d="M6.6 19.5h10.2a3.9 3.9 0 0 0 .5-7.8 5.4 5.4 0 0 0-10.4-1.1 3.9 3.9 0 0 0-.3 8.9z"/>',
     // ファイル：見出しの付いた書類入れ
     folder: '<path d="M3.5 5.5h6.2l2 2.8h8.8v11.2h-17z"/><path d="M3.5 10.4h17"/>',
+    // 一覧で大きく出すときの塗りつぶし版
+    folderFill: '<path d="M2.5 5h6.9l2 2.8h10.1v11.2h-19z" fill="currentColor" stroke="none"/>',
+    fileFill: '<path d="M5 3h9l5 5v13H5z" fill="currentColor" stroke="none"/>' +
+              '<path d="M14 3v5h5" fill="none" stroke="var(--card)" stroke-width="1.4"/>',
 
     /* 操作 */
     plus: '<path d="M12 4.5v15M4.5 12h15"/>',

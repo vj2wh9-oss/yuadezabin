@@ -999,9 +999,18 @@
     return state.settings.sync;
   }
 
-  /* まだ何も入っていない端末か（失うものが無いので、サーバーの内容をそのまま受け取れる） */
+  /**
+   * まだ何も入っていない端末か（失うものが無いので、サーバーの内容をそのまま受け取れる）。
+   * 数え忘れると、そこだけ送られず・黙って消えることになるので、
+   * 同期の対象になるものはすべて見る。
+   */
   function isEmpty() {
-    return !state.projects.length && !issuers().length && !clients().length;
+    var s = state.settings;
+    return !state.projects.length
+      && !issuers().length
+      && !clients().length
+      && !(s.folders || []).length
+      && !Object.keys(s.fileFolders || {}).length;
   }
 
   /* 最後に同期してから、この端末で変更があったか */

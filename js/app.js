@@ -171,9 +171,11 @@
 
   function updateFab() {
     // カレンダーは画面いっぱいに出すので、重なるボタンは置かない
-    if (['settings', 'calendar', 'docs', 'doc', 'sales', 'files'].indexOf(route.name) >= 0) { fab.hidden = true; return; }
+    if (['settings', 'calendar', 'docs', 'doc', 'sales'].indexOf(route.name) >= 0) { fab.hidden = true; return; }
     fab.hidden = false;
     fab.onclick = function () {
+      // ファイル画面では、ここがファイルの追加口になる
+      if (route.name === 'files') { DL.views.files.pickFiles(); return; }
       if (route.name === 'project') {
         var p = S.getProject(route.params.id);
         if (p) { addMenu(p); return; }

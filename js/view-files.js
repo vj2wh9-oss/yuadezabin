@@ -1,4 +1,5 @@
 /* 共有ファイル：PC と iPhone で同じ置き場を見る画面。
+   「ファイル」アプリのように、フォルダとファイルを同じ並びで一覧する。
    フォルダはアプリ側のデータで持ち、同期でそのまま両端末に行き渡る。 */
 (function (DL) {
   'use strict';
@@ -13,7 +14,7 @@
   var uploads = [];        // 進行中のアップロード {name, pct, error}
 
   function render(root) {
-    var wrap = el('div', { class: 'page' });
+    var wrap = el('div', { class: 'page files-page' });
 
     if (!F.ready()) {
       wrap.appendChild(ui.empty(
@@ -27,9 +28,7 @@
     // 開いていたフォルダが消えていたら、いちばん上に戻す
     if (cwd && !S.getFolder(cwd)) cwd = '';
 
-    wrap.appendChild(breadcrumb());
-    wrap.appendChild(dropZone());
-
+    wrap.appendChild(toolbar());
     if (uploads.length) wrap.appendChild(uploadList());
 
     if (loading && !cache) {
@@ -50,40 +49,33 @@
     if (!cache) { root.appendChild(wrap); load(); return; }
 
     var all = cache.files || [];
-    var here = all.filter(function (f) { return S.fileFolder(f.id) === cwd; });
+    var here = all.filter(function (f) { return S.fileFolder(f.id) === cwd; })
+      .sort(function (a, b) { return U.cmp(a.name, b.name); });
+    // フォルダはいちばん上の階層にだけ置く（入れ子にはしない）
+    var subs = cwd ? [] : S.folders().slice().sort(function (a, b) { return U.cmp(a.name, b.name); });
 
-    /* ---- フォルダ ---- */
-    if (!cwd) {
-      var fl = S.folders().slice().sort(function (a, b) { return U.cmp(a.name, b.name); });
-      wrap.appendChild(ui.section('フォルダ', ui.btn('追加', 'ghost tiny', function () { newFolder(); }, 'plus')));
-      if (!fl.length) {
-        wrap.appendChild(el('p', { class: 'muted small pad', text: 'フォルダはまだありません。「追加」で作れます（両方の端末に同期されます）。' }));
-      } else {
-        var fbox = el('div', { class: 'list' });
-        fl.forEach(function (f) { fbox.appendChild(folderRow(f, all)); });
-        wrap.appendChild(fbox);
-      }
-    }
+    /* ---- フォルダとファイルを同じ並びで ---- */
+    var grid = el('div', { class: 'fgrid' });
+    subs.forEach(function (f) { grid.appendChild(folderTile(f, all)); });
+    here.forEach(function (f) { grid.appendChild(fileTile(f)); });
 
-    /* ---- ファイル ---- */
-    var label = cwd ? 'このフォルダのファイル' : '未分類のファイル';
-    wrap.appendChild(ui.section(label, el('span', { class: 'muted small', text: here.length + '件' })));
-    if (!here.length) {
-      wrap.appendChild(ui.empty(cwd ? 'このフォルダにはまだファイルがありません。' : 'ここにあるファイルはありません。'));
+    if (!subs.length && !here.length) {
+      wrap.appendChild(ui.empty(cwd ? 'このフォルダは空です。' : 'まだ何もありません。右下の＋から追加できます。'));
     } else {
-      var list = el('div', { class: 'list' });
-      here.forEach(function (f) { list.appendChild(row(f)); });
-      wrap.appendChild(list);
+      wrap.appendChild(grid);
     }
 
-    /* ---- 手元へのバックアップ（いちばん上のときだけ出す） ---- */
+    // PC ではこの一帯にドラッグ＆ドロップできる
+    dropTarget(wrap);
+
+    /* ---- 手元へのバックアップ（いちばん上のときだけ） ---- */
     if (!cwd) {
-      wrap.appendChild(ui.section('手元にバックアップ'));
-      wrap.appendChild(el('div', { class: 'card' }, [
-        el('p', { class: 'muted small', text: 'サーバー上のファイルをまとめて1つのZIPにして保存します。フォルダ分けもそのまま再現します。PCで実行して、外付けやローカルに残しておくと安心です。' }),
-        ui.btn('すべてZIPで保存（' + all.length + '件・' + size(cache.total) + '）', 'primary full',
-          function () { backupAll(all); }, 'arrowDown'),
-        ui.btn('一覧を読み込み直す', 'ghost full', function () { load(true); }, 'refresh')
+      wrap.appendChild(el('div', { class: 'files-foot' }, [
+        el('span', { class: 'muted small', text: all.length + '件・' + size(cache.total) }),
+        el('div', { class: 'row-wrap' }, [
+          ui.btn('すべてZIPで保存', 'ghost tiny', function () { backupAll(all); }, 'arrowDown'),
+          ui.btn('読み込み直す', 'ghost tiny', function () { load(true); }, 'refresh')
+        ])
       ]));
     }
 
@@ -91,18 +83,76 @@
     load();     // 古ければ裏で取り直す（表示は保ったまま）
   }
 
-  /* ---------------- 現在地 ---------------- */
+  /* ---------------- 上の帯 ---------------- */
 
-  function breadcrumb() {
+  function toolbar() {
     var f = cwd ? S.getFolder(cwd) : null;
-    if (!f) return el('div', { class: 'crumb' }, [
-      el('span', { class: 'crumb-here' }, [ui.icon('folder', 16), el('span', { text: 'すべて' })])
-    ]);
-    return el('div', { class: 'crumb' }, [
+    // いちばん上では、上のバーに「ファイル」と出ているので見出しは繰り返さない
+    if (!f) {
+      return el('div', { class: 'ftool' }, [
+        el('span', { class: 'ftool-here' }),
+        ui.btn('フォルダを作る', 'ghost tiny', function () { newFolder(); }, 'plus')
+      ]);
+    }
+    return el('div', { class: 'ftool' }, [
       el('button', { class: 'crumb-up', onclick: function () { cwd = ''; DL.app.render(); } }, [
-        ui.icon('chevronLeft', 15), el('span', { text: 'すべて' })
+        ui.icon('chevronLeft', 15), el('span', { text: 'ファイル' })
       ]),
-      el('span', { class: 'crumb-here' }, [ui.icon('folder', 16), el('span', { text: f.name })])
+      el('span', { class: 'ftool-here', text: f.name }),
+      el('button', {
+        class: 'iconbtn small', 'aria-label': 'フォルダの操作',
+        onclick: function () { folderMenu(f, countIn(f.id)); }
+      }, ui.icon('more', 18))
+    ]);
+  }
+
+  function countIn(folderId) {
+    return ((cache && cache.files) || []).filter(function (x) { return S.fileFolder(x.id) === folderId; }).length;
+  }
+
+  /* ---------------- タイル ---------------- */
+
+  function folderTile(f, all) {
+    var inside = all.filter(function (x) { return S.fileFolder(x.id) === f.id; });
+    var bytes = inside.reduce(function (s, x) { return s + x.size; }, 0);
+    return tile({
+      icon: 'folderFill',
+      cls: 'is-folder',
+      name: f.name,
+      note: inside.length ? inside.length + '項目・' + size(bytes) : '0項目',
+      onOpen: function () { cwd = f.id; DL.app.render(); },
+      onMenu: function () { folderMenu(f, inside.length); }
+    });
+  }
+
+  function fileTile(f) {
+    var p = f.projectId ? S.getProject(f.projectId) : null;
+    return tile({
+      icon: iconFor(f),
+      cls: 'is-file',
+      name: f.name,
+      note: size(f.size) + '・' + when(f.uploadedAt),
+      badge: p ? p.title : '',
+      onOpen: function () {
+        ui.toast('取得しています…');
+        F.download(f).catch(function (e) { ui.toast(e.message, 'danger'); });
+      },
+      onMenu: function () { fileMenu(f); }
+    });
+  }
+
+  function tile(o) {
+    return el('div', { class: 'ftile ' + (o.cls || '') }, [
+      el('button', { class: 'ftile-main', onclick: o.onOpen }, [
+        el('span', { class: 'ftile-icon' }, ui.icon(o.icon, 46)),
+        el('span', { class: 'ftile-name', text: o.name }),
+        el('span', { class: 'ftile-note', text: o.note }),
+        o.badge ? el('span', { class: 'ftile-badge', text: o.badge }) : null
+      ]),
+      el('button', {
+        class: 'ftile-more', 'aria-label': o.name + ' の操作',
+        onclick: function (e) { e.stopPropagation(); o.onMenu(); }
+      }, ui.icon('more', 16))
     ]);
   }
 
@@ -111,7 +161,7 @@
   function newFolder() {
     var input = ui.input({ placeholder: '例）納品データ / 資料 / ラフ', maxlength: 40 });
     var close = ui.sheet({
-      title: 'フォルダを追加',
+      title: 'フォルダを作る',
       body: el('div', { class: 'form' }, [
         ui.field('フォルダ名', input, '作ったフォルダは同期で両方の端末に出ます')
       ]),
@@ -128,34 +178,11 @@
     setTimeout(function () { input.focus(); }, 100);
   }
 
-  function folderRow(f, all) {
-    var n = all.filter(function (x) { return S.fileFolder(x.id) === f.id; }).length;
-    var bytes = all.filter(function (x) { return S.fileFolder(x.id) === f.id; })
-      .reduce(function (s, x) { return s + x.size; }, 0);
-    return el('div', { class: 'row folder' }, [
-      el('button', {
-        class: 'row-main folder-main',
-        onclick: function () { cwd = f.id; DL.app.render(); }
-      }, [
-        el('div', { class: 'row-title' }, [ui.icon('folder', 17), el('span', { text: f.name })]),
-        el('div', { class: 'row-sub' }, [
-          ui.chip(n + '件', 'ghosty'),
-          n ? ui.chip(size(bytes), 'ghosty') : null
-        ])
-      ]),
-      el('button', {
-        class: 'iconbtn small', 'aria-label': 'フォルダの操作',
-        onclick: function () { folderMenu(f, n); }
-      }, ui.icon('more', 18)),
-      el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
-    ]);
-  }
-
   function folderMenu(f, count) {
     var close = ui.sheet({
       title: f.name,
       body: el('div', { class: 'menu' }, [
-        item('folder', '開く', function () { close(); cwd = f.id; DL.app.render(); }),
+        cwd === f.id ? null : item('folder', '開く', function () { close(); cwd = f.id; DL.app.render(); }),
         item('edit', '名前を変える', function () { close(); renameFolder(f); }),
         item('trash', '削除する', function () { close(); deleteFolder(f, count); })
       ])
@@ -200,11 +227,11 @@
           el('span', { class: 'alert-icon' }, ui.icon('alert', 17)),
           el('span', { text: 'このフォルダには ' + count + '件のファイルがあります。' })
         ]),
-        choice('フォルダだけ削除', 'ファイルは残り、「未分類」に移ります。', function () {
+        choice('フォルダだけ削除', 'ファイルは残り、いちばん上の階層に移ります。', function () {
           close();
           if (cwd === f.id) cwd = '';
           S.removeFolder(f.id);
-          ui.toast('フォルダを削除しました（ファイルは未分類へ）');
+          ui.toast('フォルダを削除しました（ファイルは残っています）');
         }, true),
         choice('中のファイルごと削除', 'サーバーからファイルも消します。元に戻せません。', function () {
           close();
@@ -235,44 +262,41 @@
     ]);
   }
 
-  /* ---------------- 受け取り口 ---------------- */
+  /* ---------------- 追加 ---------------- */
 
-  function dropZone() {
+  /* ＋ボタンから呼ばれる。いま開いているフォルダに入る */
+  function pickFiles() {
     var input = el('input', { type: 'file', multiple: true, style: { display: 'none' } });
+    document.body.appendChild(input);
     input.addEventListener('change', function () {
       send(Array.prototype.slice.call(input.files));
-      input.value = '';
+      input.remove();
     });
+    input.click();
+  }
 
-    var f = cwd ? S.getFolder(cwd) : null;
-    var zone = el('div', { class: 'dropzone', onclick: function () { input.click(); } }, [
-      ui.icon('arrowUp', 26),
-      el('strong', { text: f ? '「' + f.name + '」に追加' : 'ファイルを追加' }),
-      el('span', { class: 'muted small', text: 'タップして選ぶ / ここにドラッグ＆ドロップ（PC）' }),
-      el('span', { class: 'muted small', text: '1ファイル100MBまで' }),
-      input
-    ]);
-
-    // ドラッグ＆ドロップ（PC）。ページ全体で受けると誤爆するのでこの枠だけ
+  /* PC からのドラッグ＆ドロップ。画面のどこに落としても受ける */
+  function dropTarget(wrap) {
     ['dragenter', 'dragover'].forEach(function (ev) {
-      zone.addEventListener(ev, function (e) {
+      wrap.addEventListener(ev, function (e) {
+        if (!e.dataTransfer || e.dataTransfer.types.indexOf('Files') < 0) return;
         e.preventDefault(); e.stopPropagation();
-        zone.classList.add('over');
+        wrap.classList.add('dropping');
       });
     });
     ['dragleave', 'drop'].forEach(function (ev) {
-      zone.addEventListener(ev, function (e) {
+      wrap.addEventListener(ev, function (e) {
         e.preventDefault(); e.stopPropagation();
-        zone.classList.remove('over');
+        if (ev === 'dragleave' && wrap.contains(e.relatedTarget)) return;
+        wrap.classList.remove('dropping');
       });
     });
-    zone.addEventListener('drop', function (e) {
+    wrap.addEventListener('drop', function (e) {
       var dt = e.dataTransfer;
-      if (!dt) return;
-      var list = dt.files ? Array.prototype.slice.call(dt.files) : [];
+      if (!dt || !dt.files) return;
+      var list = Array.prototype.slice.call(dt.files);
       if (list.length) send(list);
     });
-    return zone;
   }
 
   function uploadList() {
@@ -351,62 +375,43 @@
     });
   }
 
-  function row(f) {
-    var p = f.projectId ? S.getProject(f.projectId) : null;
-    return el('div', { class: 'row file' }, [
-      el('span', { class: 'file-icon' }, ui.icon(iconFor(f), 18)),
-      el('button', {
-        class: 'row-main file-main',
-        onclick: function () {
-          ui.toast('取得しています…');
-          F.download(f).catch(function (e) { ui.toast(e.message, 'danger'); });
-        }
-      }, [
-        el('div', { class: 'row-title' }, [el('span', { text: f.name })]),
-        el('div', { class: 'row-sub' }, [
-          ui.chip(size(f.size), 'ghosty'),
-          ui.chip(when(f.uploadedAt), 'soft'),
-          f.by ? ui.chip(f.by, 'ghosty') : null,
-          p ? ui.iconChip('projects', p.title, 'ghosty') : null
-        ])
-      ]),
-      el('button', {
-        class: 'iconbtn small', 'aria-label': 'ファイルの操作',
-        onclick: function () { menu(f); }
-      }, ui.icon('more', 18))
-    ]);
-  }
-
-  function menu(f) {
+  function fileMenu(f) {
     var close = ui.sheet({
       title: f.name,
-      body: el('div', { class: 'menu' }, [
-        item('arrowDown', '保存する', function () {
-          close();
-          ui.toast('取得しています…');
-          F.download(f).catch(function (e) { ui.toast(e.message, 'danger'); });
-        }),
-        item('folder', 'フォルダを移す', function () { close(); moveTo(f); }),
-        item('projects', f.projectId ? '案件を変える' : '案件に紐づける', function () {
-          close(); assign(f);
-        }),
-        item('trash', '削除する', function () {
-          close();
-          ui.confirm('「' + f.name + '」をサーバーから削除します。元に戻せません。', { danger: true, okText: '削除' })
-            .then(function (ok) {
-              if (!ok) return;
-              F.remove(f.id).then(function () {
-                ui.toast('削除しました'); load(true);
-              }).catch(function (e) { ui.toast(e.message, 'danger'); });
-            });
-        })
+      body: el('div', {}, [
+        el('div', { class: 'menu' }, [
+          item('arrowDown', '保存する', function () {
+            close();
+            ui.toast('取得しています…');
+            F.download(f).catch(function (e) { ui.toast(e.message, 'danger'); });
+          }),
+          item('folder', 'フォルダを移す', function () { close(); moveTo(f); }),
+          item('projects', f.projectId ? '案件を変える' : '案件に紐づける', function () {
+            close(); assign(f);
+          }),
+          item('trash', '削除する', function () {
+            close();
+            ui.confirm('「' + f.name + '」をサーバーから削除します。元に戻せません。', { danger: true, okText: '削除' })
+              .then(function (ok) {
+                if (!ok) return;
+                F.remove(f.id).then(function () {
+                  ui.toast('削除しました'); load(true);
+                }).catch(function (e) { ui.toast(e.message, 'danger'); });
+              });
+          })
+        ]),
+        el('div', { class: 'row-sub pad' }, [
+          ui.chip(size(f.size), 'ghosty'),
+          ui.chip(when(f.uploadedAt), 'soft'),
+          f.by ? ui.chip(f.by, 'ghosty') : null
+        ])
       ])
     });
   }
 
   /* フォルダの移動。対応表を書き換えるだけなので一瞬で終わる */
   function moveTo(f) {
-    var opts = [{ value: '', label: '（未分類）' }].concat(
+    var opts = [{ value: '', label: '（いちばん上）' }].concat(
       S.folders().map(function (x) { return { value: x.id, label: x.name }; })
     );
     var sel = ui.select(opts, S.fileFolder(f.id));
@@ -422,7 +427,7 @@
           S.setFileFolder(f.id, sel.value);
           close();
           var to = sel.value ? S.getFolder(sel.value) : null;
-          ui.toast(to ? '「' + to.name + '」へ移しました' : '未分類へ移しました');
+          ui.toast(to ? '「' + to.name + '」へ移しました' : 'いちばん上へ移しました');
         })
       ]
     });
@@ -531,15 +536,15 @@
     var t = f.type || '';
     var name = (f.name || '').toLowerCase();
     if (t.indexOf('image/') === 0) return 'illust';
-    if (t === 'application/pdf' || /\.pdf$/.test(name)) return 'receipt';
     if (t.indexOf('zip') >= 0 || /\.(zip|rar|7z)$/.test(name)) return 'backup';
     if (/\.(psd|clip|sai|ai|xcf)$/.test(name)) return 'design';
-    return 'task';
+    return 'fileFill';
   }
 
   DL.views = DL.views || {};
   DL.views.files = {
     render: render,
+    pickFiles: pickFiles,
     // タブに入るたびに取り直す（もう片方の端末が上げたものをすぐ見せる）
     entered: function () { if (F.ready()) load(true); },
     reset: function () { cache = null; fetchedAt = 0; error = ''; cwd = ''; }
