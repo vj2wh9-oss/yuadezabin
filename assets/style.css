@@ -18,6 +18,7 @@
   --accent2: #38bdf8;        /* 明るい青（副次） */
   --indigo: #6172e8;
   --ok: #12a5b8;             /* 完了（青緑） */
+  --event: #35b364;          /* 即売会の当日（緑） */
   --warn: #d9a441;
   --danger: #e0555f;
 
@@ -45,6 +46,7 @@
     --accent2: #0b7fb8;
     --indigo: #4356c8;
     --ok: #0b7f8f;
+    --event: #1d8f4c;
     --warn: #9a6a05;
     --danger: #c62f3c;
     color-scheme: light;
@@ -286,6 +288,10 @@ h1, h2, h3, p { margin: 0; }
 }
 .cal-cell.out { opacity: .4; }
 .cal-cell.off { background: var(--card2); }
+/* 入稿日・締切日はうっすら赤、イベント当日はうっすら緑。
+   .off や .today より後に置いて、休みの日でも色が分かるようにする */
+.cal-cell.has-due { background: color-mix(in srgb, var(--danger) 11%, var(--card)); }
+.cal-cell.has-event { background: color-mix(in srgb, var(--event) 15%, var(--card)); }
 .cal-cell.today { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .cal-top { display: flex; align-items: center; justify-content: space-between; gap: 2px; flex: none; }
 .cal-n { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }

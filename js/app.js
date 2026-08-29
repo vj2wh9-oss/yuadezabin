@@ -37,11 +37,11 @@
     view.className = 'view view-' + route.name;
 
     var titles = {
-      home: '締切カレンダー', calendar: 'カレンダー', projects: '案件',
+      home: 'METEO365', calendar: 'カレンダー', projects: '案件',
       settings: '設定', day: '日別', project: '案件の詳細',
       docs: '請求書・領収書', doc: '書類', sales: '売上', files: 'ファイル'
     };
-    titleEl.textContent = titles[route.name] || '締切カレンダー';
+    titleEl.textContent = titles[route.name] || 'METEO365';
 
     var tab = { home: 'home', calendar: 'calendar', day: 'calendar', projects: 'projects', project: 'projects', docs: 'projects', doc: 'projects', sales: 'projects', files: 'files', settings: 'settings' }[route.name];
     U.$$('.tab').forEach(function (t) { t.classList.toggle('on', t.dataset.tab === tab); });

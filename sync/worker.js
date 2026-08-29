@@ -11,7 +11,7 @@
  *                     rev が食い違えば 409 と現在の内容を返す（勝手に上書きしない）
  *
  * 共有ファイル（R2）
- *   GET    /v1/files          → { files:[{id,name,size,type,uploadedAt,projectId,by}], total }
+ *   GET    /v1/files          → { files:[{id,name,folder,size,type,uploadedAt,projectId,by}], total }
  *   PUT    /v1/files/<id>     → 本文がそのままファイル。名前などは x-file-* ヘッダで渡す
  *   GET    /v1/files/<id>     → ファイルそのもの
  *   DELETE /v1/files/<id>     → 削除
@@ -156,6 +156,8 @@ async function files(request, env, cors, url, id) {
           out.push({
             id: o.key.slice(prefix.length),
             name: m.name ? decodeURIComponent(m.name) : o.key.slice(prefix.length),
+            // 置いたときのフォルダ。まだ同期していない端末でも置き場所が分かるようにする
+            folder: m.folder ? decodeURIComponent(m.folder) : '',
             size: o.size,
             type: (o.httpMetadata && o.httpMetadata.contentType) || '',
             uploadedAt: m.uploadedAt || o.uploaded,
@@ -185,6 +187,7 @@ async function files(request, env, cors, url, id) {
         httpMetadata: { contentType: request.headers.get('x-file-type') || 'application/octet-stream' },
         customMetadata: {
           name: request.headers.get('x-file-name') || rest,   // URLエンコード済みで受け取る
+          folder: request.headers.get('x-file-folder') || '', // 同上。'資料/ラフ' のようなパス
           projectId: request.headers.get('x-file-project') || '',
           by: (request.headers.get('x-file-by') || '').slice(0, 40),
           uploadedAt: new Date().toISOString()
@@ -228,7 +231,7 @@ function corsHeaders(env) {
   return {
     'access-control-allow-origin': env.ALLOW_ORIGIN || '*',
     'access-control-allow-methods': 'GET, PUT, DELETE, OPTIONS',
-    'access-control-allow-headers': 'authorization, content-type, x-file-name, x-file-type, x-file-project, x-file-by',
+    'access-control-allow-headers': 'authorization, content-type, x-file-name, x-file-folder, x-file-type, x-file-project, x-file-by',
     'access-control-expose-headers': 'content-disposition, content-length',
     'access-control-max-age': '86400',
     'cache-control': 'no-store'

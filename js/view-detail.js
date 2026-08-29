@@ -26,14 +26,16 @@
       el('div', { class: 'row-sub' }, [
         ui.kindChip(p), ui.catChip(p),
         p.qty ? ui.chip(p.qty + unit, 'ghosty') : null,
-        p.status !== 'active' ? ui.chip(sc.STATUS_LABEL[p.status] || p.status, 'ok') : null
+        p.status !== 'active' ? ui.chip(sc.STATUS_LABEL[p.status] || p.status, 'ok') : null,
+        st === 'before' ? ui.chip('開始前', 'soft') : null
       ]),
       el('div', { class: 'countdown' }, [
         el('div', { class: 'cd-main' }, [
           el('span', { class: 'cd-label', text: sc.deadlineLabel(p) }),
           el('b', { text: U.fmtYMDW(p.deadline) })
         ]),
-        el('div', { class: 'cd-left ' + st, text: U.untilLabel(p.deadline, today) })
+        // 終わった案件に残り日数（◯日超過）は出さない
+        el('div', { class: 'cd-left ' + st, text: st === 'done' ? '完了済' : U.untilLabel(p.deadline, today) })
       ]),
       el('button', {
         class: 'workspan', onclick: function () { DL.forms.startDateSheet(p.id); }

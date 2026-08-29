@@ -57,8 +57,8 @@
     var all = cache.files || [];
     var here = all.filter(function (f) { return S.fileFolder(f.id) === cwd; })
       .sort(function (a, b) { return U.cmp(a.name, b.name); });
-    // フォルダはいちばん上の階層にだけ置く（入れ子にはしない）
-    var subs = cwd ? [] : S.folders().slice().sort(function (a, b) { return U.cmp(a.name, b.name); });
+    // いま開いている階層の直下のフォルダ
+    var subs = S.folderChildren(cwd).slice().sort(function (a, b) { return U.cmp(a.name, b.name); });
 
     /* ---- フォルダとファイルを同じ並びで ---- */
     var grid = el('div', { class: 'fgrid' });
@@ -100,11 +100,14 @@
         ui.btn('フォルダを作る', 'ghost tiny', function () { newFolder(); }, 'plus')
       ]);
     }
+    var parent = f.parentId ? S.getFolder(f.parentId) : null;
     return el('div', { class: 'ftool' }, [
-      el('button', { class: 'crumb-up', onclick: function () { cwd = ''; DL.app.render(); } }, [
-        ui.icon('chevronLeft', 15), el('span', { text: 'ファイル' })
+      el('button', { class: 'crumb-up', onclick: function () { up(); } }, [
+        ui.icon('chevronLeft', 15), el('span', { text: parent ? parent.name : 'ファイル' })
       ]),
-      el('span', { class: 'ftool-here', text: f.name }),
+      el('span', { class: 'ftool-here', text: f.name, title: S.folderPath(f.id) }),
+      // 入れ子にできるので、フォルダの中でもフォルダを作れる
+      ui.btn('フォルダを作る', 'ghost tiny', function () { newFolder(); }, 'plus'),
       el('button', {
         class: 'iconbtn small', 'aria-label': 'フォルダの操作',
         onclick: function () { folderMenu(f, countIn(f.id)); }
@@ -120,25 +123,32 @@
   function up() {
     if (!cwd) return false;
     var f = S.getFolder(cwd);
-    cwd = (f && f.parentId) ? f.parentId : '';   // いまは入れ子にしていないので、たいていは上まで戻る
+    cwd = (f && f.parentId) ? f.parentId : '';
     DL.app.render();
     return true;
   }
 
+  /* そのフォルダと、その下の階層にあるファイルの数 */
   function countIn(folderId) {
-    return ((cache && cache.files) || []).filter(function (x) { return S.fileFolder(x.id) === folderId; }).length;
+    var ids = {};
+    S.folderTreeIds(folderId).forEach(function (x) { ids[x] = true; });
+    return ((cache && cache.files) || []).filter(function (x) { return ids[S.fileFolder(x.id)]; }).length;
   }
 
   /* ---------------- タイル ---------------- */
 
   function folderTile(f, all) {
-    var inside = all.filter(function (x) { return S.fileFolder(x.id) === f.id; });
+    var ids = {};
+    S.folderTreeIds(f.id).forEach(function (x) { ids[x] = true; });
+    var inside = all.filter(function (x) { return ids[S.fileFolder(x.id)]; });
+    var subs = S.folderChildren(f.id).length;
     var bytes = inside.reduce(function (s, x) { return s + x.size; }, 0);
     return tile({
       icon: 'folderFill',
       cls: 'is-folder',
       name: f.name,
-      note: inside.length ? inside.length + '項目・' + size(bytes) : '0項目',
+      note: inside.length ? inside.length + '項目・' + size(bytes)
+        : subs ? subs + 'フォルダ' : '0項目',
       onOpen: function () { cwd = f.id; DL.app.render(); },
       onMenu: function () { folderMenu(f, inside.length); }
     });
@@ -237,10 +247,12 @@
 
   /* ---------------- フォルダ ---------------- */
 
+  /* いま開いている階層にフォルダを作る。フォルダの中にも作れる */
   function newFolder() {
+    var here = cwd ? S.getFolder(cwd) : null;
     var input = ui.input({ placeholder: '例）納品データ / 資料 / ラフ', maxlength: 40 });
     var close = ui.sheet({
-      title: 'フォルダを作る',
+      title: here ? '「' + here.name + '」の中にフォルダを作る' : 'フォルダを作る',
       body: el('div', { class: 'form' }, [
         ui.field('フォルダ名', input, '作ったフォルダは同期で両方の端末に出ます')
       ]),
@@ -249,7 +261,10 @@
         ui.btn('作る', 'primary', function () {
           var name = input.value.trim();
           if (!name) { ui.toast('名前を入れてください', 'warn'); return; }
-          S.addFolder(name);
+          if (S.folderChildren(cwd).some(function (x) { return x.name === name; })) {
+            ui.toast('同じ名前のフォルダがあります', 'warn'); return;
+          }
+          S.addFolder(name, cwd);
           close(); ui.toast('「' + name + '」を作りました');
         })
       ]
@@ -288,47 +303,57 @@
     });
   }
 
-  /* 中身のあるフォルダは、消し方を選ばせる */
+  /* 中身のあるフォルダは、消し方を選ばせる。下の階層もまとめて対象になる */
   function deleteFolder(f, count) {
-    if (!count) {
+    var tree = S.folderTreeIds(f.id);
+    var inTree = {};
+    tree.forEach(function (x) { inTree[x] = true; });
+    var subs = tree.length - 1;
+
+    // 消したフォルダの中を開いたままにしない
+    function leave() { if (inTree[cwd]) cwd = f.parentId || ''; }
+
+    if (!count && !subs) {
       ui.confirm('「' + f.name + '」を削除します。', { danger: true, okText: '削除' }).then(function (ok) {
         if (!ok) return;
-        if (cwd === f.id) cwd = '';
+        leave();
         S.removeFolder(f.id);
         ui.toast('削除しました');
       });
       return;
     }
+    var what = [count ? count + '件のファイル' : '', subs ? subs + '個のフォルダ' : '']
+      .filter(Boolean).join('と');
     var close = ui.sheet({
       title: '「' + f.name + '」を削除',
       body: el('div', { class: 'form' }, [
         el('div', { class: 'alert warn' }, [
           el('span', { class: 'alert-icon' }, ui.icon('alert', 17)),
-          el('span', { text: 'このフォルダには ' + count + '件のファイルがあります。' })
+          el('span', { text: 'このフォルダの中には ' + what + 'があります。' })
         ]),
         choice('フォルダだけ削除', 'ファイルは残り、いちばん上の階層に移ります。', function () {
           close();
-          if (cwd === f.id) cwd = '';
+          leave();
           S.removeFolder(f.id);
           ui.toast('フォルダを削除しました（ファイルは残っています）');
         }, true),
-        choice('中のファイルごと削除', 'サーバーからファイルも消します。元に戻せません。', function () {
+        count ? choice('中のファイルごと削除', 'サーバーからファイルも消します。元に戻せません。', function () {
           close();
           ui.confirm(count + '件のファイルをサーバーから削除します。元に戻せません。', { danger: true, okText: '削除' })
             .then(function (ok) {
               if (!ok) return;
-              var targets = (cache.files || []).filter(function (x) { return S.fileFolder(x.id) === f.id; });
+              var targets = (cache.files || []).filter(function (x) { return inTree[S.fileFolder(x.id)]; });
               ui.toast('削除しています…');
               var chain = Promise.resolve();
               targets.forEach(function (t) { chain = chain.then(function () { return F.remove(t.id); }); });
               chain.then(function () {
-                if (cwd === f.id) cwd = '';
+                leave();
                 S.removeFolder(f.id);
                 ui.toast(targets.length + '件を削除しました');
                 load(true);
               }).catch(function (e) { ui.toast(e.message, 'danger'); load(true); });
             });
-        })
+        }) : null
       ]),
       actions: [ui.btn('やめる', 'ghost', function () { close(); })]
     });
@@ -372,9 +397,66 @@
     });
     wrap.addEventListener('drop', function (e) {
       var dt = e.dataTransfer;
-      if (!dt || !dt.files) return;
-      var list = Array.prototype.slice.call(dt.files);
-      if (list.length) send(list);
+      if (!dt) return;
+      // フォルダごと落とされることがある。dt.files にはフォルダが
+      // 中身0バイトのファイルとして入ってしまうので、items から辿る
+      walkDrop(dt).then(function (list) {
+        if (list.length) send(list);
+        else ui.toast('入れられるファイルがありませんでした', 'warn');
+      }).catch(function () {
+        var plain = Array.prototype.slice.call(dt.files || []).map(function (f) { return { file: f, path: '' }; });
+        if (plain.length) send(plain);
+      });
+    });
+  }
+
+  /**
+   * 落とされたものを {file, path} の一覧にほどく。
+   * path はフォルダの相対パス（'資料/ラフ'）。ファイルだけなら空。
+   */
+  function walkDrop(dt) {
+    var items = dt.items ? Array.prototype.slice.call(dt.items) : [];
+    var entries = items.map(function (it) {
+      return it.webkitGetAsEntry ? it.webkitGetAsEntry() : null;
+    }).filter(Boolean);
+
+    // フォルダに対応していないブラウザは、これまでどおりファイルだけ受ける
+    if (!entries.length) {
+      return Promise.resolve(Array.prototype.slice.call(dt.files || []).map(function (f) {
+        return { file: f, path: '' };
+      }));
+    }
+    return Promise.all(entries.map(function (en) { return walkEntry(en, ''); }))
+      .then(function (lists) {
+        return lists.reduce(function (a, b) { return a.concat(b); }, []);
+      });
+  }
+
+  function walkEntry(entry, path) {
+    if (entry.isFile) {
+      return new Promise(function (resolve) {
+        entry.file(function (f) { resolve([{ file: f, path: path }]); },
+                   function () { resolve([]); });   // 読めないものは飛ばす
+      });
+    }
+    if (!entry.isDirectory) return Promise.resolve([]);
+    var sub = path ? path + '/' + entry.name : entry.name;
+    var reader = entry.createReader();
+    var found = [];
+    // readEntries は一度に100件ほどしか返さないので、空になるまで読む
+    function step() {
+      return new Promise(function (resolve) {
+        reader.readEntries(function (list) { resolve(list); }, function () { resolve([]); });
+      }).then(function (list) {
+        if (!list.length) return found;
+        found = found.concat(list);
+        return step();
+      });
+    }
+    return step().then(function (list) {
+      return Promise.all(list.map(function (en) { return walkEntry(en, sub); }));
+    }).then(function (lists) {
+      return lists.reduce(function (a, b) { return a.concat(b); }, []);
     });
   }
 
@@ -393,24 +475,35 @@
     return up;
   }
 
-  /* 選ばれたファイルを順に送る。いま開いているフォルダに入れる */
+  /**
+   * 選ばれたものを順に送る。いま開いているフォルダに入れる。
+   * @param {Array} list File の配列、または {file, path} の配列。
+   *   path はフォルダごと落としたときの相対パス。その分だけフォルダを作って入れる。
+   */
   function send(list) {
     if (!list.length) return;
-    var folderId = cwd;
+    var base = cwd;
 
-    list.forEach(function (file) {
-      var entry = { name: file.name, pct: 0, error: '' };
+    list.map(function (x) {
+      return (x && x.file) ? x : { file: x, path: '' };
+    }).forEach(function (it) {
+      var file = it.file;
+      // フォルダごと落とされたぶんは、その階層をこちらにも作る
+      var folderId = it.path ? S.ensureFolderPath(joinPath(S.folderPath(base), it.path)) : base;
+      var entry = { name: (it.path ? it.path + '/' : '') + file.name, pct: 0, error: '' };
       uploads.push(entry);
       DL.app.render();
 
       F.upload(file, {
+        // R2 にも置き場所を残す。もう片方の端末が状態を同期する前でも同じ場所に出せる
+        folder: S.folderPath(folderId),
         onProgress: function (p) {
           entry.pct = p;
           var bar = findBar(entry);
           if (bar) bar.style.width = Math.round(p * 100) + '%';
         }
       }).then(function (r) {
-        if (folderId && r && r.id) S.setFileFolder(r.id, folderId);
+        if (r && r.id) S.setFileFolder(r.id, folderId);
         uploads.splice(uploads.indexOf(entry), 1);
         load(true);
       }).catch(function (e) {
@@ -422,6 +515,10 @@
         }, 6000);
       });
     });
+  }
+
+  function joinPath(a, b) {
+    return [a, b].filter(Boolean).join('/');
   }
 
   /* 進捗バーだけ動かして、全体の再描画を避ける */
@@ -446,6 +543,9 @@
     error = '';
     F.list().then(function (r) {
       cache = r; fetchedAt = Date.now(); loading = false;
+      // まだ知らないファイルは、R2 に残った置き場所から割り当てる。
+      // これをしないと、もう片方の端末で入れたファイルがいちばん上に出てしまう
+      S.applyFolderHints(r.files || []);
       // 消えたファイルの割り当てが残らないように掃除する
       S.pruneFileFolders((r.files || []).map(function (f) { return f.id; }));
       DL.app.render();
@@ -490,8 +590,10 @@
 
   /* フォルダの移動。対応表を書き換えるだけなので一瞬で終わる */
   function moveTo(f) {
+    // 入れ子にできるので、どこにあるフォルダか分かるようパスで並べる
     var opts = [{ value: '', label: '（いちばん上）' }].concat(
-      S.folders().map(function (x) { return { value: x.id, label: x.name }; })
+      S.folders().map(function (x) { return { value: x.id, label: S.folderPath(x.id) }; })
+        .sort(function (a, b) { return U.cmp(a.label, b.label); })
     );
     var sel = ui.select(opts, S.fileFolder(f.id));
     var close = ui.sheet({
@@ -536,8 +638,8 @@
           var folderId = S.fileFolder(f.id);
           F.fetchBytes(f.id).then(function (bytes) {
             var file = new File([bytes], f.name, { type: f.type || 'application/octet-stream' });
-            return F.upload(file, { projectId: sel.value }).then(function (r) {
-              if (folderId && r && r.id) S.setFileFolder(r.id, folderId);   // フォルダは保つ
+            return F.upload(file, { projectId: sel.value, folder: S.folderPath(folderId) }).then(function (r) {
+              if (r && r.id) S.setFileFolder(r.id, folderId);   // フォルダは保つ
               return F.remove(f.id);
             });
           }).then(function () {
@@ -554,10 +656,10 @@
     if (!files.length) { ui.toast('ファイルがありません', 'warn'); return; }
     var total = files.reduce(function (n, f) { return n + f.size; }, 0);
 
-    // ZIP の中でもフォルダ分けを再現する
+    // ZIP の中でもフォルダ分けを再現する（入れ子もそのまま）
     var withPath = files.map(function (f) {
-      var folder = S.getFolder(S.fileFolder(f.id));
-      return { id: f.id, name: folder ? safe(folder.name) + '/' + f.name : f.name, uploadedAt: f.uploadedAt, size: f.size };
+      var path = S.folderPath(S.fileFolder(f.id)).split('/').filter(Boolean).map(safe).join('/');
+      return { id: f.id, name: path ? path + '/' + f.name : f.name, uploadedAt: f.uploadedAt, size: f.size };
     });
 
     var go = function () {
@@ -618,6 +720,17 @@
     if (t.indexOf('zip') >= 0 || /\.(zip|rar|7z)$/.test(name)) return 'backup';
     if (/\.(psd|clip|sai|ai|xcf)$/.test(name)) return 'design';
     return 'fileFill';
+  }
+
+  /* 同期で相手の状態を受け取ると、こちらの割り当てはそれで置き換わる。
+     そこに無かったファイルはまた「置き場所を知らない」状態に戻るので、
+     R2 の記録から組み直しておく（相手がまだ送っていない直後の取りこぼしを防ぐ）。 */
+  if (DL.sync && DL.sync.on) {
+    DL.sync.on(function (ev) {
+      if (!ev || ev.phase !== 'done' || !ev.result) return;
+      if (ev.result.status !== 'pulled' && ev.result.status !== 'merged') return;
+      if (cache) S.applyFolderHints(cache.files || []);
+    });
   }
 
   DL.views = DL.views || {};

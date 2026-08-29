@@ -57,7 +57,9 @@
   /**
    * アップロード。進み具合を見たいので XHR を使う（fetch では送信の進捗が取れない）。
    * @param {File} file
-   * @param {object} [opts] {projectId, onProgress(0..1)}
+   * @param {object} [opts] {projectId, folder, onProgress(0..1)}
+   *   folder は '資料/ラフ' のようなパス。R2 側にも残すので、
+   *   まだ同期していない端末でも同じ場所に出せる。
    */
   function upload(file, opts) {
     opts = opts || {};
@@ -65,6 +67,15 @@
     if (file.size > MAX_BYTES) {
       return Promise.reject(appError(file.name + " は大きすぎます（100MBまで）"));
     }
+    // フォルダのパスを送れない古い Worker では、CORS の事前確認で弾かれる。
+    // その場合はパス無しで送り直し、アップロード自体は通す（置き場所はアプリ側の記録で持つ）
+    return put(file, opts, !!opts.folder).catch(function (e) {
+      if (!e || !e.corsMaybe) throw e;
+      return put(file, opts, false);
+    });
+  }
+
+  function put(file, opts, withFolder) {
     var id = U.uid().replace(/[^A-Za-z0-9_-]/g, '') + Date.now().toString(36);
 
     return new Promise(function (resolve, reject) {
@@ -73,6 +84,7 @@
       xhr.setRequestHeader('authorization', 'Bearer ' + conf().token);
       xhr.setRequestHeader('x-file-name', encodeURIComponent(file.name));
       xhr.setRequestHeader('x-file-type', file.type || 'application/octet-stream');
+      if (withFolder) xhr.setRequestHeader('x-file-folder', encodeURIComponent(opts.folder));
       xhr.setRequestHeader('x-file-project', opts.projectId || '');
       xhr.setRequestHeader('x-file-by', DL.sync.deviceName());
       if (xhr.upload && opts.onProgress) {
@@ -86,7 +98,11 @@
         if (xhr.status >= 200 && xhr.status < 300) resolve(body || { id: id });
         else reject(appError(errText(xhr.status, body)));
       };
-      xhr.onerror = function () { reject(appError("接続できませんでした。接続先のURLが違うか、オフラインの可能性があります")); };
+      xhr.onerror = function () {
+        var e = appError("接続できませんでした。接続先のURLが違うか、オフラインの可能性があります");
+        e.corsMaybe = withFolder;   // パス付きでだけ落ちたなら、古い Worker の可能性がある
+        reject(e);
+      };
       xhr.onabort = function () { reject(appError("中止しました")); };
       xhr.send(file);
     });

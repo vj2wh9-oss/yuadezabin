@@ -150,7 +150,9 @@
     if (project.status === 'archived') return 'archived';
     if (!U.isISO(project.deadline)) return 'nodate';
     var d = U.diffDays(today, project.deadline);
-    if (d < 0) return 'overdue';
+    if (d < 0) return 'overdue';   // 締切を過ぎているなら、開始前でもまずそれを知らせる
+    // 作業開始日がまだ来ていない案件は「開始前」。進行中には数えない
+    if (U.isISO(project.startDate) && U.cmp(project.startDate, today) > 0) return 'before';
     if (d <= 3) return 'urgent';
     if (d <= (DL.store.settings.warnDays || 14)) return 'soon';
     return 'ok';
@@ -164,7 +166,7 @@
 
   var STATUS_LABEL = {
     overdue: '締切超過', urgent: '直前', soon: '締切間近', ok: '進行中',
-    done: '完了', archived: '保管', nodate: '日付未設定'
+    before: '開始前', done: '完了済', archived: '保管', nodate: '日付未設定'
   };
 
   /* ある日のノルマ一覧 */
@@ -496,7 +498,7 @@
 
   function buildICS(opts) {
     opts = opts || {};
-    var lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//shimekiri-calendar//JP', 'CALSCALE:GREGORIAN', 'X-WR-CALNAME:締切カレンダー'];
+    var lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//shimekiri-calendar//JP', 'CALSCALE:GREGORIAN', 'X-WR-CALNAME:METEO365'];
     function esc(s) { return String(s || '').replace(/([,;\\])/g, '\\$1').replace(/\n/g, '\\n'); }
     function dt(iso) { return iso.replace(/-/g, ''); }
     // 終日予定なので、通知は「何日前の朝9時」という形にする

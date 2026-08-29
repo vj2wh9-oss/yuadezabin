@@ -281,6 +281,8 @@
     f = f || {};
     f.id = f.id || U.uid();
     f.name = f.name || '(名称未設定)';
+    f.parentId = f.parentId || '';     // 空＝いちばん上。入れ子にできる
+    f.fromHint = !!f.fromHint;         // R2 の記録から組み直したものか
     f.createdAt = f.createdAt || new Date().toISOString();
     return f;
   }
@@ -456,10 +458,22 @@
     return folders().filter(function (f) { return f.id === id; })[0] || null;
   }
 
-  function addFolder(name) {
-    var f = normalizeFolder({ id: U.uid(), name: String(name || '').trim() || '新しいフォルダ' });
+  /** 直下のフォルダだけを返す。parentId が空ならいちばん上の階層 */
+  function folderChildren(parentId) {
+    parentId = parentId || '';
+    return folders().filter(function (f) { return (f.parentId || '') === parentId; });
+  }
+
+  /** @param {boolean} [quiet] R2 の記録から組み直すときは保存日時を動かさない */
+  function addFolder(name, parentId, quiet) {
+    var f = normalizeFolder({
+      id: U.uid(),
+      name: String(name || '').trim() || '新しいフォルダ',
+      parentId: parentId || '',
+      fromHint: !!quiet     // 自分で作ったのではなく R2 の記録から復元したもの
+    });
     state.settings.folders = folders().concat([f]);
-    save();
+    save(quiet ? { quiet: true } : null);
     return f;
   }
 
@@ -467,28 +481,93 @@
     var f = getFolder(id);
     if (!f) return null;
     f.name = String(name || '').trim() || f.name;
+    f.fromHint = false;      // 自分で手を入れたので、もう組み直しの産物ではない
     save();
     return f;
   }
 
   /**
+   * いちばん上からのパス。'資料/ラフ' のような形にする。
+   * この文字列を R2 にも持たせて、まだ同期していない端末でも置き場所が分かるようにする。
+   */
+  function folderPath(id) {
+    var parts = [], seen = {}, f = getFolder(id);
+    while (f && !seen[f.id]) {           // 万一輪になっていても止まるようにする
+      seen[f.id] = true;
+      parts.unshift(f.name);
+      f = f.parentId ? getFolder(f.parentId) : null;
+    }
+    return parts.join('/');
+  }
+
+  /** パス文字列をたどってフォルダIDを返す。途中に無いものは作る */
+  function ensureFolderPath(path, quiet) {
+    var parent = '';
+    String(path || '').split('/').forEach(function (name) {
+      name = name.trim();
+      if (!name) return;
+      var hit = folderChildren(parent).filter(function (f) { return f.name === name; })[0];
+      parent = hit ? hit.id : addFolder(name, parent, quiet).id;
+    });
+    return parent;
+  }
+
+  /** そのフォルダと、その下にあるフォルダすべてのID */
+  function folderTreeIds(id) {
+    var out = [id];
+    folderChildren(id).forEach(function (c) { out = out.concat(folderTreeIds(c.id)); });
+    return out;
+  }
+
+  /**
    * フォルダを消す。中のファイルの扱いは呼び出し側が決める。
-   * ここではフォルダと対応表だけを片づける（ファイルの実体は触らない）。
+   * ここではフォルダ（下の階層も含む）と対応表だけを片づける（ファイルの実体は触らない）。
    */
   function removeFolder(id) {
-    state.settings.folders = folders().filter(function (f) { return f.id !== id; });
+    var gone = {};
+    folderTreeIds(id).forEach(function (x) { gone[x] = true; });
+    state.settings.folders = folders().filter(function (f) { return !gone[f.id]; });
     var map = state.settings.fileFolders || {};
-    Object.keys(map).forEach(function (fid) { if (map[fid] === id) delete map[fid]; });
+    // 消すのではなく「いちばん上」にする。消すと R2 側の記録から元に戻ってしまう
+    Object.keys(map).forEach(function (fid) { if (gone[map[fid]]) map[fid] = ''; });
     save();
   }
 
   function fileFolder(fileId) { return (state.settings.fileFolders || {})[fileId] || ''; }
 
+  /** そのファイルの置き場所を、この端末が知っているか */
+  function knowsFileFolder(fileId) {
+    return Object.prototype.hasOwnProperty.call(state.settings.fileFolders || {}, fileId);
+  }
+
   function setFileFolder(fileId, folderId) {
     var map = state.settings.fileFolders || (state.settings.fileFolders = {});
-    if (folderId) map[fileId] = folderId;
-    else delete map[fileId];
+    // いちばん上に置いた、という指定も憶えておく。
+    // 消してしまうと「まだ知らない」と区別が付かず、R2 側の記録で戻されてしまう
+    map[fileId] = folderId || '';
+    var f = folderId ? getFolder(folderId) : null;
+    if (f) f.fromHint = false;   // 自分でここへ入れたのだから、もう仮のフォルダではない
     save();
+  }
+
+  /**
+   * まだ置き場所を知らないファイルを、R2 に記録されたフォルダのパスから割り当てる。
+   * 片方の端末で入れたフォルダが、もう片方ではいちばん上に出てしまうのを防ぐ。
+   * @param {Array} files list() が返した files（f.folder にパスが入っている）
+   * @returns {number} 割り当てた件数
+   */
+  function applyFolderHints(files) {
+    var n = 0;
+    (files || []).forEach(function (f) {
+      if (!f || !f.id || knowsFileFolder(f.id)) return;
+      var map = state.settings.fileFolders || (state.settings.fileFolders = {});
+      map[f.id] = f.folder ? ensureFolderPath(f.folder, true) : '';
+      n++;
+    });
+    // R2 から組み直しただけなので保存日時は動かさない。
+    // 動かすと、まだ空の端末が「変更あり」に見えて衝突してしまう
+    if (n) save({ quiet: true });
+    return n;
   }
 
   /* 消えたファイルの対応が溜まらないよう掃除する */
@@ -1006,11 +1085,19 @@
    */
   function isEmpty() {
     var s = state.settings;
+    // R2 の記録から組み直したフォルダと割り当ては数に入れない。
+    // いつでも組み直せるので、これだけを理由に「中身がある」と見なすと、
+    // まだ空の端末が受け取る前に押し付ける側になってしまう
+    var mine = (s.folders || []).filter(function (f) { return !f.fromHint; });
+    var placed = Object.keys(s.fileFolders || {}).filter(function (fid) {
+      var id = s.fileFolders[fid];
+      return id && !((getFolder(id) || {}).fromHint);
+    });
     return !state.projects.length
       && !issuers().length
       && !clients().length
-      && !(s.folders || []).length
-      && !Object.keys(s.fileFolders || {}).length;
+      && !mine.length
+      && !placed.length;
   }
 
   /* 最後に同期してから、この端末で変更があったか */
@@ -1093,8 +1180,11 @@
     updateClient: updateClient, removeClient: removeClient,
     clientProjects: clientProjects, clientDocs: clientDocs,
     folders: folders, getFolder: getFolder, addFolder: addFolder,
+    folderChildren: folderChildren, folderPath: folderPath,
+    ensureFolderPath: ensureFolderPath, folderTreeIds: folderTreeIds,
     renameFolder: renameFolder, removeFolder: removeFolder,
     fileFolder: fileFolder, setFileFolder: setFileFolder, pruneFileFolders: pruneFileFolders,
+    knowsFileFolder: knowsFileFolder, applyFolderHints: applyFolderHints,
     docs: docs, getDoc: getDoc, addDoc: addDoc, updateDoc: updateDoc, removeDoc: removeDoc,
     issueNumber: issueNumber, peekNumber: peekNumber, allDocs: allDocs,
     templateTasks: templateTasks, updateSettings: updateSettings,

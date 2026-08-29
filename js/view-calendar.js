@@ -58,7 +58,26 @@
     wrap.appendChild(grid);
 
     attachSwipe(wrap);
+    attachWheel(wrap);
     root.appendChild(wrap);
+  }
+
+  /**
+   * PC のマウスホイールで月を移す（下で次の月・上で前の月）。
+   * タッチ操作の慣性スクロールで連続して動かないよう、指で触れる端末では付けない。
+   */
+  function attachWheel(node) {
+    if (!window.matchMedia || !window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+    var last = 0;
+    node.addEventListener('wheel', function (e) {
+      var dy = e.deltaY;
+      if (!dy || Math.abs(dy) < Math.abs(e.deltaX)) return;
+      e.preventDefault();                 // 画面ごとスクロールさせない
+      var now = Date.now();
+      if (now - last < 260) return;       // 1回のホイールで何ヶ月も飛ばさない
+      last = now;
+      goMonth(dy > 0 ? 1 : -1);
+    }, { passive: false });
   }
 
   /* 左右スワイプで月を移動する */
@@ -115,12 +134,19 @@
     var d = U.dow(date);
     var isOff = !sc.isWorkday(null, date);
 
+    // 入稿日・締切日はうっすら赤、イベント当日はうっすら緑に色を敷く。
+    // 両方ある日は、当日そこに行くイベントを優先する。
+    var hasEvent = marks.some(function (m) { return m.type === 'event'; });
+    var hasDue = marks.some(function (m) { return m.type === 'deadline' || m.type === 'printing'; });
+
     var cls = 'cal-cell';
     if (!inMonth) cls += ' out';
     if (date === today) cls += ' today';
     if (d === 0) cls += ' sun';
     if (d === 6) cls += ' sat';
     if (isOff) cls += ' off';
+    if (hasEvent) cls += ' has-event';
+    else if (hasDue) cls += ' has-due';
 
     /* その日の中身を数行だけ載せる（締切・イベントを優先） */
     var lines = el('div', { class: 'cal-lines' });

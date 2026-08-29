@@ -35,11 +35,13 @@
     function renderList() {
       U.clear(listBox);
       var items = S.scopedProjects().filter(function (p) {
-        if (filter === 'active') return p.status === 'active';
+        // 進行中：作業開始日が来ていて、まだ終わっていないものだけ
+        if (filter === 'active') return p.status === 'active' && sc.projectStatus(p, today) !== 'before';
         if (filter === 'done') return p.status === 'done';
-        if (filter === 'event') return p.kind === 'event' && p.status !== 'archived';
-        if (filter === 'work') return p.kind === 'work' && p.status !== 'archived';
-        if (filter === 'support') return p.kind === 'support' && p.status !== 'archived';
+        // 種別のタブは、完了したものを混ぜない（完了は「完了」タブで見る）
+        if (filter === 'event') return p.kind === 'event' && p.status === 'active';
+        if (filter === 'work') return p.kind === 'work' && p.status === 'active';
+        if (filter === 'support') return p.kind === 'support' && p.status === 'active';
         return true;
       });
       if (keyword.trim()) {
@@ -96,13 +98,17 @@
       el('div', { class: 'row-main' }, [
         el('div', { class: 'row-title' }, [
           el('span', { text: p.title }),
-          p.status === 'done' ? ui.chip('完了', 'ok') : null,
+          st === 'done' ? ui.chip('完了済', 'ok') : null,
+          st === 'before' ? ui.chip('開始前', 'soft') : null,
           p.status === 'archived' ? ui.chip('保管', 'ghosty') : null
         ]),
         el('div', { class: 'row-sub' }, sub),
         el('div', { class: 'row-sub' }, [
           ui.iconChip('deadline', U.fmtMDW(p.deadline), st === 'overdue' ? 'danger' : st === 'urgent' ? 'warn' : 'soft'),
-          ui.chip(U.untilLabel(p.deadline, today), 'ghosty')
+          // 終わった案件に「◯日超過」は出さない（残り日数はもう意味を持たない）
+          ui.chip(st === 'done' ? '完了済'
+            : st === 'before' ? U.fmtMD(p.startDate) + ' から'
+            : U.untilLabel(p.deadline, today), st === 'done' ? 'ok' : 'ghosty')
         ]),
         ui.progress(prog.pct, p.color)
       ]),

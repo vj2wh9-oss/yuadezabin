@@ -56,6 +56,18 @@ wrangler deploy
 ダッシュボードから作る場合は **R2 object storage → Create bucket** で `anken-portal-files` を作り、
 Worker の **Settings → Bindings → Add → R2 bucket** で Variable name を `FILES`、バケットを選びます。
 
+### フォルダを増やしたら deploy し直す
+
+`worker.js` は、ファイルを置いたときの**フォルダのパス**も R2 に残すようになりました（`x-file-folder` ヘッダ）。
+これがないと、片方の端末で入れたファイルが、もう片方ではいちばん上に出てしまいます。
+
+```sh
+wrangler deploy
+```
+
+古いままだと、アップロードが **CORS のエラー**（`x-file-folder is not allowed by Access-Control-Allow-Headers`）で失敗します。
+ダッシュボードから貼り付けている場合は、`sync/worker.js` の中身を丸ごと貼り直して Deploy してください。
+
 **注意**
 
 - R2 を初めて有効にするとき、**有料プランの登録（カード登録）を求められる場合があります**。無料枠（10GB保存・転送量無料）に収まっていれば請求は発生しません。
