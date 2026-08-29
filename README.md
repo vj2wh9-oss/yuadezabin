@@ -169,7 +169,8 @@ index.html               画面の骨組み
 manifest.webmanifest     ホーム画面追加（PWA）用
 sw.js                    オフラインキャッシュ
 assets/style.css         スタイル（iPhone 優先・ダークモード対応）
-assets/icon-*.png|svg    アイコン
+assets/icon-*.png        アプリのアイコン（tools/make-icons.py で生成）
+tools/make-icons.py      assets/app-icon.png からアイコン一式を作り直すスクリプト
 js/util.js               日付・DOM のユーティリティ
 js/icons.js              自前のアイコン（インラインSVG。絵文字は使わない）
 js/store.js              データ保存（localStorage）と CRUD
@@ -180,6 +181,14 @@ js/forms.js              案件／タスク／進捗の入力フォーム
 js/view-*.js             各画面（ホーム・カレンダー・案件一覧・詳細・書類・設定）
 js/app.js                ルーティングと全体制御
 ```
+
+## アプリのアイコンを差し替える
+
+1. 使いたい画像を **`assets/app-icon.png`**（.jpg / .webp も可）としてリポジトリに置く
+2. `python3 tools/make-icons.py` を実行する（`pip install pillow` が必要）
+
+ホーム画面用・PWA用・タブ用のPNGが一度に作り直されます。
+iPhone は**ホーム画面に追加した時点のアイコンを保持する**ため、差し替え後は一度ホーム画面から削除して追加し直してください。
 
 ## プロトタイプでの制限
 
