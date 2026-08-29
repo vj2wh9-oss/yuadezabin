@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="format-detection" content="telephone=no,date=no,address=no,email=no,url=no">
+<meta name="theme-color" content="#0f1115" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f6f7fb" media="(prefers-color-scheme: light)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="締切">
+<meta name="description" content="即売会・印刷所締切・イラスト仕事の納期を一元管理する個人用カレンダー">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="assets/icon-180.png">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/style.css">
+<title>締切カレンダー</title>
+</head>
+<body>
+
+<header class="appbar" id="appbar">
+  <div class="appbar-inner">
+    <button class="iconbtn" id="backBtn" hidden aria-label="戻る">‹</button>
+    <h1 class="appbar-title" id="appTitle">締切カレンダー</h1>
+    <div class="appbar-actions" id="appActions"></div>
+  </div>
+</header>
+
+<main id="view" class="view" role="main"></main>
+
+<button class="fab" id="fab" aria-label="新規作成">＋</button>
+
+<nav class="tabbar" id="tabbar" role="navigation">
+  <a class="tab" href="#/home"      data-tab="home">     <span class="tabicon">◉</span><span>ホーム</span></a>
+  <a class="tab" href="#/calendar"  data-tab="calendar"> <span class="tabicon">▦</span><span>カレンダー</span></a>
+  <a class="tab" href="#/projects"  data-tab="projects"> <span class="tabicon">☰</span><span>案件</span></a>
+  <a class="tab" href="#/settings"  data-tab="settings"> <span class="tabicon">⚙</span><span>設定</span></a>
+</nav>
+
+<div id="sheetRoot"></div>
+<div id="toastRoot" class="toast-root"></div>
+
+<script src="js/util.js"></script>
+<script src="js/store.js"></script>
+<script src="js/schedule.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/forms.js"></script>
+<script src="js/view-home.js"></script>
+<script src="js/view-calendar.js"></script>
+<script src="js/view-projects.js"></script>
+<script src="js/view-detail.js"></script>
+<script src="js/view-settings.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

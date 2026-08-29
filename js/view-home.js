@@ -1,0 +1,199 @@
+/* ホーム（ダッシュボード） */
+(function (DL) {
+  'use strict';
+  var U = DL.util, ui = DL.ui, S = DL.store, sc = DL.schedule, el = U.el;
+
+  function render(root) {
+    var today = U.today();
+    var wrap = el('div', { class: 'page' });
+
+    /* 今日 */
+    var load = sc.loadOfDay(today);
+    wrap.appendChild(el('div', { class: 'today-head' }, [
+      el('div', {}, [
+        el('div', { class: 'today-date', text: U.fmtYMDW(today) }),
+        el('div', { class: 'today-sub', text: load.entries.length ? '今日のタスク ' + load.entries.length + '件' : '今日のタスクはありません' })
+      ]),
+      el('a', { class: 'btn tiny ghost', href: '#/calendar', text: 'カレンダー' })
+    ]));
+
+    /* 警告 */
+    var al = sc.alerts(today);
+    if (al.length) {
+      var box = el('div', { class: 'alerts' });
+      al.slice(0, 5).forEach(function (a) {
+        box.appendChild(el('a', {
+          class: 'alert ' + a.level, href: '#/project/' + a.project.id
+        }, [
+          el('span', { class: 'alert-icon', text: a.level === 'danger' ? '!' : a.level === 'warn' ? '▲' : 'i' }),
+          el('span', {}, [el('b', { text: a.project.title }), el('span', { text: '　' + a.text })])
+        ]));
+      });
+      if (al.length > 5) box.appendChild(el('div', { class: 'muted small pad', text: 'ほか ' + (al.length - 5) + '件' }));
+      wrap.appendChild(box);
+    }
+
+    /* 今日のノルマ */
+    wrap.appendChild(ui.section('今日やること'));
+    if (!load.entries.length) {
+      wrap.appendChild(ui.empty('今日のノルマはありません。', ui.btn('案件を追加', 'primary', function () { DL.forms.projectForm(); })));
+    } else {
+      var list = el('div', { class: 'list' });
+      load.entries.forEach(function (e) { list.appendChild(quotaRow(e, today)); });
+      wrap.appendChild(list);
+    }
+
+    /* 今週のノルマ */
+    wrap.appendChild(ui.section('これから7日間'));
+    wrap.appendChild(weekStrip(today));
+    wrap.appendChild(stats(today, load));
+
+    /* 直近の締切 */
+    var tl = sc.timeline(today, 180);
+    wrap.appendChild(ui.section('近い締切', el('a', { class: 'link', href: '#/projects', text: '一覧' })));
+    if (!tl.length) {
+      wrap.appendChild(ui.empty('予定されている締切はありません。'));
+    } else {
+      var dl = el('div', { class: 'list' });
+      tl.slice(0, 8).forEach(function (item) { dl.appendChild(deadlineRow(item, today)); });
+      wrap.appendChild(dl);
+    }
+
+    /* 進行中の案件 */
+    var actives = S.activeProjects();
+    if (actives.length) {
+      wrap.appendChild(ui.section('進行中の案件'));
+      var pl = el('div', { class: 'list' });
+      actives.sort(function (a, b) { return U.cmp(a.deadline || '9999', b.deadline || '9999'); })
+        .forEach(function (p) { pl.appendChild(projectRow(p, today)); });
+      wrap.appendChild(pl);
+    }
+
+    root.appendChild(wrap);
+  }
+
+  /* ノルマ1行 */
+  function quotaRow(e, date) {
+    var p = e.project, t = e.task;
+    var unit = sc.unit(t);
+    var pace = sc.taskPace(p, t, date);
+    var doneAll = sc.taskIsComplete(t);
+    var pct = e.qty ? Math.min(100, Math.round(e.done / e.qty * 100)) : (e.done ? 100 : 0);
+
+    var row = el('div', { class: 'row quota' + (doneAll ? ' is-done' : '') }, [
+      el('div', { class: 'row-bar', style: { background: p.color } }),
+      el('div', { class: 'row-main', onclick: function () { DL.forms.progressSheet(p.id, t.id, date); } }, [
+        el('div', { class: 'row-title' }, [
+          el('span', { text: t.name }),
+          el('span', { class: 'muted small', text: '　' + p.title })
+        ]),
+        el('div', { class: 'row-sub' }, [
+          (t.unit === 'none' || !e.qty)
+            ? ui.chip('作業日', 'soft')
+            : ui.chip(e.done + ' / ' + e.qty + unit, e.done >= e.qty ? 'ok' : 'soft'),
+          pace.behind > 0 ? ui.chip('遅れ ' + pace.behind + unit, 'danger') : null,
+          e.isLast ? ui.chip('最終日', 'warn') : null,
+          t.unit !== 'none' ? ui.chip('残' + pace.remaining + unit, 'ghosty') : null
+        ]),
+        e.qty ? ui.progress(pct, p.color) : null
+      ]),
+      el('button', {
+        class: 'checkbtn' + ((e.qty ? e.done >= e.qty : e.done > 0 || t.done) ? ' on' : ''), 'aria-label': '完了',
+        onclick: function () {
+          if (t.unit === 'none') { S.updateTask(p.id, t.id, { done: !t.done }); return; }
+          // ノルマ0の日は「1つ進めた」記録として扱う
+          var target = e.qty || 1;
+          S.setProgress(p.id, t.id, date, e.done >= target ? 0 : target);
+        }
+      }, '✓')
+    ]);
+    return row;
+  }
+
+  /* 7日間のノルマ */
+  function weekStrip(today) {
+    var days = [];
+    for (var i = 0; i < 7; i++) {
+      var d = U.addDays(today, i);
+      var l = sc.loadOfDay(d);
+      days.push({ date: d, qty: l.qty, count: l.entries.length, marks: sc.dayMarks(d) });
+    }
+    var maxQ = Math.max(1, Math.max.apply(null, days.map(function (d) { return d.qty; })));
+    var strip = el('div', { class: 'week' });
+    days.forEach(function (d) {
+      var h = Math.round(d.qty / maxQ * 46) + 4;
+      strip.appendChild(el('a', {
+        class: 'weekday' + (d.date === today ? ' today' : '') + (U.dow(d.date) === 0 ? ' sun' : U.dow(d.date) === 6 ? ' sat' : ''),
+        href: '#/day/' + d.date
+      }, [
+        el('span', { class: 'wd', text: U.wdName(U.dow(d.date)) }),
+        el('span', { class: 'wn', text: String(+d.date.slice(8)) }),
+        el('span', { class: 'wbar', style: { height: h + 'px', opacity: d.qty ? 1 : .25 } }),
+        el('span', { class: 'wq', text: d.qty ? String(d.qty) : (d.count ? '・' : '') }),
+        d.marks.length ? el('span', { class: 'wmark' }) : null
+      ]));
+    });
+    return strip;
+  }
+
+  /* ひと目でわかる集計 */
+  function stats(today, todayLoad) {
+    var planned = 0, done = 0;
+    for (var i = 1; i <= 7; i++) {
+      var l = sc.loadOfDay(U.addDays(today, -i));
+      planned += l.qty; done += l.done;
+    }
+    var rate = planned ? Math.round(done / planned * 100) : 100;
+    return el('div', { class: 'quota-row' }, [
+      el('div', { class: 'quota-box' }, [el('span', { text: '進行中の案件' }), el('b', { text: String(S.activeProjects().length) })]),
+      el('div', { class: 'quota-box' }, [el('span', { text: '今日のノルマ' }), el('b', { text: todayLoad.done + '/' + todayLoad.qty })]),
+      el('div', { class: 'quota-box' }, [el('span', { text: '直近7日の達成' }), el('b', { text: rate + '%' })])
+    ]);
+  }
+
+  /* 締切1行 */
+  function deadlineRow(item, today) {
+    var p = item.project;
+    var left = U.diffDays(today, item.date);
+    var cls = left < 0 ? 'danger' : left <= 3 ? 'urgent' : left <= (S.settings.warnDays || 14) ? 'soon' : '';
+    var icon = item.type === 'event' ? '🎪' : item.type === 'printing' ? '🖨' : '⏰';
+    var prog = sc.projectProgress(p);
+    return el('a', { class: 'row deadline ' + cls, href: '#/project/' + p.id }, [
+      el('div', { class: 'row-bar', style: { background: p.color } }),
+      el('div', { class: 'row-main' }, [
+        el('div', { class: 'row-title' }, [
+          el('span', { text: icon + ' ' + p.title }),
+          el('span', { class: 'muted small', text: '　' + item.label })
+        ]),
+        el('div', { class: 'row-sub' }, [
+          ui.chip(U.fmtMDW(item.date), 'soft'),
+          ui.chip(U.untilLabel(item.date, today), cls || 'ghosty'),
+          ui.chip('進捗 ' + prog.pct + '%', 'ghosty')
+        ])
+      ]),
+      el('span', { class: 'chev', text: '›' })
+    ]);
+  }
+
+  /* 案件1行 */
+  function projectRow(p, today) {
+    var prog = sc.projectProgress(p);
+    return el('a', { class: 'row proj', href: '#/project/' + p.id }, [
+      el('div', { class: 'row-bar', style: { background: p.color } }),
+      el('div', { class: 'row-main' }, [
+        el('div', { class: 'row-title' }, [
+          el('span', { text: p.title })
+        ]),
+        el('div', { class: 'row-sub' }, [
+          ui.kindChip(p), ui.catChip(p),
+          ui.chip(U.fmtMD(p.deadline) + '　' + U.untilLabel(p.deadline, today), 'ghosty')
+        ]),
+        ui.progress(prog.pct, p.color)
+      ]),
+      el('span', { class: 'pct', text: prog.pct + '%' })
+    ]);
+  }
+
+  DL.views = DL.views || {};
+  DL.views.home = { render: render, quotaRow: quotaRow, projectRow: projectRow, deadlineRow: deadlineRow };
+})(window.DL);
