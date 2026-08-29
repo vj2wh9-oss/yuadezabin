@@ -1,0 +1,42 @@
+name: Deploy to GitHub Pages
+
+# ビルドは不要なので、リポジトリの中身をそのまま Pages へ配置する
+on:
+  push:
+    branches:
+      - main
+      - claude/deadline-management-app-prototype-jptdj6
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: リポジトリを取得
+        uses: actions/checkout@v4
+
+      - name: Pages を設定（未設定なら有効化する）
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: 静的ファイルをアップロード
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - name: Pages へ公開
+        id: deployment
+        uses: actions/deploy-pages@v4

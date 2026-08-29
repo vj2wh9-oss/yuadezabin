@@ -43,7 +43,26 @@ iPhone での利用を第一に設計しています（ビルド不要・オフ�
 - **.ics 書き出し**（iPhone の標準カレンダーに締切やノルマを取り込めます）
 - ダークモード対応（端末の設定に追従）
 
-## 公開のしかた（Vercel）
+## 公開のしかた（GitHub Pages・推奨）
+
+`.github/workflows/pages.yml` を用意してあるので、**次の2つを一度だけ設定すれば、以降は push するたび自動で公開されます**。
+
+1. **リポジトリを public にする**
+   Settings → General → 一番下の Danger Zone → **Change repository visibility** → Public
+   （無料プランでは private リポジトリの Pages が使えないため。ソースコードは公開されますが、**予定のデータは各端末のブラウザ内にしか保存されないので公開されません**）
+2. **Pages のソースを GitHub Actions にする**
+   Settings → Pages → Build and deployment → Source → **GitHub Actions**
+   （ワークフローが自動で有効化を試みるので、すでに設定済みになっていることもあります）
+
+設定後、Actions タブの「Deploy to GitHub Pages」が成功すると
+`https://vj2wh9-oss.github.io/yuadezabin/` で開けます。
+
+> **ブランチについて**
+> `github-pages` 環境は既定でデフォルトブランチからのデプロイのみを許可します。
+> このブランチのまま公開したい場合は Settings → Environments → `github-pages` → Deployment branches にこのブランチを追加してください。
+> 手っ取り早いのは、このブランチを `main` にマージすることです（ワークフローは `main` でも動きます）。
+
+## 公開のしかた（Vercel・任意）
 
 ビルド不要の静的サイトなので、リポジトリをインポートするだけで動きます（`vercel.json` に設定済み）。
 
@@ -80,10 +99,7 @@ npx vercel --prod
 2. 共有ボタン →「**ホーム画面に追加**」
 3. アプリのように全画面で起動し、電波がなくても動作します（Service Worker によるオフライン対応）
 
-検索エンジンには載らないように `noindex` と `robots.txt` を設定してあります。URL を知っている人は開けるので、共有には注意してください（データは各自の端末内にしか保存されないため、他人に自分の予定が見えることはありません）。
-
-### GitHub Pages で公開する場合
-Vercel を使わない場合は、リポジトリの **Settings → Pages → Branch** にこのブランチ（`/root`）を指定するだけでも同じように動きます。
+検索エンジンには載らないように `noindex` メタタグを入れてあります（Vercel ではさらに `robots.txt` と `X-Robots-Tag` ヘッダも効きます）。URL を知っている人は開けるので共有には注意してください。ただし**データは各自の端末内にしか保存されないため、他人に自分の予定が見えることはありません**。
 
 ## 手元で試す
 静的ファイルのみなので、適当なサーバーで開くだけです。
