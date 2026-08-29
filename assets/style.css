@@ -241,47 +241,73 @@ h1, h2, h3, p { margin: 0; }
 .weekday .wmark { position: absolute; top: 4px; right: 4px; width: 5px; height: 5px; background: var(--warn); }
 
 /* ---------------- カレンダー ---------------- */
-.monthnav { display: flex; align-items: center; gap: 4px; }
-.monthlabel { font-size: 16px; font-weight: 800; flex: 1; text-align: center; font-variant-numeric: tabular-nums; }
-.cal-head { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
-.cal-hd { text-align: center; font-size: 11px; color: var(--muted); padding: 3px 0; background: var(--card2); }
+/* カレンダーの月表示だけは画面いっぱいに広げ、ページ自体はスクロールさせない */
+.view.view-calendar {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  padding-bottom: calc(var(--tab-h) + env(safe-area-inset-bottom));
+}
+.view.view-calendar .page { height: 100%; padding: 6px 6px 4px; gap: 5px; }
+
+.monthnav { display: flex; align-items: center; gap: 4px; flex: none; }
+.monthlabel {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px;
+  font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums;
+  background: transparent; border: 0; padding: 6px 4px; cursor: pointer; border-radius: var(--radius-s);
+}
+.monthlabel:active { background: var(--card2); }
+.monthlabel .icon { color: var(--muted); }
+
+.cal-head { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; flex: none; }
+.cal-hd { text-align: center; font-size: 11px; color: var(--muted); padding: 2px 0; background: var(--card2); }
 .cal-hd.sun { color: var(--danger); }
 .cal-hd.sat { color: var(--accent2); }
-.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
-.cal-cell {
-  position: relative; min-height: 56px; padding: 3px 3px 11px;
-  background: var(--card); border: 1px solid var(--line); border-radius: 0;
-  display: flex; flex-direction: column; align-items: center; gap: 1px; overflow: hidden;
+
+.cal-grid {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px;
+  flex: 1; min-height: 0; grid-auto-rows: 1fr;
 }
-.cal-cell.out { opacity: .35; }
+@keyframes calFromRight { from { transform: translateX(9%); opacity: .3; } to { transform: none; opacity: 1; } }
+@keyframes calFromLeft { from { transform: translateX(-9%); opacity: .3; } to { transform: none; opacity: 1; } }
+.cal-grid.from-right { animation: calFromRight .16s ease-out; }
+.cal-grid.from-left { animation: calFromLeft .16s ease-out; }
+
+.cal-cell {
+  position: relative; min-height: 0; padding: 2px 2px 1px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 0;
+  display: flex; flex-direction: column; gap: 1px; overflow: hidden;
+}
+.cal-cell.out { opacity: .4; }
 .cal-cell.off { background: var(--card2); }
-.cal-cell.today { border-color: var(--accent); background: var(--accent-soft); }
-.cal-n { font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.cal-cell.today { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.cal-top { display: flex; align-items: center; justify-content: space-between; gap: 2px; flex: none; }
+.cal-n { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
 .cal-cell.sun .cal-n { color: var(--danger); }
 .cal-cell.sat .cal-n { color: var(--accent2); }
-.cal-q {
-  font-size: 10.5px; font-weight: 700; padding: 0 4px; border-radius: 2px;
-  background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent);
-  font-variant-numeric: tabular-nums;
+.cal-sum {
+  font-size: 9.5px; font-weight: 700; padding: 0 3px; color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 20%, transparent); font-variant-numeric: tabular-nums;
 }
-.cal-q.done { background: color-mix(in srgb, var(--ok) 22%, transparent); color: var(--ok); }
-.cal-q.soft { background: transparent; color: var(--muted); }
-.cal-mark {
-  font-size: 9px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  color: var(--muted); display: flex; align-items: center; gap: 2px;
-}
-.cal-mark .icon { width: 9px; height: 9px; }
-.cal-mark.event { color: var(--accent); }
-.cal-mark.deadline, .cal-mark.printing { color: var(--danger); }
-.dots { position: absolute; bottom: 2px; display: flex; gap: 2px; }
-.dots .dot { width: 4px; height: 4px; background: var(--danger); display: block; }
-.dots .dot.ev { background: var(--accent); }
+.cal-sum.done { color: var(--ok); background: color-mix(in srgb, var(--ok) 20%, transparent); }
 
-.legend { display: flex; gap: 12px; justify-content: center; font-size: 11px; color: var(--muted); }
-.legend i.lg { display: inline-block; width: 7px; height: 7px; margin-right: 4px; }
-.legend .lg.ev { background: var(--accent); }
-.legend .lg.dl { background: var(--danger); }
-.legend .lg.tk { background: var(--accent2); }
+/* 日ごとの中身（数行だけ載せる） */
+.cal-lines { display: flex; flex-direction: column; gap: 1px; overflow: hidden; min-height: 0; }
+.cal-line {
+  display: flex; align-items: center; gap: 2px; font-size: 9.5px; line-height: 1.35;
+  background: var(--card2); padding: 0 1px 0 0; min-width: 0;
+}
+.cal-line > i { width: 3px; align-self: stretch; min-height: 11px; flex: none; background: var(--muted); }
+.cal-line .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-line b { flex: none; font-variant-numeric: tabular-nums; }
+.cal-line.done { opacity: .5; text-decoration: line-through; }
+.cal-line.mk { font-weight: 700; }
+.cal-line.mk.deadline, .cal-line.mk.printing {
+  background: color-mix(in srgb, var(--danger) 20%, transparent); color: var(--danger);
+}
+.cal-line.mk.event { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); }
+.cal-more { font-size: 9px; color: var(--muted); padding-left: 4px; }
 
 .daynav { display: flex; align-items: center; gap: 6px; }
 .daytitle { flex: 1; text-align: center; }

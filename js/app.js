@@ -30,6 +30,7 @@
 
     U.clear(view);
     U.clear(actionsEl);
+    view.className = 'view view-' + route.name;
 
     var titles = {
       home: '締切カレンダー', calendar: 'カレンダー', projects: '案件',
@@ -61,7 +62,8 @@
   }
 
   function updateFab() {
-    if (route.name === 'settings') { fab.hidden = true; return; }
+    // カレンダーは画面いっぱいに出すので、重なるボタンは置かない
+    if (route.name === 'settings' || route.name === 'calendar') { fab.hidden = true; return; }
     fab.hidden = false;
     fab.onclick = function () {
       if (route.name === 'project') {

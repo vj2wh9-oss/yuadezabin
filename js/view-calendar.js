@@ -5,19 +5,35 @@
 
   var cursor = null; // 表示中の月（その月の1日）
 
+  var slideDir = null;   // 月移動の向き（アニメーション用）
+
+  function goMonth(delta) {
+    cursor = U.addMonths(cursor, delta);
+    slideDir = delta > 0 ? 'from-right' : 'from-left';
+    DL.app.render();
+  }
+
   function render(root, params) {
     var today = U.today();
     if (params && U.isISO(params.month)) cursor = U.monthStart(params.month);
     if (!cursor) cursor = U.monthStart(today);
 
-    var wrap = el('div', { class: 'page' });
+    var first = cursor, last = U.monthEnd(cursor);
+    var monthTitle = cursor.slice(0, 4) + '年' + (+cursor.slice(5, 7)) + '月';
+    var wrap = el('div', { class: 'page cal-page' });
 
-    /* 月ナビ */
+    /* 月ナビ（月名をタップするとその月の締切一覧） */
     wrap.appendChild(el('div', { class: 'monthnav' }, [
-      el('button', { class: 'iconbtn', 'aria-label': '前の月', onclick: function () { cursor = U.addMonths(cursor, -1); DL.app.render(); } }, ui.icon('chevronLeft', 20)),
-      el('div', { class: 'monthlabel', text: cursor.slice(0, 4) + '年' + (+cursor.slice(5, 7)) + '月' }),
-      el('button', { class: 'iconbtn', 'aria-label': '次の月', onclick: function () { cursor = U.addMonths(cursor, 1); DL.app.render(); } }, ui.icon('chevronRight', 20)),
-      ui.btn('今日', 'tiny ghost', function () { cursor = U.monthStart(today); DL.app.render(); })
+      el('button', { class: 'iconbtn', 'aria-label': '前の月', onclick: function () { goMonth(-1); } }, ui.icon('chevronLeft', 20)),
+      el('button', {
+        class: 'monthlabel', 'aria-label': monthTitle + 'の締切一覧',
+        onclick: function () { monthSheet(first, last, monthTitle, today); }
+      }, [
+        el('span', { text: monthTitle }),
+        ui.icon('chevronDown', 15)
+      ]),
+      el('button', { class: 'iconbtn', 'aria-label': '次の月', onclick: function () { goMonth(1); } }, ui.icon('chevronRight', 20)),
+      ui.btn('今日', 'tiny ghost', function () { cursor = U.monthStart(today); slideDir = null; DL.app.render(); })
     ]));
 
     /* 曜日見出し */
@@ -30,35 +46,66 @@
     wrap.appendChild(head);
 
     /* グリッド */
-    var first = cursor, last = U.monthEnd(cursor);
     var lead = (U.dow(first) - ws + 7) % 7;
     var gridStart = U.addDays(first, -lead);
-    var totalCells = Math.ceil((lead + U.diffDays(first, last) + 1) / 7) * 7;
-    var grid = el('div', { class: 'cal-grid' });
+    var rows = Math.ceil((lead + U.diffDays(first, last) + 1) / 7);
+    var grid = el('div', { class: 'cal-grid' + (slideDir ? ' ' + slideDir : '') });
+    slideDir = null;
 
-    for (var c = 0; c < totalCells; c++) {
+    for (var c = 0; c < rows * 7; c++) {
       grid.appendChild(cell(U.addDays(gridStart, c), cursor, today));
     }
     wrap.appendChild(grid);
 
-    /* 凡例 */
-    wrap.appendChild(el('div', { class: 'legend' }, [
-      el('span', {}, [el('i', { class: 'lg ev' }), 'イベント']),
-      el('span', {}, [el('i', { class: 'lg dl' }), '締切/入稿']),
-      el('span', {}, [el('i', { class: 'lg tk' }), 'ノルマ'])
-    ]));
-
-    /* 今月の締切一覧 */
-    var items = sc.timeline(first, U.diffDays(first, last));
-    wrap.appendChild(ui.section('この月の締切・イベント'));
-    if (!items.length) wrap.appendChild(ui.empty('この月に締切はありません。'));
-    else {
-      var list = el('div', { class: 'list' });
-      items.forEach(function (it) { list.appendChild(DL.views.home.deadlineRow(it, today)); });
-      wrap.appendChild(list);
-    }
-
+    attachSwipe(wrap);
     root.appendChild(wrap);
+  }
+
+  /* 左右スワイプで月を移動する */
+  function attachSwipe(node) {
+    var x0 = 0, y0 = 0, t0 = 0, tracking = false, swiped = false;
+
+    node.addEventListener('touchstart', function (e) {
+      swiped = false;
+      if (e.touches.length !== 1) { tracking = false; return; }
+      tracking = true;
+      x0 = e.touches[0].clientX;
+      y0 = e.touches[0].clientY;
+      t0 = Date.now();
+    }, { passive: true });
+
+    node.addEventListener('touchend', function (e) {
+      if (!tracking) return;
+      tracking = false;
+      var t = e.changedTouches[0];
+      var dx = t.clientX - x0, dy = t.clientY - y0;
+      if (Date.now() - t0 > 700) return;
+      if (Math.abs(dx) < 45 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
+      swiped = true;              // 直後のタップ（日付リンク）は無効にする
+      goMonth(dx < 0 ? 1 : -1);
+    }, { passive: true });
+
+    node.addEventListener('click', function (e) {
+      if (!swiped) return;
+      swiped = false;
+      e.preventDefault();
+      e.stopPropagation();
+    }, true);
+  }
+
+  /* 月名タップで開く、その月の締切・イベント一覧 */
+  function monthSheet(first, last, title, today) {
+    var items = sc.timeline(first, U.diffDays(first, last));
+    var body;
+    if (!items.length) {
+      body = ui.empty('この月に締切・イベントはありません。');
+    } else {
+      body = el('div', { class: 'list' }, items.map(function (it) {
+        return DL.views.home.deadlineRow(it, today);
+      }));
+      body.addEventListener('click', function () { close(); });
+    }
+    var close = ui.sheet({ title: title + 'の締切・イベント', body: body });
   }
 
   function cell(date, cursorMonth, today) {
@@ -75,39 +122,47 @@
     if (d === 6) cls += ' sat';
     if (isOff) cls += ' off';
 
-    var dots = el('div', { class: 'dots' });
-    marks.slice(0, 4).forEach(function (m) {
-      dots.appendChild(el('i', {
-        class: 'dot ' + (m.type === 'event' ? 'ev' : 'dl'),
-        style: { background: m.type === 'event' ? m.project.color : null }
-      }));
+    /* その日の中身を数行だけ載せる（締切・イベントを優先） */
+    var lines = el('div', { class: 'cal-lines' });
+    var MAX = 4, shown = 0;
+
+    marks.forEach(function (m) {
+      if (shown >= MAX) return;
+      shown++;
+      lines.appendChild(el('span', { class: 'cal-line mk ' + m.type }, [
+        el('i', { style: { background: m.project.color } }),
+        el('span', { class: 'nm', text: markText(m) })
+      ]));
     });
 
-    var badge = null;
-    if (load.qty > 0) {
-      var doneAll = load.done >= load.qty;
-      badge = el('span', { class: 'cal-q' + (doneAll ? ' done' : ''), text: String(load.qty) });
-    } else if (load.entries.length) {
-      badge = el('span', { class: 'cal-q soft', text: '・' });
-    }
+    load.entries.forEach(function (e) {
+      if (shown >= MAX) return;
+      shown++;
+      var doneAll = e.qty > 0 ? e.done >= e.qty : e.done > 0;
+      lines.appendChild(el('span', { class: 'cal-line' + (doneAll ? ' done' : '') }, [
+        el('i', { style: { background: e.project.color } }),
+        el('span', { class: 'nm', text: e.task.name }),
+        e.qty ? el('b', { text: String(e.qty) }) : null
+      ]));
+    });
 
-    // その日のメイン締切を小さく表示
-    var label = marks.length
-      ? el('span', { class: 'cal-mark ' + marks[0].type }, [
-          ui.icon(marks[0].type === 'event' ? 'event' : marks[0].type === 'printing' ? 'printer' : 'deadline', 9),
-          el('span', { text: shortLabel(marks[0]) })
-        ])
-      : null;
+    var rest = marks.length + load.entries.length - shown;
+    if (rest > 0) lines.appendChild(el('span', { class: 'cal-more', text: '＋' + rest }));
 
     return el('a', { class: cls, href: '#/day/' + date }, [
-      el('span', { class: 'cal-n', text: String(+date.slice(8)) }),
-      badge, label, dots
+      el('span', { class: 'cal-top' }, [
+        el('span', { class: 'cal-n', text: String(+date.slice(8)) }),
+        load.qty > 0 ? el('span', { class: 'cal-sum' + (load.done >= load.qty ? ' done' : ''), text: String(load.qty) }) : null
+      ]),
+      lines
     ]);
   }
 
-  function shortLabel(m) {
-    if (m.type === 'event') return (m.project.eventName || m.project.title).slice(0, 5);
-    return m.project.title.slice(0, 5);
+  // セルは狭いので、締切は種別の言葉だけを出す（どの案件かは色の帯で示す）
+  function markText(m) {
+    if (m.type === 'event') return m.project.eventName || m.project.title;
+    if (m.type === 'printing') return (m.label || '入稿').split('：')[0];
+    return sc.deadlineShort(m.project);
   }
 
   /* ---------------- 日別 ---------------- */
