@@ -60,6 +60,11 @@
     defaultIssuerId: '',   // 既定の屋号
     scopeIssuerId: '',     // 表示を絞り込む屋号（空＝すべて）
     clients: [],           // 取引先
+    folders: [],           // 共有ファイルのフォルダ [{id,name,createdAt}]
+    // ファイルとフォルダの対応 { ファイルID: フォルダID }。
+    // R2 のメタ情報ではなくここに持つ理由：R2 はメタ情報だけの更新ができないため、
+    // フォルダを移すたびにファイルを丸ごと入れ直すことになってしまう。
+    fileFolders: {},
     sync: {                // 同期サーバーの接続情報（この端末だけのもの）
       url: '', token: '', enabled: false, deviceName: '',
       rev: 0,              // 最後にやりとりした版番号
@@ -170,6 +175,8 @@
     s.settings.templates = Object.assign(U.clone(TEMPLATES), s.settings.templates || {});
     s.settings.sync = Object.assign(U.clone(DEFAULT_SETTINGS.sync), s.settings.sync || {});
     s.settings.clients = (s.settings.clients || []).map(normalizeClient);
+    s.settings.folders = (s.settings.folders || []).map(normalizeFolder);
+    s.settings.fileFolders = s.settings.fileFolders || {};
     s.settings.docSeq = migrateDocSeq(s.settings.docSeq);
     s.projects = (s.projects || []).map(normalizeProject);
     return s;
@@ -268,6 +275,14 @@
     c.note = c.note || '';
     c.createdAt = c.createdAt || new Date().toISOString();
     return c;
+  }
+
+  function normalizeFolder(f) {
+    f = f || {};
+    f.id = f.id || U.uid();
+    f.name = f.name || '(名称未設定)';
+    f.createdAt = f.createdAt || new Date().toISOString();
+    return f;
   }
 
   function normalizeDoc(d) {
@@ -431,6 +446,60 @@
     });
     out.sort(function (a, b) { return U.cmp(b.doc.issueDate, a.doc.issueDate); });
     return out;
+  }
+
+  /* ---------------- 共有ファイルのフォルダ ---------------- */
+
+  function folders() { return state.settings.folders || []; }
+
+  function getFolder(id) {
+    return folders().filter(function (f) { return f.id === id; })[0] || null;
+  }
+
+  function addFolder(name) {
+    var f = normalizeFolder({ id: U.uid(), name: String(name || '').trim() || '新しいフォルダ' });
+    state.settings.folders = folders().concat([f]);
+    save();
+    return f;
+  }
+
+  function renameFolder(id, name) {
+    var f = getFolder(id);
+    if (!f) return null;
+    f.name = String(name || '').trim() || f.name;
+    save();
+    return f;
+  }
+
+  /**
+   * フォルダを消す。中のファイルの扱いは呼び出し側が決める。
+   * ここではフォルダと対応表だけを片づける（ファイルの実体は触らない）。
+   */
+  function removeFolder(id) {
+    state.settings.folders = folders().filter(function (f) { return f.id !== id; });
+    var map = state.settings.fileFolders || {};
+    Object.keys(map).forEach(function (fid) { if (map[fid] === id) delete map[fid]; });
+    save();
+  }
+
+  function fileFolder(fileId) { return (state.settings.fileFolders || {})[fileId] || ''; }
+
+  function setFileFolder(fileId, folderId) {
+    var map = state.settings.fileFolders || (state.settings.fileFolders = {});
+    if (folderId) map[fileId] = folderId;
+    else delete map[fileId];
+    save();
+  }
+
+  /* 消えたファイルの対応が溜まらないよう掃除する */
+  function pruneFileFolders(existingIds) {
+    var have = {};
+    existingIds.forEach(function (id) { have[id] = true; });
+    var map = state.settings.fileFolders || {};
+    var removed = 0;
+    Object.keys(map).forEach(function (fid) { if (!have[fid]) { delete map[fid]; removed++; } });
+    if (removed) save({ quiet: true });
+    return removed;
   }
 
   /* ---------------- 書類（請求書・領収書） ---------------- */
@@ -849,8 +918,14 @@
         mode: 'merge',
         added: 0, skipped: 0,
         issuers: mergeById(state.settings.issuers, incoming.settings.issuers || []),
-        clients: mergeById(state.settings.clients, incoming.settings.clients || [])
+        clients: mergeById(state.settings.clients, incoming.settings.clients || []),
+        folders: mergeById(state.settings.folders, incoming.settings.folders || [])
       };
+      // ファイルとフォルダの対応は、こちらに無いものだけ足す
+      var mine = state.settings.fileFolders || (state.settings.fileFolders = {});
+      Object.keys(incoming.settings.fileFolders || {}).forEach(function (fid) {
+        if (!mine[fid]) mine[fid] = incoming.settings.fileFolders[fid];
+      });
       var have = {};
       state.projects.forEach(function (p) { have[p.id] = true; });
       incoming.projects.forEach(function (p) {
@@ -1008,6 +1083,9 @@
     clients: clients, getClient: getClient, addClient: addClient,
     updateClient: updateClient, removeClient: removeClient,
     clientProjects: clientProjects, clientDocs: clientDocs,
+    folders: folders, getFolder: getFolder, addFolder: addFolder,
+    renameFolder: renameFolder, removeFolder: removeFolder,
+    fileFolder: fileFolder, setFileFolder: setFileFolder, pruneFileFolders: pruneFileFolders,
     docs: docs, getDoc: getDoc, addDoc: addDoc, updateDoc: updateDoc, removeDoc: removeDoc,
     issueNumber: issueNumber, peekNumber: peekNumber, allDocs: allDocs,
     templateTasks: templateTasks, updateSettings: updateSettings,

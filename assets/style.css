@@ -762,3 +762,21 @@ h1, h2, h3, p { margin: 0; }
 }
 .file-main .row-title { word-break: break-all; }
 .row.file .iconbtn { flex: none; }
+
+/* ---------------- ファイルのフォルダ ---------------- */
+.crumb { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.crumb-up {
+  display: inline-flex; align-items: center; gap: 2px; padding: 3px 7px 3px 3px;
+  background: var(--card2); border: 1px solid var(--line); border-radius: var(--radius-s);
+  color: var(--accent); font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.crumb-here { display: inline-flex; align-items: center; gap: 5px; font-size: 14px; font-weight: 700; }
+.crumb-here .icon { color: var(--accent); }
+
+.row.folder { display: flex; align-items: center; gap: 6px; padding: 9px 10px; }
+.folder-main {
+  flex: 1; min-width: 0; text-align: left; background: transparent; border: 0;
+  color: var(--text); cursor: pointer; padding: 0; display: flex; flex-direction: column; gap: 5px;
+}
+.folder-main .row-title .icon { color: var(--accent); }
+.row.folder .iconbtn, .row.folder .chev { flex: none; }
