@@ -13,6 +13,12 @@
   var cwd = '';            // いま開いているフォルダID（空＝いちばん上）
   var uploads = [];        // 進行中のアップロード {name, pct, error}
 
+  // 小さい画像だけ中身を出す。通信量が増えるので上限を決め、
+  // さらに画面に入ったものだけ取りに行く。
+  var THUMB_MAX = 2 * 1024 * 1024;
+  var thumbs = {};         // ファイルID → 表示用のURL（この画面を開いている間だけ持つ）
+  var io = null;
+
   function render(root) {
     var wrap = el('div', { class: 'page files-page' });
 
@@ -127,7 +133,7 @@
 
   function fileTile(f) {
     var p = f.projectId ? S.getProject(f.projectId) : null;
-    return tile({
+    var t = tile({
       icon: iconFor(f),
       cls: 'is-file',
       name: f.name,
@@ -139,6 +145,8 @@
       },
       onMenu: function () { fileMenu(f); }
     });
+    if (wantsThumb(f)) prepareThumb(t.querySelector('.ftile-icon'), f);
+    return t;
   }
 
   function tile(o) {
@@ -154,6 +162,64 @@
         onclick: function (e) { e.stopPropagation(); o.onMenu(); }
       }, ui.icon('more', 16))
     ]);
+  }
+
+  /* ---------------- 画像の中身を出す ---------------- */
+
+  function wantsThumb(f) {
+    return (f.type || '').indexOf('image/') === 0 && f.size <= THUMB_MAX;
+  }
+
+  /* 取得済みならすぐ出し、まだなら画面に入ったときに取りに行く */
+  function prepareThumb(box, f) {
+    if (thumbs[f.id]) { showThumb(box, thumbs[f.id]); return; }
+    if (!window.IntersectionObserver) return;   // 対応していなければアイコンのまま
+    box._file = f;
+    box.classList.add('waiting');
+    observer().observe(box);
+  }
+
+  function observer() {
+    if (io) return io;
+    io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (!en.isIntersecting) return;
+        io.unobserve(en.target);
+        fetchThumb(en.target);
+      });
+    }, { rootMargin: '300px' });
+    return io;
+  }
+
+  function fetchThumb(box) {
+    var f = box._file;
+    if (!f || thumbs[f.id]) return;
+    F.fetchBytes(f.id).then(function (bytes) {
+      var url = URL.createObjectURL(new Blob([bytes], { type: f.type }));
+      thumbs[f.id] = url;
+      // 取っている間に画面が描き直されていることがあるので、いま出ている枠を探す
+      showThumb(box, url);
+      U.$$('.ftile-icon').forEach(function (n) {
+        if (n !== box && n._file && n._file.id === f.id) showThumb(n, url);
+      });
+    }).catch(function () {
+      box.classList.remove('waiting');   // 取れなければアイコンのまま
+    });
+  }
+
+  function showThumb(box, url) {
+    box.classList.remove('waiting');
+    box.classList.add('has-thumb');
+    U.clear(box);
+    box.appendChild(el('img', { class: 'ftile-thumb', src: url, alt: '', loading: 'lazy' }));
+  }
+
+  function dropThumbs() {
+    Object.keys(thumbs).forEach(function (id) {
+      try { URL.revokeObjectURL(thumbs[id]); } catch (e) { /* 解放済みなら気にしない */ }
+    });
+    thumbs = {};
+    if (io) { io.disconnect(); io = null; }
   }
 
   /* ---------------- フォルダ ---------------- */
@@ -547,6 +613,6 @@
     pickFiles: pickFiles,
     // タブに入るたびに取り直す（もう片方の端末が上げたものをすぐ見せる）
     entered: function () { if (F.ready()) load(true); },
-    reset: function () { cache = null; fetchedAt = 0; error = ''; cwd = ''; }
+    reset: function () { cache = null; fetchedAt = 0; error = ''; cwd = ''; dropThumbs(); }
   };
 })(window.DL);

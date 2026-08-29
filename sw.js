@@ -1,5 +1,5 @@
 /* オフライン用のシンプルなキャッシュ（アプリ本体のみ。データは localStorage） */
-var CACHE = 'shimekiri-v14';
+var CACHE = 'shimekiri-v15';
 var ASSETS = [
   './', './index.html', './assets/style.css', './manifest.webmanifest',
   './assets/icon-180.png', './assets/icon-192.png', './assets/icon-512.png',
@@ -32,8 +32,19 @@ self.addEventListener('activate', function (e) {
 self.addEventListener('fetch', function (e) {
   if (e.request.method !== 'GET') return;
   if (new URL(e.request.url).origin !== self.location.origin) return;
+
+  // GitHub Pages は max-age=600 を返すため、そのまま fetch すると
+  // 10分間ブラウザのHTTPキャッシュが返り、更新しても古い画面のままになる。
+  // 毎回サーバーに確認しに行く（中身が同じなら 304 で軽く済む）。
+  var fresh;
+  try {
+    fresh = new Request(e.request.url, { cache: 'no-cache', credentials: 'same-origin' });
+  } catch (err) {
+    fresh = e.request;
+  }
+
   e.respondWith(
-    fetch(e.request).then(function (res) {
+    fetch(fresh).then(function (res) {
       // リダイレクトや部分応答はキャッシュに入れない
       if (!res || res.status !== 200 || res.type !== 'basic') return res;
       var copy = res.clone();
