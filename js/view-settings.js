@@ -80,7 +80,7 @@
 
     /* ---- 屋号 ---- */
     wrap.appendChild(ui.section('屋号（請求書・領収書の発行元）',
-      el('a', { class: 'link', href: '#/projects', text: '' })));
+      el('a', { class: 'link', href: '#/sales', text: '売上' })));
     var issuerBox = el('div', { class: 'card' });
     var list = S.issuers();
     if (!list.length) {
@@ -91,6 +91,7 @@
       issuerBox.appendChild(el('div', { class: 'issuer-row' }, [
         el('button', { class: 'tpl-summary', onclick: function () { DL.forms.issuerSheet(x.id); } }, [
           el('div', { class: 'issuer-main' }, [
+            el('span', { class: 'scope-dot big', style: { background: S.issuerColor(x.id) } }),
             x.logo ? el('img', { class: 'issuer-logo', src: x.logo, alt: '' }) : null,
             el('div', {}, [
               el('strong', {}, [el('span', { text: x.name || '(名称未設定)' }), isDefault ? ui.chip('既定', 'ok') : null]),

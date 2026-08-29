@@ -207,6 +207,41 @@
     return wrap;
   }
 
+  /**
+   * 売上として数える書類かどうか。
+   * 請求書を基本にし、請求書が1枚も無い案件のときだけ領収書を数える
+   * （請求書から起こした領収書を二重に数えないため）。
+   */
+  function countsAsSale(project, doc) {
+    if (doc.type === 'invoice') return true;
+    return !(project.docs || []).some(function (d) { return d.type === 'invoice'; });
+  }
+
+  /**
+   * 書類の集計。{project, doc} の配列を渡す。
+   * 下書きは売上に含めず、別枠（draft）で数える。
+   */
+  function sales(entries) {
+    var out = {
+      count: 0, subtotal: 0, tax: 0, total: 0, withholding: 0, payable: 0,
+      paid: 0, paidCount: 0, unpaid: 0, unpaidCount: 0, draft: 0, draftCount: 0
+    };
+    entries.forEach(function (e) {
+      if (!countsAsSale(e.project, e.doc)) return;
+      var c = calc(e.doc);
+      if (e.doc.status === 'draft') { out.draft += c.payable; out.draftCount++; return; }
+      out.count++;
+      out.subtotal += c.subtotal;
+      out.tax += c.tax;
+      out.total += c.total;
+      out.withholding += c.withholding;
+      out.payable += c.payable;
+      if (e.doc.status === 'paid') { out.paid += c.payable; out.paidCount++; }
+      else { out.unpaid += c.payable; out.unpaidCount++; }
+    });
+    return out;
+  }
+
   /* 案件の書類の状況（一覧のバッジ用） */
   function summary(project) {
     var list = project.docs || [];
@@ -223,6 +258,7 @@
     TYPE_LABEL: TYPE_LABEL, TYPE_ICON: TYPE_ICON, STATUS_LABEL: STATUS_LABEL,
     TAX_MODE_LABEL: TAX_MODE_LABEL, HONORIFICS: HONORIFICS, UNITS: UNITS,
     PAYMENT_METHODS: PAYMENT_METHODS,
-    yen: yen, calc: calc, blank: blank, fromInvoice: fromInvoice, sheet: sheet, summary: summary
+    yen: yen, calc: calc, blank: blank, fromInvoice: fromInvoice, sheet: sheet, summary: summary,
+    countsAsSale: countsAsSale, sales: sales
   };
 })(window.DL);

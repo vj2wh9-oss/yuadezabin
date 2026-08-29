@@ -34,7 +34,7 @@
 
     function renderList() {
       U.clear(listBox);
-      var items = S.projects().filter(function (p) {
+      var items = S.scopedProjects().filter(function (p) {
         if (filter === 'active') return p.status === 'active';
         if (filter === 'done') return p.status === 'done';
         if (filter === 'event') return p.kind === 'event' && p.status !== 'archived';
@@ -84,6 +84,8 @@
     var unit = p.category === 'manga' ? 'P' : '枚';
 
     var sub = [ui.kindChip(p), ui.catChip(p)];
+    var issuer = p.issuerId ? S.issuers().filter(function (x) { return x.id === p.issuerId; })[0] : null;
+    if (issuer) sub.push(ui.iconChip('issuer', issuer.name || '屋号', 'ghosty'));
     if (p.qty) sub.push(ui.chip(p.qty + unit, 'ghosty'));
     if (p.kind === 'event' && U.isISO(p.eventDate)) sub.push(ui.iconChip('event', U.fmtMD(p.eventDate), 'ghosty'));
     if (p.client) sub.push(ui.chip(p.client, 'ghosty'));

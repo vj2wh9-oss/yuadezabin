@@ -631,3 +631,54 @@ h1, h2, h3, p { margin: 0; }
 .item-head .field-label { flex: 1; }
 .item-amount { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--accent); }
 .item-row .grid3 { grid-template-columns: 1fr 1fr 1.4fr; align-items: end; }
+
+/* ---------------- 屋号の切り替え ---------------- */
+.scopebtn {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 46vw;
+  background: var(--card2); border: 1px solid var(--line); border-radius: var(--radius-s);
+  color: var(--text); font-size: 12.5px; font-weight: 600; padding: 5px 8px; cursor: pointer;
+  white-space: nowrap; overflow: hidden;
+}
+.scopebtn.on { border-color: var(--accent); }
+.scopebtn .icon { color: var(--muted); flex: none; }
+.scopebtn span { overflow: hidden; text-overflow: ellipsis; }
+.scope-dot { width: 9px; height: 9px; flex: none; display: inline-block; border-radius: 1px; }
+.scope-dot.big { width: 12px; height: 12px; }
+.menu-item.on { color: var(--accent); font-weight: 700; }
+.menu-item .menu-check { margin-left: auto; color: var(--accent); display: flex; }
+
+/* ---------------- 売上 ---------------- */
+.year-nav { display: flex; align-items: center; justify-content: center; gap: 6px; }
+.year-label {
+  background: transparent; border: 0; color: var(--text); cursor: pointer;
+  font-size: 19px; font-weight: 800; letter-spacing: .02em; padding: 4px 14px;
+  font-variant-numeric: tabular-nums;
+}
+.sum-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.sum-box {
+  background: var(--card2); border: 1px solid var(--line); border-radius: var(--radius-s);
+  padding: 8px 6px; text-align: center; min-width: 0;
+}
+.sum-box span { display: block; font-size: 10.5px; color: var(--muted); }
+.sum-box b { font-size: 14px; font-variant-numeric: tabular-nums; word-break: break-all; }
+.sum-box.big { grid-column: span 3; }
+.sum-box.big b { font-size: 22px; color: var(--accent); }
+.sum-box.ok b { color: var(--ok); }
+.sum-box.warn { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); }
+.sum-box.warn b { color: var(--warn); }
+
+.month-sales { display: flex; flex-direction: column; gap: 3px; }
+.ms-row { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 3px 0; }
+.ms-row.zero { opacity: .4; }
+.ms-row.now { font-weight: 700; }
+.ms-m { width: 34px; flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ms-row.now .ms-m { color: var(--accent); }
+.ms-bar { flex: 1; height: 8px; background: var(--line); border-radius: 1px; overflow: hidden; }
+.ms-bar i { display: block; height: 100%; background: var(--accent); }
+.ms-v { width: 78px; flex: none; text-align: right; font-variant-numeric: tabular-nums; }
+.ms-u { width: 62px; flex: none; text-align: right; font-size: 10.5px; color: var(--warn); font-variant-numeric: tabular-nums; }
+
+.sales-card { display: flex; flex-direction: column; gap: 8px; }
+.sales-card .row-title { align-items: center; }
+.sales-card .row-title .chev { margin-left: auto; color: var(--muted); display: flex; }
+.quota-row.three { grid-template-columns: repeat(3, 1fr); }

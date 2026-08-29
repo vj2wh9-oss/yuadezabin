@@ -179,7 +179,7 @@
   function dayEntries(date, opts) {
     opts = opts || {};
     var out = [];
-    DL.store.projects().forEach(function (p) {
+    DL.store.scopedProjects().forEach(function (p) {
       if (p.status === 'archived') return;
       if (p.status === 'done' && !opts.includeDone) return;
       (p.tasks || []).forEach(function (t) {
@@ -202,7 +202,7 @@
   /* ある日のイベント／締切 */
   function dayMarks(date) {
     var marks = [];
-    DL.store.projects().forEach(function (p) {
+    DL.store.scopedProjects().forEach(function (p) {
       if (p.status === 'archived') return;
       if (p.kind === 'event' && p.eventDate === date) {
         marks.push({ type: 'event', project: p, label: p.eventName || p.title });
@@ -224,7 +224,7 @@
     var from = fromDate || U.today();
     var to = U.addDays(from, days || 120);
     var out = [];
-    DL.store.projects().forEach(function (p) {
+    DL.store.scopedProjects().forEach(function (p) {
       if (p.status === 'archived') return;
       function push(type, date, label) {
         if (!U.isISO(date)) return;
@@ -263,7 +263,7 @@
       });
     });
 
-    DL.store.projects().forEach(function (p) {
+    DL.store.scopedProjects().forEach(function (p) {
       if (p.status !== 'active') return;
       var st = projectStatus(p, today);
       if (st === 'overdue') {
@@ -287,6 +287,59 @@
         } else if (pace.behind > 0) {
           out.push({ level: 'warn', project: p, task: t, text: t.name + ' が ' + pace.behind + unit(t) + ' 遅れています' });
         }
+      });
+    });
+
+    out = out.concat(moneyAlerts(today));
+
+    // 重い順に並べる（ホームは先頭数件しか出さないため）。同じ重さなら元の順を保つ
+    var ORDER = ['danger', 'warn', 'info'];
+    function rank(level) {
+      var i = ORDER.indexOf(level);
+      return i < 0 ? ORDER.length : i;
+    }
+    return out.map(function (a, i) { return { a: a, i: i }; })
+      .sort(function (x, y) {
+        var d = rank(x.a.level) - rank(y.a.level);
+        return d !== 0 ? d : x.i - y.i;
+      })
+      .map(function (x) { return x.a; });
+  }
+
+  /**
+   * お金まわりの取りこぼし。
+   *  - 納品が済んだのに請求書を作っていない仕事
+   *  - 発行済みのまま支払期限を過ぎている請求書
+   */
+  function moneyAlerts(today) {
+    today = today || U.today();
+    var out = [];
+    var yen = DL.docs ? DL.docs.yen : function (n) { return '¥' + n; };
+
+    DL.store.scopedProjects().forEach(function (p) {
+      if (p.status === 'archived') return;
+      var docs = p.docs || [];
+
+      // 請求漏れ：納品日を過ぎた仕事に請求書が1枚も無い
+      if (p.kind === 'work' && U.isISO(p.deadline) && U.cmp(p.deadline, today) < 0) {
+        var hasInvoice = docs.some(function (d) { return d.type === 'invoice'; });
+        if (!hasInvoice) {
+          out.push({
+            level: 'warn', project: p, href: '#/docs/' + p.id,
+            text: '納品日から ' + Math.abs(U.diffDays(today, p.deadline)) + '日、請求書がまだありません'
+          });
+        }
+      }
+
+      // 入金漏れ：発行済みのまま支払期限を過ぎている請求書
+      docs.forEach(function (d) {
+        if (d.type !== 'invoice' || d.status !== 'issued') return;
+        if (!U.isISO(d.dueDate) || U.cmp(d.dueDate, today) >= 0) return;
+        var amount = DL.docs ? DL.docs.calc(d).payable : 0;
+        out.push({
+          level: 'danger', project: p, href: '#/doc/' + p.id + '/' + d.id,
+          text: '入金予定日を ' + Math.abs(U.diffDays(today, d.dueDate)) + '日 過ぎています（' + yen(amount) + '）'
+        });
       });
     });
     return out;
@@ -366,7 +419,7 @@
     today = today || U.today();
     var from = U.addDays(today, -(days || 60));
     var byDate = {};
-    DL.store.projects().forEach(function (p) {
+    DL.store.scopedProjects().forEach(function (p) {
       (p.tasks || []).forEach(function (t) {
         Object.keys(t.progress || {}).forEach(function (d) {
           if (U.cmp(d, from) < 0 || U.cmp(d, today) > 0) return;
@@ -481,7 +534,7 @@
       }
       lines.push('END:VEVENT');
     }
-    DL.store.projects().forEach(function (p) {
+    DL.store.scopedProjects().forEach(function (p) {
       if (p.status === 'archived') return;
       if (p.kind === 'event' && U.isISO(p.eventDate)) ev(p.id + '-event', p.eventDate, '[イベント] ' + (p.eventName || p.title), p.venue || '');
       if (U.isISO(p.deadline)) ev(p.id + '-dl', p.deadline, '[' + deadlineShort(p) + '] ' + p.title, p.memo || '');
@@ -511,7 +564,8 @@
     taskIsComplete: taskIsComplete, taskPace: taskPace, unit: unit,
     projectProgress: projectProgress, projectStatus: projectStatus, STATUS_LABEL: STATUS_LABEL,
     deadlineLabel: deadlineLabel, deadlineShort: deadlineShort,
-    dayEntries: dayEntries, dayMarks: dayMarks, timeline: timeline, alerts: alerts,
+    dayEntries: dayEntries, dayMarks: dayMarks, timeline: timeline,
+    alerts: alerts, moneyAlerts: moneyAlerts,
     actualPace: actualPace, isOverloaded: isOverloaded, overloadedDays: overloadedDays,
     deferDay: deferDay, rescheduleRemaining: rescheduleRemaining,
     autoSchedule: autoSchedule, loadOfDay: loadOfDay, buildICS: buildICS, ICS_ALARMS: ICS_ALARMS

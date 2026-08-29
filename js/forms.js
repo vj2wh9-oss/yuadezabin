@@ -11,7 +11,9 @@
       kind: 'event', category: 'manga', title: '', status: 'active',
       eventName: '', eventDate: '', venue: '', space: '',
       client: '', fee: '', site: '', plan: '', deadline: '', startDate: U.today(),
-      qty: 20, memo: '', printings: [], color: S.pickColor()
+      qty: 20, memo: '', printings: [], color: S.pickColor(),
+      // 新規は「いま見ている屋号」→既定の屋号 の順で初期選択する
+      issuerId: S.scopeId() || S.settings.defaultIssuerId || ''
     };
 
     var body = el('div', { class: 'form' });
@@ -80,6 +82,19 @@
     function renderCatHint() { renderCat(); }
 
     body.appendChild(ui.field('種別', kindSeg));
+
+    // 屋号（登録があるときだけ。切り替え表示と書類の初期値に使う）
+    var issuerSel = null;
+    if (S.issuers().length) {
+      issuerSel = ui.select(
+        [{ value: '', label: '（指定しない）' }].concat(S.issuers().map(function (x) {
+          return { value: x.id, label: x.name || '(名称未設定)' };
+        })),
+        p.issuerId || ''
+      );
+      body.appendChild(ui.field('屋号', issuerSel, 'この案件をどちらの屋号の仕事として扱うか。書類の発行元の初期値にもなります'));
+    }
+
     body.appendChild(ui.field('タイトル', titleInput));
     body.appendChild(catWrap);
     body.appendChild(qtyWrap);
@@ -219,6 +234,7 @@
     function collect() {
       var data = {
         kind: p.kind, category: p.category, color: p.color,
+        issuerId: issuerSel ? issuerSel.value : (p.issuerId || ''),
         title: titleInput.value.trim(), memo: memoInput.value,
         startDate: startInput.value, qty: U.num(qtyInput.value, 0)
       };
@@ -850,8 +866,9 @@
     var x = existing ? U.clone(existing) : {
       name: '', ownerName: '', zip: '', address: '', tel: '', email: '', web: '',
       invoiceNo: '', bank: { name: '', branch: '', type: '普通', number: '', holder: '' },
-      logo: '', seal: '', note: ''
+      logo: '', seal: '', color: '', note: ''
     };
+    if (!x.color) x.color = S.issuerColor(x.id) || S.PALETTE[S.issuers().length % S.PALETTE.length];
 
     function t(key, ph) {
       var i = ui.input({ value: x[key] || '', placeholder: ph || '' });
@@ -893,9 +910,24 @@
       return ui.field(label, box, hint);
     }
 
+    // 屋号の識別色（案件一覧や切り替えボタンで使う）
+    var colorWrap = el('div', { class: 'colors' });
+    S.PALETTE.forEach(function (c) {
+      var b = el('button', {
+        type: 'button', class: 'color' + (c === x.color ? ' on' : ''), style: { background: c },
+        'aria-label': '色', onclick: function () {
+          x.color = c;
+          U.$$('.color', colorWrap).forEach(function (n) { n.classList.remove('on'); });
+          b.classList.add('on');
+        }
+      });
+      colorWrap.appendChild(b);
+    });
+
     var body = el('div', { class: 'form' }, [
       ui.field('屋号', t('name', '例）スタジオ○○'), '書類に大きく出る名前です'),
       ui.field('代表者名', t('ownerName', '例）山田 太郎')),
+      ui.field('識別色', colorWrap, '案件一覧や屋号の切り替えで、この色の目印が付きます'),
       el('div', { class: 'grid2' }, [
         ui.field('郵便番号', t('zip', '000-0000')),
         ui.field('電話番号', t('tel', '000-0000-0000'))

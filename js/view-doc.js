@@ -54,7 +54,8 @@
 
   function create(p, type) {
     if (!S.issuers().length) { ui.toast('先に屋号を登録してください', 'warn'); return; }
-    var d = S.addDoc(p.id, D.blank(type, p));
+    // 案件に屋号が設定されていればそれを使う
+    var d = S.addDoc(p.id, D.blank(type, p, p.issuerId));
     location.hash = '#/doc/' + p.id + '/' + d.id;
   }
 

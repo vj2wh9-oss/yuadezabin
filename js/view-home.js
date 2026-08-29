@@ -22,7 +22,7 @@
     if (al.length) {
       var box = el('div', { class: 'alerts' });
       al.slice(0, 5).forEach(function (a) {
-        var href = a.project ? '#/project/' + a.project.id : a.date ? '#/day/' + a.date : '#/settings';
+        var href = a.href || (a.project ? '#/project/' + a.project.id : a.date ? '#/day/' + a.date : '#/settings');
         box.appendChild(el('a', { class: 'alert ' + a.level, href: href }, [
           el('span', { class: 'alert-icon' }, ui.icon(a.level === 'info' ? 'info' : 'alert', 17)),
           el('span', {}, [
@@ -49,6 +49,13 @@
     wrap.appendChild(ui.section('これから7日間'));
     wrap.appendChild(weekStrip(today));
     wrap.appendChild(stats(today, load));
+
+    /* 売上（書類があるときだけ） */
+    var sales = DL.views.sales && DL.views.sales.homeCard();
+    if (sales) {
+      wrap.appendChild(ui.section('売上', el('a', { class: 'link', href: '#/sales', text: '内訳' })));
+      wrap.appendChild(sales);
+    }
 
     /* 直近の締切 */
     var tl = sc.timeline(today, 180);

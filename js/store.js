@@ -53,6 +53,7 @@
     lastBackupAt: '',      // 最後にバックアップを書き出した日
     issuers: [],           // 屋号（発行元）
     defaultIssuerId: '',   // 既定の屋号
+    scopeIssuerId: '',     // 表示を絞り込む屋号（空＝すべて）
     docSeq: { invoice: 0, receipt: 0 },   // 書類番号の連番
     taxRate: 10,           // 消費税率(%)
     withholdingRate: 10.21,// 源泉徴収税率(%)
@@ -96,6 +97,7 @@
     p.category = (p.category === 'illust' || p.category === 'design') ? p.category : 'manga';
     p.title = p.title || '(無題)';
     p.status = p.status || 'active';
+    p.issuerId = p.issuerId || '';     // どの屋号の仕事か（空＝未割り当て）
     p.startDate = p.startDate || '';   // 作業開始日（スケジュール算出の起点）
     p.color = p.color || pickColor();
     var oldIdx = OLD_PALETTE.indexOf(p.color);
@@ -144,6 +146,7 @@
     x.bank = Object.assign({ name: '', branch: '', type: '普通', number: '', holder: '' }, x.bank || {});
     x.logo = x.logo || '';                     // dataURL
     x.seal = x.seal || '';                     // 印影 dataURL
+    x.color = x.color || '';                   // 屋号の識別色
     x.note = x.note || '';
     return x;
   }
@@ -215,7 +218,48 @@
     if (state.settings.defaultIssuerId === id) {
       state.settings.defaultIssuerId = (issuers()[0] || {}).id || '';
     }
+    if (state.settings.scopeIssuerId === id) state.settings.scopeIssuerId = '';
+    // 消した屋号を参照していた案件は未割り当てに戻す
+    state.projects.forEach(function (p) { if (p.issuerId === id) p.issuerId = ''; });
     save();
+  }
+
+  // 屋号の識別色（未設定なら並び順から割り当てる）
+  function issuerColor(id) {
+    var list = issuers();
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].id !== id) continue;
+      return list[i].color || PALETTE[i % PALETTE.length];
+    }
+    return '';
+  }
+
+  /* ---------------- 表示の絞り込み（屋号スコープ） ---------------- */
+
+  // 存在しない屋号が残っていても「すべて」に落とす
+  function scopeId() {
+    var id = state.settings.scopeIssuerId || '';
+    if (!id) return '';
+    return issuers().filter(function (x) { return x.id === id; }).length ? id : '';
+  }
+
+  function scopeIssuer() {
+    var id = scopeId();
+    return id ? issuers().filter(function (x) { return x.id === id; })[0] : null;
+  }
+
+  function setScope(id) { updateSettings({ scopeIssuerId: id || '' }); }
+
+  // 屋号を割り当てていない案件は、どのスコープでも隠さない（取りこぼし防止）
+  function inScope(p) {
+    var id = scopeId();
+    return !id || !p.issuerId || p.issuerId === id;
+  }
+
+  function scopedProjects() { return state.projects.filter(inScope); }
+
+  function unassignedCount() {
+    return state.projects.filter(function (p) { return !p.issuerId && p.status !== 'archived'; }).length;
   }
 
   /* ---------------- 書類（請求書・領収書） ---------------- */
@@ -301,7 +345,7 @@
   function projects() { return state.projects; }
 
   function activeProjects() {
-    return state.projects.filter(function (p) { return p.status === 'active'; });
+    return state.projects.filter(function (p) { return p.status === 'active' && inScope(p); });
   }
 
   function getProject(id) {
@@ -537,7 +581,9 @@
     addTask: addTask, getTask: getTask, updateTask: updateTask, removeTask: removeTask,
     moveTask: moveTask, setProgress: setProgress, bumpProgress: bumpProgress,
     issuers: issuers, getIssuer: getIssuer, addIssuer: addIssuer,
-    updateIssuer: updateIssuer, removeIssuer: removeIssuer,
+    updateIssuer: updateIssuer, removeIssuer: removeIssuer, issuerColor: issuerColor,
+    scopeId: scopeId, scopeIssuer: scopeIssuer, setScope: setScope,
+    inScope: inScope, scopedProjects: scopedProjects, unassignedCount: unassignedCount,
     docs: docs, getDoc: getDoc, addDoc: addDoc, updateDoc: updateDoc, removeDoc: removeDoc,
     issueNumber: issueNumber, allDocs: allDocs,
     templateTasks: templateTasks, updateSettings: updateSettings,

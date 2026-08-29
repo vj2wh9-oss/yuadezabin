@@ -37,15 +37,20 @@
     var titles = {
       home: '締切カレンダー', calendar: 'カレンダー', projects: '案件',
       settings: '設定', day: '日別', project: '案件の詳細',
-      docs: '請求書・領収書', doc: '書類'
+      docs: '請求書・領収書', doc: '書類', sales: '売上'
     };
     titleEl.textContent = titles[route.name] || '締切カレンダー';
 
-    var tab = { home: 'home', calendar: 'calendar', day: 'calendar', projects: 'projects', project: 'projects', docs: 'projects', doc: 'projects', settings: 'settings' }[route.name];
+    var tab = { home: 'home', calendar: 'calendar', day: 'calendar', projects: 'projects', project: 'projects', docs: 'projects', doc: 'projects', sales: 'projects', settings: 'settings' }[route.name];
     U.$$('.tab').forEach(function (t) { t.classList.toggle('on', t.dataset.tab === tab); });
 
-    var showBack = ['project', 'day', 'docs', 'doc'].indexOf(route.name) >= 0;
+    var showBack = ['project', 'day', 'docs', 'doc', 'sales'].indexOf(route.name) >= 0;
     backBtn.hidden = !showBack;
+
+    // 屋号の切り替え（2つ以上登録しているときだけ出す）
+    if (S.issuers().length > 1 && SCOPE_VIEWS.indexOf(route.name) >= 0) {
+      actionsEl.appendChild(scopeBtn());
+    }
 
     switch (route.name) {
       case 'calendar': DL.views.calendar.render(view, route.params); break;
@@ -54,6 +59,7 @@
       case 'project': DL.views.detail.render(view, route.params); break;
       case 'docs': DL.views.doc.renderList(view, route.params); break;
       case 'doc': DL.views.doc.renderDoc(view, route.params); break;
+      case 'sales': DL.views.sales.render(view); break;
       case 'settings': DL.views.settings.render(view); break;
       default: DL.views.home.render(view);
     }
@@ -66,9 +72,64 @@
     updateFab();
   }
 
+  /* ---------------- 屋号の切り替え ---------------- */
+
+  var SCOPE_VIEWS = ['home', 'calendar', 'day', 'projects', 'project', 'sales'];
+
+  function scopeBtn() {
+    var cur = S.scopeIssuer();
+    var name = cur ? (cur.name || '(名称未設定)') : 'すべての屋号';
+    if (name.length > 9) name = name.slice(0, 8) + '…';
+    return el('button', {
+      class: 'scopebtn' + (cur ? ' on' : ''), 'aria-label': '屋号を切り替える',
+      onclick: scopeSheet
+    }, [
+      cur ? el('span', { class: 'scope-dot', style: { background: S.issuerColor(cur.id) } }) : DL.icons.icon('issuer', 15),
+      el('span', { text: name }),
+      DL.icons.icon('chevronDown', 13)
+    ]);
+  }
+
+  function scopeSheet() {
+    var cur = S.scopeId();
+    var list = el('div', { class: 'menu' });
+
+    function opt(id, label, note, color) {
+      return el('button', { class: 'menu-item' + (cur === id ? ' on' : ''), onclick: function () {
+        S.setScope(id);
+        close();
+        ui.toast(id ? label + ' に切り替えました' : 'すべての屋号を表示します');
+      } }, [
+        color ? el('span', { class: 'scope-dot big', style: { background: color } }) : DL.icons.icon('issuer', 18),
+        el('span', {}, [
+          el('span', { text: label }),
+          note ? el('span', { class: 'muted small', text: '　' + note }) : null
+        ]),
+        cur === id ? el('span', { class: 'menu-check' }, DL.icons.icon('check', 16)) : null
+      ]);
+    }
+
+    var all = S.projects().filter(function (p) { return p.status !== 'archived'; }).length;
+    list.appendChild(opt('', 'すべての屋号', all + '件の案件'));
+    S.issuers().forEach(function (x) {
+      var n = S.projects().filter(function (p) { return p.issuerId === x.id && p.status !== 'archived'; }).length;
+      list.appendChild(opt(x.id, x.name || '(名称未設定)', n + '件の案件', S.issuerColor(x.id)));
+    });
+
+    var un = S.unassignedCount();
+    var body = el('div', {}, [
+      list,
+      el('p', { class: 'muted small pad', text: un
+        ? '屋号を割り当てていない案件が ' + un + '件あります。どの屋号を選んでいても表示します。'
+        : '選んだ屋号の案件だけをホーム・カレンダー・案件一覧に表示します。' })
+    ]);
+
+    var close = ui.sheet({ title: '屋号の切り替え', body: body });
+  }
+
   function updateFab() {
     // カレンダーは画面いっぱいに出すので、重なるボタンは置かない
-    if (['settings', 'calendar', 'docs', 'doc'].indexOf(route.name) >= 0) { fab.hidden = true; return; }
+    if (['settings', 'calendar', 'docs', 'doc', 'sales'].indexOf(route.name) >= 0) { fab.hidden = true; return; }
     fab.hidden = false;
     fab.onclick = function () {
       if (route.name === 'project') {
