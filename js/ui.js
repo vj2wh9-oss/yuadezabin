@@ -197,7 +197,7 @@
     return iconChip(CAT_ICON[p.category], CAT_LABEL[p.category], 'cat-' + p.category);
   }
 
-  /* ファイル保存（iOS では新規タブ／共有シートに回る場合がある） */
+  /* ファイル保存（iOS では Safari のダウンロード先へ入る） */
   function download(filename, text, mime) {
     var blob = new Blob([text], { type: (mime || 'text/plain') + ';charset=utf-8' });
     var url = URL.createObjectURL(blob);
@@ -207,6 +207,28 @@
     setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 1500);
   }
 
+  /**
+   * 共有シート経由の保存。iPhone では「"ファイル"に保存」で保存先フォルダを選べる。
+   * 使えない環境では通常のダウンロードに落とす。ボタンのタップから呼ぶこと。
+   * @returns {Promise<'shared'|'downloaded'|'cancelled'>}
+   */
+  function shareFile(filename, text, mime) {
+    var type = (mime || 'text/plain') + ';charset=utf-8';
+    var file;
+    try { file = new File([text], filename, { type: type }); } catch (e) { file = null; }
+    if (!file || !navigator.canShare || !navigator.canShare({ files: [file] })) {
+      download(filename, text, mime);
+      return Promise.resolve('downloaded');
+    }
+    return navigator.share({ files: [file], title: filename })
+      .then(function () { return 'shared'; })
+      .catch(function (e) {
+        if (e && e.name === 'AbortError') return 'cancelled';
+        download(filename, text, mime);
+        return 'downloaded';
+      });
+  }
+
   DL.ui = {
     toast: toast, sheet: sheet, closeAllSheets: closeAllSheets, confirm: confirmSheet,
     field: field, input: input, textarea: textarea, select: select, segmented: segmented,
@@ -214,6 +236,6 @@
     section: section, card: card,
     empty: empty, btn: btn, kindChip: kindChip, catChip: catChip,
     KIND_LABEL: KIND_LABEL, CAT_LABEL: CAT_LABEL, KIND_ICON: KIND_ICON, CAT_ICON: CAT_ICON,
-    download: download
+    download: download, shareFile: shareFile
   };
 })(window.DL);

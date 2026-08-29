@@ -115,14 +115,17 @@
       Object.keys(D.STATUS_LABEL).map(function (k) { return { value: k, label: D.STATUS_LABEL[k] }; }),
       d.status, function (v) {
         var patch = { status: v };
-        // 発行済みにするときに番号が無ければ採番する
-        if (v !== 'draft' && !d.number) patch.number = S.issueNumber(d.type);
+        // 発行済みにするときに番号が無ければ採番する（発行日の年の連番）
+        if (v !== 'draft' && !d.number) patch.number = S.issueNumber(d.type, d.issueDate);
         S.updateDoc(p.id, d.id, patch);
         ui.toast(v === 'draft' ? '下書きに戻しました' : D.STATUS_LABEL[v] + 'にしました');
       }
     );
+    var numHint = d.number
+      ? '書類番号は ' + d.number + ' です'
+      : '下書き以外にすると ' + S.peekNumber(d.type, d.issueDate) + ' が振られます（番号は年ごとに 0001 に戻ります）';
     wrap.appendChild(el('div', { class: 'card' }, [
-      ui.field('状態', statusSeg, '下書き以外にすると書類番号が自動で振られます'),
+      ui.field('状態', statusSeg, numHint),
       ui.field('屋号（発行元）', issuerSelect(p, d), '案件ごとに切り替えられます')
     ]));
 

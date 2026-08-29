@@ -50,27 +50,58 @@
     };
   }
 
-  /* 新しい書類のひな形。案件の情報から埋められるところを埋める */
+  /**
+   * 支払期限の既定値。
+   * 取引先に支払サイト（日数）があればその日数後、無ければ翌月末。
+   */
+  function defaultDueDate(issueDate, client) {
+    var base = U.isISO(issueDate) ? issueDate : U.today();
+    var days = U.num(client && client.paymentTermDays, 0);
+    if (days > 0) return U.addDays(base, days);
+    var d = U.parse(base);
+    return U.toISO(new Date(d.getFullYear(), d.getMonth() + 2, 0));   // 翌月の末日
+  }
+
+  /* 新しい書類のひな形。案件と取引先の情報から埋められるところを埋める */
   function blank(type, project, issuerId) {
     var s = DL.store.settings;
     var fee = U.num(project && project.fee, 0);
+    var client = project && project.clientId ? DL.store.getClient(project.clientId) : null;
+    var today = U.today();
     return {
       type: type,
       issuerId: issuerId || s.defaultIssuerId || '',
-      issueDate: U.today(),
-      dueDate: type === 'invoice' ? U.toISO(new Date(U.parse(U.today()).getFullYear(), U.parse(U.today()).getMonth() + 2, 0)) : '',
-      clientName: (project && project.client) || '',
-      honorific: '御中',
+      clientId: (client && client.id) || '',
+      issueDate: today,
+      dueDate: type === 'invoice' ? defaultDueDate(today, client) : '',
+      clientName: (client && client.name) || (project && project.client) || '',
+      honorific: (client && client.honorific) || '御中',
+      clientZip: (client && client.zip) || '',
+      clientAddress: (client && client.address) || '',
       subject: (project && project.title) || '',
       items: [{ name: (project && project.title) || '', qty: 1, unit: '式', price: fee }],
-      taxMode: 'exclusive',
+      taxMode: (client && client.taxMode) || 'exclusive',
       taxRate: U.num(s.taxRate, 10),
-      withholding: false,
+      withholding: !!(client && client.withholding),
       withholdingRate: Number(s.withholdingRate) || 10.21,
       proviso: type === 'receipt' ? ((project && project.title) || '') + 'の制作費として' : '',
       paymentMethod: type === 'receipt' ? '銀行振込' : '',
       status: 'draft'
     };
+  }
+
+  /* 取引先の登録内容を書類へ反映する（宛名・住所・税・源泉・支払期限） */
+  function applyClient(doc, client) {
+    if (!client) return doc;
+    doc.clientId = client.id;
+    doc.clientName = client.name;
+    doc.honorific = client.honorific || '御中';
+    doc.clientZip = client.zip || '';
+    doc.clientAddress = client.address || '';
+    doc.taxMode = client.taxMode || doc.taxMode;
+    doc.withholding = !!client.withholding;
+    if (doc.type === 'invoice') doc.dueDate = defaultDueDate(doc.issueDate, client);
+    return doc;
   }
 
   /* 領収書を請求書から起こす */
@@ -258,7 +289,8 @@
     TYPE_LABEL: TYPE_LABEL, TYPE_ICON: TYPE_ICON, STATUS_LABEL: STATUS_LABEL,
     TAX_MODE_LABEL: TAX_MODE_LABEL, HONORIFICS: HONORIFICS, UNITS: UNITS,
     PAYMENT_METHODS: PAYMENT_METHODS,
-    yen: yen, calc: calc, blank: blank, fromInvoice: fromInvoice, sheet: sheet, summary: summary,
+    yen: yen, calc: calc, blank: blank, applyClient: applyClient, defaultDueDate: defaultDueDate,
+    fromInvoice: fromInvoice, sheet: sheet, summary: summary,
     countsAsSale: countsAsSale, sales: sales
   };
 })(window.DL);

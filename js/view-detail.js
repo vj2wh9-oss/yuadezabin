@@ -67,7 +67,13 @@
       if (p.site) info.push(['サイト', p.site]);
       if (p.plan) info.push(['プラン', p.plan]);
     } else {
-      if (p.client) info.push(['クライアント', p.client]);
+      var cl = p.clientId ? S.getClient(p.clientId) : null;
+      if (cl) {
+        info.push(['取引先', cl.name + (cl.contact ? '　' + cl.contact : '')]);
+        if (cl.address) info.push(['先方の住所', cl.address]);
+      } else if (p.client) {
+        info.push(['クライアント', p.client]);
+      }
       if (p.fee) info.push(['報酬', '¥' + Number(p.fee).toLocaleString('ja-JP')]);
     }
     if (p.memo) info.push(['メモ', p.memo]);

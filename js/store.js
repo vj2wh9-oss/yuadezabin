@@ -3,9 +3,11 @@
   'use strict';
   var U = DL.util;
 
+  // 本体は IndexedDB（DL.db の kv ストア）に置く。
+  // localStorage は IndexedDB が使えない環境のための控えと、旧データからの引き継ぎ元。
   var KEY = 'shimekiri-calendar.v1';
-  var PREV_KEY = KEY + '.prev';   // 読み込み前の状態を1世代だけ退避しておく
-  var SCHEMA = 1;
+  var PREV_KEY = KEY + '.prev';   // 旧：読み込み前の状態を1世代だけ退避していた場所
+  var SCHEMA = 2;
 
   /* ------- 既定のタスクテンプレート ------- */
   // weight は自動スケジュール時の日数配分の重み
@@ -50,11 +52,15 @@
     weekStart: 0,          // 0=日曜はじまり 1=月曜はじまり
     dailyLimit: 0,         // 1日の作業量の上限（0で無効）
     icsAlarm: 'P1D',       // .ics に入れる通知のタイミング
-    lastBackupAt: '',      // 最後にバックアップを書き出した日
+    lastBackupAt: '',      // 最後にファイルへ書き出した日
+    autoBackup: true,      // 端末内への自動バックアップ（1日1回）
+    autoBackupKeep: 30,    // 残す世代数
+    lastAutoBackupAt: '',  // 最後に自動バックアップした日
     issuers: [],           // 屋号（発行元）
     defaultIssuerId: '',   // 既定の屋号
     scopeIssuerId: '',     // 表示を絞り込む屋号（空＝すべて）
-    docSeq: { invoice: 0, receipt: 0 },   // 書類番号の連番
+    clients: [],           // 取引先
+    docSeq: { invoice: {}, receipt: {} },  // 書類番号の連番（年ごと）
     taxRate: 10,           // 消費税率(%)
     withholdingRate: 10.21,// 源泉徴収税率(%)
     templates: U.clone(TEMPLATES)
@@ -67,18 +73,76 @@
     return { schema: SCHEMA, settings: U.clone(DEFAULT_SETTINGS), projects: [] };
   }
 
-  function load() {
+  /* localStorage の控えを読む（壊れていれば null） */
+  function readLocal() {
     var raw = null;
-    try { raw = localStorage.getItem(KEY); } catch (e) { /* プライベートモード等 */ }
-    if (!raw) { state = defaultState(); return state; }
-    try {
-      var data = JSON.parse(raw);
-      state = migrate(data);
-    } catch (e) {
-      console.error('データの読み込みに失敗しました', e);
-      state = defaultState();
+    try { raw = localStorage.getItem(KEY); } catch (e) { return null; }   // プライベートモード等
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch (e) {
+      console.error('控えの読み込みに失敗しました', e);
+      return null;
     }
+  }
+
+  /* localStorage から読む（IndexedDB が空／使えないときの入口） */
+  function load() {
+    var data = readLocal();
+    state = data ? migrate(data) : defaultState();
     return state;
+  }
+
+  /**
+   * 起動時の読み込み。
+   * 本体は IndexedDB だが、書き込みが間に合わないまま閉じた場合に備えて
+   * localStorage の控えと savedAt を比べ、新しいほうを採用する。
+   * @returns {Promise} 読み込み後の state
+   */
+  function init() {
+    var local = readLocal();
+    return DL.db.get('kv', 'state').then(function (rec) {
+      var idb = rec && rec.v ? rec.v : null;
+
+      if (idb && local && U.cmp(String(local.savedAt || ''), String(idb.savedAt || '')) > 0) {
+        // 控えのほうが新しい。画像は控えから外れていることがあるので IndexedDB 側で補う
+        state = migrate(withImagesFrom(local, idb));
+        return writeIDB();
+      }
+      if (idb) { state = migrate(idb); return null; }
+
+      state = local ? migrate(local) : defaultState();   // 旧データの引き継ぎ／初回
+      return writeIDB();
+    }).catch(function (e) {
+      console.error('読み込みに失敗しました', e);
+      load();
+    }).then(adoptOldSnapshot).then(function () { return state; });
+  }
+
+  /* 控えから復帰するとき、抜けている画像だけ IndexedDB 側から戻す */
+  function withImagesFrom(target, source) {
+    if (!target.compact || !source) return target;
+    var by = {};
+    (source.settings && source.settings.issuers || []).forEach(function (x) { by[x.id] = x; });
+    (target.settings && target.settings.issuers || []).forEach(function (x) {
+      var src = by[x.id];
+      if (!src) return;
+      if (!x.logo) x.logo = src.logo || '';
+      if (!x.seal) x.seal = src.seal || '';
+    });
+    delete target.compact;
+    return target;
+  }
+
+  /* 旧 localStorage の1世代スナップショットを、バックアップ世代へ引き取る */
+  function adoptOldSnapshot() {
+    var raw = null;
+    try { raw = localStorage.getItem(PREV_KEY); } catch (e) { return null; }
+    if (!raw) return null;
+    return DL.db.put('backups', {
+      id: U.uid(), at: new Date().toISOString(), kind: 'legacy',
+      note: '以前の「直前の状態」', size: raw.length, data: raw
+    }).then(function (ok) {
+      if (ok) { try { localStorage.removeItem(PREV_KEY); } catch (e) { /* 残っても害はない */ } }
+    });
   }
 
   function migrate(data) {
@@ -86,8 +150,24 @@
     s.schema = SCHEMA;
     s.settings = Object.assign(U.clone(DEFAULT_SETTINGS), s.settings || {});
     s.settings.templates = Object.assign(U.clone(TEMPLATES), s.settings.templates || {});
+    s.settings.clients = (s.settings.clients || []).map(normalizeClient);
+    s.settings.docSeq = migrateDocSeq(s.settings.docSeq);
     s.projects = (s.projects || []).map(normalizeProject);
     return s;
+  }
+
+  /* 旧形式 {invoice:12} は「今年ぶんの連番」として引き継ぐ（以後は年ごとにリセット） */
+  function migrateDocSeq(seq) {
+    var out = { invoice: {}, receipt: {} };
+    var y = U.today().slice(0, 4);
+    ['invoice', 'receipt'].forEach(function (t) {
+      var v = seq && seq[t];
+      if (typeof v === 'number') { if (v > 0) out[t][y] = v; }
+      else if (v && typeof v === 'object') {
+        Object.keys(v).forEach(function (k) { out[t][k] = U.num(v[k], 0); });
+      }
+    });
+    return out;
   }
 
   function normalizeProject(p) {
@@ -98,6 +178,7 @@
     p.title = p.title || '(無題)';
     p.status = p.status || 'active';
     p.issuerId = p.issuerId || '';     // どの屋号の仕事か（空＝未割り当て）
+    p.clientId = p.clientId || '';     // 登録済みの取引先（空＝client の自由入力のみ）
     p.startDate = p.startDate || '';   // 作業開始日（スケジュール算出の起点）
     p.color = p.color || pickColor();
     var oldIdx = OLD_PALETTE.indexOf(p.color);
@@ -151,12 +232,32 @@
     return x;
   }
 
+  function normalizeClient(c) {
+    c = c || {};
+    c.id = c.id || U.uid();
+    c.name = c.name || '';
+    c.honorific = c.honorific === '様' ? '様' : '御中';
+    c.contact = c.contact || '';        // 担当者名
+    c.zip = c.zip || '';
+    c.address = c.address || '';
+    c.tel = c.tel || '';
+    c.email = c.email || '';
+    c.invoiceNo = c.invoiceNo || '';    // 先方のインボイス登録番号（控え用）
+    c.paymentTermDays = U.num(c.paymentTermDays, 0);   // 支払サイト（0＝翌月末）
+    c.taxMode = ['exclusive', 'inclusive', 'none'].indexOf(c.taxMode) >= 0 ? c.taxMode : 'exclusive';
+    c.withholding = !!c.withholding;    // いつも源泉徴収される取引先か
+    c.note = c.note || '';
+    c.createdAt = c.createdAt || new Date().toISOString();
+    return c;
+  }
+
   function normalizeDoc(d) {
     d = d || {};
     d.id = d.id || U.uid();
     d.type = d.type === 'receipt' ? 'receipt' : 'invoice';
     d.number = d.number || '';
     d.issuerId = d.issuerId || '';
+    d.clientId = d.clientId || '';
     d.issueDate = d.issueDate || U.today();
     d.dueDate = d.dueDate || '';
     d.clientName = d.clientName || '';
@@ -262,6 +363,57 @@
     return state.projects.filter(function (p) { return !p.issuerId && p.status !== 'archived'; }).length;
   }
 
+  /* ---------------- 取引先 ---------------- */
+
+  function clients() { return state.settings.clients || []; }
+
+  function getClient(id) {
+    return clients().filter(function (c) { return c.id === id; })[0] || null;
+  }
+
+  function addClient(data) {
+    var c = normalizeClient(Object.assign({ id: U.uid() }, data));
+    state.settings.clients = clients().concat([c]);
+    save();
+    return c;
+  }
+
+  function updateClient(id, patch) {
+    var c = getClient(id);
+    if (!c) return null;
+    Object.assign(c, patch);
+    normalizeClient(c);
+    save();
+    return c;
+  }
+
+  function removeClient(id) {
+    state.settings.clients = clients().filter(function (c) { return c.id !== id; });
+    // 参照していた案件・書類は、名前を残したまま紐付けだけ外す
+    state.projects.forEach(function (p) {
+      if (p.clientId !== id) return;
+      p.clientId = '';
+      (p.docs || []).forEach(function (d) { if (d.clientId === id) d.clientId = ''; });
+    });
+    save();
+  }
+
+  /* 取引先ごとの案件と書類（一覧・集計用） */
+  function clientProjects(id) {
+    return state.projects.filter(function (p) { return p.clientId === id; });
+  }
+
+  function clientDocs(id) {
+    var out = [];
+    state.projects.forEach(function (p) {
+      (p.docs || []).forEach(function (d) {
+        if (d.clientId === id || (!d.clientId && p.clientId === id)) out.push({ project: p, doc: d });
+      });
+    });
+    out.sort(function (a, b) { return U.cmp(b.doc.issueDate, a.doc.issueDate); });
+    return out;
+  }
+
   /* ---------------- 書類（請求書・領収書） ---------------- */
 
   function docs(pid) {
@@ -298,13 +450,43 @@
     save();
   }
 
-  // 書類番号を採番する（種類ごとの年間連番）
-  function issueNumber(type) {
-    var seq = state.settings.docSeq || (state.settings.docSeq = { invoice: 0, receipt: 0 });
-    seq[type] = U.num(seq[type], 0) + 1;
+  var NUM_PREFIX = { invoice: 'INV', receipt: 'RCP' };
+
+  /**
+   * 書類番号を採番する。連番は「種類 × 発行年」ごとで、年が変わると 0001 に戻る。
+   * バックアップの読み込み後などに番号が重複しないよう、実在する番号の最大値も見る。
+   * @param {'invoice'|'receipt'} type
+   * @param {string} [dateISO] 発行日。省略時は今日
+   */
+  function issueNumber(type, dateISO) {
+    var year = (U.isISO(dateISO) ? dateISO : U.today()).slice(0, 4);
+    if (!state.settings.docSeq) state.settings.docSeq = { invoice: {}, receipt: {} };
+    var seq = state.settings.docSeq[type] || (state.settings.docSeq[type] = {});
+    var next = Math.max(U.num(seq[year], 0), highestNumber(type, year)) + 1;
+    seq[year] = next;
     save();
-    return (type === 'receipt' ? 'RCP' : 'INV') + '-' + U.today().slice(0, 4) + '-' +
-      String(seq[type]).padStart(4, '0');
+    return NUM_PREFIX[type] + '-' + year + '-' + String(next).padStart(4, '0');
+  }
+
+  /* すでに使われている番号のうち、その種類・その年の最大の連番 */
+  function highestNumber(type, year) {
+    var re = new RegExp('^' + NUM_PREFIX[type] + '-' + year + '-(\\d+)$');
+    var max = 0;
+    state.projects.forEach(function (p) {
+      (p.docs || []).forEach(function (d) {
+        var m = re.exec(d.number || '');
+        if (m) max = Math.max(max, parseInt(m[1], 10) || 0);
+      });
+    });
+    return max;
+  }
+
+  /* 次に振られる番号のプレビュー（採番はしない） */
+  function peekNumber(type, dateISO) {
+    var year = (U.isISO(dateISO) ? dateISO : U.today()).slice(0, 4);
+    var seq = (state.settings.docSeq || {})[type] || {};
+    var next = Math.max(U.num(seq[year], 0), highestNumber(type, year)) + 1;
+    return NUM_PREFIX[type] + '-' + year + '-' + String(next).padStart(4, '0');
   }
 
   /* 全案件の書類を新しい順に */
@@ -327,14 +509,61 @@
     return PALETTE[Math.floor(Math.random() * PALETTE.length)];
   }
 
+  /* ---------------- 保存 ---------------- */
+
+  var idbTimer = null;
+  var mirrorWarned = false;
+
   function save() {
+    state.savedAt = new Date().toISOString();
+    writeMirror();
+    scheduleIDB();
+    emit();
+  }
+
+  /**
+   * localStorage 側の控え。IndexedDB が使えない環境ではこれが本体になる。
+   * 5MB に収まらないときは、画像（ロゴ・印影）を落として最低限を残す。
+   */
+  function writeMirror() {
     try {
       localStorage.setItem(KEY, JSON.stringify(state));
-    } catch (e) {
-      console.error('保存に失敗しました', e);
-      DL.ui && DL.ui.toast('保存に失敗しました（ストレージ容量）', 'danger');
+      return;
+    } catch (e) { /* 容量超過 → 画像を抜いて再挑戦 */ }
+    try {
+      localStorage.setItem(KEY, JSON.stringify(compact(state)));
+    } catch (e2) {
+      // IndexedDB が生きていれば控えが無くても困らないので、うるさく言わない
+      if (!mirrorWarned) {
+        mirrorWarned = true;
+        DL.db.usable().then(function (ok) {
+          if (!ok && DL.ui) DL.ui.toast('保存に失敗しました（ストレージ容量）', 'danger');
+        });
+      }
     }
-    emit();
+  }
+
+  function compact(s) {
+    var c = U.clone(s);
+    (c.settings.issuers || []).forEach(function (x) { x.logo = ''; x.seal = ''; });
+    c.compact = true;
+    return c;
+  }
+
+  /* 書き込みが連続しても IndexedDB へは1回にまとめる */
+  function scheduleIDB() {
+    if (idbTimer) clearTimeout(idbTimer);
+    idbTimer = setTimeout(function () { idbTimer = null; writeIDB(); }, 200);
+  }
+
+  function writeIDB() {
+    return DL.db.put('kv', { k: 'state', v: state });
+  }
+
+  /* 画面を離れる直前に確実に書き切る */
+  function flush() {
+    if (idbTimer) { clearTimeout(idbTimer); idbTimer = null; }
+    return writeIDB();
   }
 
   function emit() { listeners.forEach(function (f) { f(state); }); }
@@ -463,24 +692,86 @@
     return U.isISO(d) ? U.diffDays(d, U.today()) : null;
   }
 
-  function snapshot() {
-    try { localStorage.setItem(PREV_KEY, JSON.stringify(state)); } catch (e) { /* 容量不足なら諦める */ }
+  /* ---------------- 端末内のバックアップ世代（IndexedDB） ---------------- */
+
+  var KIND_LABEL = {
+    auto: '自動', manual: '手動', 'before-import': '読み込み前',
+    'before-clear': '全削除前', 'before-restore': '復元前', legacy: '以前の状態'
+  };
+
+  /**
+   * 今の状態を1世代として残す。
+   * @param {string} kind auto / manual / before-import / before-clear / before-restore
+   * @param {string} [note]
+   */
+  function makeBackup(kind, note) {
+    var json = JSON.stringify(state);
+    var rec = {
+      id: U.uid(), at: new Date().toISOString(), kind: kind || 'manual',
+      note: note || '', size: json.length,
+      projects: state.projects.length, data: json
+    };
+    return DL.db.put('backups', rec).then(function (ok) {
+      if (!ok) return null;
+      return pruneBackups().then(function () { return rec; });
+    });
   }
 
-  function hasSnapshot() {
-    try { return !!localStorage.getItem(PREV_KEY); } catch (e) { return false; }
+  /* 新しい順の世代一覧（本文は落として返す） */
+  function listBackups() {
+    return DL.db.all('backups').then(function (list) {
+      return list.map(function (b) {
+        return { id: b.id, at: b.at, kind: b.kind, note: b.note, size: b.size, projects: b.projects };
+      }).sort(function (a, b) { return U.cmp(b.at, a.at); });
+    });
   }
 
-  // 直前の状態（読み込み・全削除の前）に戻す
-  function restoreSnapshot() {
-    var raw = null;
-    try { raw = localStorage.getItem(PREV_KEY); } catch (e) { /* 読めなければ諦める */ }
-    if (!raw) return false;
-    var cur = JSON.stringify(state);
-    state = migrate(JSON.parse(raw));
-    try { localStorage.setItem(PREV_KEY, cur); } catch (e) { /* 戻す操作自体も取り消せるようにする */ }
-    save();
-    return true;
+  /* 古い自動バックアップから消す。手動・操作前のものは残す */
+  function pruneBackups(keep) {
+    keep = U.num(keep || state.settings.autoBackupKeep, 30);
+    if (keep <= 0) return Promise.resolve(0);
+    return listBackups().then(function (list) {
+      var autos = list.filter(function (b) { return b.kind === 'auto'; });
+      var over = autos.slice(keep);
+      return Promise.all(over.map(function (b) { return DL.db.del('backups', b.id); }))
+        .then(function () { return over.length; });
+    });
+  }
+
+  function removeBackup(id) { return DL.db.del('backups', id); }
+
+  /* 世代から復元する。復元前の状態も1世代として残す */
+  function restoreBackup(id) {
+    return DL.db.get('backups', id).then(function (rec) {
+      if (!rec || !rec.data) return false;
+      return makeBackup('before-restore', '復元する前の状態').then(function () {
+        state = migrate(JSON.parse(rec.data));
+        save();
+        return true;
+      });
+    }).catch(function () { return false; });
+  }
+
+  /* 1日1回の自動バックアップ。既に今日ぶんがあれば何もしない */
+  function autoBackupIfDue() {
+    if (!state.settings.autoBackup) return Promise.resolve(null);
+    if (!state.projects.length) return Promise.resolve(null);
+    var today = U.today();
+    if (state.settings.lastAutoBackupAt === today) return Promise.resolve(null);
+    return makeBackup('auto', '毎日の自動バックアップ').then(function (rec) {
+      if (!rec) return null;
+      state.settings.lastAutoBackupAt = today;
+      save();
+      return rec;
+    });
+  }
+
+  /* 直前の状態に戻す（いちばん新しい世代へ） */
+  function restoreLatest() {
+    return listBackups().then(function (list) {
+      if (!list.length) return false;
+      return restoreBackup(list[0].id);
+    });
   }
 
   /**
@@ -491,7 +782,7 @@
   function importJSON(text, mode) {
     var data = JSON.parse(text);
     if (!data || !Array.isArray(data.projects)) throw new Error('形式が違います');
-    snapshot();
+    makeBackup('before-import', '読み込む前の状態');
     if (mode === 'merge') {
       var incoming = migrate(U.clone(data)).projects;
       var have = {};
@@ -510,8 +801,8 @@
     return { mode: 'replace', total: state.projects.length, replaced: before };
   }
 
-  function clearAll(keepSnapshot) {
-    if (!keepSnapshot) snapshot();
+  function clearAll(skipBackup) {
+    if (!skipBackup) makeBackup('before-clear', '全削除する前の状態');
     state = defaultState();
     save();
   }
@@ -571,9 +862,9 @@
 
   DL.store = {
     KEY: KEY, TEMPLATES: TEMPLATES, UNIT_LABEL: UNIT_LABEL, PRINT_PRESETS: PRINT_PRESETS,
-    SUPPORT_SITES: SUPPORT_SITES,
+    SUPPORT_SITES: SUPPORT_SITES, BACKUP_KIND_LABEL: KIND_LABEL,
     PALETTE: PALETTE,
-    load: load, save: save, subscribe: subscribe,
+    load: load, init: init, save: save, flush: flush, subscribe: subscribe,
     get state() { return state; },
     get settings() { return state.settings; },
     projects: projects, activeProjects: activeProjects, getProject: getProject,
@@ -584,11 +875,17 @@
     updateIssuer: updateIssuer, removeIssuer: removeIssuer, issuerColor: issuerColor,
     scopeId: scopeId, scopeIssuer: scopeIssuer, setScope: setScope,
     inScope: inScope, scopedProjects: scopedProjects, unassignedCount: unassignedCount,
+    clients: clients, getClient: getClient, addClient: addClient,
+    updateClient: updateClient, removeClient: removeClient,
+    clientProjects: clientProjects, clientDocs: clientDocs,
     docs: docs, getDoc: getDoc, addDoc: addDoc, updateDoc: updateDoc, removeDoc: removeDoc,
-    issueNumber: issueNumber, allDocs: allDocs,
+    issueNumber: issueNumber, peekNumber: peekNumber, allDocs: allDocs,
     templateTasks: templateTasks, updateSettings: updateSettings,
     exportJSON: exportJSON, importJSON: importJSON, clearAll: clearAll, seedSample: seedSample,
-    backupAgeDays: backupAgeDays, hasSnapshot: hasSnapshot, restoreSnapshot: restoreSnapshot,
+    backupAgeDays: backupAgeDays,
+    makeBackup: makeBackup, listBackups: listBackups, restoreBackup: restoreBackup,
+    removeBackup: removeBackup, pruneBackups: pruneBackups, restoreLatest: restoreLatest,
+    autoBackupIfDue: autoBackupIfDue,
     requestPersistence: requestPersistence,
     pickColor: pickColor
   };

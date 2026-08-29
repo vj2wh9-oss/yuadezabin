@@ -26,6 +26,7 @@
   }
 
   function render() {
+    if (!S.state) return;      // 読み込みが終わるまでは描かない
     route = parseHash();
     var key = location.hash;
     var scroll = window.scrollY;
@@ -177,17 +178,32 @@
   }
 
   function init() {
-    S.load();
     mountIcons();
     if (!location.hash) location.hash = '#/home';
-    render();
 
-    // 日付が変わったら自動で更新
+    // 本体は IndexedDB。読み込みが終わってから描画する
+    S.init().then(function () {
+      render();
+      return S.autoBackupIfDue();
+    }).catch(function (e) {
+      console.error('読み込みに失敗しました', e);
+      S.load();
+      render();
+    });
+
+    // 日付が変わったら再描画して、その日ぶんの自動バックアップを取る
     var day = U.today();
     setInterval(function () {
       var t = U.today();
-      if (t !== day) { day = t; render(); }
+      if (t !== day) { day = t; render(); S.autoBackupIfDue(); }
     }, 60000);
+
+    // 復帰したときも（日をまたいでアプリを開きっぱなしにしていた場合）
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible') S.autoBackupIfDue();
+      else S.flush();
+    });
+    window.addEventListener('pagehide', function () { S.flush(); });
 
     var secure = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
     if ('serviceWorker' in navigator && secure) {

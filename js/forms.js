@@ -200,7 +200,16 @@
         f.client = ui.input({ value: p.client, placeholder: '例）○○出版 / 個人依頼' });
         f.deadline = ui.input({ type: 'date', value: p.deadline || '' });
         f.fee = ui.input({ type: 'number', inputmode: 'numeric', value: p.fee || '', placeholder: '任意' });
-        dynamic.appendChild(ui.field('クライアント', f.client));
+
+        // 登録済みの取引先を選ぶと、名前は自動で入る（未登録なら下の欄に直接書ける）
+        f.clientSel = clientSelect(p.clientId || '', function (id) {
+          var c = id && S.getClient(id);
+          if (c) f.client.value = c.name;
+        });
+        dynamic.appendChild(ui.field('取引先', f.clientSel,
+          '登録しておくと、請求書の宛名・住所・支払期限が自動で入ります'));
+        dynamic.appendChild(ui.field('クライアント名（表示用）', f.client,
+          '取引先を選ぶと自動で入ります。登録せずにここだけ書いても構いません'));
         dynamic.appendChild(ui.field('納品日（締切）', f.deadline));
         dynamic.appendChild(ui.field('報酬（円）', f.fee));
       }
@@ -252,8 +261,10 @@
         if (!data.title && data.site) data.title = data.site + 'の投稿';
       } else {
         Object.assign(data, {
+          clientId: f.clientSel.getValue(),
           client: f.client.value.trim(), deadline: f.deadline.value, fee: U.num(f.fee.value, 0)
         });
+        if (!data.title && data.client) data.title = data.client + 'の依頼';
       }
       return data;
     }
@@ -976,6 +987,117 @@
     });
   }
 
+  /* =============== 取引先 =============== */
+
+  /**
+   * 取引先の登録・編集。
+   * @param {string|null} id 既存なら取引先ID
+   * @param {function} [onSaved] 保存後に呼ばれる（新規作成の直後に選択したいとき用）
+   */
+  function clientSheet(id, onSaved) {
+    var existing = id ? S.getClient(id) : null;
+    var c = existing ? U.clone(existing) : {
+      name: '', honorific: '御中', contact: '', zip: '', address: '',
+      tel: '', email: '', invoiceNo: '', paymentTermDays: 0,
+      taxMode: 'exclusive', withholding: false, note: ''
+    };
+
+    function t(key, ph) {
+      var i = ui.input({ value: c[key] || '', placeholder: ph || '' });
+      i.addEventListener('input', function () { c[key] = i.value; });
+      return i;
+    }
+
+    var honorific = ui.segmented(
+      DL.docs.HONORIFICS.map(function (h) { return { value: h, label: h }; }),
+      c.honorific, function (v) { c.honorific = v; }
+    );
+    var taxSeg = ui.segmented([
+      { value: 'exclusive', label: '税抜' }, { value: 'inclusive', label: '税込' }, { value: 'none', label: '非課税' }
+    ], c.taxMode, function (v) { c.taxMode = v; });
+
+    var term = ui.input({ type: 'number', inputmode: 'numeric', min: 0, value: c.paymentTermDays });
+    term.addEventListener('input', function () { c.paymentTermDays = U.num(term.value, 0); });
+
+    var wh = el('input', { type: 'checkbox', class: 'check', checked: c.withholding });
+    wh.addEventListener('change', function () { c.withholding = wh.checked; });
+
+    var noteArea = ui.textarea({ value: c.note, placeholder: '担当者の連絡先、請求書の送り方など' });
+    noteArea.addEventListener('input', function () { c.note = noteArea.value; });
+
+    var body = el('div', { class: 'form' }, [
+      ui.field('取引先名', t('name', '例）株式会社○○'), '請求書・領収書の宛名に入ります'),
+      ui.field('敬称', honorific, '会社は「御中」、個人は「様」'),
+      ui.field('担当者', t('contact', '例）編集部 山田さま')),
+      el('div', { class: 'grid2' }, [
+        ui.field('郵便番号', t('zip', '000-0000')),
+        ui.field('電話番号', t('tel', '000-0000-0000'))
+      ]),
+      ui.field('住所', t('address', '例）東京都○○区○○ 1-2-3')),
+      ui.field('メール', t('email')),
+      ui.field('登録番号', t('invoiceNo', 'T1234567890123'), '先方のインボイス登録番号（控えとして保存するだけです）'),
+      ui.section('書類の初期値'),
+      ui.field('消費税', taxSeg, 'この取引先の書類を作るときの初期値になります'),
+      ui.field('支払サイト（日）', term, '0 なら「翌月末」。30 と入れると発行日の30日後が支払期限になります'),
+      el('label', { class: 'row-check' }, [wh, el('span', { text: 'いつも源泉徴収される取引先' })]),
+      ui.field('メモ', noteArea)
+    ]);
+
+    if (existing) {
+      var used = S.clientProjects(existing.id).length;
+      body.appendChild(ui.btn('この取引先を削除', 'danger full mt', function () {
+        ui.confirm('「' + (existing.name || '(名称未設定)') + '」を削除します。' +
+          (used ? '紐づいている ' + used + '件の案件は残り、取引先の紐付けだけ外れます。' : ''),
+          { danger: true, okText: '削除' })
+          .then(function (ok) {
+            if (!ok) return;
+            S.removeClient(existing.id); close(); ui.toast('削除しました');
+          });
+      }, 'trash'));
+    }
+
+    var close = ui.sheet({
+      title: existing ? '取引先を編集' : '取引先を登録', body: body,
+      actions: [
+        ui.btn('キャンセル', 'ghost', function () { close(); }),
+        ui.btn('保存', 'primary', function () {
+          if (!c.name.trim()) { ui.toast('取引先名を入れてください', 'warn'); return; }
+          var saved = existing ? S.updateClient(existing.id, c) : S.addClient(c);
+          close(); ui.toast('保存しました');
+          if (onSaved) onSaved(saved);
+        })
+      ]
+    });
+  }
+
+  /**
+   * 取引先の選択欄。「＋ 新規登録」を選ぶと登録シートが開く。
+   * @param {string} value いま選ばれている取引先ID
+   * @param {function} onChange 選択が変わったとき（取引先IDを受け取る）
+   */
+  function clientSelect(value, onChange) {
+    var wrap = el('div');
+    function render() {
+      U.clear(wrap);
+      var opts = [{ value: '', label: '（指定しない）' }]
+        .concat(S.clients().map(function (c) { return { value: c.id, label: c.name }; }))
+        .concat([{ value: '__new', label: '＋ 新しい取引先を登録' }]);
+      var sel = ui.select(opts, value, function () {
+        if (sel.value === '__new') {
+          sel.value = value;
+          clientSheet(null, function (c) { value = c.id; render(); onChange(value); });
+          return;
+        }
+        value = sel.value;
+        onChange(value);
+      });
+      wrap.appendChild(sel);
+    }
+    render();
+    wrap.getValue = function () { return value; };
+    return wrap;
+  }
+
   /* =============== 書類の内容 =============== */
 
   function docSheet(pid, did) {
@@ -1073,15 +1195,40 @@
       work.honorific, function (v) { work.honorific = v; }
     );
 
+    // 取引先を選ぶと、宛名・住所・税区分・源泉・支払期限をまとめて入れ直す
+    var nameInput = txt('clientName', '例）株式会社○○');
+    var zipInput = txt('clientZip', '000-0000');
+    var addrInput = txt('clientAddress');
+    var dueInput = isInvoice ? date('dueDate') : null;
+    var clientPick = clientSelect(work.clientId || '', function (id) {
+      var c = id && S.getClient(id);
+      if (!c) { work.clientId = ''; return; }
+      DL.docs.applyClient(work, c);
+      nameInput.value = work.clientName;
+      zipInput.value = work.clientZip;
+      addrInput.value = work.clientAddress;
+      if (dueInput) dueInput.value = work.dueDate;
+      U.$$('.seg', honorific).forEach(function (b) {
+        b.classList.toggle('on', b.textContent === work.honorific);
+      });
+      U.$$('.seg', taxSeg).forEach(function (b, i) {
+        b.classList.toggle('on', ['exclusive', 'inclusive', 'none'][i] === work.taxMode);
+      });
+      wh.checked = work.withholding;
+      renderTotals();
+      ui.toast(c.name + ' の登録内容を反映しました');
+    });
+
     var body = el('div', { class: 'form' }, [
-      ui.field('宛名', txt('clientName', '例）株式会社○○')),
+      ui.field('取引先', clientPick, '登録済みの取引先を選ぶと、宛名・住所・支払期限が入ります'),
+      ui.field('宛名', nameInput),
       ui.field('敬称', honorific),
       el('div', { class: 'grid2' }, [
-        ui.field('先方の郵便番号', txt('clientZip', '000-0000')),
+        ui.field('先方の郵便番号', zipInput),
         ui.field('発行日', date('issueDate'))
       ]),
-      ui.field('先方の住所', txt('clientAddress')),
-      isInvoice ? ui.field('お支払期限', date('dueDate')) : null,
+      ui.field('先方の住所', addrInput),
+      isInvoice ? ui.field('お支払期限', dueInput) : null,
       isInvoice ? ui.field('件名', txt('subject', '例）表紙イラスト制作')) : null,
       ui.section('明細'),
       itemsBox,
@@ -1116,6 +1263,7 @@
     addProgressSheet: addProgressSheet, deferSheet: deferSheet,
     planSnapshot: planSnapshot, offerReschedule: offerReschedule,
     issuerSheet: issuerSheet, docSheet: docSheet,
+    clientSheet: clientSheet, clientSelect: clientSelect,
     templateSheet: templateSheet, startDateSheet: startDateSheet
   };
 })(window.DL);

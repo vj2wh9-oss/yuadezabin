@@ -17,6 +17,10 @@
       el('a', { class: 'btn tiny ghost', href: '#/calendar', text: 'カレンダー' })
     ]));
 
+    /* iCloud への書き出しが今日まだなら、ワンタップで出せるようにする */
+    var banner = backupBanner(today);
+    if (banner) wrap.appendChild(banner);
+
     /* 警告 */
     var al = sc.alerts(today);
     if (al.length) {
@@ -79,6 +83,33 @@
     }
 
     root.appendChild(wrap);
+  }
+
+  /* 今日ぶんの書き出しを促すバナー。その日のうちに閉じたら出さない */
+  var skipDate = '';
+  function backupBanner(today) {
+    if (!S.settings.autoBackup) return null;
+    if (!S.projects().length) return null;
+    if (skipDate === today) return null;
+    if (S.settings.lastBackupAt === today) return null;
+
+    var age = S.backupAgeDays();
+    return el('div', { class: 'card backup-banner' }, [
+      el('div', { class: 'row-title' }, [
+        ui.icon('cloud', 17),
+        el('span', { text: 'iCloud への書き出し' })
+      ]),
+      el('div', { class: 'muted small', text: age === null
+        ? 'まだ一度も書き出していません。端末の中だけだと、機種変更や履歴の削除で消えます。'
+        : '最後に書き出したのは ' + U.fmtMD(S.settings.lastBackupAt) + '（' + age + '日前）です。' }),
+      el('div', { class: 'row-wrap' }, [
+        ui.btn('いま書き出す', 'primary', function () {
+          ui.download('案件ポータル-' + today + '.json', S.exportJSON(), 'application/json');
+          ui.toast('書き出しました');
+        }, 'cloud'),
+        ui.btn('今日はあとで', 'ghost', function () { skipDate = today; DL.app.render(); })
+      ])
+    ]);
   }
 
   /* ノルマ1行 */

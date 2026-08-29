@@ -246,14 +246,7 @@
     today = today || U.today();
     var out = [];
 
-    // バックアップ忘れ
-    var age = DL.store.backupAgeDays();
-    if (DL.store.projects().length && (age === null || age >= 14)) {
-      out.push({
-        level: 'info', backup: true,
-        text: age === null ? 'バックアップをまだ書き出していません' : '最後のバックアップから ' + age + '日 経ちました'
-      });
-    }
+    // バックアップ忘れはホーム上部の案内で扱うので、ここでは出さない
 
     // 1日の作業量が上限を超える日
     overloadedDays(today, 14).slice(0, 2).forEach(function (d) {
