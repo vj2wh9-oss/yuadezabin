@@ -17,28 +17,41 @@
   function errText(status, body) {
     var e = body && body.error;
     if (status === 401) return '合鍵が違います';
-    if (e === 'r2_not_bound') return 'サーバー側にファイル置き場（R2）がつながっていません';
+    if (e === 'r2_not_bound') return 'サーバー側にファイル置き場（R2）がつながっていません。Worker の Settings → Bindings で R2 バケットを Variable name「FILES」で追加してください';
     if (e === 'too_large') return 'ファイルが大きすぎます（100MBまで）';
     if (e === 'bad_id') return 'ファイル名が扱えません';
+    // 同期は動くのにここだけ 404 なら、サーバー側のコードがファイル共有より前の版
+    if (status === 404) return 'サーバー側がファイル共有に未対応です。Cloudflare の Worker を最新のコードにして deploy し直してください';
     return 'サーバーが応答しませんでした（' + status + '）';
   }
 
   /* 一覧 */
   function list() {
-    if (!ready()) return Promise.reject(new Error('同期の接続先が未設定です'));
+    if (!ready()) return Promise.reject(appError("同期の接続先が未設定です"));
     return fetch(base() + '/v1/files', { headers: auth(), cache: 'no-store' })
       .then(function (res) {
         return res.json().catch(function () { return null; }).then(function (body) {
-          if (!res.ok) throw new Error(errText(res.status, body));
+          if (!res.ok) throw appError(errText(res.status, body));
           return body || { files: [], total: 0 };
         });
       })
       .catch(function (e) { throw asError(e); });
   }
 
+  /* 自分で組み立てたエラーには印を付けておく */
+  function appError(msg) {
+    var e = new Error(msg);
+    e.handled = true;
+    return e;
+  }
+
+  /**
+   * fetch が投げる TypeError（'Failed to fetch' など）はそのまま出すと
+   * 何が起きたか伝わらないので、日本語に置き換える。
+   */
   function asError(e) {
-    if (e instanceof Error && e.message) return e;
-    return new Error('接続できませんでした');
+    if (e && e.handled) return e;
+    return new Error('接続できませんでした。接続先のURLが違うか、オフラインの可能性があります');
   }
 
   /**
@@ -48,9 +61,9 @@
    */
   function upload(file, opts) {
     opts = opts || {};
-    if (!ready()) return Promise.reject(new Error('同期の接続先が未設定です'));
+    if (!ready()) return Promise.reject(appError("同期の接続先が未設定です"));
     if (file.size > MAX_BYTES) {
-      return Promise.reject(new Error(file.name + ' は大きすぎます（100MBまで）'));
+      return Promise.reject(appError(file.name + " は大きすぎます（100MBまで）"));
     }
     var id = U.uid().replace(/[^A-Za-z0-9_-]/g, '') + Date.now().toString(36);
 
@@ -71,10 +84,10 @@
         var body = null;
         try { body = JSON.parse(xhr.responseText); } catch (e) { /* JSON でなければ無視 */ }
         if (xhr.status >= 200 && xhr.status < 300) resolve(body || { id: id });
-        else reject(new Error(errText(xhr.status, body)));
+        else reject(appError(errText(xhr.status, body)));
       };
-      xhr.onerror = function () { reject(new Error('接続できませんでした')); };
-      xhr.onabort = function () { reject(new Error('中止しました')); };
+      xhr.onerror = function () { reject(appError("接続できませんでした。接続先のURLが違うか、オフラインの可能性があります")); };
+      xhr.onabort = function () { reject(appError("中止しました")); };
       xhr.send(file);
     });
   }
@@ -83,7 +96,7 @@
   function fetchBytes(id) {
     return fetch(base() + '/v1/files/' + id, { headers: auth(), cache: 'no-store' })
       .then(function (res) {
-        if (!res.ok) throw new Error(errText(res.status, null));
+        if (!res.ok) throw appError(errText(res.status, null));
         return res.arrayBuffer();
       })
       .then(function (buf) { return new Uint8Array(buf); })
@@ -94,7 +107,7 @@
   function download(f) {
     return fetch(base() + '/v1/files/' + f.id, { headers: auth(), cache: 'no-store' })
       .then(function (res) {
-        if (!res.ok) throw new Error(errText(res.status, null));
+        if (!res.ok) throw appError(errText(res.status, null));
         return res.blob();
       })
       .then(function (blob) {
@@ -107,7 +120,7 @@
   function remove(id) {
     return fetch(base() + '/v1/files/' + id, { method: 'DELETE', headers: auth() })
       .then(function (res) {
-        if (!res.ok) throw new Error(errText(res.status, null));
+        if (!res.ok) throw appError(errText(res.status, null));
         return true;
       })
       .catch(function (e) { throw asError(e); });
