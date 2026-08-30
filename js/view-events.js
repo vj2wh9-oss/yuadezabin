@@ -24,6 +24,38 @@
     wrap.appendChild(el('div', { class: 'pad' },
       ui.btn('予定を追加', 'ghost full', function () { form(null, { date: date }); }, 'plus')
     ));
+
+    dutyBox(wrap, date);
+  }
+
+  /* ---------------- その日の働き方 ---------------- */
+
+  /**
+   * 出社 / リモートワーク / 泊まり勤務。1日にひとつだけ。
+   * 押すとカレンダーのその日に色が付き、もう一度押すと外れる。
+   */
+  function dutyBox(wrap, date) {
+    var cur = S.duty(date);
+
+    wrap.appendChild(ui.section('この日の勤務', cur ? ui.chip(S.dutyLabel(cur), 'soft') : null));
+
+    wrap.appendChild(el('div', { class: 'duty-row' }, S.DUTIES.map(function (d) {
+      var on = cur === d.value;
+      return el('button', {
+        type: 'button', class: 'duty-btn duty-' + d.value + (on ? ' on' : ''),
+        'aria-pressed': on ? 'true' : 'false',
+        onclick: function () {
+          S.setDuty(date, on ? '' : d.value);      // 同じものをもう一度押したら外す
+          ui.toast(on ? d.label + 'を外しました' : d.label + 'にしました');
+        }
+      }, [
+        el('i', { class: 'duty-dot' }),
+        el('span', { text: d.label })
+      ]);
+    })));
+
+    wrap.appendChild(el('p', { class: 'muted small pad',
+      text: '選ぶとカレンダーのその日に色が付きます（出社＝黄・リモートワーク＝赤・泊まり勤務＝青）。もう一度押すと外れます。' }));
   }
 
   function row(o) {
@@ -121,7 +153,12 @@
 
     /* 色 */
     var color = v.color;
-    var swatches = el('div', { class: 'sw-row' }, S.EVENT_COLORS.map(function (c) {
+    // 一覧に無い色（前の配色で作った予定など）は、選んだままに見えるよう先頭に足す
+    var colors = S.EVENT_COLORS.slice();
+    if (!colors.some(function (c) { return c.value === color; })) {
+      colors.unshift({ value: color, label: 'いまの色' });
+    }
+    var swatches = el('div', { class: 'sw-row' }, colors.map(function (c) {
       var b = el('button', {
         type: 'button', class: 'sw' + (c.value === color ? ' on' : ''),
         'aria-label': c.label, style: { background: c.value },

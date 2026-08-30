@@ -44,15 +44,31 @@
     { label: '割増', days: 7 }
   ];
 
-  /* 日常の予定に付ける色。案件は青系でそろえているので、
-     どちらのカレンダーを見ているか一目で分かるよう青以外から選ぶ */
+  /* 日常の予定に付ける色。
+     勤務の着色（薄い黄・赤・青）を敷いた上に載るので、そこに埋もれないよう
+     はっきりした色をそろえる。案件の落ち着いた青系とも見分けが付く */
   var EVENT_COLORS = [
-    { value: '#2fa36b', label: 'みどり' },
-    { value: '#16a3b8', label: 'あお' },
-    { value: '#e0507f', label: 'ピンク' },
-    { value: '#e07a3c', label: 'オレンジ' },
-    { value: '#c9a227', label: 'きいろ' },
-    { value: '#8b5cf6', label: 'むらさき' }
+    { value: '#0072f0', label: 'あお' },
+    { value: '#00b3d4', label: 'みずいろ' },
+    { value: '#00a651', label: 'みどり' },
+    { value: '#f2b200', label: 'きいろ' },
+    { value: '#ff6a00', label: 'オレンジ' },
+    { value: '#f01c3c', label: 'あか' },
+    { value: '#ff1f8a', label: 'ピンク' },
+    { value: '#8b2fe8', label: 'むらさき' }
+  ];
+
+  /* 前のくすんだ配色。同じ意味の色へ置き換える */
+  var OLD_EVENT_COLORS = {
+    '#2fa36b': '#00a651', '#16a3b8': '#00b3d4', '#e0507f': '#ff1f8a',
+    '#e07a3c': '#ff6a00', '#c9a227': '#f2b200', '#8b5cf6': '#8b2fe8'
+  };
+
+  /* 日常のカレンダーで、その日の働き方を1つだけ選んで色を敷く */
+  var DUTIES = [
+    { value: 'office', label: '出社' },
+    { value: 'remote', label: 'リモートワーク' },
+    { value: 'stay', label: '泊まり勤務' }
   ];
 
   var DEFAULT_SETTINGS = {
@@ -83,6 +99,7 @@
     recurring: [],         // 固定費 [{id,book,name,amount,category,day,startYm,lastYm,active}]
     // 日常の予定。案件のカレンダーとは混ぜず、上部の切替ボタンで見る側を選ぶ
     events: [],            // [{id,date,days,title,start,end,memo,color,repeat,until}]
+    duties: {},            // その日の働き方 { 'YYYY-MM-DD': 'office'|'remote'|'stay' }
     calMode: 'work',       // カレンダーの表示（work=案件 / life=日常）。この端末だけのもの
     sync: {                // 同期サーバーの接続情報（この端末だけのもの）
       url: '', token: '', enabled: false, deviceName: '',
@@ -201,6 +218,7 @@
     s.settings.expenses = (s.settings.expenses || []).map(normalizeExpense);
     s.settings.recurring = (s.settings.recurring || []).map(normalizeRecurring);
     s.settings.events = (s.settings.events || []).map(normalizeEvent);
+    s.settings.duties = normalizeDuties(s.settings.duties);
     s.settings.docSeq = migrateDocSeq(s.settings.docSeq);
     s.projects = (s.projects || []).map(normalizeProject);
     return s;
@@ -770,6 +788,7 @@
     if (!e.start) e.end = '';                            // 開始が無いのに終了だけは持たせない
     e.memo = String(e.memo || '').slice(0, 400);
     e.color = HEX.test(String(e.color)) ? e.color : EVENT_COLORS[0].value;
+    if (OLD_EVENT_COLORS[e.color]) e.color = OLD_EVENT_COLORS[e.color];   // 旧配色はそのまま置き換える
     e.repeat = ['weekly', 'monthly', 'yearly'].indexOf(e.repeat) >= 0 ? e.repeat : '';
     e.until = (e.repeat && U.isISO(e.until)) ? e.until : '';   // 繰り返しの終わり（空でずっと）
     e.createdAt = e.createdAt || new Date().toISOString();
@@ -801,6 +820,38 @@
   function removeEvent(id) {
     state.settings.events = (state.settings.events || []).filter(function (e) { return e.id !== id; });
     save();
+  }
+
+  /* ---------------- その日の働き方（日常のカレンダー） ---------------- */
+
+  function isDuty(v) {
+    for (var i = 0; i < DUTIES.length; i++) if (DUTIES[i].value === v) return true;
+    return false;
+  }
+
+  function normalizeDuties(map) {
+    var out = {};
+    Object.keys(map || {}).forEach(function (d) {
+      if (U.isISO(d) && isDuty(map[d])) out[d] = map[d];
+    });
+    return out;
+  }
+
+  function duty(date) { return (state.settings.duties || {})[date] || ''; }
+
+  function dutyLabel(v) {
+    for (var i = 0; i < DUTIES.length; i++) if (DUTIES[i].value === v) return DUTIES[i].label;
+    return '';
+  }
+
+  /* 空を渡すと外す。同じものをもう一度押したときの取り消しに使う */
+  function setDuty(date, kind) {
+    if (!U.isISO(date)) return '';
+    var map = state.settings.duties || (state.settings.duties = {});
+    if (isDuty(kind)) map[date] = kind;
+    else delete map[date];
+    save();
+    return map[date] || '';
   }
 
   /* カレンダーの表示（案件 / 日常）。この端末での見え方なので同期には送らない */
@@ -1318,6 +1369,12 @@
       mergeById(state.settings.recurring, incoming.settings.recurring || []);
       // 日常の予定も同じ。足し忘れると、ぶつかったときに片方の予定が黙って消える
       r.events = mergeById(state.settings.events, incoming.settings.events || []);
+      // その日の働き方は、こちらで決めていない日だけ足す（既に入れた日は書き換えない）
+      var duties = state.settings.duties || (state.settings.duties = {});
+      Object.keys(incoming.settings.duties || {}).forEach(function (d) {
+        if (!duties[d]) duties[d] = incoming.settings.duties[d];
+      });
+      state.settings.duties = normalizeDuties(duties);
       var have = {};
       state.projects.forEach(function (p) { have[p.id] = true; });
       incoming.projects.forEach(function (p) {
@@ -1414,7 +1471,8 @@
       && !(s.fanbox || []).length
       && !(s.expenses || []).length
       && !(s.recurring || []).length
-      && !(s.events || []).length;
+      && !(s.events || []).length
+      && !Object.keys(s.duties || {}).length;
   }
 
   /* 最後に同期してから、この端末で変更があったか */
@@ -1481,7 +1539,7 @@
   DL.store = {
     KEY: KEY, TEMPLATES: TEMPLATES, UNIT_LABEL: UNIT_LABEL, PRINT_PRESETS: PRINT_PRESETS,
     SUPPORT_SITES: SUPPORT_SITES, BACKUP_KIND_LABEL: KIND_LABEL,
-    PALETTE: PALETTE, EVENT_COLORS: EVENT_COLORS,
+    PALETTE: PALETTE, EVENT_COLORS: EVENT_COLORS, DUTIES: DUTIES,
     load: load, init: init, save: save, flush: flush, subscribe: subscribe,
     get state() { return state; },
     get settings() { return state.settings; },
@@ -1507,6 +1565,7 @@
     updateRecurring: updateRecurring, removeRecurring: removeRecurring, postRecurring: postRecurring,
     events: events, getEvent: getEvent, addEvent: addEvent,
     updateEvent: updateEvent, removeEvent: removeEvent,
+    duty: duty, setDuty: setDuty, dutyLabel: dutyLabel,
     calMode: calMode, setCalMode: setCalMode,
     removeFanbox: removeFanbox, clearFanbox: clearFanbox,
     fileFolder: fileFolder, setFileFolder: setFileFolder, pruneFileFolders: pruneFileFolders,

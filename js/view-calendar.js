@@ -251,6 +251,9 @@
     if (d === 0) cls += ' sun';
     if (d === 6) cls += ' sat';
     if (list.length) cls += ' has-plan';
+    // 出社・リモート・泊まりの色は、予定があるかどうかより優先して敷く
+    var duty = S.duty(date);
+    if (duty) cls += ' duty-' + duty;
 
     var lines = el('div', { class: 'cal-lines' });
     var MAX = 10, shown = 0;
