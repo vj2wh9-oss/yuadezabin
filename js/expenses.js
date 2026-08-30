@@ -89,8 +89,65 @@
     });
   }
 
+  /* ---------------- CSV ---------------- */
+
+  /* 1つの値をCSVの1セルにする。区切り・改行・引用符が入っていれば囲う */
+  function cell(v) {
+    var s = (v === null || v === undefined) ? '' : String(v);
+    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+
+  var CSV_HEADER = ['日付', '帳簿', '科目', '金額', '支払先', 'メモ', '案件', '名義', 'レシート', '固定費'];
+
+  /**
+   * 経費をCSVにする。
+   * Excel がそのまま開けるよう、UTF-8 の BOM を付けて改行は CRLF にする。
+   * @param {Array} rows 経費
+   * @param {object} ctx {project(id)->名前, issuer(id)->名前}
+   */
+  function toCSV(rows, ctx) {
+    ctx = ctx || {};
+    var lines = [CSV_HEADER.map(cell).join(',')];
+    (rows || []).forEach(function (x) {
+      lines.push([
+        x.date, bookLabel(x.book), x.category, x.amount, x.vendor, x.memo,
+        x.projectId && ctx.project ? (ctx.project(x.projectId) || '') : '',
+        x.issuerId && ctx.issuer ? (ctx.issuer(x.issuerId) || '') : '',
+        x.fileId ? 'あり' : '',
+        x.recurringId ? '固定費' : ''
+      ].map(cell).join(','));
+    });
+    return '﻿' + lines.join('\r\n') + '\r\n';
+  }
+
+  /* ---------------- 固定費 ---------------- */
+
+  /**
+   * まだ記録していない月を洗い出す。
+   * 始めた月（または最後に記録した月の翌月）から今月までを順に見る。
+   * @param {Array} list 固定費
+   * @param {string} [nowYm] 'YYYY-MM'（既定は今月）
+   * @returns {Array} [{recurringId, ym, name, amount, book}]
+   */
+  function dueRecurring(list, nowYm) {
+    var now = nowYm || U.today().slice(0, 7);
+    var out = [];
+    (list || []).forEach(function (r) {
+      if (!r.active || !r.amount) return;
+      var ym = r.lastYm ? U.addYm(r.lastYm, 1) : r.startYm;
+      if (U.cmp(ym, r.startYm) < 0) ym = r.startYm;
+      // 何年もさかのぼって大量に作らないよう、24ヶ月ぶんで打ち切る
+      for (var i = 0; i < 24 && U.cmp(ym, now) <= 0; i++) {
+        out.push({ recurringId: r.id, ym: ym, name: r.name, amount: r.amount, book: r.book });
+        ym = U.addYm(ym, 1);
+      }
+    });
+    return out.sort(function (a, b) { return U.cmp(a.ym, b.ym); });
+  }
+
   DL.expenses = {
     BOOKS: BOOKS, categories: categories, bookLabel: bookLabel,
-    total: total, byCategory: byCategory, byMonth: byMonth, shrink: shrink
+    total: total, byCategory: byCategory, byMonth: byMonth, shrink: shrink,
+    toCSV: toCSV, dueRecurring: dueRecurring
   };
 })(window.DL);

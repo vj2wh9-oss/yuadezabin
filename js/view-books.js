@@ -46,6 +46,14 @@
 
     if (isLife) wrap.appendChild(budgetCard(all, y));
 
+    /* ---- 固定費 ---- */
+    var fixed = S.recurring(book);
+    var due = E.dueRecurring(fixed);
+    if (due.length) wrap.appendChild(dueCard(due));
+    wrap.appendChild(ui.section('固定費',
+      el('span', { class: 'muted small', text: fixed.length ? '毎月 ' + D.yen(monthlyFixed(fixed)) : '' })));
+    wrap.appendChild(fixedCard(fixed));
+
     /* ---- 科目ごと ---- */
     var cats = E.byCategory(all);
     wrap.appendChild(ui.section('科目ごと'));
@@ -78,7 +86,8 @@
 
     wrap.appendChild(el('div', { class: 'pad row-wrap' }, [
       ui.btn(isLife ? '支出を追加' : '経費を追加', 'primary', function () { addExpense(); }, 'plus'),
-      ui.btn('レシートを撮る', 'ghost', function () { addExpense({ shoot: true }); }, 'receipt')
+      ui.btn('レシートを撮る', 'ghost', function () { addExpense({ shoot: true }); }, 'receipt'),
+      ui.btn('CSVで書き出す', 'ghost', function () { exportCSV(all, y); }, 'arrowDown')
     ]));
 
     wrap.appendChild(el('p', { class: 'muted small pad', text: isLife
@@ -158,6 +167,156 @@
         })
       ]
     });
+  }
+
+  /* ---------------- 固定費 ---------------- */
+
+  function monthlyFixed(list) {
+    return list.filter(function (r) { return r.active; })
+      .reduce(function (n, r) { return n + r.amount; }, 0);
+  }
+
+  /* まだ記録していない月があることを知らせる */
+  function dueCard(due) {
+    var total = due.reduce(function (n, d) { return n + d.amount; }, 0);
+    var months = {};
+    due.forEach(function (d) { months[d.ym] = true; });
+    var names = due.slice(0, 3).map(function (d) { return d.name; }).join('・')
+      + (due.length > 3 ? ' ほか' : '');
+    return el('div', { class: 'card due-card' }, [
+      el('div', { class: 'row-title' }, [
+        ui.icon('info', 17),
+        el('span', { text: '固定費が ' + due.length + '件（' + Object.keys(months).length + 'ヶ月ぶん）まだ記録されていません' })
+      ]),
+      el('div', { class: 'muted small', text: names + '　合計 ' + D.yen(total) }),
+      el('div', { class: 'row-wrap' }, [
+        ui.btn('まとめて記録', 'primary', function () {
+          var n = S.postRecurring(due);
+          ui.toast(n + '件を記録しました');
+        }, 'check'),
+        ui.btn('内訳を見る', 'ghost', function () { dueSheet(due); })
+      ])
+    ]);
+  }
+
+  function dueSheet(due) {
+    var list = el('div', { class: 'fb-preview' });
+    due.forEach(function (d) {
+      list.appendChild(el('div', { class: 'fb-prow' }, [
+        el('span', { text: d.ym.replace('-', '年') + '月　' + d.name }),
+        el('b', { text: D.yen(d.amount) })
+      ]));
+    });
+    var close = ui.sheet({
+      title: 'これから記録する固定費',
+      body: el('div', { class: 'form' }, [
+        el('p', { class: 'muted small', text: '記録すると、それぞれの月の経費として入ります。日付は固定費に決めた「毎月◯日」です。' }),
+        list
+      ]),
+      actions: [
+        ui.btn('やめる', 'ghost', function () { close(); }),
+        ui.btn('記録する', 'primary', function () {
+          var n = S.postRecurring(due); close(); ui.toast(n + '件を記録しました');
+        })
+      ]
+    });
+  }
+
+  function fixedCard(list) {
+    var box = el('div', { class: 'card' });
+    if (!list.length) {
+      box.appendChild(el('p', { class: 'muted small',
+        text: '家賃・通信費・サブスクのように毎月きまって出るものを登録しておくと、月が変わったときにまとめて記録できます。' }));
+    } else {
+      var rows = el('div', { class: 'fx-list' });
+      list.forEach(function (r) {
+        rows.appendChild(el('button', {
+          class: 'fx-row' + (r.active ? '' : ' off'),
+          onclick: function () { recurringSheet(r); }
+        }, [
+          el('div', { class: 'fx-main' }, [
+            el('div', { class: 'row-title' }, [
+              el('span', { text: r.name }),
+              r.active ? null : ui.chip('休止中', 'ghosty')
+            ]),
+            el('div', { class: 'row-sub' }, [
+              ui.chip('毎月' + r.day + '日', 'soft'),
+              ui.chip(r.category, 'ghosty'),
+              r.lastYm ? el('span', { class: 'muted small', text: '最後 ' + r.lastYm.replace('-', '/') }) : null
+            ])
+          ]),
+          el('b', { class: 'fx-v', text: D.yen(r.amount) }),
+          el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+        ]));
+      });
+      box.appendChild(rows);
+    }
+    box.appendChild(ui.btn('固定費を登録', 'ghost full', function () { recurringSheet(null); }, 'plus'));
+    return box;
+  }
+
+  function recurringSheet(r) {
+    var isNew = !r;
+    var bk = r ? r.book : book;
+    var cats = E.categories(bk);
+    var nameIn = ui.input({ value: r ? r.name : '', maxlength: 40,
+      placeholder: bk === 'life' ? '例）家賃 / スマホ代' : '例）サーバー代 / 事務所家賃' });
+    var amountIn = ui.input({ type: 'number', inputmode: 'numeric', min: 0, value: r ? r.amount : '' });
+    var dayIn = ui.input({ type: 'number', inputmode: 'numeric', min: 1, max: 31, value: r ? r.day : 1 });
+    var startIn = ui.input({ type: 'month', value: r ? r.startYm : U.today().slice(0, 7) });
+    var catOpts = cats.slice();
+    if (r && catOpts.indexOf(r.category) < 0) catOpts.unshift(r.category);
+    var catSel = ui.select(catOpts.map(function (c) { return { value: c, label: c }; }), r ? r.category : cats[0]);
+    var activeChk = el('input', { type: 'checkbox', class: 'check', checked: r ? r.active : true });
+
+    var close = ui.sheet({
+      title: (isNew ? '固定費を登録' : '固定費を編集') + '（' + E.bookLabel(bk) + '）',
+      body: el('div', { class: 'form' }, [
+        ui.field('名前', nameIn),
+        el('div', { class: 'grid2' }, [
+          ui.field('金額（円）', amountIn),
+          ui.field('毎月何日', dayIn, '無い日は月末に寄せます')
+        ]),
+        ui.field('科目', catSel),
+        ui.field('いつから', startIn, 'この月のぶんから記録できるようになります'),
+        el('label', { class: 'row-check' }, [activeChk, el('span', { text: '記録の対象にする' })]),
+        !isNew ? ui.btn('この固定費を削除', 'danger full mt', function () {
+          ui.confirm('「' + r.name + '」を削除します。記録済みの経費はそのまま残ります。',
+            { danger: true, okText: '削除' }).then(function (ok) {
+            if (!ok) return;
+            S.removeRecurring(r.id); close(); ui.toast('削除しました');
+          });
+        }, 'trash') : null
+      ]),
+      actions: [
+        ui.btn('キャンセル', 'ghost', function () { close(); }),
+        ui.btn('保存', 'primary', function () {
+          var name = nameIn.value.trim();
+          if (!name) { ui.toast('名前を入れてください', 'warn'); return; }
+          if (!U.num(amountIn.value, 0)) { ui.toast('金額を入れてください', 'warn'); return; }
+          var data = {
+            book: bk, name: name, amount: U.num(amountIn.value, 0),
+            category: catSel.value, day: U.num(dayIn.value, 1),
+            startYm: startIn.value, active: activeChk.checked
+          };
+          if (isNew) S.addRecurring(data); else S.updateRecurring(r.id, data);
+          close(); ui.toast(isNew ? '登録しました' : '保存しました');
+        })
+      ]
+    });
+  }
+
+  /* ---------------- CSV ---------------- */
+
+  function exportCSV(rows, y) {
+    if (!rows.length) { ui.toast('書き出すものがありません', 'warn'); return; }
+    var csv = E.toCSV(rows, {
+      project: function (id) { var p = S.getProject(id); return p ? p.title : ''; },
+      issuer: function (id) { var i = S.getIssuer(id); return i ? i.name : ''; }
+    });
+    var name = 'METEO365_' + (book === 'life' ? '日常' : '事業') + '_' + y + '.csv';
+    ui.download(name, csv, 'text/csv');
+    ui.toast(rows.length + '件を書き出しました');
   }
 
   function sumBox(label, value, cls) {
@@ -381,18 +540,24 @@
       if (picked) {
         shotBox.appendChild(el('img', { class: 'shot-preview', src: URL.createObjectURL(picked), alt: '' }));
         shotBox.appendChild(el('div', { class: 'muted small', text: picked.name + '（保存すると送ります）' }));
-        shotBox.appendChild(ui.btn('取り消す', 'ghost tiny', function () { picked = null; renderShot(); }));
+        shotBox.appendChild(el('div', { class: 'row-wrap' }, [
+          ui.btn('金額を読み取る', 'ghost tiny', function () { readAmount(picked); }, 'search'),
+          ui.btn('取り消す', 'ghost tiny', function () { picked = null; renderShot(); })
+        ]));
+        shotBox.appendChild(ocrBox);
         return;
       }
       if (v.fileId) {
         var img = el('img', { class: 'shot-preview', alt: '' });
         shotBox.appendChild(img);
+        shotBox.appendChild(ocrBox);
         if (thumbs[v.fileId]) img.src = thumbs[v.fileId];
         else F.fetchBytes(v.fileId).then(function (b) {
           var url = URL.createObjectURL(new Blob([b], { type: 'image/jpeg' }));
           thumbs[v.fileId] = url; img.src = url;
         }).catch(function () { U.clear(shotBox); shotBox.appendChild(el('div', { class: 'muted small', text: '写真を取り出せませんでした' })); });
         shotBox.appendChild(el('div', { class: 'row-wrap' }, [
+          ui.btn('金額を読み取る', 'ghost tiny', function () { readSaved(v.fileId); }, 'search'),
           ui.btn('撮り直す', 'ghost tiny', function () { pick(true); }, 'receipt'),
           ui.btn('写真を外す', 'ghost tiny', function () { v.fileId = ''; renderShot(); })
         ]));
@@ -407,6 +572,51 @@
         ui.btn('レシートを撮る', 'ghost', function () { pick(true); }, 'receipt'),
         ui.btn('写真を選ぶ', 'ghost', function () { pick(false); }, 'illust')
       ]));
+    }
+
+    /* --- レシートから金額を読み取る --- */
+    var ocrBox = el('div', { class: 'ocr-box' });
+    var ocrBusy = false;
+
+    function readSaved(fileId) {
+      if (thumbs[fileId]) return fetch(thumbs[fileId]).then(function (r) { return r.blob(); }).then(readAmount);
+      ui.toast('写真を取り出しています…');
+      F.fetchBytes(fileId).then(function (b) { readAmount(new Blob([b], { type: 'image/jpeg' })); })
+        .catch(function (e) { ui.toast(e.message, 'danger'); });
+    }
+
+    function readAmount(blob) {
+      if (ocrBusy) return;
+      ocrBusy = true;
+      U.clear(ocrBox);
+      var note = el('div', { class: 'muted small', text: '読み取っています…（初回は部品の取得に少しかかります）' });
+      var bar = ui.progress(0, null);
+      ocrBox.appendChild(note); ocrBox.appendChild(bar);
+
+      DL.ocr.read(blob, function (p) {
+        var i = bar.querySelector('i');
+        if (i) i.style.width = Math.round(p * 100) + '%';
+      }).then(function (r) {
+        ocrBusy = false;
+        U.clear(ocrBox);
+        if (!r.amounts.length) {
+          ocrBox.appendChild(el('div', { class: 'muted small', text: '金額を見つけられませんでした。明るいところで、まっすぐ写すと読み取りやすくなります。' }));
+          return;
+        }
+        ocrBox.appendChild(el('div', { class: 'muted small', text: '読み取った候補（タップで金額に入ります）' }));
+        var row = el('div', { class: 'row-wrap' });
+        r.amounts.forEach(function (c, i) {
+          row.appendChild(ui.btn(D.yen(c.value), i === 0 ? 'tiny' : 'ghost tiny', function () {
+            amountIn.value = c.value;
+            ui.toast(D.yen(c.value) + ' を入れました');
+          }));
+        });
+        ocrBox.appendChild(row);
+      }).catch(function (e) {
+        ocrBusy = false;
+        U.clear(ocrBox);
+        ocrBox.appendChild(el('div', { class: 'muted small', text: e.message }));
+      });
     }
 
     /* カメラを開く（capture を付けると iPhone では撮影が先に出る） */

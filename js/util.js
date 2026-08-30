@@ -66,6 +66,24 @@ window.DL = window.DL || {};
     return toISO(new Date(d.getFullYear(), d.getMonth() + 1, 0));
   }
 
+  /**
+   * 'YYYY-MM' と「何日」から日付を作る。
+   * 31日を指定しても、その月に無ければ月末に寄せる（2月の31日など）。
+   */
+  function clampDay(ym, day) {
+    var y = num(String(ym).slice(0, 4), 2000), m = num(String(ym).slice(5, 7), 1);
+    var last = new Date(y, m, 0).getDate();
+    var d = Math.min(Math.max(num(day, 1), 1), last);
+    return String(ym).slice(0, 7) + '-' + (d < 10 ? '0' : '') + d;
+  }
+
+  /* 'YYYY-MM' を n ヶ月ずらす */
+  function addYm(ym, n) {
+    var y = num(String(ym).slice(0, 4), 2000), m = num(String(ym).slice(5, 7), 1);
+    var d = new Date(y, m - 1 + n, 1);
+    return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
+  }
+
   /* 表示用フォーマット */
   function fmtMD(iso) { if (!isISO(iso)) return '—'; var p = iso.split('-'); return (+p[1]) + '/' + (+p[2]); }
   function fmtMDW(iso) { if (!isISO(iso)) return '—'; return fmtMD(iso) + '(' + WD[dow(iso)] + ')'; }
@@ -175,7 +193,7 @@ window.DL = window.DL || {};
     WD: WD, pad: pad, toISO: toISO, parse: parse, isISO: isISO, today: today,
     addDays: addDays, addMonths: addMonths, diffDays: diffDays, dow: dow,
     cmp: cmp, minDate: min, maxDate: max, clampDate: clampDate, rangeDays: rangeDays,
-    monthStart: monthStart, monthEnd: monthEnd,
+    monthStart: monthStart, monthEnd: monthEnd, clampDay: clampDay, addYm: addYm,
     fmtMD: fmtMD, fmtMDW: fmtMDW, fmtYMD: fmtYMD, fmtYMDW: fmtYMDW,
     wdName: wdName, untilLabel: untilLabel,
     el: el, append: append, clear: clear, $: $, $$: $$,

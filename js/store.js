@@ -69,6 +69,7 @@
     fanboxIssuerId: '',    // 支援金をどの名義の売上として数えるか（空＝どの名義でも数える）
     expenses: [],          // 経費 [{id,book,date,amount,category,vendor,memo,projectId,issuerId,fileId}]
     lifeBudget: 0,         // 日常（家計簿）の1ヶ月の予算。0で無効
+    recurring: [],         // 固定費 [{id,book,name,amount,category,day,startYm,lastYm,active}]
     sync: {                // 同期サーバーの接続情報（この端末だけのもの）
       url: '', token: '', enabled: false, deviceName: '',
       rev: 0,              // 最後にやりとりした版番号
@@ -184,6 +185,7 @@
     s.settings.fileFolders = s.settings.fileFolders || {};
     s.settings.fanbox = normalizeFanbox(s.settings.fanbox);
     s.settings.expenses = (s.settings.expenses || []).map(normalizeExpense);
+    s.settings.recurring = (s.settings.recurring || []).map(normalizeRecurring);
     s.settings.docSeq = migrateDocSeq(s.settings.docSeq);
     s.projects = (s.projects || []).map(normalizeProject);
     return s;
@@ -682,8 +684,81 @@
     x.projectId = x.projectId || '';  // どの案件のための出費か（印刷費など）
     x.issuerId = x.issuerId || '';    // どの名義の経費か
     x.fileId = x.fileId || '';        // レシートの写真（共有ファイルのID）
+    x.recurringId = x.recurringId || '';  // 固定費から起こしたものか
     x.createdAt = x.createdAt || new Date().toISOString();
     return x;
+  }
+
+  /* ---------------- 固定費（毎月きまって出るもの） ---------------- */
+
+  function normalizeRecurring(r) {
+    r = r || {};
+    r.id = r.id || U.uid();
+    r.book = (r.book === 'life') ? 'life' : 'work';
+    r.name = r.name || '(名称未設定)';
+    r.amount = Math.max(0, Math.round(U.num(r.amount, 0)));
+    r.category = r.category || 'その他';
+    r.day = Math.min(31, Math.max(1, Math.round(U.num(r.day, 1))));   // 毎月何日
+    r.vendor = r.vendor || '';
+    r.memo = r.memo || '';
+    r.projectId = r.projectId || '';
+    r.issuerId = r.issuerId || '';
+    r.startYm = /^\d{4}-\d{2}$/.test(String(r.startYm)) ? r.startYm : U.today().slice(0, 7);
+    r.lastYm = /^\d{4}-\d{2}$/.test(String(r.lastYm)) ? r.lastYm : '';   // 最後に記録した月
+    r.active = r.active !== false;
+    return r;
+  }
+
+  function recurring(book) {
+    var list = state.settings.recurring || [];
+    return book ? list.filter(function (r) { return r.book === book; }) : list.slice();
+  }
+
+  function getRecurring(id) {
+    return (state.settings.recurring || []).filter(function (r) { return r.id === id; })[0] || null;
+  }
+
+  function addRecurring(data) {
+    var r = normalizeRecurring(Object.assign({ id: U.uid() }, data));
+    state.settings.recurring = (state.settings.recurring || []).concat([r]);
+    save();
+    return r;
+  }
+
+  function updateRecurring(id, patch) {
+    var r = getRecurring(id);
+    if (!r) return null;
+    Object.assign(r, patch);
+    normalizeRecurring(r);
+    save();
+    return r;
+  }
+
+  function removeRecurring(id) {
+    state.settings.recurring = (state.settings.recurring || []).filter(function (r) { return r.id !== id; });
+    save();
+  }
+
+  /**
+   * 固定費から経費をまとめて起こす。
+   * @param {Array} jobs [{recurringId, ym}]
+   * @returns {number} 起こした件数
+   */
+  function postRecurring(jobs) {
+    var made = 0;
+    (jobs || []).forEach(function (j) {
+      var r = getRecurring(j.recurringId);
+      if (!r || !/^\d{4}-\d{2}$/.test(String(j.ym))) return;
+      addExpense({
+        book: r.book, date: U.clampDay(j.ym, r.day), amount: r.amount,
+        category: r.category, vendor: r.vendor || r.name, memo: r.memo,
+        projectId: r.projectId, issuerId: r.issuerId, recurringId: r.id
+      });
+      if (U.cmp(j.ym, r.lastYm || '') > 0) r.lastYm = j.ym;
+      made++;
+    });
+    if (made) save();
+    return made;
   }
 
   /**
@@ -1167,6 +1242,7 @@
       state.settings.fanbox = normalizeFanbox(state.settings.fanbox);
       // 経費も、こちらに無いものだけ足す
       r.expenses = mergeById(state.settings.expenses, incoming.settings.expenses || []);
+      mergeById(state.settings.recurring, incoming.settings.recurring || []);
       var have = {};
       state.projects.forEach(function (p) { have[p.id] = true; });
       incoming.projects.forEach(function (p) {
@@ -1261,7 +1337,8 @@
       && !mine.length
       && !placed.length
       && !(s.fanbox || []).length
-      && !(s.expenses || []).length;
+      && !(s.expenses || []).length
+      && !(s.recurring || []).length;
   }
 
   /* 最後に同期してから、この端末で変更があったか */
@@ -1350,6 +1427,8 @@
     fanbox: fanbox, fanboxOf: fanboxOf, putFanbox: putFanbox, fanboxInScope: fanboxInScope,
     expenses: expenses, getExpense: getExpense, addExpense: addExpense,
     updateExpense: updateExpense, removeExpense: removeExpense,
+    recurring: recurring, getRecurring: getRecurring, addRecurring: addRecurring,
+    updateRecurring: updateRecurring, removeRecurring: removeRecurring, postRecurring: postRecurring,
     removeFanbox: removeFanbox, clearFanbox: clearFanbox,
     fileFolder: fileFolder, setFileFolder: setFileFolder, pruneFileFolders: pruneFileFolders,
     knowsFileFolder: knowsFileFolder, applyFolderHints: applyFolderHints,
