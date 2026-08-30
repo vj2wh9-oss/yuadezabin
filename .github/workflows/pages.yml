@@ -1,11 +1,14 @@
 name: Deploy to GitHub Pages
 
 # ビルドは不要なので、リポジトリの中身をそのまま Pages へ配置する
+#
+# 公開できるのは main だけ（GitHub の github-pages 環境が main 以外からの
+# 公開を拒むため）。作業用のブランチもここに並べていたので、押すたびに
+# 必ず失敗し、失敗の知らせがメールで届いていた。main だけにする。
 on:
   push:
     branches:
       - main
-      - claude/deadline-management-app-prototype-jptdj6
   workflow_dispatch:
 
 permissions:
