@@ -329,11 +329,18 @@
     var colWrap = el('div');
     var col = 0, parsed = { rows: [], columns: 0, samples: [] };
 
+    var overwrite = false;
+    var overChk = el('input', { type: 'checkbox', class: 'check' });
+    overChk.addEventListener('change', function () { overwrite = overChk.checked; update(); });
+    var overWrap = el('label', { class: 'row-check' }, [
+      overChk, el('span', { text: 'すでに入っている月も入れ直す' })
+    ]);
+
     function update() {
       parsed = DL.fanbox.parse(ta.value, col);
       U.clear(colWrap);
-      // 金額が2つ以上並ぶ表（支援金・手数料・振込額など）はどれを使うか選ばせる
-      if (parsed.columns > 1) {
+      // 「支援金」の見出しで拾えなかった表だけ、どの列を使うか選ばせる
+      if (!parsed.labeled && parsed.columns > 1) {
         var opts = [];
         for (var i = 0; i < parsed.columns; i++) {
           var sample = (parsed.samples[0] || { amounts: [] }).amounts[i];
@@ -343,21 +350,37 @@
           ui.segmented(opts, String(col), function (v) { col = U.num(v, 0); update(); }),
           '貼り付けた表に金額の列が ' + parsed.columns + 'つあります'));
       }
+
+      // すでに入っている月と、これから増える月を分けて見せる
+      var dup = parsed.rows.filter(function (r) { return S.fanboxOf(r.ym); });
+      var fresh = parsed.rows.filter(function (r) { return !S.fanboxOf(r.ym); });
+      overWrap.hidden = !dup.length;
+
       U.clear(preview);
       if (!ta.value.trim()) {
         preview.appendChild(el('span', { class: 'muted small', text: 'ここに読み取り結果が出ます。' }));
       } else if (!parsed.rows.length) {
-        preview.appendChild(el('span', { class: 'muted small', text: '年月と金額を見つけられませんでした。表をそのままコピーして貼り付けてみてください。' }));
+        preview.appendChild(el('span', { class: 'muted small', text: '年月と金額を見つけられませんでした。画面をそのまま選んでコピーし、貼り付けてみてください。' }));
       } else {
-        preview.appendChild(el('div', { class: 'muted small', text: parsed.rows.length + 'ヶ月ぶんを読み取りました' }));
+        var note = parsed.rows.length + 'ヶ月ぶんを読み取りました'
+          + (parsed.labeled ? '（「支援金」の欄を使います）' : '')
+          + (dup.length ? ' ／ うち ' + dup.length + 'ヶ月はすでに入っています'
+              + (overwrite ? '（入れ直します）' : '（そのままにします）') : '');
+        preview.appendChild(el('div', { class: 'muted small', text: note }));
         parsed.rows.slice(0, 14).forEach(function (r) {
-          preview.appendChild(el('div', { class: 'fb-prow' }, [
-            el('span', { text: r.ym.replace('-', '年') + '月' }),
-            el('b', { text: D.yen(r.amount) })
+          var old = S.fanboxOf(r.ym);
+          var skip = old && !overwrite;
+          preview.appendChild(el('div', { class: 'fb-prow' + (skip ? ' dim' : '') }, [
+            el('span', { text: U.num(r.ym.slice(0, 4), 0) + '年' + U.num(r.ym.slice(5), 0) + '月' }),
+            el('b', { text: D.yen(r.amount) }),
+            old ? el('span', { class: 'fb-tag', text: skip ? '登録済み' : '入れ直す' }) : null
           ]));
         });
         if (parsed.rows.length > 14) {
           preview.appendChild(el('div', { class: 'muted small', text: 'ほか ' + (parsed.rows.length - 14) + 'ヶ月' }));
+        }
+        if (!fresh.length && !overwrite) {
+          preview.appendChild(el('div', { class: 'muted small', text: '新しく増える月はありません。' }));
         }
       }
     }
@@ -366,18 +389,23 @@
     var close = ui.sheet({
       title: '支援金を取り込む',
       body: el('div', { class: 'form' }, [
-        el('p', { class: 'muted small', text: 'FANBOX の「支援金管理／振込」の画面で、月ごとの表を選んでコピーし、そのまま貼り付けてください。年月と金額の並びは自動で読み取ります。' }),
+        el('p', { class: 'muted small', text: 'FANBOX の「支援金管理／振込」の画面を上から下までそのまま選んでコピーし、貼り付けてください。年月と「支援金」の欄だけを拾います。すでに入っている月は自動で除きます。' }),
         ui.field('貼り付け', ta),
         colWrap,
+        overWrap,
         preview
       ]),
       actions: [
         ui.btn('キャンセル', 'ghost', function () { close(); }),
         ui.btn('取り込む', 'primary', function () {
           if (!parsed.rows.length) { ui.toast('読み取れる行がありません', 'warn'); return; }
-          var r = S.putFanbox(parsed.rows);
+          var r = S.putFanbox(parsed.rows, { overwrite: overwrite });
           close();
-          ui.toast('取り込みました（新規 ' + r.added + 'ヶ月 / 更新 ' + r.updated + 'ヶ月）');
+          var parts = [];
+          if (r.added) parts.push('新規 ' + r.added + 'ヶ月');
+          if (r.updated) parts.push('入れ直し ' + r.updated + 'ヶ月');
+          if (r.skipped) parts.push('重複 ' + r.skipped + 'ヶ月は除外');
+          ui.toast(parts.length ? '取り込みました（' + parts.join(' / ') + '）' : '増えた月はありませんでした');
         })
       ]
     });
@@ -393,13 +421,13 @@
       title: '支援金を入れる',
       body: el('div', { class: 'form' }, [
         ui.field('年月', ym),
-        ui.field('支援金（円）', amount, '同じ年月があれば置き換えます')
+        ui.field('支援金（円）', amount, '同じ年月がすでにあれば置き換えます')
       ]),
       actions: [
         ui.btn('キャンセル', 'ghost', function () { close(); }),
         ui.btn('保存', 'primary', function () {
           if (!/^\d{4}-\d{2}$/.test(ym.value)) { ui.toast('年月を選んでください', 'warn'); return; }
-          S.putFanbox([{ ym: ym.value, amount: U.num(amount.value, 0) }]);
+          S.putFanbox([{ ym: ym.value, amount: U.num(amount.value, 0) }], { overwrite: true });
           close(); ui.toast('保存しました');
         })
       ]

@@ -611,22 +611,28 @@
   }
 
   /**
-   * 月ごとの支援金を入れる。同じ年月は上書きする。
+   * 月ごとの支援金を入れる。
    * @param {Array} rows [{ym, amount}]
-   * @returns {{added:number, updated:number}}
+   * @param {object} [opts] {overwrite} すでに入っている年月をどうするか。
+   *   既定では触らない（同じ表を続けて貼っても二重に増えない）。
+   *   overwrite:true のときだけ金額を入れ直す。
+   * @returns {{added:number, updated:number, skipped:number}}
    */
-  function putFanbox(rows) {
+  function putFanbox(rows, opts) {
+    opts = opts || {};
     var cur = state.settings.fanbox || (state.settings.fanbox = []);
     var have = {};
     cur.forEach(function (r) { have[r.ym] = r; });
-    var out = { added: 0, updated: 0 };
+    var out = { added: 0, updated: 0, skipped: 0 };
     (rows || []).forEach(function (r) {
       if (!r || !/^\d{4}-\d{2}$/.test(String(r.ym))) return;
       var amount = Math.max(0, Math.round(U.num(r.amount, 0)));
       if (have[r.ym]) {
-        if (have[r.ym].amount !== amount) out.updated++;
+        if (!opts.overwrite) { out.skipped++; return; }
+        if (have[r.ym].amount === amount) { out.skipped++; return; }
         have[r.ym].amount = amount;
         have[r.ym].updatedAt = new Date().toISOString();
+        out.updated++;
       } else {
         var add = { ym: r.ym, amount: amount, updatedAt: new Date().toISOString() };
         cur.push(add); have[r.ym] = add; out.added++;
