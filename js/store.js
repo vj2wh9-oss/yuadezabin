@@ -44,6 +44,17 @@
     { label: '割増', days: 7 }
   ];
 
+  /* 日常の予定に付ける色。案件は青系でそろえているので、
+     どちらのカレンダーを見ているか一目で分かるよう青以外から選ぶ */
+  var EVENT_COLORS = [
+    { value: '#2fa36b', label: 'みどり' },
+    { value: '#16a3b8', label: 'あお' },
+    { value: '#e0507f', label: 'ピンク' },
+    { value: '#e07a3c', label: 'オレンジ' },
+    { value: '#c9a227', label: 'きいろ' },
+    { value: '#8b5cf6', label: 'むらさき' }
+  ];
+
   var DEFAULT_SETTINGS = {
     holidays: [],          // 休業日 'YYYY-MM-DD'（カレンダーの日別画面から指定する）
     bufferDays: 1,         // 締切の何日前までに終わらせるか
@@ -70,6 +81,9 @@
     expenses: [],          // 経費 [{id,book,date,amount,category,vendor,memo,projectId,issuerId,fileId}]
     lifeBudget: 0,         // 日常（家計簿）の1ヶ月の予算。0で無効
     recurring: [],         // 固定費 [{id,book,name,amount,category,day,startYm,lastYm,active}]
+    // 日常の予定。案件のカレンダーとは混ぜず、上部の切替ボタンで見る側を選ぶ
+    events: [],            // [{id,date,days,title,start,end,memo,color,repeat,until}]
+    calMode: 'work',       // カレンダーの表示（work=案件 / life=日常）。この端末だけのもの
     sync: {                // 同期サーバーの接続情報（この端末だけのもの）
       url: '', token: '', enabled: false, deviceName: '',
       rev: 0,              // 最後にやりとりした版番号
@@ -83,7 +97,7 @@
   };
 
   /* 端末ごとの設定。同期・読み込み・復元で持ち込まず、この端末のものを守る */
-  var LOCAL_SETTING_KEYS = ['sync', 'scopeIssuerId', 'lastBackupAt', 'lastAutoBackupAt'];
+  var LOCAL_SETTING_KEYS = ['sync', 'scopeIssuerId', 'calMode', 'lastBackupAt', 'lastAutoBackupAt'];
 
   var state = null;
   var listeners = [];
@@ -186,6 +200,7 @@
     s.settings.fanbox = normalizeFanbox(s.settings.fanbox);
     s.settings.expenses = (s.settings.expenses || []).map(normalizeExpense);
     s.settings.recurring = (s.settings.recurring || []).map(normalizeRecurring);
+    s.settings.events = (s.settings.events || []).map(normalizeEvent);
     s.settings.docSeq = migrateDocSeq(s.settings.docSeq);
     s.projects = (s.projects || []).map(normalizeProject);
     return s;
@@ -739,6 +754,64 @@
     save();
   }
 
+  /* ---------------- 日常の予定 ---------------- */
+
+  var HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+  var HEX = /^#[0-9a-f]{6}$/i;
+
+  function normalizeEvent(e) {
+    e = e || {};
+    e.id = e.id || U.uid();
+    e.date = U.isISO(e.date) ? e.date : U.today();       // 始まる日
+    e.days = Math.min(60, Math.max(1, U.num(e.days, 1)));// 何日続くか（1で単日）
+    e.title = String(e.title || '').trim().slice(0, 80) || '(名称未設定)';
+    e.start = HHMM.test(String(e.start)) ? e.start : ''; // 空なら終日
+    e.end = HHMM.test(String(e.end)) ? e.end : '';
+    if (!e.start) e.end = '';                            // 開始が無いのに終了だけは持たせない
+    e.memo = String(e.memo || '').slice(0, 400);
+    e.color = HEX.test(String(e.color)) ? e.color : EVENT_COLORS[0].value;
+    e.repeat = ['weekly', 'monthly', 'yearly'].indexOf(e.repeat) >= 0 ? e.repeat : '';
+    e.until = (e.repeat && U.isISO(e.until)) ? e.until : '';   // 繰り返しの終わり（空でずっと）
+    e.createdAt = e.createdAt || new Date().toISOString();
+    return e;
+  }
+
+  function events() { return (state.settings.events || []).slice(); }
+
+  function getEvent(id) {
+    return (state.settings.events || []).filter(function (e) { return e.id === id; })[0] || null;
+  }
+
+  function addEvent(data) {
+    var e = normalizeEvent(Object.assign({ id: U.uid() }, data));
+    state.settings.events = (state.settings.events || []).concat([e]);
+    save();
+    return e;
+  }
+
+  function updateEvent(id, patch) {
+    var e = getEvent(id);
+    if (!e) return null;
+    Object.assign(e, patch);
+    normalizeEvent(e);
+    save();
+    return e;
+  }
+
+  function removeEvent(id) {
+    state.settings.events = (state.settings.events || []).filter(function (e) { return e.id !== id; });
+    save();
+  }
+
+  /* カレンダーの表示（案件 / 日常）。この端末での見え方なので同期には送らない */
+  function calMode() { return state.settings.calMode === 'life' ? 'life' : 'work'; }
+
+  function setCalMode(m) {
+    state.settings.calMode = (m === 'life') ? 'life' : 'work';
+    save({ quiet: true });   // 見え方だけの切り替えなので「変更あり」にしない
+    return state.settings.calMode;
+  }
+
   /**
    * 固定費から経費をまとめて起こす。
    * @param {Array} jobs [{recurringId, ym}]
@@ -1243,6 +1316,8 @@
       // 経費も、こちらに無いものだけ足す
       r.expenses = mergeById(state.settings.expenses, incoming.settings.expenses || []);
       mergeById(state.settings.recurring, incoming.settings.recurring || []);
+      // 日常の予定も同じ。足し忘れると、ぶつかったときに片方の予定が黙って消える
+      r.events = mergeById(state.settings.events, incoming.settings.events || []);
       var have = {};
       state.projects.forEach(function (p) { have[p.id] = true; });
       incoming.projects.forEach(function (p) {
@@ -1338,7 +1413,8 @@
       && !placed.length
       && !(s.fanbox || []).length
       && !(s.expenses || []).length
-      && !(s.recurring || []).length;
+      && !(s.recurring || []).length
+      && !(s.events || []).length;
   }
 
   /* 最後に同期してから、この端末で変更があったか */
@@ -1405,7 +1481,7 @@
   DL.store = {
     KEY: KEY, TEMPLATES: TEMPLATES, UNIT_LABEL: UNIT_LABEL, PRINT_PRESETS: PRINT_PRESETS,
     SUPPORT_SITES: SUPPORT_SITES, BACKUP_KIND_LABEL: KIND_LABEL,
-    PALETTE: PALETTE,
+    PALETTE: PALETTE, EVENT_COLORS: EVENT_COLORS,
     load: load, init: init, save: save, flush: flush, subscribe: subscribe,
     get state() { return state; },
     get settings() { return state.settings; },
@@ -1429,6 +1505,9 @@
     updateExpense: updateExpense, removeExpense: removeExpense,
     recurring: recurring, getRecurring: getRecurring, addRecurring: addRecurring,
     updateRecurring: updateRecurring, removeRecurring: removeRecurring, postRecurring: postRecurring,
+    events: events, getEvent: getEvent, addEvent: addEvent,
+    updateEvent: updateEvent, removeEvent: removeEvent,
+    calMode: calMode, setCalMode: setCalMode,
     removeFanbox: removeFanbox, clearFanbox: clearFanbox,
     fileFolder: fileFolder, setFileFolder: setFileFolder, pruneFileFolders: pruneFileFolders,
     knowsFileFolder: knowsFileFolder, applyFolderHints: applyFolderHints,

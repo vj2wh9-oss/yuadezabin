@@ -68,6 +68,8 @@
     search: '<circle cx="10.6" cy="10.6" r="6.4"/><path d="M15.4 15.4 20.5 20.5"/>',
     trash: '<path d="M4.5 6.5h15"/><path d="M9 6.5V3.5h6v3"/><path d="M6.5 6.5 7.6 20.5h8.8L17.5 6.5"/><path d="M10 10.5v6M14 10.5v6"/>',
     refresh: '<path d="M4 12a8 8 0 0 1 13.7-5.6L20 8.7"/><path d="M20 4v4.7h-4.7"/><path d="M20 12a8 8 0 0 1-13.7 5.6L4 15.3"/><path d="M4 20v-4.7h4.7"/>',
+    // 切替：上下で向きの違う2本の矢印
+    swap: '<path d="M3 8.5h15"/><path d="M13.5 4 18 8.5 13.5 13"/><path d="M21 15.5H6"/><path d="M10.5 11 6 15.5 10.5 20"/>',
 
     /* 状態 */
     alert: '<path d="M12 3.5 22 20.5H2z"/><path d="M12 9.6v5"/><path d="M11.2 16.6h1.6v1.7h-1.6z" fill="currentColor" stroke="none"/>',

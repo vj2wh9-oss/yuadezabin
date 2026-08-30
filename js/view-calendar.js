@@ -18,21 +18,30 @@
     if (params && U.isISO(params.month)) cursor = U.monthStart(params.month);
     if (!cursor) cursor = U.monthStart(today);
 
+    // 案件のカレンダーと日常のカレンダーは中身を混ぜない。
+    // どちらを見るかは上部の切替ボタンで決める
+    var life = S.calMode() === 'life';
+
     var first = cursor, last = U.monthEnd(cursor);
     var monthTitle = cursor.slice(0, 4) + '年' + (+cursor.slice(5, 7)) + '月';
-    var wrap = el('div', { class: 'page cal-page' });
+    var wrap = el('div', { class: 'page cal-page' + (life ? ' cal-life' : '') });
 
-    /* 月ナビ（月名をタップするとその月の締切一覧） */
+    /* 月ナビ（月名をタップするとその月の一覧） */
     wrap.appendChild(el('div', { class: 'monthnav' }, [
       el('button', { class: 'iconbtn', 'aria-label': '前の月', onclick: function () { goMonth(-1); } }, ui.icon('chevronLeft', 20)),
       el('button', {
-        class: 'monthlabel', 'aria-label': monthTitle + 'の締切一覧',
-        onclick: function () { monthSheet(first, last, monthTitle, today); }
+        class: 'monthlabel', 'aria-label': monthTitle + (life ? 'の予定一覧' : 'の締切一覧'),
+        onclick: function () { monthSheet(first, last, monthTitle, today, life); }
       }, [
         el('span', { text: monthTitle }),
         ui.icon('chevronDown', 15)
       ]),
       el('button', { class: 'iconbtn', 'aria-label': '次の月', onclick: function () { goMonth(1); } }, ui.icon('chevronRight', 20)),
+      // 日常はカレンダーの上に＋を出す（下の丸ボタンはマスに重なるので置かない）
+      life ? el('button', {
+        class: 'iconbtn', 'aria-label': '予定を追加',
+        onclick: function () { DL.views.events.form(null, { date: addDate(cursor, today) }); }
+      }, ui.icon('plus', 20)) : null,
       ui.btn('今日', 'tiny ghost', function () { cursor = U.monthStart(today); slideDir = null; DL.app.render(); })
     ]));
 
@@ -52,8 +61,12 @@
     var grid = el('div', { class: 'cal-grid' + (slideDir ? ' ' + slideDir : '') });
     slideDir = null;
 
+    // 日常は繰り返しを毎回ひろげるので、画面に出す範囲を一度にまとめて計算する
+    var evMap = life ? DL.events.byDay(gridStart, U.addDays(gridStart, rows * 7 - 1)) : null;
+
     for (var c = 0; c < rows * 7; c++) {
-      grid.appendChild(cell(U.addDays(gridStart, c), cursor, today));
+      var dt = U.addDays(gridStart, c);
+      grid.appendChild(life ? lifeCell(dt, cursor, today, evMap[dt] || []) : cell(dt, cursor, today));
     }
     wrap.appendChild(grid);
 
@@ -142,8 +155,17 @@
     }, true);
   }
 
-  /* 月名タップで開く、その月の締切・イベント一覧 */
-  function monthSheet(first, last, title, today) {
+  /* 予定を足すときの初期日付。その月を見ていれば今日、別の月なら月初 */
+  function addDate(month, today) {
+    return today.slice(0, 7) === month.slice(0, 7) ? today : month;
+  }
+
+  /* 月名タップで開く、その月の一覧 */
+  function monthSheet(first, last, title, today, life) {
+    if (life) {
+      ui.sheet({ title: title + 'の予定', body: DL.views.events.monthBody(first, last) });
+      return;
+    }
     var items = sc.timeline(first, U.diffDays(first, last));
     var body;
     if (!items.length) {
@@ -220,6 +242,38 @@
     ]);
   }
 
+  /* 日常のマス。案件の締切・ノルマは出さず、その日の予定だけを載せる */
+  function lifeCell(date, cursorMonth, today, list) {
+    var d = U.dow(date);
+    var cls = 'cal-cell';
+    if (date.slice(0, 7) !== cursorMonth.slice(0, 7)) cls += ' out';
+    if (date === today) cls += ' today';
+    if (d === 0) cls += ' sun';
+    if (d === 6) cls += ' sat';
+    if (list.length) cls += ' has-plan';
+
+    var lines = el('div', { class: 'cal-lines' });
+    var MAX = 10, shown = 0;
+    list.forEach(function (o) {
+      if (shown >= MAX) return;
+      shown++;
+      var note = DL.events.cellNote(o);
+      lines.appendChild(el('span', { class: 'cal-line' }, [
+        el('i', { style: { background: o.ev.color } }),
+        el('span', { class: 'nm', text: o.ev.title }),
+        note ? el('b', { text: note }) : null
+      ]));
+    });
+    var rest = list.length - shown;
+    if (rest > 0) lines.appendChild(el('span', { class: 'cal-more', text: '＋' + rest }));
+
+    // 予定はそのまま行として並ぶので、件数の数字は付けない（ノルマと違って数える意味がない）
+    return el('a', { class: cls, href: '#/day/' + date }, [
+      el('span', { class: 'cal-top' }, el('span', { class: 'cal-n', text: String(+date.slice(8)) })),
+      lines
+    ]);
+  }
+
   // セルは狭いので、締切は種別の言葉だけを出す（どの案件かは色の帯で示す）
   function markText(m) {
     if (m.type === 'event') return m.project.eventName || m.project.title;
@@ -229,10 +283,21 @@
 
   /* ---------------- 日別 ---------------- */
 
+  /* 日常には締切が無いので「12日超過」ではなく、ただの前後で言う */
+  function dayRel(date, today) {
+    var d = U.diffDays(today, date);
+    if (d === 0) return '今日';
+    if (d === 1) return '明日';
+    if (d === 2) return '明後日';
+    if (d === -1) return '昨日';
+    return d > 0 ? 'あと' + d + '日' : Math.abs(d) + '日前';
+  }
+
   function renderDay(root, params) {
     var date = U.isISO(params.date) ? params.date : U.today();
     var today = U.today();
-    var isHoliday = (S.settings.holidays || []).indexOf(date) >= 0;
+    var life = S.calMode() === 'life';
+    var isHoliday = !life && (S.settings.holidays || []).indexOf(date) >= 0;
     var wrap = el('div', { class: 'page' });
 
     wrap.appendChild(el('div', { class: 'daynav' }, [
@@ -242,10 +307,17 @@
           el('span', { text: U.fmtYMDW(date) }),
           isHoliday ? ui.chip('休業日', 'soft') : null
         ]),
-        el('div', { class: 'today-sub', text: U.untilLabel(date, today) })
+        el('div', { class: 'today-sub', text: life ? dayRel(date, today) : U.untilLabel(date, today) })
       ]),
       el('a', { class: 'iconbtn', href: '#/day/' + U.addDays(date, 1), 'aria-label': '次の日' }, ui.icon('chevronRight', 20))
     ]));
+
+    // 日常を見ているときは、案件の締切・ノルマ・休業日は出さない
+    if (life) {
+      DL.views.events.dayView(wrap, date);
+      root.appendChild(wrap);
+      return;
+    }
 
     var marks = sc.dayMarks(date);
     if (marks.length) {

@@ -8,6 +8,7 @@
   var actionsEl = U.$('#appActions');
   var backBtn = U.$('#backBtn');
   var gearBtn = U.$('#gearBtn');
+  var modeBtn = U.$('#modeBtn');
   var fab = U.$('#fab');
 
   var route = { name: 'home', params: {} };
@@ -49,6 +50,12 @@
     // 設定は下のタブから外し、題名の右の歯車から開く
     gearBtn.classList.toggle('on', route.name === 'settings');
 
+    // カレンダーの切替（案件 / 日常）。効くのはカレンダーの画面だけなので、そこにだけ出す
+    var onCal = CAL_VIEWS.indexOf(route.name) >= 0;
+    var life = S.calMode() === 'life';
+    modeBtn.hidden = !onCal;
+    if (onCal) drawModeBtn(life);
+
     // 売上は下のタブから直接開くので、戻るボタンは要らない
     var showBack = ['project', 'day', 'docs', 'doc'].indexOf(route.name) >= 0;
     backBtn.hidden = !showBack;
@@ -65,8 +72,9 @@
     // 同期ボタン（つないでいるときだけ）
     if (DL.sync.active()) actionsEl.appendChild(syncBtn());
 
-    // 名義の切り替え（2つ以上登録しているときだけ出す）
-    if (S.issuers().length > 1 && SCOPE_VIEWS.indexOf(route.name) >= 0) {
+    // 名義の切り替え（2つ以上登録しているときだけ出す）。
+    // 日常のカレンダーは名義と関わらないので、そこでは出さない
+    if (S.issuers().length > 1 && SCOPE_VIEWS.indexOf(route.name) >= 0 && !(onCal && life)) {
       actionsEl.appendChild(scopeBtn());
     }
 
@@ -118,6 +126,25 @@
     }, DL.icons.icon('refresh', 19));
     return b;
   }
+
+  /* ---------------- カレンダーの切り替え（案件 / 日常） ---------------- */
+
+  var CAL_VIEWS = ['calendar', 'day'];
+
+  /* いま見ている側を出す。押すともう一方に移る */
+  function drawModeBtn(life) {
+    U.clear(modeBtn);
+    modeBtn.classList.toggle('life', life);
+    modeBtn.setAttribute('aria-label', 'カレンダーを切り替える（いまは' + (life ? '日常' : '案件') + '）');
+    modeBtn.appendChild(DL.icons.icon('swap', 14));
+    modeBtn.appendChild(el('span', { text: life ? '日常' : '案件' }));
+  }
+
+  modeBtn.addEventListener('click', function () {
+    var next = S.calMode() === 'life' ? 'work' : 'life';
+    S.setCalMode(next);      // 保存すると購読側で描き直される
+    ui.toast(next === 'life' ? '日常のカレンダーに切り替えました' : '案件のカレンダーに切り替えました');
+  });
 
   /* ---------------- 名義の切り替え ---------------- */
 
@@ -179,6 +206,11 @@
     if (['settings', 'calendar', 'docs', 'doc', 'sales'].indexOf(route.name) >= 0) { fab.hidden = true; return; }
     fab.hidden = false;
     fab.onclick = function () {
+      // 日常のカレンダーの日別画面では、ここが予定の追加口になる
+      if (route.name === 'day' && S.calMode() === 'life') {
+        DL.views.events.form(null, { date: route.params.date || U.today() });
+        return;
+      }
       // ファイル画面では、ここがファイルの追加口になる
       if (route.name === 'files') { DL.views.files.pickFiles(); return; }
       // 経理画面では、ここが経費の追加口になる
