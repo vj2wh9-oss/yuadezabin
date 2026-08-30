@@ -12,7 +12,7 @@
       eventName: '', eventDate: '', venue: '', space: '',
       client: '', fee: '', site: '', plan: '', deadline: '', startDate: U.today(),
       qty: 20, memo: '', printings: [], color: S.pickColor(),
-      // 新規は「いま見ている屋号」→既定の屋号 の順で初期選択する
+      // 新規は「いま見ている名義」→既定の名義 の順で初期選択する
       issuerId: S.scopeId() || S.settings.defaultIssuerId || ''
     };
 
@@ -83,7 +83,7 @@
 
     body.appendChild(ui.field('種別', kindSeg));
 
-    // 屋号（登録があるときだけ。切り替え表示と書類の初期値に使う）
+    // 名義（登録があるときだけ。切り替え表示と書類の初期値に使う）
     var issuerSel = null;
     if (S.issuers().length) {
       issuerSel = ui.select(
@@ -92,7 +92,7 @@
         })),
         p.issuerId || ''
       );
-      body.appendChild(ui.field('屋号', issuerSel, 'この案件をどちらの屋号の仕事として扱うか。書類の発行元の初期値にもなります'));
+      body.appendChild(ui.field('名義', issuerSel, 'この案件をどちらの名義の仕事として扱うか。書類の発行元の初期値にもなります'));
     }
 
     body.appendChild(ui.field('タイトル', titleInput));
@@ -870,7 +870,7 @@
     });
   }
 
-  /* =============== 屋号（発行元） =============== */
+  /* =============== 名義（発行元） =============== */
 
   function issuerSheet(id) {
     var existing = id ? S.getIssuer(id) : null;
@@ -921,7 +921,7 @@
       return ui.field(label, box, hint);
     }
 
-    // 屋号の識別色（案件一覧や切り替えボタンで使う）
+    // 名義の識別色（案件一覧や切り替えボタンで使う）
     var colorWrap = el('div', { class: 'colors' });
     S.PALETTE.forEach(function (c) {
       var b = el('button', {
@@ -936,9 +936,9 @@
     });
 
     var body = el('div', { class: 'form' }, [
-      ui.field('屋号', t('name', '例）スタジオ○○'), '書類に大きく出る名前です'),
+      ui.field('名義', t('name', '例）スタジオ○○'), '書類に大きく出る名前です'),
       ui.field('代表者名', t('ownerName', '例）山田 太郎')),
-      ui.field('識別色', colorWrap, '案件一覧や屋号の切り替えで、この色の目印が付きます'),
+      ui.field('識別色', colorWrap, '案件一覧や名義の切り替えで、この色の目印が付きます'),
       el('div', { class: 'grid2' }, [
         ui.field('郵便番号', t('zip', '000-0000')),
         ui.field('電話番号', t('tel', '000-0000-0000'))
@@ -965,7 +965,7 @@
     ]);
 
     if (existing) {
-      body.appendChild(ui.btn('この屋号を削除', 'danger full mt', function () {
+      body.appendChild(ui.btn('この名義を削除', 'danger full mt', function () {
         ui.confirm('「' + (existing.name || '(名称未設定)') + '」を削除します。発行済みの書類の表示にも影響します。', { danger: true, okText: '削除' })
           .then(function (ok) {
             if (!ok) return;
@@ -975,11 +975,11 @@
     }
 
     var close = ui.sheet({
-      title: existing ? '屋号を編集' : '屋号を登録', body: body,
+      title: existing ? '名義を編集' : '名義を登録', body: body,
       actions: [
         ui.btn('キャンセル', 'ghost', function () { close(); }),
         ui.btn('保存', 'primary', function () {
-          if (!x.name.trim()) { ui.toast('屋号を入れてください', 'warn'); return; }
+          if (!x.name.trim()) { ui.toast('名義を入れてください', 'warn'); return; }
           if (existing) S.updateIssuer(existing.id, x); else S.addIssuer(x);
           close(); ui.toast('保存しました');
         })

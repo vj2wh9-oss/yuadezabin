@@ -201,12 +201,12 @@
       el('div', { class: 'cmp' }, [
         col('この端末', S.state.savedAt, [
           S.projects().length + '件の案件', S.allDocs().length + '件の書類',
-          S.issuers().length + 'つの屋号', S.clients().length + '件の取引先'
+          S.issuers().length + 'つの名義', S.clients().length + '件の取引先'
         ]),
         col('サーバー' + (remote.by ? '（' + remote.by + '）' : ''), remote.savedAt, [
           (rd.projects || []).length + '件の案件',
           (rd.projects || []).reduce(function (n, p) { return n + ((p.docs || []).length); }, 0) + '件の書類',
-          (rs.issuers || []).length + 'つの屋号', (rs.clients || []).length + '件の取引先'
+          (rs.issuers || []).length + 'つの名義', (rs.clients || []).length + '件の取引先'
         ])
       ]),
       el('div', { class: 'alert warn' }, [

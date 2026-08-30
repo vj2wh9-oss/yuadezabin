@@ -59,7 +59,7 @@
     /* ---- 基本情報 ---- */
     var info = [];
     var issuer = p.issuerId ? S.issuers().filter(function (x) { return x.id === p.issuerId; })[0] : null;
-    if (issuer) info.push(['屋号', issuer.name || '(名称未設定)']);
+    if (issuer) info.push(['名義', issuer.name || '(名称未設定)']);
     if (p.kind === 'event') {
       if (p.eventName) info.push(['イベント', p.eventName]);
       if (U.isISO(p.eventDate)) info.push(['開催日', U.fmtYMDW(p.eventDate) + '（' + U.untilLabel(p.eventDate, today) + '）']);

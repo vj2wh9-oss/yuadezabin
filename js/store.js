@@ -55,9 +55,9 @@
     autoBackup: true,      // 端末内への自動バックアップ（1日1回）
     autoBackupKeep: 30,    // 残す世代数
     lastAutoBackupAt: '',  // 最後に自動バックアップした日
-    issuers: [],           // 屋号（発行元）
-    defaultIssuerId: '',   // 既定の屋号
-    scopeIssuerId: '',     // 表示を絞り込む屋号（空＝すべて）
+    issuers: [],           // 名義（発行元）
+    defaultIssuerId: '',   // 既定の名義
+    scopeIssuerId: '',     // 表示を絞り込む名義（空＝すべて）
     clients: [],           // 取引先
     folders: [],           // 共有ファイルのフォルダ [{id,name,createdAt}]
     // ファイルとフォルダの対応 { ファイルID: フォルダID }。
@@ -203,7 +203,7 @@
     p.category = (p.category === 'illust' || p.category === 'design') ? p.category : 'manga';
     p.title = p.title || '(無題)';
     p.status = p.status || 'active';
-    p.issuerId = p.issuerId || '';     // どの屋号の仕事か（空＝未割り当て）
+    p.issuerId = p.issuerId || '';     // どの名義の仕事か（空＝未割り当て）
     p.clientId = p.clientId || '';     // 登録済みの取引先（空＝client の自由入力のみ）
     p.startDate = p.startDate || '';   // 作業開始日（スケジュール算出の起点）
     p.color = p.color || pickColor();
@@ -253,7 +253,7 @@
     x.bank = Object.assign({ name: '', branch: '', type: '普通', number: '', holder: '' }, x.bank || {});
     x.logo = x.logo || '';                     // dataURL
     x.seal = x.seal || '';                     // 印影 dataURL
-    x.color = x.color || '';                   // 屋号の識別色
+    x.color = x.color || '';                   // 名義の識別色
     x.note = x.note || '';
     return x;
   }
@@ -322,7 +322,7 @@
     return d;
   }
 
-  /* ---------------- 屋号 ---------------- */
+  /* ---------------- 名義 ---------------- */
 
   function issuers() { return state.settings.issuers || []; }
 
@@ -356,12 +356,12 @@
       state.settings.defaultIssuerId = (issuers()[0] || {}).id || '';
     }
     if (state.settings.scopeIssuerId === id) state.settings.scopeIssuerId = '';
-    // 消した屋号を参照していた案件は未割り当てに戻す
+    // 消した名義を参照していた案件は未割り当てに戻す
     state.projects.forEach(function (p) { if (p.issuerId === id) p.issuerId = ''; });
     save();
   }
 
-  // 屋号の識別色（未設定なら並び順から割り当てる）
+  // 名義の識別色（未設定なら並び順から割り当てる）
   function issuerColor(id) {
     var list = issuers();
     for (var i = 0; i < list.length; i++) {
@@ -371,9 +371,9 @@
     return '';
   }
 
-  /* ---------------- 表示の絞り込み（屋号スコープ） ---------------- */
+  /* ---------------- 表示の絞り込み（名義スコープ） ---------------- */
 
-  // 存在しない屋号が残っていても「すべて」に落とす
+  // 存在しない名義が残っていても「すべて」に落とす
   function scopeId() {
     var id = state.settings.scopeIssuerId || '';
     if (!id) return '';
@@ -387,7 +387,7 @@
 
   function setScope(id) { updateSettings({ scopeIssuerId: id || '' }); }
 
-  // 屋号を割り当てていない案件は、どのスコープでも隠さない（取りこぼし防止）
+  // 名義を割り当てていない案件は、どのスコープでも隠さない（取りこぼし防止）
   function inScope(p) {
     var id = scopeId();
     return !id || !p.issuerId || p.issuerId === id;

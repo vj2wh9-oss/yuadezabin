@@ -21,7 +21,7 @@
       el('button', { class: 'iconbtn', 'aria-label': '次の年', onclick: function () { year = y + 1; DL.app.render(); } }, ui.icon('chevronRight', 20))
     ]));
 
-    /* ---- 屋号の絞り込み（アプリ全体の切り替えと同じもの） ---- */
+    /* ---- 名義の絞り込み（アプリ全体の切り替えと同じもの） ---- */
     var issuers = S.issuers();
     var active = S.scopeId();
     if (issuers.length > 1) {
@@ -29,8 +29,8 @@
         return { value: x.id, label: x.name || '(名称未設定)' };
       }));
       wrap.appendChild(el('div', { class: 'card' },
-        ui.field('屋号', ui.segmented(opts, active, function (v) { S.setScope(v); }),
-          'ホーム・カレンダー・案件一覧の表示も、選んだ屋号に合わせて切り替わります')
+        ui.field('名義', ui.segmented(opts, active, function (v) { S.setScope(v); }),
+          'ホーム・カレンダー・案件一覧の表示も、選んだ名義に合わせて切り替わります')
       ));
     }
 
@@ -129,7 +129,7 @@
           ui.chip(U.fmtYMD(d.issueDate), 'soft'),
           ui.chip(D.yen(c.payable), 'ghosty'),
           ui.chip(D.STATUS_LABEL[d.status], d.status === 'paid' ? 'ok' : d.status === 'issued' ? 'soft' : 'ghosty'),
-          issuer ? ui.chip(issuer.name || '屋号', 'ghosty') : null
+          issuer ? ui.chip(issuer.name || '名義', 'ghosty') : null
         ])
       ]),
       el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
@@ -146,7 +146,7 @@
         return !scope || (e.doc.issuerId || '') === scope;
       });
     }
-    // 屋号を登録していないうちは請求書機能自体を使っていないので出さない
+    // 名義を登録していないうちは請求書機能自体を使っていないので出さない
     if (!S.issuers().length) return null;
     var month = D.sales(pick(t.slice(0, 7)));
     var yearSum = D.sales(pick(t.slice(0, 4)));

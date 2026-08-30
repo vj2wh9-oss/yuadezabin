@@ -154,7 +154,7 @@
 
     var from = el('div', { class: 'ds-from' }, issuer ? [
       issuer.logo ? el('img', { class: 'ds-logo', src: issuer.logo, alt: '' }) : null,
-      el('div', { class: 'ds-issuer-name', text: issuer.name || '（屋号未設定）' }),
+      el('div', { class: 'ds-issuer-name', text: issuer.name || '（名義未設定）' }),
       issuer.ownerName ? el('div', { class: 'ds-small', text: issuer.ownerName }) : null,
       issuer.zip ? el('div', { class: 'ds-small', text: '〒' + issuer.zip }) : null,
       issuer.address ? el('div', { class: 'ds-small', text: issuer.address }) : null,
@@ -162,7 +162,7 @@
       issuer.email ? el('div', { class: 'ds-small', text: issuer.email }) : null,
       issuer.invoiceNo ? el('div', { class: 'ds-small', text: '登録番号 ' + issuer.invoiceNo }) : null,
       issuer.seal ? el('img', { class: 'ds-seal', src: issuer.seal, alt: '' }) : null
-    ] : [el('div', { class: 'ds-small', text: '屋号が未設定です（設定 → 屋号 で登録できます）' })]);
+    ] : [el('div', { class: 'ds-small', text: '名義が未設定です（設定 → 名義 で登録できます）' })]);
 
     wrap.appendChild(el('div', { class: 'ds-parties' }, [to, from]));
 
@@ -217,7 +217,8 @@
       wrap.appendChild(el('div', { class: 'ds-bank' }, [
         el('div', { class: 'ds-bank-title', text: 'お振込先' }),
         el('div', { class: 'ds-small', text: [b.name, b.branch, b.type, b.number].filter(Boolean).join('　') }),
-        b.holder ? el('div', { class: 'ds-small', text: '名義　' + b.holder }) : null,
+        // 発行元のほうも「名義」と呼ぶので、口座のほうは省略せずに書く
+        b.holder ? el('div', { class: 'ds-small', text: '口座名義　' + b.holder }) : null,
         el('div', { class: 'ds-small', text: '※恐れ入りますが、振込手数料は貴社にてご負担をお願いいたします。' })
       ]));
     }

@@ -32,13 +32,13 @@
       tplSummary('design', 'デザイン', 'design')
     ]));
 
-    /* ---- 屋号 ---- */
-    wrap.appendChild(ui.section('屋号（請求書・領収書の発行元）',
+    /* ---- 名義 ---- */
+    wrap.appendChild(ui.section('名義（請求書・領収書の発行元）',
       el('a', { class: 'link', href: '#/sales', text: '売上' })));
     var issuerBox = el('div', { class: 'card' });
     var list = S.issuers();
     if (!list.length) {
-      issuerBox.appendChild(el('p', { class: 'muted small', text: '登録するとお仕事の案件から請求書・領収書を発行できます。屋号ごとに住所・ロゴ・振込先を持てます。' }));
+      issuerBox.appendChild(el('p', { class: 'muted small', text: '登録するとお仕事の案件から請求書・領収書を発行できます。名義ごとに住所・ロゴ・振込先を持てます。' }));
     }
     list.forEach(function (x) {
       var isDefault = S.settings.defaultIssuerId === x.id;
@@ -56,11 +56,11 @@
         ]),
         isDefault ? null : ui.btn('既定にする', 'ghost tiny', function () {
           S.updateSettings({ defaultIssuerId: x.id });
-          ui.toast('既定の屋号にしました');
+          ui.toast('既定の名義にしました');
         })
       ]));
     });
-    issuerBox.appendChild(ui.btn('屋号を追加', 'ghost full', function () { DL.forms.issuerSheet(null); }, 'plus'));
+    issuerBox.appendChild(ui.btn('名義を追加', 'ghost full', function () { DL.forms.issuerSheet(null); }, 'plus'));
     wrap.appendChild(issuerBox);
 
     /* ---- 取引先 ---- */
@@ -511,18 +511,18 @@
     var body = el('div', { class: 'form' }, [
       el('div', { class: 'cmp' }, [
         cmpCol('ファイル', info.savedAt ? fmtAt(info.savedAt) : '日時なし',
-          [info.projects + '件の案件', info.docs + '件の書類', info.issuers + 'つの屋号', info.clients + '件の取引先']),
+          [info.projects + '件の案件', info.docs + '件の書類', info.issuers + 'つの名義', info.clients + '件の取引先']),
         cmpCol('この端末', S.state.savedAt ? fmtAt(S.state.savedAt) : '—',
           [S.projects().length + '件の案件',
            S.allDocs().length + '件の書類',
-           S.issuers().length + 'つの屋号',
+           S.issuers().length + 'つの名義',
            S.clients().length + '件の取引先'])
       ]),
       el('div', { class: 'alert ' + verdict.cls }, [
         el('span', { class: 'alert-icon' }, ui.icon(verdict.cls === 'warn' ? 'alert' : 'info', 17)),
         el('span', { text: verdict.text })
       ]),
-      el('p', { class: 'muted small', text: '「統合」は、いま無い案件・屋号・取引先だけを足します。両方の端末で別々に足したものを合流させたいときはこちら。既にあるものの中身は書き換えません。' }),
+      el('p', { class: 'muted small', text: '「統合」は、いま無い案件・名義・取引先だけを足します。両方の端末で別々に足したものを合流させたいときはこちら。既にあるものの中身は書き換えません。' }),
       el('p', { class: 'muted small', text: 'どちらを選んでも、実行前の状態は控えとして残ります（自動バックアップ →「控えの一覧から戻す」）。' })
     ]);
     var close = ui.sheet({
@@ -539,7 +539,7 @@
         if (r.mode === 'merge') {
           var parts = [];
           if (r.added) parts.push('案件 ' + r.added + '件');
-          if (r.issuers) parts.push('屋号 ' + r.issuers + 'つ');
+          if (r.issuers) parts.push('名義 ' + r.issuers + 'つ');
           if (r.clients) parts.push('取引先 ' + r.clients + '件');
           ui.toast(parts.length ? parts.join('・') + 'を追加しました' : '追加するものはありませんでした');
         } else {

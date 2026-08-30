@@ -27,9 +27,9 @@
     if (!S.issuers().length) {
       wrap.appendChild(el('div', { class: 'alert warn' }, [
         el('span', { class: 'alert-icon' }, ui.icon('alert', 17)),
-        el('span', { text: '屋号（発行元）がまだありません。先に登録してください。' })
+        el('span', { text: '名義（発行元）がまだありません。先に登録してください。' })
       ]));
-      wrap.appendChild(ui.btn('屋号を登録する', 'primary full', function () {
+      wrap.appendChild(ui.btn('名義を登録する', 'primary full', function () {
         DL.forms.issuerSheet(null);
       }, 'plus'));
     }
@@ -53,8 +53,8 @@
   }
 
   function create(p, type) {
-    if (!S.issuers().length) { ui.toast('先に屋号を登録してください', 'warn'); return; }
-    // 案件に屋号が設定されていればそれを使う
+    if (!S.issuers().length) { ui.toast('先に名義を登録してください', 'warn'); return; }
+    // 案件に名義が設定されていればそれを使う
     var d = S.addDoc(p.id, D.blank(type, p, p.issuerId));
     location.hash = '#/doc/' + p.id + '/' + d.id;
   }
@@ -126,7 +126,7 @@
       : '下書き以外にすると ' + S.peekNumber(d.type, d.issueDate) + ' が振られます（番号は年ごとに 0001 に戻ります）';
     wrap.appendChild(el('div', { class: 'card' }, [
       ui.field('状態', statusSeg, numHint),
-      ui.field('屋号（発行元）', issuerSelect(p, d), '案件ごとに切り替えられます')
+      ui.field('名義（発行元）', issuerSelect(p, d), '案件ごとに切り替えられます')
     ]));
 
     /* プレビュー */
@@ -151,12 +151,12 @@
   function issuerSelect(p, d) {
     var list = S.issuers();
     if (!list.length) {
-      return ui.btn('屋号を登録する', 'ghost full', function () { DL.forms.issuerSheet(null); }, 'plus');
+      return ui.btn('名義を登録する', 'ghost full', function () { DL.forms.issuerSheet(null); }, 'plus');
     }
     var sel = ui.select(
       list.map(function (x) { return { value: x.id, label: x.name || '(名称未設定)' }; }),
       (S.getIssuer(d.issuerId) || {}).id,
-      function () { S.updateDoc(p.id, d.id, { issuerId: sel.value }); ui.toast('屋号を切り替えました'); }
+      function () { S.updateDoc(p.id, d.id, { issuerId: sel.value }); ui.toast('名義を切り替えました'); }
     );
     return sel;
   }

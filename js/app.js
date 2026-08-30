@@ -61,7 +61,7 @@
     // 同期ボタン（つないでいるときだけ）
     if (DL.sync.active()) actionsEl.appendChild(syncBtn());
 
-    // 屋号の切り替え（2つ以上登録しているときだけ出す）
+    // 名義の切り替え（2つ以上登録しているときだけ出す）
     if (S.issuers().length > 1 && SCOPE_VIEWS.indexOf(route.name) >= 0) {
       actionsEl.appendChild(scopeBtn());
     }
@@ -114,16 +114,16 @@
     return b;
   }
 
-  /* ---------------- 屋号の切り替え ---------------- */
+  /* ---------------- 名義の切り替え ---------------- */
 
   var SCOPE_VIEWS = ['home', 'calendar', 'day', 'projects', 'project', 'sales'];
 
   function scopeBtn() {
     var cur = S.scopeIssuer();
-    var name = cur ? (cur.name || '(名称未設定)') : 'すべての屋号';
+    var name = cur ? (cur.name || '(名称未設定)') : 'すべての名義';
     if (name.length > 9) name = name.slice(0, 8) + '…';
     return el('button', {
-      class: 'scopebtn' + (cur ? ' on' : ''), 'aria-label': '屋号を切り替える',
+      class: 'scopebtn' + (cur ? ' on' : ''), 'aria-label': '名義を切り替える',
       onclick: scopeSheet
     }, [
       cur ? el('span', { class: 'scope-dot', style: { background: S.issuerColor(cur.id) } }) : DL.icons.icon('issuer', 15),
@@ -140,7 +140,7 @@
       return el('button', { class: 'menu-item' + (cur === id ? ' on' : ''), onclick: function () {
         S.setScope(id);
         close();
-        ui.toast(id ? label + ' に切り替えました' : 'すべての屋号を表示します');
+        ui.toast(id ? label + ' に切り替えました' : 'すべての名義を表示します');
       } }, [
         color ? el('span', { class: 'scope-dot big', style: { background: color } }) : DL.icons.icon('issuer', 18),
         el('span', {}, [
@@ -152,7 +152,7 @@
     }
 
     var all = S.projects().filter(function (p) { return p.status !== 'archived'; }).length;
-    list.appendChild(opt('', 'すべての屋号', all + '件の案件'));
+    list.appendChild(opt('', 'すべての名義', all + '件の案件'));
     S.issuers().forEach(function (x) {
       var n = S.projects().filter(function (p) { return p.issuerId === x.id && p.status !== 'archived'; }).length;
       list.appendChild(opt(x.id, x.name || '(名称未設定)', n + '件の案件', S.issuerColor(x.id)));
@@ -162,11 +162,11 @@
     var body = el('div', {}, [
       list,
       el('p', { class: 'muted small pad', text: un
-        ? '屋号を割り当てていない案件が ' + un + '件あります。どの屋号を選んでいても表示します。'
-        : '選んだ屋号の案件だけをホーム・カレンダー・案件一覧に表示します。' })
+        ? '名義を割り当てていない案件が ' + un + '件あります。どの名義を選んでいても表示します。'
+        : '選んだ名義の案件だけをホーム・カレンダー・案件一覧に表示します。' })
     ]);
 
-    var close = ui.sheet({ title: '屋号の切り替え', body: body });
+    var close = ui.sheet({ title: '名義の切り替え', body: body });
   }
 
   function updateFab() {

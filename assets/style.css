@@ -647,7 +647,7 @@ h1, h2, h3, p { margin: 0; }
 .item-amount { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--accent); }
 .item-row .grid3 { grid-template-columns: 1fr 1fr 1.4fr; align-items: end; }
 
-/* ---------------- 屋号の切り替え ---------------- */
+/* ---------------- 名義の切り替え ---------------- */
 .scopebtn {
   display: inline-flex; align-items: center; gap: 5px; max-width: 46vw;
   background: var(--card2); border: 1px solid var(--line); border-radius: var(--radius-s);
