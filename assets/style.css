@@ -693,6 +693,7 @@ h1, h2, h3, p { margin: 0; }
 .sum-box.big { grid-column: span 3; }
 .sum-box.big b { font-size: 22px; color: var(--accent); }
 .sum-box.ok b { color: var(--ok); }
+.sum-box.fan b { color: var(--series2); }
 .sum-box.warn { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); }
 .sum-box.warn b { color: var(--warn); }
 
@@ -702,8 +703,11 @@ h1, h2, h3, p { margin: 0; }
 .ms-row.now { font-weight: 700; }
 .ms-m { width: 34px; flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
 .ms-row.now .ms-m { color: var(--accent); }
-.ms-bar { flex: 1; height: 8px; background: var(--line); border-radius: 1px; overflow: hidden; }
-.ms-bar i { display: block; height: 100%; background: var(--accent); }
+/* 棒は請求書ぶんと支援金ぶんを積む。境目は面の色で2px空けて分ける */
+.ms-bar { flex: 1; height: 8px; background: var(--line); border-radius: 1px; overflow: hidden; display: flex; }
+.ms-bar i { display: block; height: 100%; background: var(--series1); flex: none; }
+.ms-bar i.fan { background: var(--series2); box-shadow: -2px 0 0 var(--card); }
+.ms-note { display: flex; gap: 14px; padding-top: 6px; margin-top: 4px; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted); }
 .ms-v { width: 78px; flex: none; text-align: right; font-variant-numeric: tabular-nums; }
 .ms-u { width: 62px; flex: none; text-align: right; font-size: 10.5px; color: var(--warn); font-variant-numeric: tabular-nums; }
 

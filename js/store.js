@@ -66,6 +66,7 @@
     fileFolders: {},
     // 支援サイト（pixivFANBOX）の月ごとの支援金 [{ym:'2026-01', amount:12345}]
     fanbox: [],
+    fanboxIssuerId: '',    // 支援金をどの名義の売上として数えるか（空＝どの名義でも数える）
     sync: {                // 同期サーバーの接続情報（この端末だけのもの）
       url: '', token: '', enabled: false, deviceName: '',
       rev: 0,              // 最後にやりとりした版番号
@@ -604,6 +605,16 @@
     var list = state.settings.fanbox || [];
     if (!year) return list.slice();
     return list.filter(function (r) { return r.ym.slice(0, 4) === String(year); });
+  }
+
+  /**
+   * いま選んでいる名義で支援金を数えるか。
+   * 名義を割り当てていないうちは、案件と同じ考えでどの名義でも数える（取りこぼし防止）。
+   */
+  function fanboxInScope() {
+    var mine = state.settings.fanboxIssuerId || '';
+    var scope = scopeId();
+    return !scope || !mine || mine === scope;
   }
 
   function fanboxOf(ym) {
@@ -1265,7 +1276,7 @@
     folderChildren: folderChildren, folderPath: folderPath,
     ensureFolderPath: ensureFolderPath, folderTreeIds: folderTreeIds,
     renameFolder: renameFolder, removeFolder: removeFolder,
-    fanbox: fanbox, fanboxOf: fanboxOf, putFanbox: putFanbox,
+    fanbox: fanbox, fanboxOf: fanboxOf, putFanbox: putFanbox, fanboxInScope: fanboxInScope,
     removeFanbox: removeFanbox, clearFanbox: clearFanbox,
     fileFolder: fileFolder, setFileFolder: setFileFolder, pruneFileFolders: pruneFileFolders,
     knowsFileFolder: knowsFileFolder, applyFolderHints: applyFolderHints,

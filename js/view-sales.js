@@ -43,17 +43,26 @@
     });
 
     var totals = D.sales(all);
+    // 支援金も売上に数える。名義を絞っているときは、その名義のぶんだけ
+    var fb = S.fanboxInScope() ? S.fanbox(y) : [];
+    var fbTotal = sumFanbox(fb);
+    var grand = totals.total + fbTotal;
 
     /* ---- 年間の集計 ---- */
-    wrap.appendChild(ui.section(y + '年の合計', el('span', { class: 'muted small', text: totals.count + '件' })));
-    wrap.appendChild(el('div', { class: 'card sum-grid' }, [
-      sumBox('売上（税込）', D.yen(totals.total), 'big'),
-      sumBox('うち消費税', D.yen(totals.tax)),
-      sumBox('税抜（小計）', D.yen(totals.subtotal)),
-      sumBox('源泉徴収', totals.withholding ? '-' + D.yen(totals.withholding) : '—'),
-      sumBox('入金済み', D.yen(totals.paid), 'ok'),
-      sumBox('未入金', D.yen(totals.unpaid), totals.unpaid ? 'warn' : '')
-    ]));
+    wrap.appendChild(ui.section(y + '年の合計',
+      el('span', { class: 'muted small', text: totals.count + '件' + (fb.length ? '＋支援金' + fb.length + 'ヶ月' : '') })));
+    // 消費税・源泉・入金は請求書だけの話なので、支援金とは混ぜずに並べる
+    var boxes = [sumBox('売上合計（税込）', D.yen(grand), 'big')];
+    if (fbTotal) {
+      boxes.push(sumBox('うち請求書', D.yen(totals.total)));
+      boxes.push(sumBox('うち支援金', D.yen(fbTotal), 'fan'));
+    }
+    boxes.push(sumBox(fbTotal ? '請求書の消費税' : 'うち消費税', D.yen(totals.tax)));
+    boxes.push(sumBox(fbTotal ? '請求書の税抜' : '税抜（小計）', D.yen(totals.subtotal)));
+    boxes.push(sumBox('源泉徴収', totals.withholding ? '-' + D.yen(totals.withholding) : '—'));
+    boxes.push(sumBox('入金済み', D.yen(totals.paid), 'ok'));
+    boxes.push(sumBox('未入金', D.yen(totals.unpaid), totals.unpaid ? 'warn' : ''));
+    wrap.appendChild(el('div', { class: 'card sum-grid' }, boxes));
 
     if (totals.draftCount) {
       wrap.appendChild(el('div', { class: 'alert info' }, [
@@ -63,13 +72,12 @@
     }
 
     /* ---- 月別の推移 ---- */
-    var fb = S.fanbox(y);
     wrap.appendChild(ui.section('月別の推移'));
     wrap.appendChild(lineChart(all, fb, y));
 
     /* ---- 月別 ---- */
     wrap.appendChild(ui.section('月別の内訳'));
-    wrap.appendChild(monthTable(all, y));
+    wrap.appendChild(monthTable(all, fb, y));
 
     /* ---- 支援サイト ---- */
     wrap.appendChild(fanboxSection(fb, y));
@@ -84,7 +92,9 @@
       wrap.appendChild(list);
     }
 
-    wrap.appendChild(el('p', { class: 'muted small pad', text: '請求書を発行済みにした時点で売上として数えます（下書きは数えません）。請求書が無い案件は領収書を数えます（二重計上を避けるため）。' }));
+    wrap.appendChild(el('p', { class: 'muted small pad', text:
+      '請求書を発行済みにした時点で売上として数えます（下書きは数えません）。請求書が無い案件は領収書を数えます（二重計上を避けるため）。'
+      + '支援金は取り込んだ月の売上として、手数料を引く前の金額を税込で数えます。' }));
 
     root.appendChild(wrap);
   }
@@ -308,6 +318,19 @@
       box.appendChild(list);
     }
 
+    // 名義が2つ以上あるなら、支援金をどちらの売上として数えるか決めてもらう
+    if (S.issuers().length > 1) {
+      var opts = [{ value: '', label: 'どちらでも数える' }].concat(S.issuers().map(function (x) {
+        return { value: x.id, label: x.name || '(名称未設定)' };
+      }));
+      var sel = ui.select(opts, S.settings.fanboxIssuerId || '');
+      sel.addEventListener('change', function () {
+        S.updateSettings({ fanboxIssuerId: sel.value });
+      });
+      box.appendChild(ui.field('どの名義の売上にするか', sel,
+        '名義を絞って見ているとき、ここで選んだ名義のときだけ売上に数えます'));
+    }
+
     box.appendChild(el('div', { class: 'row-wrap' }, [
       ui.btn('表を貼り付けて取り込む', 'primary', function () { pasteSheet(); }, 'arrowDown'),
       ui.btn('1ヶ月ぶん手で入れる', 'ghost', function () { manualSheet(y); }, 'plus')
@@ -440,30 +463,45 @@
     ]);
   }
 
-  /* 月ごとの棒と金額 */
-  function monthTable(entries, y) {
+  /* 月ごとの棒と金額。棒は請求書ぶんと支援金ぶんを積んで見せる */
+  function monthTable(entries, fb, y) {
     var months = [];
     for (var m = 1; m <= 12; m++) {
       var mm = (m < 10 ? '0' : '') + m;
       var inMonth = entries.filter(function (e) { return e.doc.issueDate.slice(5, 7) === mm; });
-      months.push({ m: m, sum: D.sales(inMonth) });
+      var f = fb.filter(function (r) { return r.ym.slice(5, 7) === mm; })[0];
+      var sum = D.sales(inMonth);
+      months.push({ m: m, sum: sum, fan: f ? f.amount : 0, total: sum.total + (f ? f.amount : 0) });
     }
-    var max = Math.max.apply(null, months.map(function (x) { return x.sum.total; }).concat([1]));
+    var max = Math.max.apply(null, months.map(function (x) { return x.total; }).concat([1]));
+    var hasFan = months.some(function (x) { return x.fan; });
 
     var box = el('div', { class: 'card month-sales' });
     var thisMonth = U.today().slice(0, 7);
     months.forEach(function (x) {
       var mm = (x.m < 10 ? '0' : '') + x.m;
       var key = y + '-' + mm;
-      var w = Math.round(x.sum.total / max * 100);
-      box.appendChild(el('div', { class: 'ms-row' + (key === thisMonth ? ' now' : '') + (x.sum.total ? '' : ' zero') }, [
+      box.appendChild(el('div', { class: 'ms-row' + (key === thisMonth ? ' now' : '') + (x.total ? '' : ' zero') }, [
         el('span', { class: 'ms-m', text: x.m + '月' }),
-        el('span', { class: 'ms-bar' }, el('i', { style: { width: w + '%' } })),
-        el('span', { class: 'ms-v', text: x.sum.total ? D.yen(x.sum.total) : '—' }),
+        el('span', { class: 'ms-bar' }, [
+          el('i', { style: { width: Math.round(x.sum.total / max * 100) + '%' } }),
+          x.fan ? el('i', { class: 'fan', style: { width: Math.round(x.fan / max * 100) + '%' } }) : null
+        ]),
+        el('span', { class: 'ms-v', text: x.total ? D.yen(x.total) : '—' }),
         el('span', { class: 'ms-u', text: x.sum.unpaid ? '未' + D.yen(x.sum.unpaid) : '' })
       ]));
     });
+    if (hasFan) {
+      box.appendChild(el('div', { class: 'ms-note' }, [
+        el('span', { class: 'lc-key' }, [el('i', { class: 'is-doc' }), el('span', { text: '請求書' })]),
+        el('span', { class: 'lc-key' }, [el('i', { class: 'is-fan' }), el('span', { text: '支援金' })])
+      ]));
+    }
     return box;
+  }
+
+  function sumFanbox(rows) {
+    return rows.reduce(function (s, r) { return s + r.amount; }, 0);
   }
 
   function docRow(e) {
@@ -500,19 +538,25 @@
         return !scope || (e.doc.issuerId || '') === scope;
       });
     }
-    // 名義を登録していないうちは請求書機能自体を使っていないので出さない
-    if (!S.issuers().length) return null;
-    var month = D.sales(pick(t.slice(0, 7)));
+    // 名義も支援金も無いうちは、この機能自体を使っていないので出さない
+    var fbAll = S.fanboxInScope() ? S.fanbox() : [];
+    if (!S.issuers().length && !fbAll.length) return null;
+
+    function fanIn(prefix) {
+      return sumFanbox(fbAll.filter(function (r) { return r.ym.indexOf(prefix) === 0; }));
+    }
+    var month = D.sales(pick(t.slice(0, 7))).total + fanIn(t.slice(0, 7));
     var yearSum = D.sales(pick(t.slice(0, 4)));
+    var yearTotal = yearSum.total + fanIn(t.slice(0, 4));
 
     return el('a', { class: 'card sales-card', href: '#/sales' }, [
       el('div', { class: 'row-title' }, [
-        ui.icon('sales', 16), el('span', { text: '売上' }),
+        ui.icon('chartLine', 16), el('span', { text: '売上' }),
         el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
       ]),
       el('div', { class: 'quota-row three' }, [
-        el('div', { class: 'quota-box' }, [el('span', { text: '今月' }), el('b', { text: D.yen(month.total) })]),
-        el('div', { class: 'quota-box' }, [el('span', { text: '今年' }), el('b', { text: D.yen(yearSum.total) })]),
+        el('div', { class: 'quota-box' }, [el('span', { text: '今月' }), el('b', { text: D.yen(month) })]),
+        el('div', { class: 'quota-box' }, [el('span', { text: '今年' }), el('b', { text: D.yen(yearTotal) })]),
         el('div', { class: 'quota-box' + (yearSum.unpaid ? ' over' : '') }, [
           el('span', { text: '未入金' }), el('b', { text: D.yen(yearSum.unpaid) })
         ])
