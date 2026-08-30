@@ -19,6 +19,9 @@
   --indigo: #6172e8;
   --ok: #12a5b8;             /* 完了（青緑） */
   --event: #35b364;          /* 即売会の当日（緑） */
+  /* グラフの系列色。色覚の見分けやすさを検証して決めた2色 */
+  --series1: #3b82f6;
+  --series2: #e0507f;
   --warn: #d9a441;
   --danger: #e0555f;
 
@@ -47,6 +50,8 @@
     --indigo: #4356c8;
     --ok: #0b7f8f;
     --event: #1d8f4c;
+    --series1: #1d63d8;
+    --series2: #d6336c;
     --warn: #9a6a05;
     --danger: #c62f3c;
     color-scheme: light;
@@ -113,7 +118,7 @@ h1, h2, h3, p { margin: 0; }
 /* ---------------- タブバー ---------------- */
 .tabbar {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 40;
-  display: grid; grid-template-columns: repeat(5, 1fr);
+  display: grid; grid-template-columns: repeat(6, 1fr);
   padding-bottom: env(safe-area-inset-bottom);
   background: var(--bg);
   border-top: 1px solid var(--line);
@@ -121,6 +126,15 @@ h1, h2, h3, p { margin: 0; }
 .tab {
   height: var(--tab-h); display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 3px; font-size: 10.5px; color: var(--muted); position: relative;
+  /* 6つ並ぶので、狭い画面でも2段に折り返さないよう幅を詰められるようにする */
+  min-width: 0; padding: 0 1px;
+}
+/* 「カレンダー」のような長い名前は、狭い端末では少しだけ縮める */
+.tab > span:last-child {
+  max-width: 100%; overflow: hidden; text-overflow: clip; white-space: nowrap;
+}
+@media (max-width: 379px) {
+  .tab { font-size: 9.5px; letter-spacing: -.02em; }
 }
 .tab.on { color: var(--accent); }
 .tab.on::before {
@@ -692,6 +706,51 @@ h1, h2, h3, p { margin: 0; }
 .ms-bar i { display: block; height: 100%; background: var(--accent); }
 .ms-v { width: 78px; flex: none; text-align: right; font-variant-numeric: tabular-nums; }
 .ms-u { width: 62px; flex: none; text-align: right; font-size: 10.5px; color: var(--warn); font-variant-numeric: tabular-nums; }
+
+/* 月別の推移（折れ線）。色は検証済みの2色だけを使う */
+.lchart-box { position: relative; display: flex; flex-direction: column; gap: 6px; }
+.lchart { width: 100%; height: auto; display: block; touch-action: pan-y; }
+.lchart-filter { display: flex; }
+.lchart-filter .segmented { flex: 1; }
+.lchart-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11.5px; color: var(--muted); }
+.lc-key { display: inline-flex; align-items: center; gap: 5px; }
+.lc-key i { width: 14px; height: 3px; border-radius: 2px; flex: none; }
+.lc-key i.is-doc { background: var(--series1); }
+.lc-key i.is-fan { background: var(--series2); }
+
+.lc-grid { stroke: var(--line); stroke-width: 1; }
+.lc-ytick, .lc-xtick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabular-nums; }
+.lc-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.lc-line.is-doc { stroke: var(--series1); }
+.lc-line.is-fan { stroke: var(--series2); }
+/* 重なっても見分けが付くよう、点は面の色で縁取る */
+.lc-dot { stroke: var(--card); stroke-width: 2; }
+.lc-dot.is-doc { fill: var(--series1); }
+.lc-dot.is-fan { fill: var(--series2); }
+.lc-cursor { stroke: var(--line2); stroke-width: 1; stroke-dasharray: 2 2; }
+
+.lchart-read { font-size: 10.5px; color: var(--muted); }
+.lc-tip {
+  position: absolute; top: 26px; transform: translateX(-50%);   /* top は描画時に合わせ直す */
+  background: var(--bg2); border: 1px solid var(--line2); border-radius: var(--radius-s);
+  padding: 5px 8px; font-size: 11px; pointer-events: none; z-index: 3;
+  display: flex; flex-direction: column; gap: 1px; white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .18);
+}
+.lc-tip b { font-size: 11.5px; }
+.lc-tv { font-variant-numeric: tabular-nums; }
+/* 値の文字は文字色のまま。色の印は左の点で示す */
+.lc-tv::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; }
+.lc-tv.is-doc::before { background: var(--series1); }
+.lc-tv.is-fan::before { background: var(--series2); }
+
+/* 支援金の一覧 */
+.fb-list { display: flex; flex-direction: column; gap: 2px; margin: 6px 0; max-height: 210px; overflow-y: auto; }
+.fb-row { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.fb-ym { width: 42px; flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
+.fb-v { flex: 1; text-align: right; font-variant-numeric: tabular-nums; }
+.fb-preview { display: flex; flex-direction: column; gap: 2px; padding: 8px; background: var(--card2); border-radius: var(--radius-s); }
+.fb-prow { display: flex; justify-content: space-between; font-size: 12px; font-variant-numeric: tabular-nums; }
 
 .sales-card { display: flex; flex-direction: column; gap: 8px; }
 .sales-card .row-title { align-items: center; }

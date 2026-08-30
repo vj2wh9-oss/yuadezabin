@@ -1,10 +1,10 @@
 /* オフライン用のシンプルなキャッシュ（アプリ本体のみ。データは localStorage） */
-var CACHE = 'shimekiri-v19';
+var CACHE = 'shimekiri-v20';
 var ASSETS = [
   './', './index.html', './assets/style.css', './manifest.webmanifest',
   './assets/icon-180.png', './assets/icon-192.png', './assets/icon-512.png',
   './assets/icon-maskable-512.png', './assets/favicon-64.png',
-  './js/util.js', './js/icons.js', './js/db.js', './js/store.js', './js/schedule.js', './js/documents.js', './js/sync.js', './js/zip.js', './js/files.js', './js/ui.js', './js/forms.js',
+  './js/util.js', './js/icons.js', './js/db.js', './js/store.js', './js/schedule.js', './js/documents.js', './js/fanbox.js', './js/sync.js', './js/zip.js', './js/files.js', './js/ui.js', './js/forms.js',
   './js/view-home.js', './js/view-calendar.js', './js/view-projects.js',
   './js/view-detail.js', './js/view-doc.js', './js/view-sales.js', './js/view-files.js', './js/view-settings.js', './js/app.js'
 ];

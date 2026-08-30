@@ -64,6 +64,8 @@
     // R2 のメタ情報ではなくここに持つ理由：R2 はメタ情報だけの更新ができないため、
     // フォルダを移すたびにファイルを丸ごと入れ直すことになってしまう。
     fileFolders: {},
+    // 支援サイト（pixivFANBOX）の月ごとの支援金 [{ym:'2026-01', amount:12345}]
+    fanbox: [],
     sync: {                // 同期サーバーの接続情報（この端末だけのもの）
       url: '', token: '', enabled: false, deviceName: '',
       rev: 0,              // 最後にやりとりした版番号
@@ -177,6 +179,7 @@
     s.settings.clients = (s.settings.clients || []).map(normalizeClient);
     s.settings.folders = (s.settings.folders || []).map(normalizeFolder);
     s.settings.fileFolders = s.settings.fileFolders || {};
+    s.settings.fanbox = normalizeFanbox(s.settings.fanbox);
     s.settings.docSeq = migrateDocSeq(s.settings.docSeq);
     s.projects = (s.projects || []).map(normalizeProject);
     return s;
@@ -579,6 +582,69 @@
     Object.keys(map).forEach(function (fid) { if (!have[fid]) { delete map[fid]; removed++; } });
     if (removed) save({ quiet: true });
     return removed;
+  }
+
+  /* ---------------- 支援サイトの月ごとの支援金 ---------------- */
+
+  /** 年月の重複をまとめ、古い順に並べ直す */
+  function normalizeFanbox(list) {
+    var byYm = {};
+    (Array.isArray(list) ? list : []).forEach(function (r) {
+      if (!r || !/^\d{4}-\d{2}$/.test(String(r.ym))) return;
+      byYm[r.ym] = {
+        ym: r.ym,
+        amount: Math.max(0, Math.round(U.num(r.amount, 0))),
+        updatedAt: r.updatedAt || new Date().toISOString()
+      };
+    });
+    return Object.keys(byYm).sort().map(function (k) { return byYm[k]; });
+  }
+
+  function fanbox(year) {
+    var list = state.settings.fanbox || [];
+    if (!year) return list.slice();
+    return list.filter(function (r) { return r.ym.slice(0, 4) === String(year); });
+  }
+
+  function fanboxOf(ym) {
+    return (state.settings.fanbox || []).filter(function (r) { return r.ym === ym; })[0] || null;
+  }
+
+  /**
+   * 月ごとの支援金を入れる。同じ年月は上書きする。
+   * @param {Array} rows [{ym, amount}]
+   * @returns {{added:number, updated:number}}
+   */
+  function putFanbox(rows) {
+    var cur = state.settings.fanbox || (state.settings.fanbox = []);
+    var have = {};
+    cur.forEach(function (r) { have[r.ym] = r; });
+    var out = { added: 0, updated: 0 };
+    (rows || []).forEach(function (r) {
+      if (!r || !/^\d{4}-\d{2}$/.test(String(r.ym))) return;
+      var amount = Math.max(0, Math.round(U.num(r.amount, 0)));
+      if (have[r.ym]) {
+        if (have[r.ym].amount !== amount) out.updated++;
+        have[r.ym].amount = amount;
+        have[r.ym].updatedAt = new Date().toISOString();
+      } else {
+        var add = { ym: r.ym, amount: amount, updatedAt: new Date().toISOString() };
+        cur.push(add); have[r.ym] = add; out.added++;
+      }
+    });
+    state.settings.fanbox = normalizeFanbox(cur);
+    if (out.added || out.updated) save();
+    return out;
+  }
+
+  function removeFanbox(ym) {
+    state.settings.fanbox = (state.settings.fanbox || []).filter(function (r) { return r.ym !== ym; });
+    save();
+  }
+
+  function clearFanbox() {
+    state.settings.fanbox = [];
+    save();
   }
 
   /* ---------------- 書類（請求書・領収書） ---------------- */
@@ -1005,6 +1071,15 @@
       Object.keys(incoming.settings.fileFolders || {}).forEach(function (fid) {
         if (!mine[fid]) mine[fid] = incoming.settings.fileFolders[fid];
       });
+      // 支援金も、こちらに無い年月だけ足す（既にある月の金額は書き換えない）
+      var haveYm = {};
+      (state.settings.fanbox || []).forEach(function (x) { haveYm[x.ym] = true; });
+      r.fanbox = 0;
+      (incoming.settings.fanbox || []).forEach(function (x) {
+        if (haveYm[x.ym]) return;
+        state.settings.fanbox.push(x); r.fanbox++;
+      });
+      state.settings.fanbox = normalizeFanbox(state.settings.fanbox);
       var have = {};
       state.projects.forEach(function (p) { have[p.id] = true; });
       incoming.projects.forEach(function (p) {
@@ -1097,7 +1172,8 @@
       && !issuers().length
       && !clients().length
       && !mine.length
-      && !placed.length;
+      && !placed.length
+      && !(s.fanbox || []).length;
   }
 
   /* 最後に同期してから、この端末で変更があったか */
@@ -1183,6 +1259,8 @@
     folderChildren: folderChildren, folderPath: folderPath,
     ensureFolderPath: ensureFolderPath, folderTreeIds: folderTreeIds,
     renameFolder: renameFolder, removeFolder: removeFolder,
+    fanbox: fanbox, fanboxOf: fanboxOf, putFanbox: putFanbox,
+    removeFanbox: removeFanbox, clearFanbox: clearFanbox,
     fileFolder: fileFolder, setFileFolder: setFileFolder, pruneFileFolders: pruneFileFolders,
     knowsFileFolder: knowsFileFolder, applyFolderHints: applyFolderHints,
     docs: docs, getDoc: getDoc, addDoc: addDoc, updateDoc: updateDoc, removeDoc: removeDoc,

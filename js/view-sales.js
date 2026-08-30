@@ -4,6 +4,7 @@
   var U = DL.util, ui = DL.ui, S = DL.store, D = DL.docs, el = U.el;
 
   var year = 0;          // 表示中の年（0 なら今年）
+  var band = 'both';     // グラフに出す系列 both / doc / fan
 
   function currentYear() { return year || U.num(U.today().slice(0, 4), 2026); }
 
@@ -61,9 +62,17 @@
       ]));
     }
 
+    /* ---- 月別の推移 ---- */
+    var fb = S.fanbox(y);
+    wrap.appendChild(ui.section('月別の推移'));
+    wrap.appendChild(lineChart(all, fb, y));
+
     /* ---- 月別 ---- */
-    wrap.appendChild(ui.section('月別'));
+    wrap.appendChild(ui.section('月別の内訳'));
     wrap.appendChild(monthTable(all, y));
+
+    /* ---- 支援サイト ---- */
+    wrap.appendChild(fanboxSection(fb, y));
 
     /* ---- 書類の一覧 ---- */
     wrap.appendChild(ui.section('書類', el('span', { class: 'muted small', text: all.length + '件' })));
@@ -75,9 +84,326 @@
       wrap.appendChild(list);
     }
 
-    wrap.appendChild(el('p', { class: 'muted small pad', text: '請求書を売上として数えます。請求書が無い案件は領収書を数えます（二重計上を避けるため）。' }));
+    wrap.appendChild(el('p', { class: 'muted small pad', text: '請求書を発行済みにした時点で売上として数えます（下書きは数えません）。請求書が無い案件は領収書を数えます（二重計上を避けるため）。' }));
 
     root.appendChild(wrap);
+  }
+
+  /* ---------------- 月別の推移（折れ線） ---------------- */
+
+  var YEN = function (n) { return D.yen(n); };
+
+  /** その年の12ヶ月ぶんの値を作る */
+  function monthly(entries, fb) {
+    var out = [];
+    for (var m = 1; m <= 12; m++) {
+      var mm = (m < 10 ? '0' : '') + m;
+      var inMonth = entries.filter(function (e) { return e.doc.issueDate.slice(5, 7) === mm; });
+      var f = fb.filter(function (r) { return r.ym.slice(5, 7) === mm; })[0];
+      out.push({ m: m, doc: D.sales(inMonth).total, fan: f ? f.amount : null });
+    }
+    return out;
+  }
+
+  /**
+   * 請求書の売上と支援金を、同じ軸（円）で重ねた折れ線。
+   * 支援金がまだ1件も無い年は1本だけ描き、凡例も出さない。
+   */
+  function lineChart(entries, fb, y) {
+    var data = monthly(entries, fb);
+    var hasFan = data.some(function (d) { return d.fan !== null; });
+    // 支援金が無い年は、絞り込みの意味がないので常に両方扱いにする
+    var showDoc = !hasFan || band !== 'fan';
+    var showFan = hasFan && band !== 'doc';
+
+    var max = Math.max.apply(null, data.map(function (d) {
+      return Math.max(showDoc ? d.doc : 0, showFan ? (d.fan || 0) : 0);
+    }).concat([1]));
+    // 目盛りはきりのいい数にまるめる
+    var step = niceStep(max / 3);
+    var top = Math.max(step * 3, step);
+
+    var W = 320, H = 132, L = 40, R = 8, T = 10, B = 20;
+    var iw = W - L - R, ih = H - T - B;
+    var x = function (i) { return L + (data.length === 1 ? iw / 2 : i * iw / (data.length - 1)); };
+    var yv = function (v) { return T + ih - (v / top) * ih; };
+
+    var svg = svgEl('svg', {
+      class: 'lchart', viewBox: '0 0 ' + W + ' ' + H,
+      role: 'img', 'aria-label': y + '年の月別の推移'
+    });
+
+    /* 目盛り（控えめに） */
+    for (var g = 0; g <= 3; g++) {
+      var gv = top / 3 * g;
+      svg.appendChild(svgEl('line', {
+        class: 'lc-grid', x1: L, x2: W - R, y1: yv(gv), y2: yv(gv)
+      }));
+      svg.appendChild(svgEl('text', {
+        class: 'lc-ytick', x: L - 5, y: yv(gv) + 3, 'text-anchor': 'end'
+      }, shortYen(gv)));
+    }
+    /* 月の目盛りは3ヶ月ごと */
+    data.forEach(function (d, i) {
+      if (d.m % 3 !== 1) return;
+      svg.appendChild(svgEl('text', {
+        class: 'lc-xtick', x: x(i), y: H - 6, 'text-anchor': 'middle'
+      }, d.m + '月'));
+    });
+
+    if (showDoc) series(svg, data, 'doc', x, yv, 'is-doc');
+    if (showFan) series(svg, data, 'fan', x, yv, 'is-fan');
+
+    var head = [];
+    // 桁が違うと片方が潰れて読めないので、1本ずつにも切り替えられるようにする。
+    // 軸は増やさず、選んだ系列だけで目盛りを取り直す
+    if (hasFan) {
+      head.push(ui.segmented([
+        { value: 'both', label: '両方' },
+        { value: 'doc', label: '請求書' },
+        { value: 'fan', label: '支援金' }
+      ], band, function (v) { band = v; DL.app.render(); }));
+    }
+    var keys = [];
+    if (showDoc) keys.push(legend('is-doc', '請求書の売上'));
+    if (showFan) keys.push(legend('is-fan', '支援金（FANBOX）'));
+
+    var box = el('div', { class: 'card lchart-box' }, [
+      head.length ? el('div', { class: 'lchart-filter' }, head) : null,
+      keys.length > 1 ? el('div', { class: 'lchart-legend' }, keys) : null,
+      svg,
+      el('div', { class: 'lchart-read', text: '月をなぞると内訳が出ます' })
+    ]);
+    attachHover(box, svg, data, x, showDoc, showFan, W, L, R);
+    return box;
+  }
+
+  /* 1本ぶんの線と点。値が無い月は線を切る（0として結ばない） */
+  function series(svg, data, key, x, yv, cls) {
+    var run = [];
+    var flush = function () {
+      if (run.length > 1) {
+        svg.appendChild(svgEl('polyline', {
+          class: 'lc-line ' + cls,
+          points: run.map(function (p) { return p.x + ',' + p.y; }).join(' ')
+        }));
+      }
+      run.forEach(function (p) {
+        svg.appendChild(svgEl('circle', { class: 'lc-dot ' + cls, cx: p.x, cy: p.y, r: 3.2 }));
+      });
+      run = [];
+    };
+    data.forEach(function (d, i) {
+      var v = d[key];
+      if (v === null || v === undefined) { flush(); return; }
+      run.push({ x: x(i), y: yv(v) });
+    });
+    flush();
+  }
+
+  function legend(cls, label) {
+    return el('span', { class: 'lc-key' }, [
+      el('i', { class: cls }), el('span', { text: label })
+    ]);
+  }
+
+  /* なぞった月の値を読めるようにする（指でもマウスでも） */
+  function attachHover(box, svg, data, x, showDoc, showFan, W, L, R) {
+    var line = svgEl('line', { class: 'lc-cursor', y1: 0, y2: 132, x1: -99, x2: -99 });
+    svg.appendChild(line);
+    var tip = el('div', { class: 'lc-tip', hidden: true });
+    box.appendChild(tip);
+
+    function at(clientX) {
+      var r = svg.getBoundingClientRect();
+      var px = (clientX - r.left) / r.width * W;          // viewBox の座標へ
+      var i = Math.round((px - L) / ((W - L - R) / (data.length - 1)));
+      return Math.min(Math.max(i, 0), data.length - 1);
+    }
+    function show(clientX) {
+      var i = at(clientX);
+      var d = data[i];
+      line.setAttribute('x1', x(i)); line.setAttribute('x2', x(i));
+      U.clear(tip);
+      tip.appendChild(el('b', { text: d.m + '月' }));
+      if (showDoc) tip.appendChild(el('span', { class: 'lc-tv is-doc', text: '請求書 ' + YEN(d.doc) }));
+      if (showFan) {
+        tip.appendChild(el('span', { class: 'lc-tv is-fan',
+          text: '支援金 ' + (d.fan === null ? '—' : YEN(d.fan)) }));
+      }
+      tip.hidden = false;
+      // グラフの枠の中に出す（切り替えや凡例に被らないように）。
+      // SVG には offsetTop が無いので、枠との位置の差から出す
+      var r = svg.getBoundingClientRect();
+      var br = box.getBoundingClientRect();
+      tip.style.left = Math.round(x(i) / W * r.width) + 'px';
+      tip.style.top = Math.round(r.top - br.top + 4) + 'px';
+    }
+    function hide() { tip.hidden = true; line.setAttribute('x1', -99); line.setAttribute('x2', -99); }
+
+    var timer = 0;
+    svg.addEventListener('pointerdown', function (e) { clearTimeout(timer); show(e.clientX); });
+    svg.addEventListener('pointermove', function (e) {
+      if (e.buttons || e.pointerType === 'mouse') { clearTimeout(timer); show(e.clientX); }
+    });
+    // 指のときは離した直後に pointerleave も飛ぶので、それでは消さない。
+    // 代わりに少し置いてから引っ込める（読む時間を残すため）
+    svg.addEventListener('pointerleave', function (e) { if (e.pointerType === 'mouse') hide(); });
+    svg.addEventListener('pointerup', function (e) {
+      if (e.pointerType === 'mouse') return;         // マウスは離れたときに消す
+      clearTimeout(timer);
+      timer = setTimeout(hide, 2500);
+    });
+  }
+
+  function svgEl(name, attrs, text) {
+    var n = document.createElementNS('http://www.w3.org/2000/svg', name);
+    Object.keys(attrs || {}).forEach(function (k) { n.setAttribute(k, attrs[k]); });
+    if (text !== undefined) n.textContent = text;
+    return n;
+  }
+
+  /* 目盛りを 1/2/5×10ⁿ にまるめる */
+  function niceStep(v) {
+    if (v <= 0) return 1;
+    var e = Math.pow(10, Math.floor(Math.log(v) / Math.LN10));
+    var f = v / e;
+    return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * e;
+  }
+
+  /* 軸は「12万」のように短く出す */
+  function shortYen(n) {
+    if (!n) return '0';
+    if (n >= 100000000) return Math.round(n / 10000000) / 10 + '億';
+    if (n >= 10000) return Math.round(n / 1000) / 10 + '万';
+    if (n >= 1000) return Math.round(n / 100) / 10 + '千';
+    return String(Math.round(n));
+  }
+
+  /* ---------------- 支援サイト（FANBOX） ---------------- */
+
+  function fanboxSection(rows, y) {
+    var box = el('div', { class: 'card' });
+    var total = rows.reduce(function (s, r) { return s + r.amount; }, 0);
+
+    if (!rows.length) {
+      box.appendChild(el('p', { class: 'muted small',
+        text: 'pixivFANBOX の「支援金管理／振込」の画面を開いて、月ごとの表をコピーし、下のボタンから貼り付けてください。年月と支援金を読み取ってグラフに重ねます。' }));
+    } else {
+      var list = el('div', { class: 'fb-list' });
+      rows.slice().reverse().forEach(function (r) {
+        list.appendChild(el('div', { class: 'fb-row' }, [
+          el('span', { class: 'fb-ym', text: U.num(r.ym.slice(5), 0) + '月' }),
+          el('b', { class: 'fb-v', text: D.yen(r.amount) }),
+          el('button', {
+            class: 'iconbtn small', 'aria-label': r.ym + ' を削除',
+            onclick: function () { S.removeFanbox(r.ym); ui.toast('削除しました'); }
+          }, ui.icon('trash', 16))
+        ]));
+      });
+      box.appendChild(el('div', { class: 'info-row' }, [
+        el('span', { class: 'info-k', text: y + '年の支援金' }),
+        el('span', { class: 'info-v', text: D.yen(total) + '（' + rows.length + 'ヶ月）' })
+      ]));
+      box.appendChild(list);
+    }
+
+    box.appendChild(el('div', { class: 'row-wrap' }, [
+      ui.btn('表を貼り付けて取り込む', 'primary', function () { pasteSheet(); }, 'arrowDown'),
+      ui.btn('1ヶ月ぶん手で入れる', 'ghost', function () { manualSheet(y); }, 'plus')
+    ]));
+
+    var wrap = el('div', {}, [
+      ui.section('支援金（pixivFANBOX）',
+        el('a', { class: 'link', href: 'https://datemeteo.fanbox.cc/', target: '_blank', rel: 'noopener', text: 'FANBOXを開く' })),
+      box
+    ]);
+    return wrap;
+  }
+
+  /* 貼り付けた表を読み取る。列が複数あるときは、どれが支援金かを選ばせる */
+  function pasteSheet() {
+    var ta = ui.textarea({ placeholder: '例）\n2026年1月　¥12,000\n2025年12月　¥9,500' });
+    ta.rows = 6;
+    var preview = el('div', { class: 'fb-preview' });
+    var colWrap = el('div');
+    var col = 0, parsed = { rows: [], columns: 0, samples: [] };
+
+    function update() {
+      parsed = DL.fanbox.parse(ta.value, col);
+      U.clear(colWrap);
+      // 金額が2つ以上並ぶ表（支援金・手数料・振込額など）はどれを使うか選ばせる
+      if (parsed.columns > 1) {
+        var opts = [];
+        for (var i = 0; i < parsed.columns; i++) {
+          var sample = (parsed.samples[0] || { amounts: [] }).amounts[i];
+          opts.push({ value: String(i), label: (i + 1) + '列目' + (sample === undefined ? '' : '（' + D.yen(sample) + '）') });
+        }
+        colWrap.appendChild(ui.field('どの金額を支援金として使うか',
+          ui.segmented(opts, String(col), function (v) { col = U.num(v, 0); update(); }),
+          '貼り付けた表に金額の列が ' + parsed.columns + 'つあります'));
+      }
+      U.clear(preview);
+      if (!ta.value.trim()) {
+        preview.appendChild(el('span', { class: 'muted small', text: 'ここに読み取り結果が出ます。' }));
+      } else if (!parsed.rows.length) {
+        preview.appendChild(el('span', { class: 'muted small', text: '年月と金額を見つけられませんでした。表をそのままコピーして貼り付けてみてください。' }));
+      } else {
+        preview.appendChild(el('div', { class: 'muted small', text: parsed.rows.length + 'ヶ月ぶんを読み取りました' }));
+        parsed.rows.slice(0, 14).forEach(function (r) {
+          preview.appendChild(el('div', { class: 'fb-prow' }, [
+            el('span', { text: r.ym.replace('-', '年') + '月' }),
+            el('b', { text: D.yen(r.amount) })
+          ]));
+        });
+        if (parsed.rows.length > 14) {
+          preview.appendChild(el('div', { class: 'muted small', text: 'ほか ' + (parsed.rows.length - 14) + 'ヶ月' }));
+        }
+      }
+    }
+    ta.addEventListener('input', update);
+
+    var close = ui.sheet({
+      title: '支援金を取り込む',
+      body: el('div', { class: 'form' }, [
+        el('p', { class: 'muted small', text: 'FANBOX の「支援金管理／振込」の画面で、月ごとの表を選んでコピーし、そのまま貼り付けてください。年月と金額の並びは自動で読み取ります。' }),
+        ui.field('貼り付け', ta),
+        colWrap,
+        preview
+      ]),
+      actions: [
+        ui.btn('キャンセル', 'ghost', function () { close(); }),
+        ui.btn('取り込む', 'primary', function () {
+          if (!parsed.rows.length) { ui.toast('読み取れる行がありません', 'warn'); return; }
+          var r = S.putFanbox(parsed.rows);
+          close();
+          ui.toast('取り込みました（新規 ' + r.added + 'ヶ月 / 更新 ' + r.updated + 'ヶ月）');
+        })
+      ]
+    });
+    update();
+    setTimeout(function () { ta.focus(); }, 100);
+  }
+
+  /* 1ヶ月ぶんだけ手で足す・直す */
+  function manualSheet(y) {
+    var ym = ui.input({ type: 'month', value: U.today().slice(0, 7) });
+    var amount = ui.input({ type: 'number', inputmode: 'numeric', min: 0, value: '' });
+    var close = ui.sheet({
+      title: '支援金を入れる',
+      body: el('div', { class: 'form' }, [
+        ui.field('年月', ym),
+        ui.field('支援金（円）', amount, '同じ年月があれば置き換えます')
+      ]),
+      actions: [
+        ui.btn('キャンセル', 'ghost', function () { close(); }),
+        ui.btn('保存', 'primary', function () {
+          if (!/^\d{4}-\d{2}$/.test(ym.value)) { ui.toast('年月を選んでください', 'warn'); return; }
+          S.putFanbox([{ ym: ym.value, amount: U.num(amount.value, 0) }]);
+          close(); ui.toast('保存しました');
+        })
+      ]
+    });
   }
 
   function sumBox(label, value, cls) {

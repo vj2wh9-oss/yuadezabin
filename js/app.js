@@ -43,10 +43,11 @@
     };
     titleEl.textContent = titles[route.name] || 'METEO365';
 
-    var tab = { home: 'home', calendar: 'calendar', day: 'calendar', projects: 'projects', project: 'projects', docs: 'projects', doc: 'projects', sales: 'projects', files: 'files', settings: 'settings' }[route.name];
+    var tab = { home: 'home', calendar: 'calendar', day: 'calendar', projects: 'projects', project: 'projects', docs: 'projects', doc: 'projects', sales: 'sales', files: 'files', settings: 'settings' }[route.name];
     U.$$('.tab').forEach(function (t) { t.classList.toggle('on', t.dataset.tab === tab); });
 
-    var showBack = ['project', 'day', 'docs', 'doc', 'sales'].indexOf(route.name) >= 0;
+    // 売上は下のタブから直接開くので、戻るボタンは要らない
+    var showBack = ['project', 'day', 'docs', 'doc'].indexOf(route.name) >= 0;
     backBtn.hidden = !showBack;
 
     // 画面が切り替わった瞬間を、同期のきっかけにする
