@@ -7,6 +7,7 @@
   var titleEl = U.$('#appTitle');
   var actionsEl = U.$('#appActions');
   var backBtn = U.$('#backBtn');
+  var gearBtn = U.$('#gearBtn');
   var fab = U.$('#fab');
 
   var route = { name: 'home', params: {} };
@@ -39,12 +40,14 @@
     var titles = {
       home: 'METEO365', calendar: 'カレンダー', projects: '案件',
       settings: '設定', day: '日別', project: '案件の詳細',
-      docs: '請求書・領収書', doc: '書類', sales: '売上', files: 'ファイル'
+      docs: '請求書・領収書', doc: '書類', sales: '売上', files: 'ファイル', books: '経理'
     };
     titleEl.textContent = titles[route.name] || 'METEO365';
 
-    var tab = { home: 'home', calendar: 'calendar', day: 'calendar', projects: 'projects', project: 'projects', docs: 'projects', doc: 'projects', sales: 'sales', files: 'files', settings: 'settings' }[route.name];
+    var tab = { home: 'home', calendar: 'calendar', day: 'calendar', projects: 'projects', project: 'projects', docs: 'projects', doc: 'projects', sales: 'sales', books: 'books', files: 'files' }[route.name];
     U.$$('.tab').forEach(function (t) { t.classList.toggle('on', t.dataset.tab === tab); });
+    // 設定は下のタブから外し、題名の右の歯車から開く
+    gearBtn.classList.toggle('on', route.name === 'settings');
 
     // 売上は下のタブから直接開くので、戻るボタンは要らない
     var showBack = ['project', 'day', 'docs', 'doc'].indexOf(route.name) >= 0;
@@ -75,6 +78,7 @@
       case 'docs': DL.views.doc.renderList(view, route.params); break;
       case 'doc': DL.views.doc.renderDoc(view, route.params); break;
       case 'sales': DL.views.sales.render(view); break;
+      case 'books': DL.views.books.render(view); break;
       case 'files': DL.views.files.render(view); break;
       case 'settings': DL.views.settings.render(view); break;
       default: DL.views.home.render(view);
@@ -177,6 +181,8 @@
     fab.onclick = function () {
       // ファイル画面では、ここがファイルの追加口になる
       if (route.name === 'files') { DL.views.files.pickFiles(); return; }
+      // 経理画面では、ここが経費の追加口になる
+      if (route.name === 'books') { DL.views.books.addExpense(); return; }
       if (route.name === 'project') {
         var p = S.getProject(route.params.id);
         if (p) { addMenu(p); return; }

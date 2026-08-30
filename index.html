@@ -24,6 +24,8 @@
   <div class="appbar-inner">
     <button class="iconbtn" id="backBtn" hidden aria-label="戻る" data-icon="chevronLeft" data-size="22"></button>
     <h1 class="appbar-title" id="appTitle">METEO365</h1>
+    <a class="iconbtn gearbtn" id="gearBtn" href="#/settings" aria-label="設定" data-icon="settings" data-size="20"></a>
+    <span class="appbar-gap"></span>
     <div class="appbar-actions" id="appActions"></div>
   </div>
 </header>
@@ -37,8 +39,8 @@
   <a class="tab" href="#/calendar" data-tab="calendar"><span class="tabicon" data-icon="calendar"></span><span>カレンダー</span></a>
   <a class="tab" href="#/projects" data-tab="projects"><span class="tabicon" data-icon="projects"></span><span>案件</span></a>
   <a class="tab" href="#/sales"    data-tab="sales"><span class="tabicon" data-icon="chartLine"></span><span>売上</span></a>
+  <a class="tab" href="#/books"    data-tab="books"><span class="tabicon" data-icon="books"></span><span>経理</span></a>
   <a class="tab" href="#/files"    data-tab="files"><span class="tabicon" data-icon="folder"></span><span>ファイル</span></a>
-  <a class="tab" href="#/settings" data-tab="settings"><span class="tabicon" data-icon="settings"></span><span>設定</span></a>
 </nav>
 
 <div id="sheetRoot"></div>
@@ -51,6 +53,7 @@
 <script src="js/schedule.js"></script>
 <script src="js/documents.js"></script>
 <script src="js/fanbox.js"></script>
+<script src="js/expenses.js"></script>
 <script src="js/sync.js"></script>
 <script src="js/zip.js"></script>
 <script src="js/files.js"></script>
@@ -62,6 +65,7 @@
 <script src="js/view-detail.js"></script>
 <script src="js/view-doc.js"></script>
 <script src="js/view-sales.js"></script>
+<script src="js/view-books.js"></script>
 <script src="js/view-files.js"></script>
 <script src="js/view-settings.js"></script>
 <script src="js/app.js"></script>

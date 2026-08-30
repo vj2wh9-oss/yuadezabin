@@ -67,6 +67,7 @@
     // 支援サイト（pixivFANBOX）の月ごとの支援金 [{ym:'2026-01', amount:12345}]
     fanbox: [],
     fanboxIssuerId: '',    // 支援金をどの名義の売上として数えるか（空＝どの名義でも数える）
+    expenses: [],          // 経費 [{id,date,amount,category,vendor,memo,projectId,issuerId,fileId}]
     sync: {                // 同期サーバーの接続情報（この端末だけのもの）
       url: '', token: '', enabled: false, deviceName: '',
       rev: 0,              // 最後にやりとりした版番号
@@ -181,6 +182,7 @@
     s.settings.folders = (s.settings.folders || []).map(normalizeFolder);
     s.settings.fileFolders = s.settings.fileFolders || {};
     s.settings.fanbox = normalizeFanbox(s.settings.fanbox);
+    s.settings.expenses = (s.settings.expenses || []).map(normalizeExpense);
     s.settings.docSeq = migrateDocSeq(s.settings.docSeq);
     s.projects = (s.projects || []).map(normalizeProject);
     return s;
@@ -664,6 +666,67 @@
     save();
   }
 
+  /* ---------------- 経費 ---------------- */
+
+  function normalizeExpense(x) {
+    x = x || {};
+    x.id = x.id || U.uid();
+    x.date = U.isISO(x.date) ? x.date : U.today();
+    x.amount = Math.max(0, Math.round(U.num(x.amount, 0)));
+    x.category = x.category || 'その他';
+    x.vendor = x.vendor || '';        // 支払先
+    x.memo = x.memo || '';
+    x.projectId = x.projectId || '';  // どの案件のための出費か（印刷費など）
+    x.issuerId = x.issuerId || '';    // どの名義の経費か
+    x.fileId = x.fileId || '';        // レシートの写真（共有ファイルのID）
+    x.createdAt = x.createdAt || new Date().toISOString();
+    return x;
+  }
+
+  /**
+   * 経費を取り出す。新しい順。
+   * @param {object} [q] {year, month:'YYYY-MM', category, projectId, scoped}
+   *   scoped を立てると、いま選んでいる名義のぶんだけ返す
+   *   （名義を割り当てていない経費は、案件と同じ考えでどの名義でも返す）
+   */
+  function expenses(q) {
+    q = q || {};
+    var scope = q.scoped ? scopeId() : '';
+    return (state.settings.expenses || []).filter(function (x) {
+      if (q.year && x.date.slice(0, 4) !== String(q.year)) return false;
+      if (q.month && x.date.slice(0, 7) !== q.month) return false;
+      if (q.category && x.category !== q.category) return false;
+      if (q.projectId && x.projectId !== q.projectId) return false;
+      if (scope && x.issuerId && x.issuerId !== scope) return false;
+      return true;
+    }).sort(function (a, b) { return U.cmp(b.date, a.date) || U.cmp(b.createdAt, a.createdAt); });
+  }
+
+  function getExpense(id) {
+    return (state.settings.expenses || []).filter(function (x) { return x.id === id; })[0] || null;
+  }
+
+  function addExpense(data) {
+    var x = normalizeExpense(Object.assign({ id: U.uid() }, data));
+    state.settings.expenses = (state.settings.expenses || []).concat([x]);
+    save();
+    return x;
+  }
+
+  function updateExpense(id, patch) {
+    var x = getExpense(id);
+    if (!x) return null;
+    Object.assign(x, patch);
+    normalizeExpense(x);
+    save();
+    return x;
+  }
+
+  function removeExpense(id) {
+    state.settings.expenses = (state.settings.expenses || []).filter(function (x) { return x.id !== id; });
+    save();
+  }
+
   /* ---------------- 書類（請求書・領収書） ---------------- */
 
   function docs(pid) {
@@ -1097,6 +1160,8 @@
         state.settings.fanbox.push(x); r.fanbox++;
       });
       state.settings.fanbox = normalizeFanbox(state.settings.fanbox);
+      // 経費も、こちらに無いものだけ足す
+      r.expenses = mergeById(state.settings.expenses, incoming.settings.expenses || []);
       var have = {};
       state.projects.forEach(function (p) { have[p.id] = true; });
       incoming.projects.forEach(function (p) {
@@ -1190,7 +1255,8 @@
       && !clients().length
       && !mine.length
       && !placed.length
-      && !(s.fanbox || []).length;
+      && !(s.fanbox || []).length
+      && !(s.expenses || []).length;
   }
 
   /* 最後に同期してから、この端末で変更があったか */
@@ -1277,6 +1343,8 @@
     ensureFolderPath: ensureFolderPath, folderTreeIds: folderTreeIds,
     renameFolder: renameFolder, removeFolder: removeFolder,
     fanbox: fanbox, fanboxOf: fanboxOf, putFanbox: putFanbox, fanboxInScope: fanboxInScope,
+    expenses: expenses, getExpense: getExpense, addExpense: addExpense,
+    updateExpense: updateExpense, removeExpense: removeExpense,
     removeFanbox: removeFanbox, clearFanbox: clearFanbox,
     fileFolder: fileFolder, setFileFolder: setFileFolder, pruneFileFolders: pruneFileFolders,
     knowsFileFolder: knowsFileFolder, applyFolderHints: applyFolderHints,
