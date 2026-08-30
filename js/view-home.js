@@ -7,12 +7,14 @@
     var today = U.today();
     var wrap = el('div', { class: 'page' });
 
-    /* 今日 */
+    /* 今日。案件のノルマと日常の予定を、どちらもここに出す */
     var load = sc.loadOfDay(today);
+    var plans = DL.events.ofDay(today);
+    var todo = load.entries.length + plans.length;
     wrap.appendChild(el('div', { class: 'today-head' }, [
       el('div', {}, [
         el('div', { class: 'today-date', text: U.fmtYMDW(today) }),
-        el('div', { class: 'today-sub', text: load.entries.length ? '今日のタスク ' + load.entries.length + '件' : '今日のタスクはありません' })
+        el('div', { class: 'today-sub', text: todo ? '今日やること ' + todo + '件' : '今日やることはありません' })
       ]),
       el('a', { class: 'btn tiny ghost', href: '#/calendar', text: 'カレンダー' })
     ]));
@@ -38,13 +40,16 @@
       wrap.appendChild(box);
     }
 
-    /* 今日のノルマ */
+    /* 今日のノルマと、日常の予定 */
     wrap.appendChild(ui.section('今日やること'));
-    if (!load.entries.length) {
-      wrap.appendChild(ui.empty('今日のノルマはありません。', ui.btn('案件を追加', 'primary', function () { DL.forms.projectForm(); })));
+    if (!todo) {
+      wrap.appendChild(ui.empty('今日やることはありません。', ui.btn('案件を追加', 'primary', function () { DL.forms.projectForm(); })));
     } else {
       var list = el('div', { class: 'list' });
       load.entries.forEach(function (e) { list.appendChild(quotaRow(e, today)); });
+      // 日常の予定は案件のノルマのあとに続ける。
+      // カレンダーの切り替えとは関わりなく、ホームには両方を出す
+      plans.forEach(function (o) { list.appendChild(planRow(o)); });
       wrap.appendChild(list);
     }
 
@@ -122,6 +127,24 @@
       }, ui.icon('check', 17))
     ]);
     return row;
+  }
+
+  /* 日常の予定1行。押すとその予定を直せる（日別画面と同じ入力） */
+  function planRow(o) {
+    var ev = o.ev, E = DL.events;
+    return el('button', { class: 'row ev-row', onclick: function () { DL.views.events.form(ev, { occurrence: o }); } }, [
+      el('div', { class: 'row-bar', style: { background: ev.color } }),
+      el('div', { class: 'row-main' }, [
+        el('div', { class: 'row-title', text: ev.title }),
+        el('div', { class: 'row-sub' }, [
+          ui.chip('日常', 'ghosty'),
+          ui.chip(E.whenText(o), 'soft'),
+          ev.repeat ? ui.iconChip('refresh', E.repeatLabel(ev.repeat), 'ghosty') : null
+        ]),
+        ev.memo ? el('p', { class: 'muted small ev-memo', text: ev.memo }) : null
+      ]),
+      el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+    ]);
   }
 
   /* 7日間のノルマ */
