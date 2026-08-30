@@ -114,6 +114,9 @@ window.DL = window.DL || {};
         else if (k === 'text') node.textContent = v;
         else if (k === 'html') node.innerHTML = v;
         else if (k === 'style' && typeof v === 'object') Object.assign(node.style, v);
+        // textarea の中身は value 属性ではなく中身の文字なので、属性で置いても
+        // 何も起きない。空のまま開いて、そのまま保存すると書いた内容が消える
+        else if (k === 'value' && node.tagName === 'TEXTAREA') node.value = v;
         else if (k.slice(0, 2) === 'on' && typeof v === 'function') node.addEventListener(k.slice(2), v);
         else if (k === 'dataset') Object.assign(node.dataset, v);
         else if (v === true) node.setAttribute(k, '');
