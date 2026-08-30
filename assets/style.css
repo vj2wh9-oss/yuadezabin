@@ -248,15 +248,19 @@ h1, h2, h3, p { margin: 0; }
 .weekday .wmark { position: absolute; top: 4px; right: 4px; width: 5px; height: 5px; background: var(--warn); }
 
 /* ---------------- カレンダー ---------------- */
-/* カレンダーの月表示だけは画面いっぱいに広げ、ページ自体はスクロールさせない */
+/* カレンダーの月表示は画面いっぱいに広げる。
+   1日の予定が多くてマスに入りきらない月だけ、縦に伸びてスクロールする */
 .view.view-calendar {
   height: 100vh;
   height: 100dvh;
   min-height: 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding-bottom: calc(var(--tab-h) + env(safe-area-inset-bottom));
 }
-.view.view-calendar .page { height: 100%; padding: 6px 6px 4px; gap: 5px; }
+/* 高さは中身にまかせる。行の高さを sizeRows() が画面に合わせて決めるので、
+   予定が少ない月はこれで画面ぴったりになる */
+.view.view-calendar .page { height: auto; padding: 6px 6px 4px; gap: 5px; }
 
 .monthnav { display: flex; align-items: center; gap: 4px; flex: none; }
 .monthlabel {
@@ -274,7 +278,9 @@ h1, h2, h3, p { margin: 0; }
 
 .cal-grid {
   display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px;
-  flex: 1; min-height: 0; grid-auto-rows: 1fr;
+  /* 行の高さは view-calendar.js の sizeRows() が決める。
+     画面に収まる高さを下限にし、予定が多い行だけ中身の分だけ伸びる */
+  flex: 0 0 auto; grid-auto-rows: minmax(34px, auto);
 }
 @keyframes calFromRight { from { transform: translateX(9%); opacity: .3; } to { transform: none; opacity: 1; } }
 @keyframes calFromLeft { from { transform: translateX(-9%); opacity: .3; } to { transform: none; opacity: 1; } }
@@ -282,9 +288,10 @@ h1, h2, h3, p { margin: 0; }
 .cal-grid.from-left { animation: calFromLeft .16s ease-out; }
 
 .cal-cell {
-  position: relative; min-height: 0; padding: 2px 2px 1px;
+  position: relative; padding: 2px 2px 1px;
   background: var(--card); border: 1px solid var(--line); border-radius: 0;
-  display: flex; flex-direction: column; gap: 1px; overflow: hidden;
+  display: flex; flex-direction: column; gap: 1px;
+  overflow-x: hidden;   /* 横は切る。縦は行数ぶん伸ばす */
 }
 .cal-cell.out { opacity: .4; }
 .cal-cell.off { background: var(--card2); }
@@ -304,8 +311,8 @@ h1, h2, h3, p { margin: 0; }
 .cal-sum.done { color: var(--ok); background: color-mix(in srgb, var(--ok) 20%, transparent); }
 .cal-sum.over { color: var(--warn); background: color-mix(in srgb, var(--warn) 26%, transparent); }
 
-/* 日ごとの中身（数行だけ載せる） */
-.cal-lines { display: flex; flex-direction: column; gap: 1px; overflow: hidden; min-height: 0; }
+/* 日ごとの中身。行数に応じてマスが伸びるよう、ここでは高さを抑えない */
+.cal-lines { display: flex; flex-direction: column; gap: 1px; }
 .cal-line {
   display: flex; align-items: center; gap: 2px; font-size: 9.5px; line-height: 1.35;
   background: var(--card2); padding: 0 1px 0 0; min-width: 0;
@@ -555,7 +562,7 @@ h1, h2, h3, p { margin: 0; }
 
 @media (min-width: 620px) {
   .page { max-width: 620px; margin: 0 auto; width: 100%; }
-  .cal-cell { min-height: 72px; }
+  /* マスの高さは sizeRows() が画面に合わせて決めるので、ここでは指定しない */
 }
 
 /* ---------------- 請求書・領収書 ---------------- */

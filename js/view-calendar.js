@@ -60,6 +60,23 @@
     attachSwipe(wrap);
     attachWheel(wrap);
     root.appendChild(wrap);
+    sizeRows(wrap, grid, rows);
+  }
+
+  /**
+   * 行の最低の高さを決める。
+   * 予定が少ない月はこれまでどおり画面ぴったりに収まり、
+   * 1日に多く入っている月だけ、その行が中身の分だけ伸びて縦にスクロールする。
+   */
+  function sizeRows(wrap, grid, rows) {
+    var view = wrap.parentNode;
+    if (!view || !rows) return;
+    var gap = 2;
+    // グリッドが始まる位置から、タブに隠れない下端までが使える高さ
+    var pad = parseFloat(getComputedStyle(view).paddingBottom) || 0;
+    var avail = (view.getBoundingClientRect().bottom - pad) - grid.getBoundingClientRect().top;
+    var per = Math.floor((avail - gap * (rows - 1)) / rows);
+    grid.style.gridAutoRows = 'minmax(' + Math.max(per, 34) + 'px, auto)';
   }
 
   /**
@@ -72,11 +89,24 @@
     node.addEventListener('wheel', function (e) {
       var dy = e.deltaY;
       if (!dy || Math.abs(dy) < Math.abs(e.deltaX)) return;
-      e.preventDefault();                 // 画面ごとスクロールさせない
+
+      // 予定が多くて縦に伸びている月では、まず中身をスクロールさせる。
+      // 端まで来てから月を移す（スクロールを奪わないため）
+      var box = node.parentNode;                       // .view.view-calendar
+      var room = box ? box.scrollHeight - box.clientHeight : 0;
+      if (room > 1) {
+        var atEnd = dy > 0
+          ? box.scrollTop >= room - 1
+          : box.scrollTop <= 1;
+        if (!atEnd) return;                            // ふつうのスクロールに任せる
+      }
+
+      e.preventDefault();
       var now = Date.now();
       if (now - last < 260) return;       // 1回のホイールで何ヶ月も飛ばさない
       last = now;
       goMonth(dy > 0 ? 1 : -1);
+      if (box) box.scrollTop = 0;         // 月を移したら上から見せる
     }, { passive: false });
   }
 
@@ -150,7 +180,9 @@
 
     /* その日の中身を数行だけ載せる（締切・イベントを優先） */
     var lines = el('div', { class: 'cal-lines' });
-    var MAX = 4, shown = 0;
+    // 1マスに載せる上限。これを超えた分だけ「＋n」にまとめる。
+    // 収まらない月はマスの高さが伸び、カレンダーごと縦にスクロールする
+    var MAX = 10, shown = 0;
 
     marks.forEach(function (m) {
       if (shown >= MAX) return;
