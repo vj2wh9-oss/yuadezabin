@@ -67,7 +67,8 @@
     // 支援サイト（pixivFANBOX）の月ごとの支援金 [{ym:'2026-01', amount:12345}]
     fanbox: [],
     fanboxIssuerId: '',    // 支援金をどの名義の売上として数えるか（空＝どの名義でも数える）
-    expenses: [],          // 経費 [{id,date,amount,category,vendor,memo,projectId,issuerId,fileId}]
+    expenses: [],          // 経費 [{id,book,date,amount,category,vendor,memo,projectId,issuerId,fileId}]
+    lifeBudget: 0,         // 日常（家計簿）の1ヶ月の予算。0で無効
     sync: {                // 同期サーバーの接続情報（この端末だけのもの）
       url: '', token: '', enabled: false, deviceName: '',
       rev: 0,              // 最後にやりとりした版番号
@@ -671,6 +672,8 @@
   function normalizeExpense(x) {
     x = x || {};
     x.id = x.id || U.uid();
+    // 帳簿の別。既存のものは事業として引き継ぐ
+    x.book = (x.book === 'life') ? 'life' : 'work';
     x.date = U.isISO(x.date) ? x.date : U.today();
     x.amount = Math.max(0, Math.round(U.num(x.amount, 0)));
     x.category = x.category || 'その他';
@@ -685,7 +688,8 @@
 
   /**
    * 経費を取り出す。新しい順。
-   * @param {object} [q] {year, month:'YYYY-MM', category, projectId, scoped}
+   * @param {object} [q] {book, year, month:'YYYY-MM', category, projectId, scoped}
+   *   book は 'work'（事業）か 'life'（日常）。省略すると両方
    *   scoped を立てると、いま選んでいる名義のぶんだけ返す
    *   （名義を割り当てていない経費は、案件と同じ考えでどの名義でも返す）
    */
@@ -693,6 +697,7 @@
     q = q || {};
     var scope = q.scoped ? scopeId() : '';
     return (state.settings.expenses || []).filter(function (x) {
+      if (q.book && x.book !== q.book) return false;
       if (q.year && x.date.slice(0, 4) !== String(q.year)) return false;
       if (q.month && x.date.slice(0, 7) !== q.month) return false;
       if (q.category && x.category !== q.category) return false;

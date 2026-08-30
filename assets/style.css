@@ -772,10 +772,22 @@ h1, h2, h3, p { margin: 0; }
   background: transparent; border: 0; color: var(--text); cursor: pointer; text-align: left; width: 100%;
 }
 .cat-row.on { background: var(--accent-soft); }
-.cat-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
-.cat-name { width: 84px; flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-name { width: 96px; flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 棒は「量」を見せるものなので、科目ごとに色を変えず1色にする（科目名はすぐ横にある） */
 .cat-bar { flex: 1; height: 7px; background: var(--line); border-radius: 1px; overflow: hidden; min-width: 24px; }
-.cat-bar i { display: block; height: 100%; }
+.cat-bar i { display: block; height: 100%; background: var(--accent); }
+
+/* 事業／日常の切り替え */
+.book-switch .segmented { width: 100%; }
+
+/* 1ヶ月の予算 */
+.bg-head { display: flex; align-items: baseline; justify-content: space-between; font-size: 12.5px; }
+.bg-head b { font-variant-numeric: tabular-nums; color: var(--ok); }
+.bg-head b.over { color: var(--danger); }
+.bg-bar { height: 8px; background: var(--line); border-radius: 1px; overflow: hidden; margin: 6px 0 5px; }
+.bg-bar i { display: block; height: 100%; background: var(--accent); }
+.bg-bar.over i { background: var(--danger); }
+.bg-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .cat-v { width: 74px; flex: none; text-align: right; font-variant-numeric: tabular-nums; }
 .cat-p { width: 32px; flex: none; text-align: right; font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 

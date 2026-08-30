@@ -1,29 +1,28 @@
-/* 経費の計算と、レシート写真の下ごしらえ。 */
+/* 経費の計算と、レシート写真の下ごしらえ。
+
+   帳簿は2つに分けている。
+     work … 事業（仕事の経費）。案件や名義と結びつく
+     life … 日常（家計簿）。案件も名義も持たない */
 (function (DL) {
   'use strict';
   var U = DL.util;
 
-  /* よく使う科目。並び順がそのまま画面の並びになる */
-  var CATEGORIES = [
-    '印刷費', '画材・消耗品', '資料費', '機材費',
-    '通信費', '交通費', '外注費', '支払手数料', '広告宣伝費', 'その他'
+  var BOOKS = [
+    { value: 'work', label: '事業' },
+    { value: 'life', label: '日常' }
   ];
 
-  /* 科目ごとの目印の色。棒グラフと丸印に使う */
-  var CATEGORY_COLOR = {
-    '印刷費': 'var(--series1)',
-    '画材・消耗品': 'var(--accent2)',
-    '資料費': 'var(--indigo)',
-    '機材費': 'var(--ok)',
-    '通信費': 'var(--event)',
-    '交通費': 'var(--warn)',
-    '外注費': 'var(--series2)',
-    '支払手数料': 'var(--muted)',
-    '広告宣伝費': 'var(--danger)',
-    'その他': 'var(--line2)'
+  /* 科目。並び順がそのまま選択肢と画面の並びになる */
+  var CATEGORIES = {
+    work: ['印刷費', '画材・消耗品', '資料費', '機材費',
+           '通信費', '交通費', '外注費', '支払手数料', '広告宣伝費', 'その他'],
+    life: ['食費', '日用品', '住居', '水道光熱', '通信費', '交通費',
+           '医療・健康', '趣味・娯楽', '交際費', '衣服・美容', '教育・教養',
+           '保険', '税金・社会保険', 'その他']
   };
 
-  function color(cat) { return CATEGORY_COLOR[cat] || 'var(--line2)'; }
+  function categories(book) { return CATEGORIES[book] || CATEGORIES.work; }
+  function bookLabel(book) { return book === 'life' ? '日常' : '事業'; }
 
   function total(rows) {
     return (rows || []).reduce(function (s, x) { return s + U.num(x.amount, 0); }, 0);
@@ -91,7 +90,7 @@
   }
 
   DL.expenses = {
-    CATEGORIES: CATEGORIES, color: color,
+    BOOKS: BOOKS, categories: categories, bookLabel: bookLabel,
     total: total, byCategory: byCategory, byMonth: byMonth, shrink: shrink
   };
 })(window.DL);

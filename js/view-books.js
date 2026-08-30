@@ -5,8 +5,10 @@
   'use strict';
   var U = DL.util, ui = DL.ui, S = DL.store, D = DL.docs, E = DL.expenses, F = DL.files, el = U.el;
 
-  var RECEIPT_FOLDER = '経費レシート';
+  // 帳簿ごとにレシートの置き場を分ける
+  var RECEIPT_FOLDER = { work: '経費レシート', life: '日常レシート' };
 
+  var book = 'work';     // 事業 / 日常
   var year = 0;          // 表示中の年（0 なら今年）
   var cat = '';          // 科目の絞り込み（空＝すべて）
   var thumbs = {};       // ファイルID → 表示用URL（この画面を開いている間だけ）
@@ -18,6 +20,10 @@
     var y = currentYear();
     var wrap = el('div', { class: 'page' });
 
+    /* ---- 事業 / 日常 の切り替え ---- */
+    wrap.appendChild(el('div', { class: 'card book-switch' },
+      ui.segmented(E.BOOKS, book, function (v) { book = v; cat = ''; DL.app.render(); })));
+
     /* ---- 年の切り替え ---- */
     wrap.appendChild(el('div', { class: 'year-nav' }, [
       el('button', { class: 'iconbtn', 'aria-label': '前の年', onclick: function () { year = y - 1; DL.app.render(); } }, ui.icon('chevronLeft', 20)),
@@ -28,24 +34,24 @@
       el('button', { class: 'iconbtn', 'aria-label': '次の年', onclick: function () { year = y + 1; DL.app.render(); } }, ui.icon('chevronRight', 20))
     ]));
 
-    var all = S.expenses({ year: y, scoped: true });
+    var isLife = book === 'life';
+    var all = S.expenses({ book: book, year: y, scoped: !isLife });
     var spent = E.total(all);
 
     /* ---- 年間のまとめ ---- */
-    var income = yearIncome(y);
-    wrap.appendChild(ui.section(y + '年のまとめ', el('span', { class: 'muted small', text: all.length + '件' })));
-    wrap.appendChild(el('div', { class: 'card sum-grid' }, [
-      sumBox('経費の合計', D.yen(spent), 'big'),
-      sumBox('売上', D.yen(income)),
-      sumBox('差引', D.yen(income - spent), income - spent < 0 ? 'warn' : 'ok'),
-      sumBox('件数', all.length + '件')
-    ]));
+    wrap.appendChild(ui.section(y + '年の' + (isLife ? '支出' : 'まとめ'),
+      el('span', { class: 'muted small', text: all.length + '件' })));
+    wrap.appendChild(el('div', { class: 'card sum-grid' }, isLife
+      ? lifeBoxes(all, spent, y) : workBoxes(spent, all, y)));
+
+    if (isLife) wrap.appendChild(budgetCard(all, y));
 
     /* ---- 科目ごと ---- */
     var cats = E.byCategory(all);
     wrap.appendChild(ui.section('科目ごと'));
     wrap.appendChild(cats.length ? catCard(cats, spent)
-      : ui.empty('まだ経費がありません。右下の＋から追加できます。'));
+      : ui.empty(isLife ? 'まだ支出がありません。右下の＋から追加できます。'
+                        : 'まだ経費がありません。右下の＋から追加できます。'));
 
     /* ---- 月ごと ---- */
     if (all.length) {
@@ -55,7 +61,7 @@
 
     /* ---- 一覧 ---- */
     var shown = cat ? all.filter(function (x) { return x.category === cat; }) : all;
-    wrap.appendChild(ui.section('経費の一覧',
+    wrap.appendChild(ui.section(isLife ? '支出の一覧' : '経費の一覧',
       cat ? ui.btn('絞り込みを外す', 'ghost tiny', function () { cat = ''; DL.app.render(); }) : null));
     if (cat) {
       wrap.appendChild(el('div', { class: 'row-wrap pad' }, [
@@ -63,7 +69,7 @@
       ]));
     }
     if (!shown.length) {
-      wrap.appendChild(ui.empty(cat ? 'この科目の経費はありません。' : y + '年の経費はまだありません。'));
+      wrap.appendChild(ui.empty(cat ? 'この科目の記録はありません。' : y + '年の記録はまだありません。'));
     } else {
       var list = el('div', { class: 'list' });
       shown.forEach(function (x) { list.appendChild(expenseRow(x)); });
@@ -71,15 +77,87 @@
     }
 
     wrap.appendChild(el('div', { class: 'pad row-wrap' }, [
-      ui.btn('経費を追加', 'primary', function () { addExpense(); }, 'plus'),
+      ui.btn(isLife ? '支出を追加' : '経費を追加', 'primary', function () { addExpense(); }, 'plus'),
       ui.btn('レシートを撮る', 'ghost', function () { addExpense({ shoot: true }); }, 'receipt')
     ]));
 
-    wrap.appendChild(el('p', { class: 'muted small pad', text:
-      'レシートの写真は共有ファイルの「' + RECEIPT_FOLDER + '」に入り、PCとiPhoneの両方から見られます。'
-      + '「売上」と「差引」は、いま選んでいる名義のぶんだけを見ています。' }));
+    wrap.appendChild(el('p', { class: 'muted small pad', text: isLife
+      ? 'レシートの写真は共有ファイルの「' + RECEIPT_FOLDER.life + '」に入ります。日常の記録は名義や案件とは結びつけません。'
+      : 'レシートの写真は共有ファイルの「' + RECEIPT_FOLDER.work + '」に入り、PCとiPhoneの両方から見られます。'
+        + '「売上」と「差引」は、いま選んでいる名義のぶんだけを見ています。' }));
 
     root.appendChild(wrap);
+  }
+
+  /* 事業：売上と突き合わせて残りを見る */
+  function workBoxes(spent, all, y) {
+    var income = yearIncome(y);
+    return [
+      sumBox('経費の合計', D.yen(spent), 'big'),
+      sumBox('売上', D.yen(income)),
+      sumBox('差引', D.yen(income - spent), income - spent < 0 ? 'warn' : 'ok'),
+      sumBox('件数', all.length + '件')
+    ];
+  }
+
+  /* 日常：家計簿として、月あたり・1日あたりの目安を出す */
+  function lifeBoxes(all, spent, y) {
+    var t = U.today();
+    var thisMonth = E.total(all.filter(function (x) { return x.date.slice(0, 7) === t.slice(0, 7); }));
+    // 記録のある月だけで割る（まだ来ていない月で薄めない）
+    var months = {};
+    all.forEach(function (x) { months[x.date.slice(0, 7)] = true; });
+    var n = Object.keys(months).length || 1;
+    var sameYear = t.slice(0, 4) === String(y);
+    return [
+      sumBox('支出の合計', D.yen(spent), 'big'),
+      sumBox(sameYear ? '今月' : '月あたり', D.yen(sameYear ? thisMonth : Math.round(spent / n))),
+      sumBox('1ヶ月の平均', D.yen(Math.round(spent / n))),
+      sumBox('件数', all.length + '件')
+    ];
+  }
+
+  /* 1ヶ月の予算と、今月の残り */
+  function budgetCard(all, y) {
+    var t = U.today();
+    var budget = U.num(S.settings.lifeBudget, 0);
+    var thisMonth = E.total(all.filter(function (x) { return x.date.slice(0, 7) === t.slice(0, 7); }));
+    var box = el('div', { class: 'card' });
+
+    if (!budget) {
+      box.appendChild(el('p', { class: 'muted small', text: '1ヶ月の予算を決めておくと、今月あといくら使えるかが出ます。' }));
+      box.appendChild(ui.btn('予算を決める', 'ghost full', function () { budgetSheet(); }, 'plus'));
+      return box;
+    }
+    var left = budget - thisMonth;
+    var pct = Math.min(100, Math.round(thisMonth / budget * 100));
+    box.appendChild(el('div', { class: 'bg-head' }, [
+      el('span', { text: U.num(t.slice(5, 7), 0) + '月の予算' }),
+      el('b', { class: left < 0 ? 'over' : '', text: left < 0 ? D.yen(-left) + ' 超過' : '残り ' + D.yen(left) })
+    ]));
+    box.appendChild(el('div', { class: 'bg-bar' + (left < 0 ? ' over' : '') }, el('i', { style: { width: pct + '%' } })));
+    box.appendChild(el('div', { class: 'bg-foot' }, [
+      el('span', { class: 'muted small', text: D.yen(thisMonth) + ' / ' + D.yen(budget) + '（' + pct + '%）' }),
+      ui.btn('予算を変える', 'ghost tiny', function () { budgetSheet(); })
+    ]));
+    return box;
+  }
+
+  function budgetSheet() {
+    var input = ui.input({ type: 'number', inputmode: 'numeric', min: 0,
+      value: U.num(S.settings.lifeBudget, 0) || '' });
+    var close = ui.sheet({
+      title: '1ヶ月の予算',
+      body: el('div', { class: 'form' },
+        ui.field('予算（円）', input, '0 か空にすると、予算の表示をやめます')),
+      actions: [
+        ui.btn('キャンセル', 'ghost', function () { close(); }),
+        ui.btn('保存', 'primary', function () {
+          S.updateSettings({ lifeBudget: Math.max(0, U.num(input.value, 0)) });
+          close(); ui.toast('保存しました');
+        })
+      ]
+    });
   }
 
   function sumBox(label, value, cls) {
@@ -109,9 +187,8 @@
         class: 'cat-row' + (cat === c.category ? ' on' : ''),
         onclick: function () { cat = (cat === c.category ? '' : c.category); DL.app.render(); }
       }, [
-        el('span', { class: 'cat-dot', style: { background: E.color(c.category) } }),
         el('span', { class: 'cat-name', text: c.category }),
-        el('span', { class: 'cat-bar' }, el('i', { style: { width: pct + '%', background: E.color(c.category) } })),
+        el('span', { class: 'cat-bar' }, el('i', { style: { width: pct + '%' } })),
         el('b', { class: 'cat-v', text: D.yen(c.amount) }),
         el('span', { class: 'cat-p', text: pct + '%' })
       ]));
@@ -137,8 +214,8 @@
   /* ---------------- 一覧の1行 ---------------- */
 
   function expenseRow(x) {
-    var p = x.projectId ? S.getProject(x.projectId) : null;
-    var issuer = x.issuerId ? S.getIssuer(x.issuerId) : null;
+    var p = (x.book !== 'life' && x.projectId) ? S.getProject(x.projectId) : null;
+    var issuer = (x.book !== 'life' && x.issuerId) ? S.getIssuer(x.issuerId) : null;
     var shot = el('span', { class: 'ex-shot' + (x.fileId ? '' : ' none') },
       x.fileId ? ui.icon('receipt', 18) : ui.icon('receipt', 16));
     if (x.fileId) prepareThumb(shot, x.fileId);
@@ -147,7 +224,6 @@
       shot,
       el('div', { class: 'row-main' }, [
         el('div', { class: 'row-title' }, [
-          el('span', { class: 'cat-dot', style: { background: E.color(x.category) } }),
           el('span', { text: x.vendor || x.category }),
           el('b', { class: 'ex-amount', text: D.yen(x.amount) })
         ]),
@@ -215,7 +291,7 @@
 
   /* ---------------- 追加・編集 ---------------- */
 
-  function addExpense(opts) { expenseSheet(null, opts); }
+  function addExpense(opts) { expenseSheet(null, opts || {}); }
   function editExpense(id) { expenseSheet(S.getExpense(id)); }
 
   /**
@@ -226,10 +302,14 @@
   function expenseSheet(x, opts) {
     opts = opts || {};
     var isNew = !x;
+    // 編集のときはその記録の帳簿、新規のときはいま見ている帳簿
+    var bk = x ? x.book : book;
+    var isLife = bk === 'life';
+    var cats = E.categories(bk);
     var v = {
       date: x ? x.date : U.today(),
       amount: x ? x.amount : '',
-      category: x ? x.category : '印刷費',
+      category: x ? x.category : cats[0],
       vendor: x ? x.vendor : '',
       memo: x ? x.memo : '',
       projectId: x ? x.projectId : '',
@@ -240,25 +320,58 @@
 
     var dateIn = ui.input({ type: 'date', value: v.date });
     var amountIn = ui.input({ type: 'number', inputmode: 'numeric', min: 0, value: v.amount, placeholder: '0' });
-    var vendorIn = ui.input({ value: v.vendor, placeholder: '例）○○印刷 / 画材店', maxlength: 60 });
+    var vendorIn = ui.input({
+      value: v.vendor, maxlength: 60,
+      placeholder: isLife ? '例）スーパー / ドラッグストア' : '例）○○印刷 / 画材店'
+    });
     var memoIn = ui.input({ value: v.memo, placeholder: '内容のメモ', maxlength: 120 });
 
-    var catSel = ui.select(E.CATEGORIES.map(function (c) { return { value: c, label: c }; }), v.category);
+    // 選んだ科目が帳簿に無いとき（帳簿を切り替えた記録）も選べるようにしておく
+    var catOpts = cats.slice();
+    if (catOpts.indexOf(v.category) < 0) catOpts.unshift(v.category);
+    var catSel = ui.select(catOpts.map(function (c) { return { value: c, label: c }; }), v.category);
     catSel.addEventListener('change', function () { v.category = catSel.value; });
 
-    // 案件（印刷費などを案件に紐づける）
-    var projSel = ui.select(
+    // 帳簿の切り替え。事業↔日常を後から直せるようにする
+    var bookSeg = ui.segmented(E.BOOKS, bk, function (val) {
+      // 科目は帳簿ごとに別なので、切り替えたらその帳簿の先頭に戻す
+      var keep = collect();
+      close();
+      expenseSheet(
+        x ? Object.assign({}, x, keep, { book: val, category: E.categories(val)[0] }) : null,
+        { keep: keep, book: val }
+      );
+    });
+
+    // 案件（印刷費などを案件に紐づける）。日常では使わない
+    var projSel = isLife ? null : ui.select(
       [{ value: '', label: '（紐づけない）' }].concat(
         S.projects().filter(function (p) { return p.status !== 'archived'; })
           .map(function (p) { return { value: p.id, label: p.title }; })
       ), v.projectId);
 
     var issuerSel = null;
-    if (S.issuers().length > 1) {
+    if (!isLife && S.issuers().length > 1) {
       issuerSel = ui.select(
         [{ value: '', label: '（指定しない）' }].concat(S.issuers().map(function (i) {
           return { value: i.id, label: i.name || '(名称未設定)' };
         })), v.issuerId);
+    }
+
+    /* いま入力されている内容（帳簿を切り替えても打ち直さなくて済むように） */
+    function collect() {
+      return {
+        date: dateIn.value, amount: U.num(amountIn.value, 0),
+        vendor: vendorIn.value, memo: memoIn.value, fileId: v.fileId
+      };
+    }
+    // 帳簿を切り替えて開き直したときは、打った内容を引き継ぐ
+    if (opts.keep) {
+      dateIn.value = opts.keep.date || v.date;
+      amountIn.value = opts.keep.amount || '';
+      vendorIn.value = opts.keep.vendor || '';
+      memoIn.value = opts.keep.memo || '';
+      v.fileId = opts.keep.fileId || '';
     }
 
     /* --- レシートの写真 --- */
@@ -313,16 +426,17 @@
     renderShot();
 
     var close = ui.sheet({
-      title: isNew ? '経費を追加' : '経費を編集',
+      title: (isNew ? '追加' : '編集') + '（' + E.bookLabel(bk) + '）',
       body: el('div', { class: 'form' }, [
         el('div', { class: 'grid2' }, [
           ui.field('日付', dateIn),
           ui.field('金額（円）', amountIn)
         ]),
+        ui.field('帳簿', bookSeg, '事業＝仕事の経費／日常＝家計簿'),
         ui.field('科目', catSel),
         ui.field('支払先', vendorIn),
         ui.field('メモ', memoIn),
-        ui.field('案件', projSel, '印刷費などを案件に紐づけると、案件ごとの出費が分かります'),
+        projSel ? ui.field('案件', projSel, '印刷費などを案件に紐づけると、案件ごとの出費が分かります') : null,
         issuerSel ? ui.field('名義', issuerSel, '名義を絞って見ているとき、その名義の経費として数えます') : null,
         ui.field('レシート', shotBox),
         !isNew ? ui.btn('この経費を削除', 'danger full mt', function () {
@@ -342,21 +456,25 @@
       var amount = U.num(amountIn.value, 0);
       if (!amount) { ui.toast('金額を入れてください', 'warn'); return; }
       var data = {
+        book: bk,
         date: dateIn.value, amount: amount, category: catSel.value,
         vendor: vendorIn.value.trim(), memo: memoIn.value.trim(),
-        projectId: projSel.value, issuerId: issuerSel ? issuerSel.value : v.issuerId,
+        // 日常は案件にも名義にも紐づけない
+        projectId: isLife ? '' : (projSel ? projSel.value : ''),
+        issuerId: isLife ? '' : (issuerSel ? issuerSel.value : v.issuerId),
         fileId: v.fileId
       };
 
       if (!picked) { commit(data); return; }
       // 写真は共有ファイルへ。名前は日付と支払先から作る
       ui.toast('レシートを送っています…');
+      var folder = RECEIPT_FOLDER[bk] || RECEIPT_FOLDER.work;
       var name = data.date + (data.vendor ? '_' + data.vendor.replace(/[\\\/:*?"<>|]/g, '_') : '') + '.jpg';
       var file = new File([picked], name, { type: picked.type || 'image/jpeg' });
-      F.upload(file, { folder: RECEIPT_FOLDER, projectId: data.projectId })
+      F.upload(file, { folder: folder, projectId: data.projectId })
         .then(function (r) {
           if (r && r.id) {
-            S.setFileFolder(r.id, S.ensureFolderPath(RECEIPT_FOLDER));
+            S.setFileFolder(r.id, S.ensureFolderPath(folder));
             data.fileId = r.id;
           }
           commit(data);
@@ -381,6 +499,6 @@
   DL.views.books = {
     render: render,
     addExpense: addExpense,
-    reset: function () { year = 0; cat = ''; dropThumbs(); }
+    reset: function () { book = 'work'; year = 0; cat = ''; dropThumbs(); }
   };
 })(window.DL);
