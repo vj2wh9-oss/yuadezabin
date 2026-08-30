@@ -4,14 +4,33 @@
   var U = DL.util, el = U.el;
 
   /* ---------------- トースト ---------------- */
+
+  // 出すのは常に1つだけ。続けて押すと積み上がって画面を埋めてしまうので、
+  // 前のものは片づけてから新しいものを出す（新しいほうだけを見せる）
+  var toastNow = null;
+
   function toast(msg, kind) {
     var root = U.$('#toastRoot');
+    if (toastNow) {
+      clearTimeout(toastNow.hide);
+      clearTimeout(toastNow.gone);
+      toastNow.node.remove();
+      toastNow = null;
+    }
+    U.$$('.toast', root).forEach(function (n) { n.remove(); });   // 取りこぼしの掃除
+
     var t = el('div', { class: 'toast ' + (kind || ''), text: msg });
     root.appendChild(t);
     requestAnimationFrame(function () { t.classList.add('show'); });
-    setTimeout(function () {
+
+    var cur = { node: t };
+    toastNow = cur;
+    cur.hide = setTimeout(function () {
       t.classList.remove('show');
-      setTimeout(function () { t.remove(); }, 250);
+      cur.gone = setTimeout(function () {
+        t.remove();
+        if (toastNow === cur) toastNow = null;
+      }, 250);
     }, 2200);
   }
 
