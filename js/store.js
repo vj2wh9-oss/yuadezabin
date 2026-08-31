@@ -97,6 +97,9 @@
     expenses: [],          // 経費 [{id,book,date,amount,category,vendor,memo,projectId,issuerId,fileId}]
     lifeBudget: 0,         // 日常（家計簿）の1ヶ月の予算。0で無効
     recurring: [],         // 固定費 [{id,book,name,amount,category,day,startYm,lastYm,active}]
+    // 頒布物（本・グッズ）と、その出入り
+    items: [],             // [{id,title,kind,price,unitCost,releaseDate,projectId,memo,archived}]
+    stock: [],             // [{id,itemId,date,kind,qty,price,place,projectId,memo}]
     // 日常の予定。案件のカレンダーとは混ぜず、上部の切替ボタンで見る側を選ぶ
     events: [],            // [{id,date,days,title,start,end,memo,color,important,repeat,until}]
     duties: {},            // その日の働き方 { 'YYYY-MM-DD': 'office'|'remote'|'stay' }
@@ -223,6 +226,8 @@
     s.settings.fanbox = normalizeFanbox(s.settings.fanbox);
     s.settings.expenses = (s.settings.expenses || []).map(normalizeExpense);
     s.settings.recurring = (s.settings.recurring || []).map(normalizeRecurring);
+    s.settings.items = (s.settings.items || []).map(normalizeItem);
+    s.settings.stock = (s.settings.stock || []).map(normalizeMove);
     s.settings.events = (s.settings.events || []).map(normalizeEvent);
     s.settings.duties = normalizeDuties(s.settings.duties);
     s.settings.eventDone = normalizeEventDone(s.settings.eventDone);
@@ -800,6 +805,119 @@
 
   function removeRecurring(id) {
     state.settings.recurring = (state.settings.recurring || []).filter(function (r) { return r.id !== id; });
+    save();
+  }
+
+  /* ---------------- 頒布物と在庫 ---------------- */
+
+  /* 在庫の動き。増える「入庫」と、減る「頒布・献本・傷み」、それに棚卸しの補正 */
+  var MOVE_KINDS = ['in', 'sale', 'gift', 'loss', 'adjust'];
+
+  function normalizeItem(x) {
+    x = x || {};
+    x.id = x.id || U.uid();
+    x.title = String(x.title || '').trim().slice(0, 80) || '(名称未設定)';
+    x.kind = x.kind === 'goods' ? 'goods' : 'book';   // 本 / グッズ
+    x.price = Math.max(0, Math.round(U.num(x.price, 0)));       // 頒布価格
+    x.unitCost = Math.max(0, Math.round(U.num(x.unitCost, 0))); // 1部あたりの原価
+    x.releaseDate = U.isISO(x.releaseDate) ? x.releaseDate : '';
+    x.projectId = x.projectId || '';   // どのイベントで出したものか
+    x.memo = String(x.memo || '').slice(0, 300);
+    x.archived = !!x.archived;         // 頒布を終えたもの（一覧では畳む）
+    x.createdAt = x.createdAt || new Date().toISOString();
+    return x;
+  }
+
+  function normalizeMove(m) {
+    m = m || {};
+    m.id = m.id || U.uid();
+    m.itemId = m.itemId || '';
+    m.date = U.isISO(m.date) ? m.date : U.today();
+    m.kind = MOVE_KINDS.indexOf(m.kind) >= 0 ? m.kind : 'sale';
+    // 補正だけは減らす向きも許す（棚卸しで数が合わなかったとき）
+    var qty = Math.round(U.num(m.qty, 0));
+    m.qty = m.kind === 'adjust' ? qty : Math.max(0, qty);
+    m.price = Math.max(0, Math.round(U.num(m.price, 0)));   // 0＝頒布物の価格を使う
+    m.place = String(m.place || '').slice(0, 60);           // 即売会名・通販など
+    m.projectId = m.projectId || '';
+    m.memo = String(m.memo || '').slice(0, 200);
+    m.createdAt = m.createdAt || new Date().toISOString();
+    return m;
+  }
+
+  function items(opts) {
+    opts = opts || {};
+    var list = (state.settings.items || []).slice();
+    if (!opts.withArchived) list = list.filter(function (x) { return !x.archived; });
+    return list.sort(function (a, b) {
+      return U.cmp(b.releaseDate || '', a.releaseDate || '') || U.cmp(a.title, b.title);
+    });
+  }
+
+  function getItem(id) {
+    return (state.settings.items || []).filter(function (x) { return x.id === id; })[0] || null;
+  }
+
+  function addItem(data) {
+    var x = normalizeItem(Object.assign({ id: U.uid() }, data));
+    state.settings.items = (state.settings.items || []).concat([x]);
+    save();
+    return x;
+  }
+
+  function updateItem(id, patch) {
+    var x = getItem(id);
+    if (!x) return null;
+    Object.assign(x, patch);
+    normalizeItem(x);
+    save();
+    return x;
+  }
+
+  /* 頒布物を消すときは、その出入りの記録も一緒に消す（残しても行き場がない） */
+  function removeItem(id) {
+    state.settings.items = (state.settings.items || []).filter(function (x) { return x.id !== id; });
+    state.settings.stock = (state.settings.stock || []).filter(function (m) { return m.itemId !== id; });
+    save();
+  }
+
+  /**
+   * 在庫の動き。
+   * @param {object} [q] {itemId, projectId, year, kind}
+   */
+  function stockMoves(q) {
+    q = q || {};
+    return (state.settings.stock || []).filter(function (m) {
+      if (q.itemId && m.itemId !== q.itemId) return false;
+      if (q.projectId && m.projectId !== q.projectId) return false;
+      if (q.kind && m.kind !== q.kind) return false;
+      if (q.year && m.date.slice(0, 4) !== String(q.year)) return false;
+      return true;
+    }).sort(function (a, b) { return U.cmp(b.date, a.date) || U.cmp(b.createdAt, a.createdAt); });
+  }
+
+  function getMove(id) {
+    return (state.settings.stock || []).filter(function (m) { return m.id === id; })[0] || null;
+  }
+
+  function addMove(data) {
+    var m = normalizeMove(Object.assign({ id: U.uid() }, data));
+    state.settings.stock = (state.settings.stock || []).concat([m]);
+    save();
+    return m;
+  }
+
+  function updateMove(id, patch) {
+    var m = getMove(id);
+    if (!m) return null;
+    Object.assign(m, patch);
+    normalizeMove(m);
+    save();
+    return m;
+  }
+
+  function removeMove(id) {
+    state.settings.stock = (state.settings.stock || []).filter(function (m) { return m.id !== id; });
     save();
   }
 
@@ -1502,6 +1620,9 @@
       // 経費も、こちらに無いものだけ足す
       r.expenses = mergeById(state.settings.expenses, incoming.settings.expenses || []);
       mergeById(state.settings.recurring, incoming.settings.recurring || []);
+      // 頒布物と在庫の出入りも、こちらに無いものだけ足す
+      r.items = mergeById(state.settings.items || (state.settings.items = []), incoming.settings.items || []);
+      r.stock = mergeById(state.settings.stock || (state.settings.stock = []), incoming.settings.stock || []);
       // 日常の予定も同じ。足し忘れると、ぶつかったときに片方の予定が黙って消える
       r.events = mergeById(state.settings.events, incoming.settings.events || []);
       // その日の働き方は、こちらで決めていない日だけ足す（既に入れた日は書き換えない）
@@ -1610,6 +1731,8 @@
       && !(s.fanbox || []).length
       && !(s.expenses || []).length
       && !(s.recurring || []).length
+      && !(s.items || []).length
+      && !(s.stock || []).length
       && !(s.events || []).length
       && !Object.keys(s.duties || {}).length;
   }
@@ -1704,6 +1827,9 @@
     forgetFiles: forgetFiles,
     recurring: recurring, getRecurring: getRecurring, addRecurring: addRecurring,
     updateRecurring: updateRecurring, removeRecurring: removeRecurring, postRecurring: postRecurring,
+    items: items, getItem: getItem, addItem: addItem, updateItem: updateItem, removeItem: removeItem,
+    stockMoves: stockMoves, getMove: getMove, addMove: addMove, updateMove: updateMove, removeMove: removeMove,
+    MOVE_KINDS: MOVE_KINDS,
     events: events, getEvent: getEvent, addEvent: addEvent,
     updateEvent: updateEvent, removeEvent: removeEvent,
     duty: duty, setDuty: setDuty, dutyLabel: dutyLabel,

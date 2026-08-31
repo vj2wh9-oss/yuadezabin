@@ -25,9 +25,10 @@
   --duty-remote: #e0555f;    /* リモートワーク：赤 */
   --duty-stay: #4a8ff5;      /* 泊まり勤務：青 */
   --sky: #38bdf8;            /* 日常の予定（ホームでの目印の水色） */
-  /* グラフの系列色。色覚の見分けやすさを検証して決めた2色 */
+  /* グラフの系列色。色覚の見分けやすさを検証して決めた3色 */
   --series1: #3b82f6;
   --series2: #e0507f;
+  --series3: #e0a02a;        /* 即売会の頒布（青・桃と混ざらない黄橙） */
   --warn: #d9a441;
   --danger: #e0555f;
 
@@ -63,6 +64,7 @@
     --sky: #0b8fd0;
     --series1: #1d63d8;
     --series2: #d6336c;
+    --series3: #a1690a;
     --warn: #9a6a05;
     --danger: #c62f3c;
     color-scheme: light;
@@ -812,8 +814,25 @@ h1, h2, h3, p { margin: 0; }
 .sum-box.big b { font-size: 22px; color: var(--accent); }
 .sum-box.ok b { color: var(--ok); }
 .sum-box.fan b { color: var(--series2); }
+.sum-box.stock b { color: var(--series3); }
 .sum-box.warn { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); }
 .sum-box.warn b { color: var(--warn); }
+
+/* ---------------- 頒布と在庫 ---------------- */
+.stock-row { width: 100%; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.stock-row.dim { opacity: .6; }
+/* 残部は数を大きく、単位は小さく添える */
+.stock-left {
+  flex: none; display: flex; align-items: baseline; gap: 2px; color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.stock-left b { font-size: 17px; font-weight: 700; }
+.stock-left span { font-size: 10.5px; color: var(--muted); }
+.stock-left.low { color: var(--warn); }
+.stock-left.none { color: var(--muted); }
+.move-row { width: 100%; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.move-qty { flex: none; font-size: 15px; font-weight: 700; color: var(--ok); font-variant-numeric: tabular-nums; }
+.move-qty.minus { color: var(--muted); }
 
 .month-sales { display: flex; flex-direction: column; gap: 3px; }
 .ms-row { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 3px 0; }
@@ -825,6 +844,7 @@ h1, h2, h3, p { margin: 0; }
 .ms-bar { flex: 1; height: 8px; background: var(--line); border-radius: 1px; overflow: hidden; display: flex; }
 .ms-bar i { display: block; height: 100%; background: var(--series1); flex: none; }
 .ms-bar i.fan { background: var(--series2); box-shadow: -2px 0 0 var(--card); }
+.ms-bar i.stock { background: var(--series3); box-shadow: -2px 0 0 var(--card); }
 .ms-note { display: flex; gap: 14px; padding-top: 6px; margin-top: 4px; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted); }
 .ms-v { width: 78px; flex: none; text-align: right; font-variant-numeric: tabular-nums; }
 .ms-u { width: 62px; flex: none; text-align: right; font-size: 10.5px; color: var(--warn); font-variant-numeric: tabular-nums; }
@@ -839,16 +859,19 @@ h1, h2, h3, p { margin: 0; }
 .lc-key i { width: 14px; height: 3px; border-radius: 2px; flex: none; }
 .lc-key i.is-doc { background: var(--series1); }
 .lc-key i.is-fan { background: var(--series2); }
+.lc-key i.is-st { background: var(--series3); }
 
 .lc-grid { stroke: var(--line); stroke-width: 1; }
 .lc-ytick, .lc-xtick { fill: var(--muted); font-size: 9px; font-variant-numeric: tabular-nums; }
 .lc-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .lc-line.is-doc { stroke: var(--series1); }
 .lc-line.is-fan { stroke: var(--series2); }
+.lc-line.is-st { stroke: var(--series3); }
 /* 重なっても見分けが付くよう、点は面の色で縁取る */
 .lc-dot { stroke: var(--card); stroke-width: 2; }
 .lc-dot.is-doc { fill: var(--series1); }
 .lc-dot.is-fan { fill: var(--series2); }
+.lc-dot.is-st { fill: var(--series3); }
 .lc-cursor { stroke: var(--line2); stroke-width: 1; stroke-dasharray: 2 2; }
 
 .lchart-read { font-size: 10.5px; color: var(--muted); }
@@ -867,6 +890,7 @@ h1, h2, h3, p { margin: 0; }
 .lc-tv::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; }
 .lc-tv.is-doc::before { background: var(--series1); }
 .lc-tv.is-fan::before { background: var(--series2); }
+.lc-tv.is-st::before { background: var(--series3); }
 
 /* 支援金の一覧 */
 .fb-list { display: flex; flex-direction: column; gap: 2px; margin: 6px 0; max-height: 210px; overflow-y: auto; }

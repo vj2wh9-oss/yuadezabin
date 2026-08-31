@@ -104,6 +104,26 @@
       ]));
     }
 
+    /* ---- 頒布と在庫（即売会のみ） ---- */
+    if (p.kind === 'event') {
+      var st = DL.stock.eventSummary(p.id);
+      wrap.appendChild(el('a', { class: 'row docs-entry', href: '#/stock' }, [
+        el('div', { class: 'row-main' }, [
+          el('div', { class: 'row-title' }, [
+            ui.icon('books', 17), el('span', { text: '頒布と在庫' })
+          ]),
+          el('div', { class: 'row-sub' }, st.sold ? [
+            ui.chip(st.sold + '部', 'soft'),
+            ui.chip(DL.docs.yen(st.revenue), 'ghosty'),
+            st.expense ? ui.chip('経費 ' + DL.docs.yen(st.expense), 'ghosty') : null,
+            el('span', { class: 'muted small', text: '差し引き ' + (st.revenue - st.expense < 0 ? '-' : '')
+              + DL.docs.yen(Math.abs(st.revenue - st.expense)) })
+          ] : [ui.chip('まだ記録がありません', 'ghosty')])
+        ]),
+        el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+      ]));
+    }
+
     /* ---- 印刷所プラン ---- */
     if (p.kind === 'event' && (p.printings || []).length) {
       wrap.appendChild(ui.section('印刷所の締切'));

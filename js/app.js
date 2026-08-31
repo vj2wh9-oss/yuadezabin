@@ -43,11 +43,11 @@
       home: 'METEO365', calendar: 'カレンダー', projects: '案件',
       settings: '設定', day: '日別', project: '案件の詳細',
       docs: '書類', doc: '書類', sales: '売上', files: 'ファイル', books: '経理',
-      search: '検索'
+      search: '検索', stock: '頒布と在庫'
     };
     titleEl.textContent = titles[route.name] || 'METEO365';
 
-    var tab = { home: 'home', calendar: 'calendar', day: 'calendar', projects: 'projects', project: 'projects', docs: 'projects', doc: 'projects', sales: 'sales', books: 'books', files: 'files' }[route.name];
+    var tab = { home: 'home', calendar: 'calendar', day: 'calendar', projects: 'projects', project: 'projects', docs: 'projects', doc: 'projects', sales: 'sales', stock: 'sales', books: 'books', files: 'files' }[route.name];
     U.$$('.tab').forEach(function (t) { t.classList.toggle('on', t.dataset.tab === tab); });
     // 設定は下のタブから外し、題名の右の歯車から開く。
     // 歯車を出すのはホームだけにして、ほかのタブでは邪魔をしない
@@ -66,7 +66,7 @@
     if (onCal) drawModeBtn(life);
 
     // 売上は下のタブから直接開くので、戻るボタンは要らない
-    var showBack = ['project', 'day', 'docs', 'doc', 'search'].indexOf(route.name) >= 0;
+    var showBack = ['project', 'day', 'docs', 'doc', 'search', 'stock'].indexOf(route.name) >= 0;
     backBtn.hidden = !showBack;
 
     // 画面が切り替わった瞬間を、同期のきっかけにする
@@ -102,6 +102,7 @@
       case 'sales': DL.views.sales.render(view); break;
       case 'books': DL.views.books.render(view); break;
       case 'files': DL.views.files.render(view); break;
+      case 'stock': DL.views.stock.render(view); break;
       case 'search': DL.views.search.render(view); break;
       case 'settings': DL.views.settings.render(view); break;
       default: DL.views.home.render(view);
@@ -166,7 +167,7 @@
   var SCOPE_VIEWS = ['home', 'calendar', 'day', 'projects', 'project', 'sales'];
 
   /* 虫めがねを出す画面。検索の画面自身にも出して、押せば戻れるようにする */
-  var SEARCH_VIEWS = ['home', 'projects', 'sales', 'books', 'files', 'search'];
+  var SEARCH_VIEWS = ['home', 'projects', 'sales', 'stock', 'books', 'files', 'search'];
 
   function scopeBtn() {
     var cur = S.scopeIssuer();
@@ -244,6 +245,8 @@
       if (route.name === 'files') { DL.views.files.pickFiles(); return; }
       // 経理画面では、ここが経費の追加口になる
       if (route.name === 'books') { DL.views.books.addExpense(); return; }
+      // 在庫画面では、ここが頒布物の追加口になる
+      if (route.name === 'stock') { DL.views.stock.addItem(); return; }
       if (route.name === 'project') {
         var p = S.getProject(route.params.id);
         if (p) { addMenu(p); return; }

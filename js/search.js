@@ -10,6 +10,7 @@
     { key: 'project', label: '案件', icon: 'projects' },
     { key: 'task', label: 'タスク', icon: 'task' },
     { key: 'doc', label: '書類', icon: 'invoice' },
+    { key: 'item', label: '頒布物', icon: 'books' },
     { key: 'expense', label: '経費', icon: 'books' },
     { key: 'recurring', label: '固定費', icon: 'refresh' },
     { key: 'event', label: '日常の予定', icon: 'calendar' },
@@ -95,6 +96,24 @@
           href: '#/doc/' + p.id + '/' + d.id,
           dim: d.status === 'draft' || d.status === 'declined'
         });
+      });
+    });
+
+    /* 頒布物（本・グッズ） */
+    S.items({ withArchived: true }).forEach(function (x) {
+      var p = x.projectId ? S.getProject(x.projectId) : null;
+      if (!hit([x.title, x.memo, DL.stock.kindLabel(x.kind), p && (p.eventName || p.title)], ts)) return;
+      var sum = DL.stock.summary(x);
+      out.item.push({
+        kind: 'item', id: x.id, title: x.title,
+        sub: [
+          DL.stock.kindLabel(x.kind),
+          '残' + sum.left + '部',
+          x.price ? D.yen(x.price) : '',
+          x.archived ? '頒布終了' : ''
+        ],
+        note: x.memo,
+        date: x.releaseDate || '', open: 'item', dim: x.archived
       });
     });
 

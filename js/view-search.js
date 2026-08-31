@@ -139,6 +139,12 @@
       location.hash = '#/day/' + ev.date;
       return;
     }
+    if (it.open === 'item') {
+      var id = it.id;
+      location.hash = '#/stock';
+      setTimeout(function () { DL.views.stock.openItem(id); }, 60);
+      return;
+    }
     if (it.open === 'client') { DL.forms.clientSheet(it.id); return; }
     if (it.open === 'file') {
       DL.views.files.openAt(it.id);
