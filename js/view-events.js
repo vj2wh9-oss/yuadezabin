@@ -75,6 +75,7 @@
       el('div', { class: 'row-main', onclick: function () { form(o.ev, { occurrence: o }); } }, [
         el('div', { class: 'row-title', text: o.ev.title }),
         el('div', { class: 'row-sub' }, [
+          o.ev.important ? ui.iconChip('alert', '重要', 'warn') : null,
           ui.chip(E.whenText(o), 'soft'),
           o.ev.repeat ? ui.iconChip('refresh', E.repeatLabel(o.ev.repeat), 'ghosty') : null,
           withCheck && done ? ui.chip('ホームから外し中', 'ghosty') : null
@@ -125,7 +126,7 @@
     var v = ev || {
       date: U.isISO(opts.date) ? opts.date : U.today(),
       days: 1, title: '', start: '', end: '', memo: '',
-      color: S.EVENT_COLORS[0].value, repeat: '', until: ''
+      color: S.EVENT_COLORS[0].value, important: false, repeat: '', until: ''
     };
 
     var titleIn = ui.input({ value: v.title, maxlength: 80, placeholder: '例）歯医者 / 燃えるゴミ / 母の誕生日' });
@@ -134,6 +135,7 @@
     var startIn = ui.input({ type: 'time', value: v.start });
     var endIn = ui.input({ type: 'time', value: v.end });
     var memoIn = ui.textarea({ value: v.memo, maxlength: 400, placeholder: '持ち物・場所など' });
+    var importantIn = el('input', { type: 'checkbox', checked: !!v.important });
     var untilIn = ui.input({ type: 'date', value: v.until });
 
     /* 終日 / 時間を決める */
@@ -200,7 +202,7 @@
       var patch = {
         title: title, date: dateIn.value, days: daysIn.getValue(),
         start: allDay ? '' : startIn.value, end: allDay ? '' : endIn.value,
-        memo: memoIn.value, color: color,
+        memo: memoIn.value, color: color, important: importantIn.checked,
         repeat: repeat, until: repeat ? untilIn.value : ''
       };
       // 終了が開始より前なら、入れ違いとして終了を落とす（翌日にまたがる指定は日数で表す）
@@ -227,6 +229,13 @@
         ui.field('繰り返し', repeatSeg),
         repeatBox,
         ui.field('色', swatches),
+        el('label', { class: 'row-check' }, [
+          importantIn,
+          el('span', {}, [
+            el('span', { text: '重要' }),
+            el('span', { class: 'muted small', text: '　当日、ホームのいちばん上に出します' })
+          ])
+        ]),
         ui.field('メモ', memoIn),
         !isNew ? ui.btn('この予定を削除', 'danger full mt', function () {
           var msg = ev.repeat

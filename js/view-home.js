@@ -23,10 +23,12 @@
     // iCloud への書き出しは Cloudflare 同期の予備なので、ホームでは案内しない。
     // 使うときは 設定 →「iCloud への書き出し」から。
 
-    /* 警告 */
+    /* 警告。「重要」にした日常の予定は、その日いちばん上に出す */
     var al = sc.alerts(today);
-    if (al.length) {
+    var urgent = plans.filter(function (o) { return o.ev.important; });
+    if (al.length || urgent.length) {
       var box = el('div', { class: 'alerts' });
+      urgent.forEach(function (o) { box.appendChild(planAlert(o)); });
       al.slice(0, 5).forEach(function (a) {
         var href = a.href || (a.project ? '#/project/' + a.project.id : a.date ? '#/day/' + a.date : '#/settings');
         box.appendChild(el('a', { class: 'alert ' + a.level, href: href }, [
@@ -130,6 +132,33 @@
     return row;
   }
 
+  /**
+   * 「重要」にした日常の予定を、締切の警告と同じ形でいちばん上に出す。
+   * チェックは下の一覧と同じ印を使うので、どちらで押しても両方から消える。
+   */
+  function planAlert(o) {
+    var ev = o.ev, E = DL.events;
+    return el('div', { class: 'alert warn plan-alert' }, [
+      el('button', {
+        class: 'alert-main', 'aria-label': ev.title + ' を開く',
+        onclick: function () { DL.views.events.form(ev, { occurrence: o }); }
+      }, [
+        el('span', { class: 'alert-icon' }, ui.icon('alert', 17)),
+        el('span', {}, [
+          el('b', { text: ev.title }),
+          el('span', { text: '　' + E.whenText(o) })
+        ])
+      ]),
+      el('button', {
+        class: 'checkbtn small', 'aria-label': 'やった（ホームから消す）',
+        onclick: function () {
+          S.setEventDone(ev.id, o.date, true);
+          ui.toast('「' + ev.title + '」をホームから消しました（カレンダーには残ります）');
+        }
+      }, ui.icon('check', 15))
+    ]);
+  }
+
   /* 日常の予定1行。中身を押すと直せる。チェックを押すとホームから消える。
      ボタンの中にボタンは置けないので、案件のノルマと同じ組み立てにする */
   function planRow(o) {
@@ -140,6 +169,7 @@
         el('div', { class: 'row-title', text: ev.title }),
         el('div', { class: 'row-sub' }, [
           ui.chip('日常', 'ghosty'),
+          ev.important ? ui.iconChip('alert', '重要', 'warn') : null,
           ui.chip(E.whenText(o), 'soft'),
           ev.repeat ? ui.iconChip('refresh', E.repeatLabel(ev.repeat), 'ghosty') : null
         ]),

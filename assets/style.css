@@ -276,6 +276,14 @@ h1, h2, h3, p { margin: 0; }
 .alert.warn .alert-icon { color: var(--warn); }
 .alert.info { border-left-color: var(--accent); }
 .alert.info .alert-icon { color: var(--accent); }
+/* 「重要」にした日常の予定。押せる本体と、ホームから消すチェックを並べる */
+.plan-alert { padding: 5px 6px 5px 10px; }
+.alert-main {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
+  background: transparent; border: 0; padding: 3px 0; text-align: left;
+  font-size: 13px; color: inherit; cursor: pointer;
+}
+.checkbtn.small { width: 28px; height: 28px; }
 
 .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
 .weekday {

@@ -98,7 +98,7 @@
     lifeBudget: 0,         // 日常（家計簿）の1ヶ月の予算。0で無効
     recurring: [],         // 固定費 [{id,book,name,amount,category,day,startYm,lastYm,active}]
     // 日常の予定。案件のカレンダーとは混ぜず、上部の切替ボタンで見る側を選ぶ
-    events: [],            // [{id,date,days,title,start,end,memo,color,repeat,until}]
+    events: [],            // [{id,date,days,title,start,end,memo,color,important,repeat,until}]
     duties: {},            // その日の働き方 { 'YYYY-MM-DD': 'office'|'remote'|'stay' }
     // ホームの「今日やること」から外した予定 { '<予定ID>|YYYY-MM-DD': true }。
     // カレンダーからは消さないので、いつでも戻せる
@@ -793,6 +793,8 @@
     e.memo = String(e.memo || '').slice(0, 400);
     e.color = HEX.test(String(e.color)) ? e.color : EVENT_COLORS[0].value;
     if (OLD_EVENT_COLORS[e.color]) e.color = OLD_EVENT_COLORS[e.color];   // 旧配色はそのまま置き換える
+    // 重要：その日にホームのいちばん上（アラート欄）へ出す
+    e.important = !!e.important;
     e.repeat = ['weekly', 'monthly', 'yearly'].indexOf(e.repeat) >= 0 ? e.repeat : '';
     e.until = (e.repeat && U.isISO(e.until)) ? e.until : '';   // 繰り返しの終わり（空でずっと）
     e.createdAt = e.createdAt || new Date().toISOString();
