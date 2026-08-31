@@ -475,7 +475,8 @@
       issuerId: x ? x.issuerId : (S.scopeId() || S.settings.defaultIssuerId || ''),
       fileId: x ? x.fileId : ''
     };
-    var picked = null;      // まだ送っていない写真
+    var picked = null;      // まだ送っていない写真（縮めたもの。これを送る）
+    var pickedRaw = null;   // 撮ったままの写真（読み取りに使う。送らない）
 
     var dateIn = ui.input({ type: 'date', value: v.date });
     var amountIn = ui.input({ type: 'number', inputmode: 'numeric', min: 0, value: v.amount, placeholder: '0' });
@@ -541,8 +542,8 @@
         shotBox.appendChild(el('img', { class: 'shot-preview', src: URL.createObjectURL(picked), alt: '' }));
         shotBox.appendChild(el('div', { class: 'muted small', text: picked.name + '（保存すると送ります）' }));
         shotBox.appendChild(el('div', { class: 'row-wrap' }, [
-          ui.btn('金額を読み取る', 'ghost tiny', function () { readAmount(picked); }, 'search'),
-          ui.btn('取り消す', 'ghost tiny', function () { picked = null; renderShot(); })
+          ui.btn('金額を読み取る', 'ghost tiny', function () { readAmount(pickedRaw || picked); }, 'search'),
+          ui.btn('取り消す', 'ghost tiny', function () { picked = null; pickedRaw = null; renderShot(); })
         ]));
         shotBox.appendChild(ocrBox);
         return;
@@ -589,7 +590,7 @@
       if (ocrBusy) return;
       ocrBusy = true;
       U.clear(ocrBox);
-      var note = el('div', { class: 'muted small', text: '読み取っています…（初回は部品の取得に少しかかります）' });
+      var note = el('div', { class: 'muted small', text: '読み取っています…（初回は日本語の学習データの取得に1〜2分かかります。2回目からは速くなります）' });
       var bar = ui.progress(0, null);
       ocrBox.appendChild(note); ocrBox.appendChild(bar);
 
@@ -629,6 +630,9 @@
         input.remove();
         if (!f) return;
         ui.toast('写真を整えています…');
+        // 送るのは縮めたもの、読み取るのは撮ったまま。
+        // 縮めた写真を読ませると細い字が潰れて、金額を取り違える
+        pickedRaw = f;
         E.shrink(f).then(function (small) { picked = small; renderShot(); });
       });
       input.click();

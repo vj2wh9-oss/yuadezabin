@@ -60,7 +60,8 @@
    */
   function shrink(file, opts) {
     opts = opts || {};
-    var max = opts.max || 1600, quality = opts.quality || 0.78;
+    // あとから読み取り直すことがあるので、字が潰れない程度は残す
+    var max = opts.max || 2000, quality = opts.quality || 0.85;
     if (!file || file.type.indexOf('image/') !== 0) return Promise.resolve(file);
 
     return new Promise(function (resolve) {
