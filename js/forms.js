@@ -1106,6 +1106,8 @@
     if (!d) return;
     var work = U.clone(d);
     var isInvoice = work.type === 'invoice';
+    var isEstimate = work.type === 'estimate';
+    var isReceipt = work.type === 'receipt';
 
     function bind(key, node, asNum) {
       node.addEventListener('input', function () { work[key] = asNum ? U.num(node.value, 0) : node.value; });
@@ -1122,8 +1124,9 @@
     function renderTotals() {
       U.clear(totalBox);
       var c = DL.docs.calc(work);
+      var label = isEstimate ? 'お見積金額 ' : isInvoice ? 'ご請求金額 ' : '領収金額 ';
       totalBox.appendChild(el('div', { class: 'preview-main' }, [
-        el('strong', { text: (isInvoice ? 'ご請求金額 ' : '領収金額 ') + DL.docs.yen(isInvoice ? c.payable : c.total) })
+        el('strong', { text: label + DL.docs.yen(isReceipt ? c.total : c.payable) })
       ]));
       totalBox.appendChild(el('div', { class: 'muted small', text:
         '小計 ' + DL.docs.yen(c.subtotal) +
@@ -1229,7 +1232,8 @@
       ]),
       ui.field('先方の住所', addrInput),
       isInvoice ? ui.field('お支払期限', dueInput) : null,
-      isInvoice ? ui.field('件名', txt('subject', '例）表紙イラスト制作')) : null,
+      isEstimate ? ui.field('有効期限', date('validUntil'), 'この日までのお見積り、として書面に入ります') : null,
+      isReceipt ? null : ui.field('件名', txt('subject', '例）表紙イラスト制作')),
       ui.section('明細'),
       itemsBox,
       totalBox,
@@ -1237,8 +1241,9 @@
       ui.field('税率（%）', taxRate),
       el('label', { class: 'row-check' }, [wh, el('span', { text: '源泉徴収税を差し引く' })]),
       ui.field('源泉徴収税率（%）', whRate, '報酬が100万円以下の場合は 10.21% です'),
-      !isInvoice ? ui.field('但し書き', txt('proviso', '例）イラスト制作費として')) : null,
-      !isInvoice ? ui.field('お支払方法', txt('paymentMethod', '例）銀行振込')) : null,
+      isEstimate ? ui.field('納期', txt('deliveryNote', '例）ご発注から3週間')) : null,
+      isReceipt ? ui.field('但し書き', txt('proviso', '例）イラスト制作費として')) : null,
+      isReceipt ? ui.field('お支払方法', txt('paymentMethod', '例）銀行振込')) : null,
       ui.field('備考', ui.textarea({ value: work.note, placeholder: '任意' }))
     ]);
     // 備考は textarea を直接ひもづける

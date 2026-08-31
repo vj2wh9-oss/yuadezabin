@@ -36,11 +36,14 @@
     }
 
     /* ---- 対象の書類 ---- */
-    var all = S.allDocs().filter(function (e) {
+    var inYear = S.allDocs().filter(function (e) {
       if (String(e.doc.issueDate).slice(0, 4) !== String(y)) return false;
       if (active && (e.doc.issuerId || '') !== active) return false;
       return true;
     });
+    // 見積書はまだ売上ではないので、集計とは別に並べる
+    var estimates = inYear.filter(function (e) { return e.doc.type === 'estimate'; });
+    var all = inYear.filter(function (e) { return e.doc.type !== 'estimate'; });
 
     var totals = D.sales(all);
     // 支援金も売上に数える。名義を絞っているときは、その名義のぶんだけ
@@ -81,6 +84,9 @@
 
     /* ---- 支援サイト ---- */
     wrap.appendChild(fanboxSection(fb, y));
+
+    /* ---- 見積書 ---- */
+    if (estimates.length) wrap.appendChild(estimateSection(estimates));
 
     /* ---- 書類の一覧 ---- */
     wrap.appendChild(ui.section('書類', el('span', { class: 'muted small', text: all.length + '件' })));
@@ -520,12 +526,36 @@
         el('div', { class: 'row-sub' }, [
           ui.chip(U.fmtYMD(d.issueDate), 'soft'),
           ui.chip(D.yen(c.payable), 'ghosty'),
-          ui.chip(D.STATUS_LABEL[d.status], d.status === 'paid' ? 'ok' : d.status === 'issued' ? 'soft' : 'ghosty'),
+          ui.chip(D.statusLabel(d), D.statusTone(d)),
           issuer ? ui.chip(issuer.name || '名義', 'ghosty') : null
         ])
       ]),
       el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
     ]);
+  }
+
+  /**
+   * 見積書のまとめ。
+   * 出したまま返事が無いものを見つけられるように、提出済みだけ合計を出す。
+   */
+  function estimateSection(list) {
+    var box = el('div', {});
+    var open = list.filter(function (e) { return e.doc.status === 'issued'; });
+    var won = list.filter(function (e) { return e.doc.status === 'accepted'; });
+    var openSum = open.reduce(function (n, e) { return n + D.calc(e.doc).payable; }, 0);
+    var wonSum = won.reduce(function (n, e) { return n + D.calc(e.doc).payable; }, 0);
+
+    box.appendChild(ui.section('見積書', el('span', { class: 'muted small', text: list.length + '件' })));
+    box.appendChild(el('div', { class: 'card sum-grid' }, [
+      sumBox('提出中', D.yen(openSum), open.length ? 'warn' : ''),
+      sumBox('受注', D.yen(wonSum), 'ok')
+    ]));
+    var rows = el('div', { class: 'list' });
+    list.forEach(function (e) { rows.appendChild(docRow(e)); });
+    box.appendChild(rows);
+    box.appendChild(el('p', { class: 'muted small pad', text:
+      '見積書は売上に数えません。受注したら「この見積書から請求書」で請求書を起こせます。' }));
+    return box;
   }
 
   /* ホームに出す当月・当年のミニ集計 */

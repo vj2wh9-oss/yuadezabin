@@ -41,7 +41,7 @@
     var titles = {
       home: 'METEO365', calendar: 'カレンダー', projects: '案件',
       settings: '設定', day: '日別', project: '案件の詳細',
-      docs: '請求書・領収書', doc: '書類', sales: '売上', files: 'ファイル', books: '経理'
+      docs: '書類', doc: '書類', sales: '売上', files: 'ファイル', books: '経理'
     };
     titleEl.textContent = titles[route.name] || 'METEO365';
 

@@ -1,11 +1,30 @@
-/* 請求書・領収書：金額の計算と、印刷できる書面の組み立て */
+/* 見積書・請求書・領収書：金額の計算と、印刷できる書面の組み立て */
 (function (DL) {
   'use strict';
   var U = DL.util, el = U.el;
 
-  var TYPE_LABEL = { invoice: '請求書', receipt: '領収書' };
-  var TYPE_ICON = { invoice: 'invoice', receipt: 'receipt' };
+  var TYPE_LABEL = { estimate: '見積書', invoice: '請求書', receipt: '領収書' };
+  var TYPE_ICON = { estimate: 'estimate', invoice: 'invoice', receipt: 'receipt' };
   var STATUS_LABEL = { draft: '下書き', issued: '発行済み', paid: '入金済み' };
+  // 見積書は「入金」ではなく「受注したか」で進むので、状態も言葉も別にする
+  var ESTIMATE_STATUS_LABEL = { draft: '下書き', issued: '提出済み', accepted: '受注', declined: '見送り' };
+
+  /** その種類で使える状態の一覧（値→表示名） */
+  function statusLabels(type) {
+    return type === 'estimate' ? ESTIMATE_STATUS_LABEL : STATUS_LABEL;
+  }
+
+  function statusLabel(doc) {
+    return statusLabels(doc && doc.type)[doc && doc.status] || '';
+  }
+
+  /** 一覧の印の色。決まった状態＝ok、途中＝soft、下書き＝ghosty */
+  function statusTone(doc) {
+    var s = doc && doc.status;
+    if (s === 'paid' || s === 'accepted') return 'ok';
+    if (s === 'declined') return 'ghosty';
+    return s === 'issued' ? 'soft' : 'ghosty';
+  }
   var TAX_MODE_LABEL = { exclusive: '税抜', inclusive: '税込', none: '非課税' };
   var HONORIFICS = ['御中', '様'];
   var UNITS = ['式', '点', '枚', 'ページ', '時間', '件', '本'];
@@ -62,6 +81,14 @@
     return U.toISO(new Date(d.getFullYear(), d.getMonth() + 2, 0));   // 翌月の末日
   }
 
+  /**
+   * 見積書の有効期限の既定値。
+   * 出してから1ヶ月を目安にする（この日を過ぎたら出し直す、という区切り）。
+   */
+  function defaultValidUntil(issueDate) {
+    return U.addDays(U.isISO(issueDate) ? issueDate : U.today(), 30);
+  }
+
   /* 新しい書類のひな形。案件と取引先の情報から埋められるところを埋める */
   function blank(type, project, issuerId) {
     var s = DL.store.settings;
@@ -74,6 +101,8 @@
       clientId: (client && client.id) || '',
       issueDate: today,
       dueDate: type === 'invoice' ? defaultDueDate(today, client) : '',
+      validUntil: type === 'estimate' ? defaultValidUntil(today) : '',
+      deliveryNote: '',
       clientName: (client && client.name) || (project && project.client) || '',
       honorific: (client && client.honorific) || '御中',
       clientZip: (client && client.zip) || '',
@@ -118,6 +147,24 @@
     return d;
   }
 
+  /**
+   * 請求書を見積書から起こす。
+   * 明細と金額はそのまま引き継ぎ、日付と番号だけ入れ直す。
+   */
+  function fromEstimate(est, project) {
+    var d = U.clone(est);
+    delete d.id;
+    d.type = 'invoice';
+    d.number = '';
+    d.issueDate = U.today();
+    d.validUntil = '';
+    d.status = 'draft';
+    d.subject = est.subject || (project && project.title) || '';
+    var client = est.clientId ? DL.store.getClient(est.clientId) : null;
+    d.dueDate = defaultDueDate(d.issueDate, client);
+    return d;
+  }
+
   /* ---------------- 書面の組み立て ---------------- */
 
   function row(k, v) {
@@ -130,6 +177,8 @@
   function sheet(doc, project, issuer) {
     var c = calc(doc);
     var isInvoice = doc.type === 'invoice';
+    var isEstimate = doc.type === 'estimate';
+    var isReceipt = doc.type === 'receipt';
     var wrap = el('div', { class: 'doc-sheet' });
 
     /* 見出し */
@@ -138,7 +187,8 @@
       el('div', { class: 'ds-meta' }, [
         doc.number ? el('div', { text: 'No. ' + doc.number }) : null,
         el('div', { text: '発行日　' + U.fmtYMD(doc.issueDate) }),
-        isInvoice && U.isISO(doc.dueDate) ? el('div', { text: 'お支払期限　' + U.fmtYMD(doc.dueDate) }) : null
+        isInvoice && U.isISO(doc.dueDate) ? el('div', { text: 'お支払期限　' + U.fmtYMD(doc.dueDate) }) : null,
+        isEstimate && U.isISO(doc.validUntil) ? el('div', { text: '有効期限　' + U.fmtYMD(doc.validUntil) }) : null
       ])
     ]));
 
@@ -168,16 +218,19 @@
 
     /* 合計金額 */
     wrap.appendChild(el('div', { class: 'ds-total' }, [
-      el('span', { class: 'ds-total-label', text: isInvoice ? 'ご請求金額' : '領収金額' }),
+      el('span', { class: 'ds-total-label', text: isEstimate ? 'お見積金額' : isInvoice ? 'ご請求金額' : '領収金額' }),
       el('span', { class: 'ds-total-value', text: yen(c.payable) }),
       el('span', { class: 'ds-total-note', text: doc.taxMode === 'none' ? '（非課税）' : '（税込）' })
     ]));
 
-    if (!isInvoice) {
+    if (isReceipt) {
       wrap.appendChild(el('p', { class: 'ds-proviso', text: '但し　' + (doc.proviso || '') }));
       wrap.appendChild(el('p', { class: 'ds-received', text: '上記正に領収いたしました。' }));
-    } else if (doc.subject) {
-      wrap.appendChild(el('p', { class: 'ds-subject', text: '件名：' + doc.subject }));
+    } else {
+      if (isEstimate) {
+        wrap.appendChild(el('p', { class: 'ds-received', text: '下記のとおりお見積り申し上げます。' }));
+      }
+      if (doc.subject) wrap.appendChild(el('p', { class: 'ds-subject', text: '件名：' + doc.subject }));
     }
 
     /* 明細 */
@@ -206,7 +259,8 @@
       row('合計', yen(c.total)),
       doc.withholding ? row('源泉徴収税（' + doc.withholdingRate + '%）', '-' + yen(c.withholding)) : null,
       doc.withholding ? el('tr', { class: 'grand' }, [
-        el('th', { text: isInvoice ? 'お支払金額' : '領収金額' }), el('td', { text: yen(c.payable) })
+        el('th', { text: isEstimate ? 'お見積金額' : isInvoice ? 'お支払金額' : '領収金額' }),
+        el('td', { text: yen(c.payable) })
       ]) : null
     ]);
     wrap.appendChild(el('div', { class: 'ds-sums-wrap' }, sums));
@@ -222,10 +276,21 @@
         el('div', { class: 'ds-small', text: '※恐れ入りますが、振込手数料は貴社にてご負担をお願いいたします。' })
       ]));
     }
-    if (!isInvoice && doc.paymentMethod) {
+    if (isReceipt && doc.paymentMethod) {
       wrap.appendChild(el('div', { class: 'ds-bank' }, [
         el('div', { class: 'ds-bank-title', text: 'お支払方法' }),
         el('div', { class: 'ds-small', text: doc.paymentMethod })
+      ]));
+    }
+
+    /* 見積書の条件（納期・有効期限）。書いていない項目は出さない */
+    if (isEstimate && (doc.deliveryNote || U.isISO(doc.validUntil))) {
+      wrap.appendChild(el('div', { class: 'ds-bank' }, [
+        el('div', { class: 'ds-bank-title', text: 'お見積条件' }),
+        doc.deliveryNote ? el('div', { class: 'ds-small', text: '納期　' + doc.deliveryNote }) : null,
+        U.isISO(doc.validUntil)
+          ? el('div', { class: 'ds-small', text: '有効期限　' + U.fmtYMD(doc.validUntil) + 'まで' })
+          : null
       ]));
     }
 
@@ -243,9 +308,11 @@
    * 売上として数える書類かどうか。
    * 請求書を基本にし、請求書が1枚も無い案件のときだけ領収書を数える
    * （請求書から起こした領収書を二重に数えないため）。
+   * 見積書はまだ売上ではないので数えない。
    */
   function countsAsSale(project, doc) {
     if (doc.type === 'invoice') return true;
+    if (doc.type !== 'receipt') return false;
     return !(project.docs || []).some(function (d) { return d.type === 'invoice'; });
   }
 
@@ -279,6 +346,7 @@
     var list = project.docs || [];
     return {
       count: list.length,
+      estimate: list.filter(function (d) { return d.type === 'estimate'; }).length,
       invoice: list.filter(function (d) { return d.type === 'invoice'; }).length,
       receipt: list.filter(function (d) { return d.type === 'receipt'; }).length,
       unpaid: list.filter(function (d) { return d.type === 'invoice' && d.status !== 'paid'; }).length,
@@ -288,10 +356,13 @@
 
   DL.docs = {
     TYPE_LABEL: TYPE_LABEL, TYPE_ICON: TYPE_ICON, STATUS_LABEL: STATUS_LABEL,
+    ESTIMATE_STATUS_LABEL: ESTIMATE_STATUS_LABEL,
+    statusLabels: statusLabels, statusLabel: statusLabel, statusTone: statusTone,
     TAX_MODE_LABEL: TAX_MODE_LABEL, HONORIFICS: HONORIFICS, UNITS: UNITS,
     PAYMENT_METHODS: PAYMENT_METHODS,
     yen: yen, calc: calc, blank: blank, applyClient: applyClient, defaultDueDate: defaultDueDate,
-    fromInvoice: fromInvoice, sheet: sheet, summary: summary,
+    defaultValidUntil: defaultValidUntil,
+    fromInvoice: fromInvoice, fromEstimate: fromEstimate, sheet: sheet, summary: summary,
     countsAsSale: countsAsSale, sales: sales
   };
 })(window.DL);

@@ -113,7 +113,7 @@
       baseSavedAt: '',     // 同期した時点の savedAt（以後の変更の有無を見る）
       lastAt: '', lastError: ''
     },
-    docSeq: { invoice: {}, receipt: {} },  // 書類番号の連番（年ごと）
+    docSeq: { estimate: {}, invoice: {}, receipt: {} },  // 書類番号の連番（年ごと）
     taxRate: 10,           // 消費税率(%)
     withholdingRate: 10.21,// 源泉徴収税率(%)
     templates: U.clone(TEMPLATES)
@@ -234,9 +234,9 @@
 
   /* 旧形式 {invoice:12} は「今年ぶんの連番」として引き継ぐ（以後は年ごとにリセット） */
   function migrateDocSeq(seq) {
-    var out = { invoice: {}, receipt: {} };
+    var out = { estimate: {}, invoice: {}, receipt: {} };
     var y = U.today().slice(0, 4);
-    ['invoice', 'receipt'].forEach(function (t) {
+    ['estimate', 'invoice', 'receipt'].forEach(function (t) {
       var v = seq && seq[t];
       if (typeof v === 'number') { if (v > 0) out[t][y] = v; }
       else if (v && typeof v === 'object') {
@@ -340,7 +340,7 @@
   function normalizeDoc(d) {
     d = d || {};
     d.id = d.id || U.uid();
-    d.type = d.type === 'receipt' ? 'receipt' : 'invoice';
+    d.type = ['receipt', 'estimate'].indexOf(d.type) >= 0 ? d.type : 'invoice';
     d.number = d.number || '';
     d.issuerId = d.issuerId || '';
     d.clientId = d.clientId || '';
@@ -367,7 +367,13 @@
     d.note = d.note || '';
     d.proviso = d.proviso || '';               // 領収書の但し書き
     d.paymentMethod = d.paymentMethod || '';   // 領収書のお支払方法
-    d.status = ['draft', 'issued', 'paid'].indexOf(d.status) >= 0 ? d.status : 'draft';
+    d.validUntil = d.validUntil || '';         // 見積書の有効期限
+    d.deliveryNote = d.deliveryNote || '';     // 見積書の納期
+    // 見積書は「受注したか」で進むので、使える状態が請求書とは違う
+    var states = d.type === 'estimate'
+      ? ['draft', 'issued', 'accepted', 'declined']
+      : ['draft', 'issued', 'paid'];
+    d.status = states.indexOf(d.status) >= 0 ? d.status : 'draft';
     d.createdAt = d.createdAt || new Date().toISOString();
     return d;
   }
@@ -1096,17 +1102,17 @@
     save();
   }
 
-  var NUM_PREFIX = { invoice: 'INV', receipt: 'RCP' };
+  var NUM_PREFIX = { estimate: 'EST', invoice: 'INV', receipt: 'RCP' };
 
   /**
    * 書類番号を採番する。連番は「種類 × 発行年」ごとで、年が変わると 0001 に戻る。
    * バックアップの読み込み後などに番号が重複しないよう、実在する番号の最大値も見る。
-   * @param {'invoice'|'receipt'} type
+   * @param {'estimate'|'invoice'|'receipt'} type
    * @param {string} [dateISO] 発行日。省略時は今日
    */
   function issueNumber(type, dateISO) {
     var year = (U.isISO(dateISO) ? dateISO : U.today()).slice(0, 4);
-    if (!state.settings.docSeq) state.settings.docSeq = { invoice: {}, receipt: {} };
+    if (!state.settings.docSeq) state.settings.docSeq = { estimate: {}, invoice: {}, receipt: {} };
     var seq = state.settings.docSeq[type] || (state.settings.docSeq[type] = {});
     var next = Math.max(U.num(seq[year], 0), highestNumber(type, year)) + 1;
     seq[year] = next;
@@ -1515,7 +1521,7 @@
         state.projects.push(p); r.added++;
       });
       // 書類番号の連番は、両方の大きいほうを採用して重複を防ぐ
-      ['invoice', 'receipt'].forEach(function (t) {
+      ['estimate', 'invoice', 'receipt'].forEach(function (t) {
         var from = (incoming.settings.docSeq || {})[t] || {};
         var to = state.settings.docSeq[t] || (state.settings.docSeq[t] = {});
         Object.keys(from).forEach(function (y) {

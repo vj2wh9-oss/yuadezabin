@@ -32,6 +32,8 @@
     printer: '<path d="M7 8V3h10v5"/><path d="M3.5 8h17v8h-3.5v5h-10v-5H3.5z"/><path d="M7.5 16h9"/><path d="M17 10.5h1.5"/>',
     invoice: '<path d="M4.5 3.5h15v17h-15z"/><path d="M9 8.5l3 3 3-3"/><path d="M12 11.5v5"/><path d="M9.3 13.2h5.4M9.3 15.4h5.4"/>',
     receipt: '<path d="M4.5 3.5h15v17l-2.5-1.6-2.5 1.6-2.5-1.6-2.5 1.6L7 18.9l-2.5 1.6z"/><path d="M8 8.5h8M8 12h8"/>',
+    // 見積書：まだ確定していない書類なので、下の行を短くして「途中」に見せる
+    estimate: '<path d="M4.5 3.5h15v17h-15z"/><path d="M8 8.5h8M8 12h8"/><path d="M8 15.5h4"/>',
     task: '<path d="M4.5 3.5h15v17h-15z"/><path d="M8 9l2.2 2.2L15 6.5"/><path d="M8 15.5h8"/>',
     // 売上：軸と棒グラフ
     sales: '<path d="M3.5 3.5v17h17"/><path d="M7 17.2v-5.6h3.2v5.6zM13.3 17.2V7.2h3.2v10z"/>',

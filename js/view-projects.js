@@ -118,7 +118,7 @@
     // 仕事の案件は書類画面へワンタップで行けるようにする
     if (p.kind === 'work') {
       row.appendChild(el('a', {
-        class: 'iconbtn small doc-shortcut', href: '#/docs/' + p.id, 'aria-label': '請求書・領収書',
+        class: 'iconbtn small doc-shortcut', href: '#/docs/' + p.id, 'aria-label': '見積書・請求書・領収書',
         onclick: function (e) { e.stopPropagation(); }
       }, ui.icon('invoice', 18)));
     }

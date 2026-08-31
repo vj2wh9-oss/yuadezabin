@@ -33,12 +33,12 @@
     ]));
 
     /* ---- 名義 ---- */
-    wrap.appendChild(ui.section('名義（請求書・領収書の発行元）',
+    wrap.appendChild(ui.section('名義（見積書・請求書・領収書の発行元）',
       el('a', { class: 'link', href: '#/sales', text: '売上' })));
     var issuerBox = el('div', { class: 'card' });
     var list = S.issuers();
     if (!list.length) {
-      issuerBox.appendChild(el('p', { class: 'muted small', text: '登録するとお仕事の案件から請求書・領収書を発行できます。名義ごとに住所・ロゴ・振込先を持てます。' }));
+      issuerBox.appendChild(el('p', { class: 'muted small', text: '登録するとお仕事の案件から見積書・請求書・領収書を発行できます。名義ごとに住所・ロゴ・振込先を持てます。' }));
     }
     list.forEach(function (x) {
       var isDefault = S.settings.defaultIssuerId === x.id;

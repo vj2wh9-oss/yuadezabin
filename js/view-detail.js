@@ -85,15 +85,16 @@
       })));
     }
 
-    /* ---- 請求書・領収書（仕事のみ） ---- */
+    /* ---- 見積書・請求書・領収書（仕事のみ） ---- */
     if (p.kind === 'work') {
       var ds = DL.docs.summary(p);
       wrap.appendChild(el('a', { class: 'row docs-entry', href: '#/docs/' + p.id }, [
         el('div', { class: 'row-main' }, [
           el('div', { class: 'row-title' }, [
-            ui.icon('invoice', 17), el('span', { text: '請求書・領収書' })
+            ui.icon('invoice', 17), el('span', { text: '見積書・請求書・領収書' })
           ]),
           el('div', { class: 'row-sub' }, ds.count ? [
+            ds.estimate ? ui.chip('見積書 ' + ds.estimate, 'ghosty') : null,
             ui.chip('請求書 ' + ds.invoice, 'soft'),
             ui.chip('領収書 ' + ds.receipt, 'ghosty'),
             ds.unpaid ? ui.chip('未入金 ' + ds.unpaid, 'warn') : ui.chip('入金済み', 'ok')

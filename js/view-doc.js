@@ -36,6 +36,7 @@
 
     wrap.appendChild(el('div', { class: 'row-wrap doc-new' }, [
       ui.btn('請求書を作る', 'primary', function () { create(p, 'invoice'); }, 'invoice'),
+      ui.btn('見積書を作る', 'ghost', function () { create(p, 'estimate'); }, 'estimate'),
       ui.btn('領収書を作る', 'ghost', function () { create(p, 'receipt'); }, 'receipt')
     ]));
 
@@ -70,8 +71,8 @@
         ]),
         el('div', { class: 'row-sub' }, [
           ui.chip(U.fmtYMD(d.issueDate), 'soft'),
-          ui.chip(D.yen(d.type === 'invoice' ? c.payable : c.total), 'ghosty'),
-          ui.chip(D.STATUS_LABEL[d.status], d.status === 'paid' ? 'ok' : d.status === 'issued' ? 'soft' : 'ghosty')
+          ui.chip(D.yen(d.type === 'receipt' ? c.total : c.payable), 'ghosty'),
+          ui.chip(D.statusLabel(d), D.statusTone(d))
         ])
       ]),
       el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
@@ -101,6 +102,20 @@
             ui.toast('領収書を作りました');
           }, 'receipt')
         : null,
+      d.type === 'estimate'
+        ? ui.btn('この見積書から請求書', 'ghost', function () {
+            var nd = S.addDoc(p.id, D.fromEstimate(d, p));
+            // 出した見積がそのまま通ったので、見積のほうも受注にしておく
+            if (d.status !== 'accepted') {
+              S.updateDoc(p.id, d.id, {
+                status: 'accepted',
+                number: d.number || S.issueNumber('estimate', d.issueDate)
+              });
+            }
+            location.hash = '#/doc/' + p.id + '/' + nd.id;
+            ui.toast('請求書を作りました（見積は受注にしました）');
+          }, 'invoice')
+        : null,
       ui.btn('複製', 'ghost', function () {
         var copy = U.clone(d); delete copy.id; copy.number = ''; copy.status = 'draft';
         copy.issueDate = U.today();
@@ -111,14 +126,15 @@
     ]));
 
     /* 状態 */
+    var labels = D.statusLabels(d.type);
     var statusSeg = ui.segmented(
-      Object.keys(D.STATUS_LABEL).map(function (k) { return { value: k, label: D.STATUS_LABEL[k] }; }),
+      Object.keys(labels).map(function (k) { return { value: k, label: labels[k] }; }),
       d.status, function (v) {
         var patch = { status: v };
         // 発行済みにするときに番号が無ければ採番する（発行日の年の連番）
         if (v !== 'draft' && !d.number) patch.number = S.issueNumber(d.type, d.issueDate);
         S.updateDoc(p.id, d.id, patch);
-        ui.toast(v === 'draft' ? '下書きに戻しました' : D.STATUS_LABEL[v] + 'にしました');
+        ui.toast(v === 'draft' ? '下書きに戻しました' : labels[v] + 'にしました');
       }
     );
     var numHint = d.number
