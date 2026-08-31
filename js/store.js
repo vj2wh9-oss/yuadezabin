@@ -217,6 +217,7 @@
     s.schema = SCHEMA;
     s.settings = Object.assign(U.clone(DEFAULT_SETTINGS), s.settings || {});
     delete s.settings.offDays;   // 曜日単位の休みは廃止した（古いデータから取り除く）
+    delete s.settings.fanboxIssuerId;   // 支援金は名義で分けなくなった
     s.settings.templates = Object.assign(U.clone(TEMPLATES), s.settings.templates || {});
     s.settings.sync = Object.assign(U.clone(DEFAULT_SETTINGS.sync), s.settings.sync || {});
     s.settings.clients = (s.settings.clients || []).map(normalizeClient);
