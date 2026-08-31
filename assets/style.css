@@ -818,6 +818,10 @@ h1, h2, h3, p { margin: 0; }
 .sum-box.warn { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); }
 .sum-box.warn b { color: var(--warn); }
 
+/* 手順の箇条書き（設定の中の「こうやって使う」） */
+.howto { margin: 0; padding-left: 1.3em; font-size: 12.5px; color: var(--muted); }
+.howto li { margin: 3px 0; }
+
 /* ---------------- 頒布と在庫 ---------------- */
 .stock-row { width: 100%; text-align: left; cursor: pointer; font: inherit; color: inherit; }
 .stock-row.dim { opacity: .6; }

@@ -336,6 +336,24 @@
     var box = el('div', { class: 'card' });
     var total = rows.reduce(function (s, r) { return s + r.amount; }, 0);
 
+    // FANBOX のページから送られてきたものがあれば、いちばん上で知らせる
+    var waiting = DL.fanbox.inbox();
+    if (waiting) {
+      box.appendChild(el('div', { class: 'alert info' }, [
+        el('span', { class: 'alert-icon' }, ui.icon('cloud', 17)),
+        el('span', {}, [
+          el('div', { text: 'FANBOX からデータが届いています' }),
+          el('div', { class: 'muted small', text: when(waiting.at) + 'に送られました' })
+        ])
+      ]));
+      box.appendChild(el('div', { class: 'row-wrap' }, [
+        ui.btn('内容を見て取り込む', 'primary', function () { pasteSheet(waiting.text); }, 'arrowDown'),
+        ui.btn('捨てる', 'ghost', function () {
+          DL.fanbox.clearInbox().then(function () { ui.toast('捨てました'); DL.app.render(); });
+        }, 'trash')
+      ]));
+    }
+
     if (!rows.length) {
       box.appendChild(el('p', { class: 'muted small',
         text: 'pixivFANBOX の「支援金管理／振込」の画面を開いて、月ごとの表をコピーし、下のボタンから貼り付けてください。年月と支援金を読み取ってグラフに重ねます。' }));
@@ -372,7 +390,7 @@
     }
 
     box.appendChild(el('div', { class: 'row-wrap' }, [
-      ui.btn('表を貼り付けて取り込む', 'primary', function () { pasteSheet(); }, 'arrowDown'),
+      ui.btn('表を貼り付けて取り込む', waiting ? 'ghost' : 'primary', function () { pasteSheet(); }, 'arrowDown'),
       ui.btn('1ヶ月ぶん手で入れる', 'ghost', function () { manualSheet(y); }, 'plus')
     ]));
 
@@ -385,8 +403,13 @@
   }
 
   /* 貼り付けた表を読み取る。列が複数あるときは、どれが支援金かを選ばせる */
-  function pasteSheet() {
-    var ta = ui.textarea({ placeholder: '例）\n2026年1月　¥12,000\n2025年12月　¥9,500' });
+  /**
+   * 貼り付けた表を読み取る。列が複数あるときは、どれが支援金かを選ばせる。
+   * @param {string} [initial] FANBOX から届いた文字（あればそれを入れて開く）
+   */
+  function pasteSheet(initial) {
+    var fromInbox = !!initial;
+    var ta = ui.textarea({ value: initial || '', placeholder: '例）\n2026年1月　¥12,000\n2025年12月　¥9,500' });
     ta.rows = 6;
     var preview = el('div', { class: 'fb-preview' });
     var colWrap = el('div');
@@ -452,7 +475,9 @@
     var close = ui.sheet({
       title: '支援金を取り込む',
       body: el('div', { class: 'form' }, [
-        el('p', { class: 'muted small', text: 'FANBOX の「支援金管理／振込」の画面を上から下までそのまま選んでコピーし、貼り付けてください。年月と「支援金」の欄だけを拾います。すでに入っている月は自動で除きます。' }),
+        el('p', { class: 'muted small', text: fromInbox
+          ? 'FANBOX のページから届いた文字です。年月と「支援金」の欄だけを拾います。すでに入っている月は自動で除きます。'
+          : 'FANBOX の「支援金管理／振込」の画面を上から下までそのまま選んでコピーし、貼り付けてください。年月と「支援金」の欄だけを拾います。すでに入っている月は自動で除きます。' }),
         ui.field('貼り付け', ta),
         colWrap,
         overWrap,
@@ -462,6 +487,9 @@
         ui.btn('キャンセル', 'ghost', function () { close(); }),
         ui.btn('取り込む', 'primary', function () {
           if (!parsed.rows.length) { ui.toast('読み取れる行がありません', 'warn'); return; }
+          // 先に受け口を空にしてから入れる。
+          // 入れたところで画面が描き直されるので、案内もそこで消える
+          if (fromInbox) DL.fanbox.clearInbox();
           var r = S.putFanbox(parsed.rows, { overwrite: overwrite });
           close();
           var parts = [];
@@ -545,6 +573,14 @@
       ]));
     }
     return box;
+  }
+
+  /* 届いた時刻。今日なら時刻、それより前なら日付で出す */
+  function when(iso) {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    var day = U.toISO(d);
+    return day === U.today() ? U.pad(d.getHours()) + ':' + U.pad(d.getMinutes()) : U.fmtMD(day);
   }
 
   function sumFanbox(rows) {

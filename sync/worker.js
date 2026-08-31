@@ -23,6 +23,13 @@
  *   GET    /v1/push/state  → { subs, queued, sent, vapid } 様子を見るため
  *   毎分の Cron で、時刻が来たものを送る（送った印を残すので二度送らない）
  *
+ * 外から届くもの（FANBOX の取り込み）
+ *   POST   /v1/inbox/fanbox → 本文 {text, from} を1件だけ預かる（新しいものが上書き）
+ *   GET    /v1/inbox/fanbox → { exists, at, from, text }
+ *   DELETE /v1/inbox/fanbox → 消す
+ *   FANBOX のページで動かすブックマークレットが送り、アプリが受け取って読む。
+ *   合鍵で守るので、CORS は fanbox.cc からの送信も通す。
+ *
  * 設定（wrangler.jsonc）
  *   KV 名前空間 SYNC を bind する
  *   R2 バケット FILES を bind する（ファイル共有を使うときだけ）
@@ -37,10 +44,13 @@ const MAX_BYTES = 20 * 1024 * 1024;   // KV の上限は25MBなので余裕を�
 const MIN_TOKEN = 24;                 // 合鍵の最低長
 // Workers の受信上限（無料・Proは100MB）。これを超えるとそもそも届かない
 const MAX_FILE_BYTES = 100 * 1024 * 1024;
+// 外から預かる文字（FANBOX のページの文字）。表1枚ぶんに十分な大きさ
+const MAX_INBOX_BYTES = 256 * 1024;
+const INBOX_KEEP_DAYS = 14;
 
 export default {
   async fetch(request, env) {
-    const cors = corsHeaders(env);
+    const cors = corsHeaders(env, request);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
     const url = new URL(request.url);
@@ -52,7 +62,7 @@ export default {
         ok: true,
         service: '案件ポータルの同期API',
         bindings: { kv: !!env.SYNC, r2: !!env.FILES },
-        endpoints: ['/v1/meta', '/v1/state', '/v1/files'],
+        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox'],
         note: '各 /v1/... は Authorization: Bearer <合鍵> が必要です'
       }, 200, cors);
     }
@@ -140,6 +150,10 @@ export default {
       if (url.pathname.startsWith('/v1/push/')) {
         return push(request, env, cors, url, id);
       }
+
+      if (url.pathname === '/v1/inbox/fanbox') {
+        return inbox(request, env, cors, id);
+      }
     } catch (e) {
       return json({ error: 'server_error', message: String(e && e.message || e) }, 500, cors);
     }
@@ -152,6 +166,46 @@ export default {
     ctx.waitUntil(sendDue(env));
   }
 };
+
+/* ---------------- 外から届くもの（FANBOX の取り込み） ---------------- */
+
+/**
+ * FANBOX のページで動くブックマークレットからの預かり所。
+ * 読み取りはしない。文字をそのまま置いておき、アプリ側が読み解く
+ * （読み取りの決まりごとを1か所に集めておきたいため）。
+ */
+async function inbox(request, env, cors, id) {
+  const key = 'inbox:' + id + ':fanbox';
+
+  if (request.method === 'GET') {
+    const rec = await env.SYNC.get(key, 'json');
+    if (!rec) return json({ exists: false }, 200, cors);
+    return json({ exists: true, at: rec.at, from: rec.from || '', text: rec.text || '' }, 200, cors);
+  }
+
+  if (request.method === 'DELETE') {
+    await env.SYNC.delete(key);
+    return json({ ok: true }, 200, cors);
+  }
+
+  if (request.method === 'POST' || request.method === 'PUT') {
+    let body;
+    try { body = await request.json(); } catch (e) { return json({ error: 'bad_json' }, 400, cors); }
+    const text = String(body && body.text || '');
+    if (!text.trim()) return json({ error: 'empty' }, 400, cors);
+    if (text.length > MAX_INBOX_BYTES) return json({ error: 'too_large' }, 413, cors);
+    const rec = {
+      at: new Date().toISOString(),
+      from: String(body && body.from || '').slice(0, 80),
+      text: text
+    };
+    // 置きっぱなしにしない。取り込まれなくても2週間で消える
+    await env.SYNC.put(key, JSON.stringify(rec), { expirationTtl: INBOX_KEEP_DAYS * 24 * 3600 });
+    return json({ ok: true, at: rec.at, length: text.length }, 200, cors);
+  }
+
+  return json({ error: 'not_found' }, 404, cors);
+}
 
 /* ---------------- 共有ファイル（R2） ---------------- */
 
@@ -516,9 +570,20 @@ function bearer(request) {
   return h.startsWith('Bearer ') ? h.slice(7).trim() : '';
 }
 
-function corsHeaders(env) {
+/**
+ * CORS のヘッダ。
+ * ALLOW_ORIGIN を決めているときでも、FANBOX のページからの送信だけは通す
+ * （取り込みのブックマークレットがそこで動くため）。合鍵で守るので開けても危なくない。
+ */
+const EXTRA_ORIGINS = ['https://www.fanbox.cc', 'https://fanbox.cc'];
+
+function corsHeaders(env, request) {
+  const from = request && request.headers.get('origin');
+  const allow = env.ALLOW_ORIGIN && EXTRA_ORIGINS.indexOf(from) >= 0
+    ? from
+    : (env.ALLOW_ORIGIN || '*');
   return {
-    'access-control-allow-origin': env.ALLOW_ORIGIN || '*',
+    'access-control-allow-origin': allow,
     'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'access-control-allow-headers': 'authorization, content-type, x-file-name, x-file-folder, x-file-type, x-file-project, x-file-by',
     'access-control-expose-headers': 'content-disposition, content-length',

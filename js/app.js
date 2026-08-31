@@ -81,6 +81,8 @@
       });
       // 通知の予定表も預け直す（予定を直したぶんを反映するため）
       queueNotify();
+      // FANBOX から送られてきたものが無いか見に行く
+      if (['home', 'sales', 'settings'].indexOf(route.name) >= 0) checkFanbox();
     }
 
     // 同期ボタン（つないでいるときだけ）
@@ -136,6 +138,8 @@
           ui.toast(r.status === 'pushed' ? '送りました'
             : r.status === 'pulled' ? '受け取りました'
             : r.status === 'merged' ? '統合しました' : '最新です');
+          // 手で同期したときは、FANBOX から届いていないかも聞き直す
+          checkFanbox(true);
           render();
         });
       }
@@ -218,6 +222,20 @@
     ]);
 
     var close = ui.sheet({ title: '名義の切り替え', body: body });
+  }
+
+  /* FANBOX のページから送られてきた表を、届いていないか見に行く。
+     新しく届いたときだけ知らせる（画面を開くたびに言われても邪魔になるため） */
+  var lastInboxAt = '';
+  function checkFanbox(force) {
+    if (!DL.fanbox.ready()) return;
+    DL.fanbox.checkInbox(force).then(function (r) {
+      if (!r) { lastInboxAt = ''; return; }
+      if (r.at === lastInboxAt) return;
+      lastInboxAt = r.at;
+      ui.toast('FANBOX からデータが届いています（売上タブで取り込めます）');
+      render();
+    });
   }
 
   /* 通知の予定表を預け直す。連続して呼ばれても1回にまとめる */

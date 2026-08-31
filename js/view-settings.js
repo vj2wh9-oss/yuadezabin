@@ -139,6 +139,11 @@
       DL.notify.settings().enabled ? ui.chip('この端末で受け取る', 'ok') : ui.chip('切', 'ghosty')));
     wrap.appendChild(notifyCard());
 
+    /* ---- FANBOX の取り込み ---- */
+    wrap.appendChild(ui.section('FANBOX の取り込み',
+      DL.fanbox.inbox() ? ui.chip('届いています', 'ok') : null));
+    wrap.appendChild(fanboxCard());
+
     /* ---- iCloud へ書き出す ---- */
     wrap.appendChild(ui.section('iCloud への書き出し'));
     wrap.appendChild(el('div', { class: 'card' }, [
@@ -208,6 +213,120 @@
 
 
   /* ---------------- 通知 ---------------- */
+
+  /* FANBOX のページから送るための、ブックマークレットの作り方 */
+  function fanboxCard() {
+    var card = el('div', { class: 'card' });
+    card.appendChild(el('p', { class: 'muted small', text:
+      'FANBOX のページで1回押すだけで、支援金の表をこのアプリへ送れます。'
+      + 'FANBOX のログイン情報はアプリにもサーバーにも預けません（送るのは、その画面に出ている文字だけです）。' }));
+
+    if (!DL.sync.active()) {
+      card.appendChild(el('div', { class: 'alert warn' }, [
+        el('span', { class: 'alert-icon' }, ui.icon('alert', 17)),
+        el('span', { text: '先に「PC・iPhone の同期」を設定してください。送り先がそのサーバーになります。' })
+      ]));
+      return card;
+    }
+
+    var waiting = DL.fanbox.inbox();
+    if (waiting) {
+      card.appendChild(el('div', { class: 'info-row' }, [
+        el('span', { class: 'info-k', text: '届いているもの' }),
+        el('span', { class: 'info-v', text: U.fmtYMD(String(waiting.at).slice(0, 10)) + ' に受信' })
+      ]));
+      card.appendChild(ui.btn('売上を開いて取り込む', 'primary full', function () {
+        location.hash = '#/sales';
+      }, 'arrowDown'));
+    }
+
+    card.appendChild(ui.btn('送るボタンを作る', waiting ? 'ghost full' : 'primary full', function () {
+      collectSheet();
+    }, 'swap'));
+    card.appendChild(ui.btn('届いていないか確かめる', 'ghost full', function () {
+      DL.fanbox.checkInbox(true).then(function (r) {
+        ui.toast(r ? 'FANBOX からデータが届いています' : 'まだ届いていません');
+        DL.app.render();
+      });
+    }, 'refresh'));
+    return card;
+  }
+
+  /**
+   * FANBOX のページで動かす一行スクリプトを組み立てて見せる。
+   * 中身は tools/fanbox-collect.js。ここでは接続先と合鍵だけを足す
+   * （読み取りの決まりごとを1か所に置いておくため）。
+   */
+  function collectSheet() {
+    var sy = S.syncSettings();
+    var box = el('div', { class: 'form' });
+    var close = ui.sheet({
+      title: 'FANBOX から送るボタン',
+      body: box,
+      wide: true,
+      actions: [ui.btn('閉じる', 'ghost', function () { close(); })]
+    });
+
+    box.appendChild(el('p', { class: 'muted small', text: '作っています…' }));
+
+    fetch('tools/fanbox-collect.js', { cache: 'no-cache' }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.text();
+    }).then(function (src) {
+      var head = 'var API=' + JSON.stringify(String(sy.url).replace(/\/+$/, ''))
+        + ',TOKEN=' + JSON.stringify(sy.token) + ';';
+      var plain = head + src;                                   // ショートカット用（そのまま貼る）
+      var mark = 'javascript:' + encodeURIComponent('(function(){' + plain + '})();');
+
+      U.clear(box);
+      box.appendChild(el('div', { class: 'alert warn' }, [
+        el('span', { class: 'alert-icon' }, ui.icon('alert', 17)),
+        el('span', { text: 'この中には同期の合鍵が入っています。人に見せたり、公開の場所に貼ったりしないでください。' })
+      ]));
+
+      box.appendChild(ui.section('PC（ブックマークレット）'));
+      box.appendChild(el('ol', { class: 'howto' }, [
+        el('li', { text: '下の「PC用をコピー」を押す' }),
+        el('li', { text: 'ブラウザでブックマークを新規作成し、URL 欄に貼り付ける（名前は「FANBOX→締切」など）' }),
+        el('li', { text: 'FANBOX の支援金の画面を開いて、そのブックマークを押す' })
+      ]));
+      box.appendChild(copyRow('PC用をコピー', mark));
+
+      box.appendChild(ui.section('iPhone（ショートカット）'));
+      box.appendChild(el('ol', { class: 'howto' }, [
+        el('li', { text: '下の「iPhone用をコピー」を押す' }),
+        el('li', { text: 'ショートカットアプリで新規作成 →「Webページで JavaScript を実行」を追加し、中身を貼り付ける' }),
+        el('li', { text: 'そのショートカットの設定で「共有シートに表示」を入にする' }),
+        el('li', { text: 'Safari で FANBOX の支援金の画面を開き、共有ボタンからそのショートカットを選ぶ' })
+      ]));
+      box.appendChild(copyRow('iPhone用をコピー', plain));
+
+      box.appendChild(el('p', { class: 'muted small', text:
+        '送ったあとは、アプリの「売上」に「FANBOX からデータが届いています」と出ます。'
+        + '金額を確かめてから取り込めます。' }));
+    }).catch(function (e) {
+      U.clear(box);
+      box.appendChild(el('p', { class: 'muted small', text: '作れませんでした：' + e.message }));
+    });
+  }
+
+  /* 長い文字は、そのまま見せるより「コピー」で渡すほうが確実 */
+  function copyRow(label, text) {
+    var ta = ui.textarea({ value: text, readonly: true, rows: 3 });
+    ta.addEventListener('focus', function () { ta.select(); });
+    var btn = ui.btn(label, 'primary full', function () {
+      var done = function () { ui.toast('コピーしました'); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(function () { fallback(); });
+      } else fallback();
+      function fallback() {
+        ta.select();
+        try { document.execCommand('copy'); done(); }
+        catch (e) { ui.toast('コピーできませんでした。枠の中を選んでコピーしてください', 'warn'); }
+      }
+    }, 'arrowDown');
+    return el('div', { class: 'panel' }, [btn, ta]);
+  }
 
   function notifyCard() {
     var N = DL.notify;

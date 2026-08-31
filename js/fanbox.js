@@ -151,5 +151,64 @@
     return { rows: rows, columns: labeled ? 0 : cols, samples: found.slice(0, 6), labeled: labeled };
   }
 
-  DL.fanbox = { parse: parse, scan: scan };
+  /* ---------------- FANBOX から送られてきた文字（受け口） ----------------
+
+     FANBOX のページで動かすブックマークレット（tools/fanbox-collect.js）が、
+     画面の文字を同期サーバーへ預ける。ここではそれを取りに行くだけで、
+     読み取りは上の parse() が受け持つ。 */
+
+  var box = null;        // 届いているもの {at, from, text}
+  var checkedAt = 0;
+  var CHECK_MS = 60000;  // 立て続けに開いても、これより短い間は聞き直さない
+
+  function conf() { return DL.store.syncSettings(); }
+  function ready() { var c = conf(); return !!(c && c.url && c.token && c.enabled); }
+  function base() { return String(conf().url).replace(/\/+$/, ''); }
+
+  function api(method, body) {
+    if (!ready()) return Promise.reject(new Error('同期の接続先が未設定です'));
+    var opts = { method: method, headers: { authorization: 'Bearer ' + conf().token }, cache: 'no-store' };
+    if (body) {
+      opts.headers['content-type'] = 'application/json';
+      opts.body = JSON.stringify(body);
+    }
+    return fetch(base() + '/v1/inbox/fanbox', opts).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (b) {
+        if (!r.ok) throw new Error(b.error || ('HTTP ' + r.status));
+        return b;
+      });
+    });
+  }
+
+  /**
+   * 届いていないか聞きに行く。
+   * @param {boolean} [force] 時間を置かずに聞き直す
+   * @returns {Promise<object|null>} 届いていれば {at, from, text}
+   */
+  function checkInbox(force) {
+    if (!ready()) return Promise.resolve(null);
+    if (!force && Date.now() - checkedAt < CHECK_MS) return Promise.resolve(box);
+    checkedAt = Date.now();
+    return api('GET').then(function (r) {
+      box = r && r.exists ? { at: r.at, from: r.from, text: r.text } : null;
+      return box;
+    }).catch(function () {
+      return box;   // つながらないときは、前に受け取ったものをそのまま使う
+    });
+  }
+
+  /** いま手元に持っている「届いているもの」（聞きに行かない） */
+  function inbox() { return box; }
+
+  /** 受け取ったので消す */
+  function clearInbox() {
+    box = null;
+    if (!ready()) return Promise.resolve();
+    return api('DELETE').catch(function () { /* 消せなくても、次に上書きされる */ });
+  }
+
+  DL.fanbox = {
+    parse: parse, scan: scan,
+    checkInbox: checkInbox, inbox: inbox, clearInbox: clearInbox, ready: ready
+  };
 })(window.DL);
