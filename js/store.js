@@ -93,7 +93,6 @@
     fileFolders: {},
     // 支援サイト（pixivFANBOX）の月ごとの支援金 [{ym:'2026-01', amount:12345}]
     fanbox: [],
-    fanboxIssuerId: '',    // 支援金をどの名義の売上として数えるか（空＝どの名義でも数える）
     expenses: [],          // 経費 [{id,book,date,amount,category,vendor,memo,projectId,issuerId,fileId}]
     lifeBudget: 0,         // 日常（家計簿）の1ヶ月の予算。0で無効
     recurring: [],         // 固定費 [{id,book,name,amount,category,day,startYm,lastYm,active}]
@@ -679,16 +678,6 @@
     var list = state.settings.fanbox || [];
     if (!year) return list.slice();
     return list.filter(function (r) { return r.ym.slice(0, 4) === String(year); });
-  }
-
-  /**
-   * いま選んでいる名義で支援金を数えるか。
-   * 名義を割り当てていないうちは、案件と同じ考えでどの名義でも数える（取りこぼし防止）。
-   */
-  function fanboxInScope() {
-    var mine = state.settings.fanboxIssuerId || '';
-    var scope = scopeId();
-    return !scope || !mine || mine === scope;
   }
 
   function fanboxOf(ym) {
@@ -1822,7 +1811,7 @@
     folderChildren: folderChildren, folderPath: folderPath,
     ensureFolderPath: ensureFolderPath, folderTreeIds: folderTreeIds,
     renameFolder: renameFolder, removeFolder: removeFolder,
-    fanbox: fanbox, fanboxOf: fanboxOf, putFanbox: putFanbox, fanboxInScope: fanboxInScope,
+    fanbox: fanbox, fanboxOf: fanboxOf, putFanbox: putFanbox,
     expenses: expenses, getExpense: getExpense, addExpense: addExpense,
     updateExpense: updateExpense, removeExpense: removeExpense,
     expensesWithFile: expensesWithFile, retargetExpenseFiles: retargetExpenseFiles,

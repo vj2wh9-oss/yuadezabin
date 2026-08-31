@@ -29,7 +29,6 @@
         'まだ頒布物がありません。本やグッズを登録すると、残部と頒布数を数えられます。',
         ui.btn('頒布物を登録する', 'primary', function () { itemForm(null); }, 'plus')
       ));
-      wrap.appendChild(note());
       root.appendChild(wrap);
       return;
     }
@@ -86,14 +85,7 @@
       wrap.appendChild(mbox);
     }
 
-    wrap.appendChild(note());
     root.appendChild(wrap);
-  }
-
-  function note() {
-    return el('p', { class: 'muted small pad', text:
-      '残部は「入庫 − 頒布 − 献本 − 傷み ± 棚卸し」で数えます。'
-      + '原価は1部あたりの金額を、出ていったぶん（頒布と献本）に掛けています。' });
   }
 
   function sumBox(label, value, cls) {
@@ -271,7 +263,7 @@
 
     var hint = el('p', { class: 'muted small' });
     var priceField = ui.field('単価（円）', priceIn, '空のままなら頒布価格（' + D.yen(x.price) + '）で数えます');
-    var evField = ui.field('イベント', evSel, '選ぶと、そのイベントの頒布として数えます');
+    var evField = ui.field('イベント', evSel);
     var minusField = el('label', { class: 'row-check' }, [minus, el('span', { text: '数え直したら少なかった（減らす）' })]);
 
     function refresh() {
@@ -293,7 +285,7 @@
       minusField,
       priceField,
       evField,
-      ui.field('場所・メモ書き', placeIn, 'イベントを選ばないときの記録用（通販・委託など）'),
+      ui.field('場所・メモ書き', placeIn),
       ui.field('メモ', memoIn),
       !isNew ? ui.btn('この記録を削除', 'danger full mt', function () {
         ui.confirm('この記録を削除します。', { danger: true, okText: '削除' }).then(function (ok) {
@@ -375,7 +367,7 @@
         ui.field('発行日', dateIn)
       ]),
       isNew ? ui.field('刷った部数', firstIn, '入れておくと、最初の入庫として記録します') : null,
-      ui.field('1部あたりの原価（円）', costIn, '印刷費 ÷ 部数。差し引きの計算に使います'),
+      ui.field('1部あたりの原価（円）', costIn, '印刷費 ÷ 部数'),
       el('div', { class: 'panel' }, [
         el('span', { class: 'field-label', text: '原価の計算' }),
         el('div', { class: 'grid2' }, [
@@ -384,7 +376,7 @@
         ]),
         calcBtn
       ]),
-      ui.field('イベント', evSel, 'どの即売会で出したものか'),
+      ui.field('イベント', evSel),
       ui.field('メモ', memoIn),
       !isNew ? el('label', { class: 'row-check' }, [archived, el('span', { text: '頒布を終えた（一覧では畳む）' })]) : null,
       !isNew ? ui.btn('この頒布物を削除', 'danger full mt', function () {

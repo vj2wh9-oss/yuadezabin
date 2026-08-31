@@ -139,10 +139,10 @@
     );
     var numHint = d.number
       ? '書類番号は ' + d.number + ' です'
-      : '下書き以外にすると ' + S.peekNumber(d.type, d.issueDate) + ' が振られます（番号は年ごとに 0001 に戻ります）';
+      : '下書き以外にすると ' + S.peekNumber(d.type, d.issueDate) + ' が振られます';
     wrap.appendChild(el('div', { class: 'card' }, [
       ui.field('状態', statusSeg, numHint),
-      ui.field('名義（発行元）', issuerSelect(p, d), '案件ごとに切り替えられます')
+      ui.field('名義（発行元）', issuerSelect(p, d))
     ]));
 
     /* プレビュー */

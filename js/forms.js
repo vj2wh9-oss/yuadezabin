@@ -29,7 +29,7 @@
       U.clear(startNote);
       var s = startInput.value, d = (f && f.deadline) ? f.deadline.value : '';
       if (!U.isISO(s) || !U.isISO(d)) {
-        startNote.appendChild(el('span', { class: 'muted small', text: '開始日と締切日を入れると、作業できる日数を表示します。' }));
+
         return;
       }
       if (U.cmp(s, d) > 0) {
@@ -231,7 +231,7 @@
         ]),
         el('span', {
           class: 'field-hint',
-          text: '作業開始日〜締切の稼働日に、各タスクの期間と1日のノルマを配分し直します'
+          text: 'タスクの期間と1日のノルマを配分します'
         })
       ]));
     }
@@ -338,7 +338,7 @@
     function render() {
       U.clear(list);
       if (!p.printings.length) {
-        list.appendChild(el('p', { class: 'muted small', text: '印刷所のプランを追加すると、締切の候補をまとめて管理できます。' }));
+        list.appendChild(el('p', { class: 'muted small', text: 'まだありません。' }));
       }
       p.printings.forEach(function (pr, i) {
         var labelI = ui.input({ value: pr.label || '', placeholder: 'プラン名（早割など）' });
@@ -436,7 +436,7 @@
         start: startI.value, end: endI.value, planOverride: {}, progress: {}
       };
       if (!U.isISO(tmp.start) || !U.isISO(tmp.end) || U.cmp(tmp.start, tmp.end) > 0) {
-        preview.appendChild(el('p', { class: 'muted small', text: '期間を指定すると1日ごとのノルマを計算します。' }));
+
         return;
       }
       var plan = sc.taskPlan(p, tmp);
@@ -646,7 +646,7 @@
     var rg = plan.rangeByDate[date] || {};
     var rt = sc.rangeText(t, rg.from, rg.to);
     var body = el('div', { class: 'form' }, [
-      el('p', { class: 'muted small', text: U.fmtYMDW(date) + ' のノルマを固定します。残りの量は他の稼働日へ自動で配分し直されます。' }),
+      el('p', { class: 'muted small', text: U.fmtYMDW(date) + ' のノルマを固定します（残りは他の日へ配分し直します）。' }),
       rt ? el('div', { class: 'preview' }, el('div', { class: 'preview-main' }, [
         el('strong', { text: t.name + ' ' + rt }),
         el('span', { class: 'muted', text: '　現在 ' + cur + (S.UNIT_LABEL[t.unit] || '') })
@@ -728,7 +728,7 @@
     ], 'all');
 
     var body = el('div', { class: 'form' }, [
-      el('p', { class: 'muted small', text: '重みに応じて稼働日を配分し、各タスクの期間を順番に割り当てます。ここで指定した開始日は案件の「作業開始日」として保存されます。' }),
+      el('p', { class: 'muted small', text: '重みに応じて稼働日を配分し、各タスクの期間を割り当てます。' }),
       el('div', { class: 'grid2' }, [ui.field('作業開始日', startI), ui.field('締切日', endI)]),
       ui.field('締切前の予備日', bufI, 'この日数だけ手前で作業を終える計画にします'),
       ui.field('対象', scope)
@@ -786,7 +786,7 @@
       ui.field('作業開始日', startI, 'ここを起点に各タスクの期間と1日のノルマを計算します'),
       note,
       el('label', { class: 'row-check' }, [recalc, el('span', { text: 'タスクの期間とノルマを計算し直す' })]),
-      el('p', { class: 'muted small', text: '計算し直すと、手動で固定したノルマは自動配分に戻ります。記録済みの実績はそのまま残ります。' })
+      el('p', { class: 'muted small', text: '固定したノルマは自動配分に戻ります（実績は残ります）。' })
     ]);
 
     var close = ui.sheet({
@@ -828,7 +828,7 @@
       U.clear(list); picked = {};
       var tpl = S.settings.templates[cat] || [];
       if (!tpl.length) {
-        list.appendChild(el('p', { class: 'muted small', text: 'この内容にはテンプレートがありません。設定画面で自分の工程を登録するか、「タスクを追加」で1つずつ作れます。' }));
+        list.appendChild(el('p', { class: 'muted small', text: 'この内容のテンプレートはまだありません。' }));
         return;
       }
       tpl.forEach(function (tp, i) {
@@ -845,7 +845,7 @@
     var body = el('div', { class: 'form' }, [
       ui.field('テンプレート', catSeg),
       list,
-      el('p', { class: 'muted small', text: '追加後に「自動スケジュール」で期間を割り当てられます。' })
+
     ]);
 
     var close = ui.sheet({

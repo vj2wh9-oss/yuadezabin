@@ -254,7 +254,7 @@
     var close = ui.sheet({
       title: here ? '「' + here.name + '」の中にフォルダを作る' : 'フォルダを作る',
       body: el('div', { class: 'form' }, [
-        ui.field('フォルダ名', input, '作ったフォルダは同期で両方の端末に出ます')
+        ui.field('フォルダ名', input)
       ]),
       actions: [
         ui.btn('キャンセル', 'ghost', function () { close(); }),
@@ -610,7 +610,7 @@
     var close = ui.sheet({
       title: 'フォルダを移す',
       body: el('div', { class: 'form' }, [
-        ui.field('移動先', sel, 'ファイルは入れ直さないので、大きくてもすぐ終わります'),
+        ui.field('移動先', sel),
         ui.btn('新しいフォルダを作る', 'ghost full', function () { close(); newFolder(); }, 'plus')
       ]),
       actions: [
@@ -638,8 +638,8 @@
     var close = ui.sheet({
       title: '案件に紐づける',
       body: el('div', { class: 'form' }, [
-        ui.field('案件', sel, '選んだ案件のファイルとして印が付きます'),
-        el('p', { class: 'muted small', text: '入れ直しになるため、大きいファイルは少し時間がかかります。' })
+        ui.field('案件', sel),
+        el('p', { class: 'muted small', text: '大きいファイルは少し時間がかかります。' })
       ]),
       actions: [
         ui.btn('キャンセル', 'ghost', function () { close(); }),

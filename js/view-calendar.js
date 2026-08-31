@@ -374,7 +374,7 @@
         ui.toast(isHoliday ? '休みを解除しました' : '休みに設定しました');
         if (!isHoliday) DL.forms.offerReschedule(before);
       }),
-      el('p', { class: 'muted small', text: '休みにすると、その日のノルマはまずタスクの期間内で振り分け直します。期間内に収まらないときは、締切までの稼働日へ組み直すか確認します。' })
+      el('p', { class: 'muted small', text: '休みにすると、その日のノルマを振り分け直します。' })
     ]));
 
     root.appendChild(wrap);

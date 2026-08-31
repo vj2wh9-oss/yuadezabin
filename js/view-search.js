@@ -57,8 +57,7 @@
       var r = DL.search.run(q, { files: files || [] });
       if (!r.total) {
         results.appendChild(ui.empty('「' + q + '」に当たるものはありませんでした。'));
-        results.appendChild(el('p', { class: 'muted small pad', text:
-          '言葉を短くするか、空白で区切らずに打ってみてください。空白で区切ると「どちらも入っているもの」を探します。' }));
+
         return;
       }
 
@@ -90,9 +89,7 @@
       el('div', { class: 'row-wrap mt' }, DL.search.KINDS.map(function (k) {
         return ui.chip(k.label, 'ghosty');
       })),
-      el('p', { class: 'muted small', text:
-        '空白で区切ると、どちらも入っているものだけを出します（例：「印刷 8月」）。'
-        + 'カタカナ・ひらがな・全角半角は区別しません。' })
+      el('p', { class: 'muted small', text: '空白で区切ると、どちらも入っているものを探します。' })
     ]);
   }
 

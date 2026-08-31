@@ -22,7 +22,7 @@
       // 押し間違えても、ここからいつでも戻せる
       if (list.some(function (o) { return E.isDone(o); })) {
         wrap.appendChild(el('p', { class: 'muted small pad',
-          text: 'チェックの付いた予定は、ホームの「今日やること」には出ません。もう一度押すと戻ります。' }));
+          text: 'チェックを押すと、ホームの「今日やること」から外れます。' }));
       }
     }
 
@@ -59,8 +59,7 @@
       ]);
     })));
 
-    wrap.appendChild(el('p', { class: 'muted small pad',
-      text: '選ぶとカレンダーのその日に色が付きます（出社＝黄・リモートワーク＝赤・泊まり勤務＝青）。もう一度押すと外れます。' }));
+
   }
 
   /**
@@ -233,7 +232,7 @@
           importantIn,
           el('span', {}, [
             el('span', { text: '重要' }),
-            el('span', { class: 'muted small', text: '　当日、ホームのいちばん上に出します' })
+            el('span', { class: 'muted small', text: '　当日ホームの上に出します' })
           ])
         ]),
         ui.field('メモ', memoIn),

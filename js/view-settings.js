@@ -38,7 +38,7 @@
     var issuerBox = el('div', { class: 'card' });
     var list = S.issuers();
     if (!list.length) {
-      issuerBox.appendChild(el('p', { class: 'muted small', text: '登録するとお仕事の案件から見積書・請求書・領収書を発行できます。名義ごとに住所・ロゴ・振込先を持てます。' }));
+      issuerBox.appendChild(el('p', { class: 'muted small', text: '書類の発行元です。まだありません。' }));
     }
     list.forEach(function (x) {
       var isDefault = S.settings.defaultIssuerId === x.id;
@@ -67,7 +67,7 @@
     wrap.appendChild(ui.section('取引先', el('span', { class: 'muted small', text: S.clients().length + '件' })));
     var clientBox = el('div', { class: 'card' });
     if (!S.clients().length) {
-      clientBox.appendChild(el('p', { class: 'muted small', text: '登録しておくと、案件を作るときに選ぶだけで、請求書の宛名・住所・支払期限・源泉徴収の有無まで入ります。' }));
+      clientBox.appendChild(el('p', { class: 'muted small', text: 'まだありません。' }));
     }
     S.clients().slice().sort(function (a, b) { return U.cmp(a.name, b.name); }).forEach(function (c) {
       var docs = S.clientDocs(c.id);
@@ -94,7 +94,7 @@
     autoChk.addEventListener('change', function () { S.updateSettings({ autoBackup: autoChk.checked }); });
     var backupCard = el('div', { class: 'card' }, [
       el('label', { class: 'row-check' }, [autoChk, el('span', { text: '1日1回、端末内に自動で控えを取る' })]),
-      el('span', { class: 'field-hint', text: '日付が変わったあと最初にアプリを開いたときに実行します（IndexedDB に保存）。アプリを開かない日は取れません。' }),
+      el('span', { class: 'field-hint', text: '日付が変わったあと、最初にアプリを開いたときに取ります。' }),
       ui.field('残す世代数', numInput(s.autoBackupKeep, function (v) {
         S.updateSettings({ autoBackupKeep: v }); S.pruneBackups(v);
       }), '自動ぶんだけ古いものから消します。手動・操作前の控えは残ります'),
@@ -147,10 +147,10 @@
     /* ---- iCloud へ書き出す ---- */
     wrap.appendChild(ui.section('iCloud への書き出し'));
     wrap.appendChild(el('div', { class: 'card' }, [
-      el('p', { class: 'muted small', text: 'iOS の Web アプリからは iCloud へ直接書き込めないため、ファイルとして書き出して保存します。Safari の設定 →「ダウンロード」で保存先を iCloud Drive の「案件ポータルバックアップ」にしておくと、下のボタンひとつでそのフォルダに入ります。' }),
+      el('p', { class: 'muted small', text: 'Safari の設定 →「ダウンロード」で保存先を iCloud Drive にしておくと、ボタンひとつでそこに入ります。' }),
       ui.btn('iCloud に書き出す', 'primary full', function () { exportToFile(); }, 'cloud'),
       ui.btn('保存先を選んで書き出す', 'ghost full', function () { shareToFile(); }, 'arrowUp'),
-      el('span', { class: 'field-hint', text: '共有シートの「"ファイル"に保存」から、フォルダをその場で選べます' }),
+
       el('div', { class: 'info-row' }, [
         el('span', { class: 'info-k', text: '最後の書き出し' }),
         el('span', { class: 'info-v', text: age === null ? 'まだ書き出していません' : U.fmtYMD(s.lastBackupAt) + '（' + (age === 0 ? '今日' : age + '日前') + '）' })
@@ -203,8 +203,7 @@
     /* ---- 情報 ---- */
     wrap.appendChild(ui.section('このアプリについて'));
     wrap.appendChild(el('div', { class: 'card info' }, [
-      el('p', { class: 'muted small', text: 'データはこの端末のブラウザ内（IndexedDB。使えない環境では localStorage）に保存されます。同期をつないだときだけ、自分で立てたサーバーにも預けます。機種変更や履歴の削除で消えるため、ときどき iCloud へ書き出してください。' }),
-      el('p', { class: 'muted small', text: 'iPhone では Safari の共有ボタン →「ホーム画面に追加」でアプリのように使えます（オフラインでも動きます）。' }),
+      el('p', { class: 'muted small', text: 'データはこの端末の中にあります。履歴の削除や機種変更で消えるので、ときどき書き出してください。' }),
       el('p', { class: 'muted small', text: '案件数：' + S.projects().length + '　取引先：' + S.clients().length + '件　バージョン：0.2' })
     ]));
 
@@ -218,9 +217,8 @@
   function fanboxCard() {
     var card = el('div', { class: 'card' });
     card.appendChild(el('p', { class: 'muted small', text:
-      'FANBOX のページで1回押すだけで、月ごとの支援金をこのアプリへ送れます。'
-      + '開いているログインをその場で使うので、ログイン情報はアプリにもサーバーにも預けません。'
-      + '始めた月からの全部が一度に取れます（読み取れなかったときは、画面の文字を送って読み解きます）。' }));
+      'FANBOX のページで1回押すと、月ごとの支援金をまとめて送れます。'
+      + 'ログイン情報はアプリにもサーバーにも預けません。' }));
 
     if (!DL.sync.active()) {
       card.appendChild(el('div', { class: 'alert warn' }, [
@@ -344,8 +342,7 @@
       box.appendChild(copyRow('iPhone用をコピー', plain));
 
       box.appendChild(el('p', { class: 'muted small', text:
-        '送ったあとは、アプリの「売上」に「FANBOX からデータが届いています」と出ます。'
-        + '金額を確かめてから取り込めます。' }));
+        '送ると、アプリの「売上」で取り込めます。' }));
     }).catch(function (e) {
       U.clear(box);
       box.appendChild(el('p', { class: 'muted small', text: '作れませんでした：' + e.message }));
@@ -377,8 +374,7 @@
     var box = el('div', { class: 'card' });
 
     box.appendChild(el('p', { class: 'muted small', text:
-      'アプリを閉じていても知らせます。時刻が来たら同期サーバーから送る仕組みなので、'
-      + '「PC・iPhone の同期」を設定しておく必要があります。' }));
+      'アプリを閉じていても知らせます（「PC・iPhone の同期」が要ります）。' }));
 
     if (!st.ok) {
       box.appendChild(el('div', { class: 'alert warn mt' }, [
@@ -603,7 +599,7 @@
     var close = ui.sheet({ title: '通知サーバーの鍵を作る', body: body });
 
     body.appendChild(el('p', { class: 'muted small', text:
-      '通知を送るには、Cloudflare の Worker に鍵（VAPID）を登録します。下の「作る」を押すと2つの文字列が出るので、Cloudflare のダッシュボードで Worker →「設定」→「変数とシークレット」に貼ってください。' }));
+      '「作る」を押すと出る文字列を、Cloudflare の Worker →「設定」→「変数とシークレット」に貼ってください。' }));
 
     var out = el('div', { class: 'mt' });
     body.appendChild(ui.btn('作る', 'primary full', function () {
@@ -652,7 +648,7 @@
     var card = el('div', { class: 'card' });
 
     if (!DL.sync.ready()) {
-      card.appendChild(el('p', { class: 'muted small', text: '接続先と合鍵を入れると、PC と iPhone でデータが自動で揃うようになります。接続先は自分で立てたサーバーです（sync/README.md に手順があります）。まだの場合は、いまのまま iCloud への書き出しで受け渡しできます。' }));
+      card.appendChild(el('p', { class: 'muted small', text: '接続先と合鍵を入れると、PC と iPhone が自動で揃います（立て方は sync/README.md）。' }));
     }
 
     var urlInput = ui.input({ value: c.url, placeholder: 'https://....workers.dev', inputmode: 'url', autocapitalize: 'off', autocorrect: 'off', spellcheck: false });
@@ -704,7 +700,7 @@
       }
     });
     card.appendChild(el('label', { class: 'row-check' }, [enable, el('span', { text: '自動で同期する' })]));
-    card.appendChild(el('span', { class: 'field-hint', text: 'アプリを開いたとき・閉じるとき・編集して少し経ったときに、自動で送受信します。' }));
+
 
     card.appendChild(el('div', { class: 'info-row' }, [
       el('span', { class: 'info-k', text: 'この端末' }),
@@ -797,10 +793,10 @@
     S.listBackups().then(function (list) {
       U.clear(body);
       if (!list.length) {
-        body.appendChild(el('p', { class: 'muted small', text: 'まだ控えがありません。「いますぐ控えを取る」か、自動バックアップをお待ちください。' }));
+        body.appendChild(el('p', { class: 'muted small', text: 'まだ控えがありません。' }));
         return;
       }
-      body.appendChild(el('p', { class: 'muted small', text: '選んだ時点の状態に戻します。戻す直前の状態も控えとして残るので、やり直せます。' }));
+      body.appendChild(el('p', { class: 'muted small', text: '戻す直前の状態も控えに残るので、やり直せます。' }));
       var box = el('div', { class: 'list' });
       list.forEach(function (b) {
         var when = fmtAt(b.at);
@@ -892,7 +888,7 @@
     render();
 
     var body = el('div', { class: 'form' }, [
-      el('p', { class: 'muted small', text: '名前・重み（日数の配分比率）・単位を設定します。新しい案件を作るときの初期タスクになります。' }),
+      el('p', { class: 'muted small', text: '重みは日数の配分比率です。' }),
       list,
       ui.btn('初期設定に戻す', 'ghost full', function () {
         items = U.clone(S.TEMPLATES[cat]); render();
@@ -919,9 +915,9 @@
     var alarmSel = ui.select(sc.ICS_ALARMS.map(function (a) { return { value: a.value, label: a.label }; }),
       S.settings.icsAlarm || '');
     var body = el('div', { class: 'form' }, [
-      el('p', { class: 'muted small', text: 'イベント・入稿締切・納品日・公開日をカレンダーファイルに書き出します。iPhone では書き出したファイルを開くと標準カレンダーに取り込めます。' }),
+      el('p', { class: 'muted small', text: '書き出したファイルを開くと、標準カレンダーに取り込めます。' }),
       ui.field('通知', alarmSel, '取り込んだ予定に通知を付けます。アプリを開かなくても締切に気づけます'),
-      el('label', { class: 'row-check' }, [withTasks, el('span', { text: '毎日のノルマも書き出す（予定が多くなります／通知は付きません）' })])
+      el('label', { class: 'row-check' }, [withTasks, el('span', { text: '毎日のノルマも書き出す（予定が多くなります）' })])
     ]);
     var close = ui.sheet({
       title: 'カレンダーに書き出す', body: body,
@@ -967,8 +963,7 @@
         el('span', { class: 'alert-icon' }, ui.icon(verdict.cls === 'warn' ? 'alert' : 'info', 17)),
         el('span', { text: verdict.text })
       ]),
-      el('p', { class: 'muted small', text: '「統合」は、いま無い案件・名義・取引先だけを足します。両方の端末で別々に足したものを合流させたいときはこちら。既にあるものの中身は書き換えません。' }),
-      el('p', { class: 'muted small', text: 'どちらを選んでも、実行前の状態は控えとして残ります（自動バックアップ →「控えの一覧から戻す」）。' })
+      el('p', { class: 'muted small', text: '「統合」は、いま無いものだけを足します（中身は書き換えません）。実行前の状態は控えに残ります。' })
     ]);
     var close = ui.sheet({
       title: 'バックアップの読み込み', body: body,

@@ -276,7 +276,7 @@
       });
       detail.appendChild(strip);
     } else {
-      detail.appendChild(el('p', { class: 'muted small', text: '期間が未設定です。編集または自動スケジュールで割り当ててください。' }));
+      detail.appendChild(el('p', { class: 'muted small', text: '期間が未設定です。' }));
     }
 
     detail.appendChild(el('div', { class: 'row-wrap' }, [
@@ -353,7 +353,7 @@
         el('span', { text: U.fmtMD(to) })
       ]),
       el('div', { class: 'g-body' }, [marks].concat(rows)),
-      el('div', { class: 'g-legend muted small', text: '縦線＝今日 / 赤線＝締切　バーをタップでタスクを開きます' })
+      el('div', { class: 'g-legend muted small', text: '縦線＝今日 / 赤線＝締切' })
     ]);
   }
 

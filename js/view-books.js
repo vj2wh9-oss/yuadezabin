@@ -84,16 +84,13 @@
       wrap.appendChild(list);
     }
 
-    wrap.appendChild(el('div', { class: 'pad row-wrap' }, [
+    // 3つとも同じ幅で1列に並べる（折り返さない）
+    wrap.appendChild(el('div', { class: 'pad btn-row3' }, [
       ui.btn(isLife ? '支出を追加' : '経費を追加', 'primary', function () { addExpense(); }, 'plus'),
       ui.btn('レシートを撮る', 'ghost', function () { addExpense({ shoot: true }); }, 'receipt'),
       ui.btn('CSVで書き出す', 'ghost', function () { exportCSV(all, y); }, 'arrowDown')
     ]));
 
-    wrap.appendChild(el('p', { class: 'muted small pad', text: isLife
-      ? 'レシートの写真は共有ファイルの「' + RECEIPT_FOLDER.life + '」に入ります。日常の記録は名義や案件とは結びつけません。'
-      : 'レシートの写真は共有ファイルの「' + RECEIPT_FOLDER.work + '」に入り、PCとiPhoneの両方から見られます。'
-        + '「売上」と「差引」は、いま選んでいる名義のぶんだけを見ています。' }));
 
     root.appendChild(wrap);
   }
@@ -134,7 +131,6 @@
     var box = el('div', { class: 'card' });
 
     if (!budget) {
-      box.appendChild(el('p', { class: 'muted small', text: '1ヶ月の予算を決めておくと、今月あといくら使えるかが出ます。' }));
       box.appendChild(ui.btn('予算を決める', 'ghost full', function () { budgetSheet(); }, 'plus'));
       return box;
     }
@@ -158,7 +154,7 @@
     var close = ui.sheet({
       title: '1ヶ月の予算',
       body: el('div', { class: 'form' },
-        ui.field('予算（円）', input, '0 か空にすると、予算の表示をやめます')),
+        ui.field('予算（円）', input)),
       actions: [
         ui.btn('キャンセル', 'ghost', function () { close(); }),
         ui.btn('保存', 'primary', function () {
@@ -210,7 +206,6 @@
     var close = ui.sheet({
       title: 'これから記録する固定費',
       body: el('div', { class: 'form' }, [
-        el('p', { class: 'muted small', text: '記録すると、それぞれの月の経費として入ります。日付は固定費に決めた「毎月◯日」です。' }),
         list
       ]),
       actions: [
@@ -225,8 +220,7 @@
   function fixedCard(list) {
     var box = el('div', { class: 'card' });
     if (!list.length) {
-      box.appendChild(el('p', { class: 'muted small',
-        text: '家賃・通信費・サブスクのように毎月きまって出るものを登録しておくと、月が変わったときにまとめて記録できます。' }));
+      box.appendChild(el('p', { class: 'muted small', text: '毎月きまって出るものを登録できます。' }));
     } else {
       var rows = el('div', { class: 'fx-list' });
       list.forEach(function (r) {
@@ -278,7 +272,7 @@
           ui.field('毎月何日', dayIn, '無い日は月末に寄せます')
         ]),
         ui.field('科目', catSel),
-        ui.field('いつから', startIn, 'この月のぶんから記録できるようになります'),
+        ui.field('いつから', startIn),
         el('label', { class: 'row-check' }, [activeChk, el('span', { text: '記録の対象にする' })]),
         !isNew ? ui.btn('この固定費を削除', 'danger full mt', function () {
           ui.confirm('「' + r.name + '」を削除します。記録済みの経費はそのまま残ります。',
@@ -332,7 +326,7 @@
       if (String(e.doc.issueDate).slice(0, 4) !== String(y)) return false;
       return !scope || (e.doc.issuerId || '') === scope;
     });
-    var fb = S.fanboxInScope() ? S.fanbox(y) : [];
+    var fb = S.fanbox(y);
     return D.sales(docs).total + fb.reduce(function (s, r) { return s + r.amount; }, 0);
   }
 
@@ -569,7 +563,7 @@
       }
       if (!F.ready()) {
         shotBox.appendChild(el('div', { class: 'muted small',
-          text: '写真を残すには、先に同期の接続先を設定してください（設定 →「PC・iPhone の同期」）。金額だけなら今のまま登録できます。' }));
+          text: '写真を残すには、先に「PC・iPhone の同期」を設定してください。' }));
         return;
       }
       shotBox.appendChild(el('div', { class: 'row-wrap' }, [
@@ -611,7 +605,7 @@
       if (ocrBusy) return;
       ocrBusy = true;
       U.clear(ocrBox);
-      var note = el('div', { class: 'muted small', text: '読み取っています…（初回は日本語の学習データの取得に1〜2分かかります。2回目からは速くなります）' });
+      var note = el('div', { class: 'muted small', text: '読み取っています…（初回だけ1〜2分かかります）' });
       var bar = ui.progress(0, null);
       ocrBox.appendChild(note); ocrBox.appendChild(bar);
 
@@ -622,10 +616,10 @@
         ocrBusy = false;
         U.clear(ocrBox);
         if (!r.amounts.length) {
-          ocrBox.appendChild(el('div', { class: 'muted small', text: '金額を見つけられませんでした。明るいところで、まっすぐ写すと読み取りやすくなります。' }));
+          ocrBox.appendChild(el('div', { class: 'muted small', text: '金額が見つかりませんでした。明るいところで、まっすぐ写すと読み取れます。' }));
           return;
         }
-        ocrBox.appendChild(el('div', { class: 'muted small', text: '読み取った候補（タップで金額に入ります）' }));
+        ocrBox.appendChild(el('div', { class: 'muted small', text: '候補（押すと金額に入ります）' }));
         var row = el('div', { class: 'row-wrap' });
         r.amounts.forEach(function (c, i) {
           row.appendChild(ui.btn(D.yen(c.value), i === 0 ? 'tiny' : 'ghost tiny', function () {
@@ -671,8 +665,8 @@
         ui.field('科目', catSel),
         ui.field('支払先', vendorIn),
         ui.field('メモ', memoIn),
-        projSel ? ui.field('案件', projSel, '印刷費などを案件に紐づけると、案件ごとの出費が分かります') : null,
-        issuerSel ? ui.field('名義', issuerSel, '名義を絞って見ているとき、その名義の経費として数えます') : null,
+        projSel ? ui.field('案件', projSel) : null,
+        issuerSel ? ui.field('名義', issuerSel) : null,
         ui.field('レシート', shotBox),
         !isNew ? ui.btn('この経費を削除', 'danger full mt', function () { removeThis(); }, 'trash') : null
       ]),

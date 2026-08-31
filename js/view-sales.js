@@ -30,8 +30,7 @@
         return { value: x.id, label: x.name || '(名称未設定)' };
       }));
       wrap.appendChild(el('div', { class: 'card' },
-        ui.field('名義', ui.segmented(opts, active, function (v) { S.setScope(v); }),
-          'ホーム・カレンダー・案件一覧の表示も、選んだ名義に合わせて切り替わります')
+        ui.field('名義', ui.segmented(opts, active, function (v) { S.setScope(v); }))
       ));
     }
 
@@ -46,8 +45,8 @@
     var all = inYear.filter(function (e) { return e.doc.type !== 'estimate'; });
 
     var totals = D.sales(all);
-    // 支援金も売上に数える。名義を絞っているときは、その名義のぶんだけ
-    var fb = S.fanboxInScope() ? S.fanbox(y) : [];
+    // 支援金も売上に数える（名義では分けない）
+    var fb = S.fanbox(y);
     var fbTotal = sumFanbox(fb);
     // 即売会の頒布も売上。名義では分けていないので、絞っていないときだけ足す
     var stock = DL.stock.salesOf(y);
@@ -116,10 +115,6 @@
       wrap.appendChild(list);
     }
 
-    wrap.appendChild(el('p', { class: 'muted small pad', text:
-      '請求書を発行済みにした時点で売上として数えます（下書きは数えません）。請求書が無い案件は領収書を数えます（二重計上を避けるため）。'
-      + '支援金は取り込んだ月の売上として、手数料を引く前の金額を税込で数えます。'
-      + '即売会の頒布は、記録した日の売上として数えます（名義では分けていないので、名義を絞ると外れます）。' }));
 
     root.appendChild(wrap);
   }
@@ -218,7 +213,7 @@
       head.length ? el('div', { class: 'lchart-filter' }, head) : null,
       keys.length > 1 ? el('div', { class: 'lchart-legend' }, keys) : null,
       svg,
-      el('div', { class: 'lchart-read', text: '月をなぞると内訳が出ます' })
+      null
     ]);
     attachHover(box, svg, data, x, { doc: showDoc, fan: showFan, st: showSt }, W, L, R);
     return box;
@@ -361,7 +356,7 @@
 
     if (!rows.length) {
       box.appendChild(el('p', { class: 'muted small',
-        text: 'pixivFANBOX の「支援金管理／振込」の画面を開いて、月ごとの表をコピーし、下のボタンから貼り付けてください。年月と支援金を読み取ってグラフに重ねます。' }));
+        text: 'FANBOX のページで「送るボタン」を押すと取り込めます（設定 →「FANBOX の取り込み」）。' }));
     } else {
       var list = el('div', { class: 'fb-list' });
       rows.slice().reverse().forEach(function (r) {
@@ -381,23 +376,6 @@
       box.appendChild(list);
     }
 
-    // 名義が2つ以上あるなら、支援金をどちらの売上として数えるか決めてもらう
-    if (S.issuers().length > 1) {
-      var opts = [{ value: '', label: 'どちらでも数える' }].concat(S.issuers().map(function (x) {
-        return { value: x.id, label: x.name || '(名称未設定)' };
-      }));
-      var sel = ui.select(opts, S.settings.fanboxIssuerId || '');
-      sel.addEventListener('change', function () {
-        S.updateSettings({ fanboxIssuerId: sel.value });
-      });
-      box.appendChild(ui.field('どの名義の売上にするか', sel,
-        '名義を絞って見ているとき、ここで選んだ名義のときだけ売上に数えます'));
-    }
-
-    box.appendChild(el('div', { class: 'row-wrap' }, [
-      ui.btn('表を貼り付けて取り込む', waiting ? 'ghost' : 'primary', function () { pasteSheet(); }, 'arrowDown'),
-      ui.btn('1ヶ月ぶん手で入れる', 'ghost', function () { manualSheet(y); }, 'plus')
-    ]));
 
     var wrap = el('div', {}, [
       ui.section('支援金（pixivFANBOX）',
@@ -457,7 +435,7 @@
       if (!fixed && !ta.value.trim()) {
         preview.appendChild(el('span', { class: 'muted small', text: 'ここに読み取り結果が出ます。' }));
       } else if (!parsed.rows.length) {
-        preview.appendChild(el('span', { class: 'muted small', text: '年月と金額を見つけられませんでした。画面をそのまま選んでコピーし、貼り付けてみてください。' }));
+        preview.appendChild(el('span', { class: 'muted small', text: '年月と金額を見つけられませんでした。' }));
       } else {
         var note = parsed.rows.length + 'ヶ月ぶん'
           + (fixed ? 'を FANBOX から受け取りました（支援金・手数料を引く前）'
@@ -488,10 +466,8 @@
       title: '支援金を取り込む',
       body: el('div', { class: 'form' }, [
         el('p', { class: 'muted small', text: fixed
-          ? 'FANBOX から受け取った月ごとの支援金です。すでに入っている月は自動で除きます。'
-          : fromInbox
-            ? 'FANBOX のページから届いた文字です。年月と「支援金」の欄だけを拾います。すでに入っている月は自動で除きます。'
-            : 'FANBOX の「支援金管理／振込」の画面を上から下までそのまま選んでコピーし、貼り付けてください。年月と「支援金」の欄だけを拾います。すでに入っている月は自動で除きます。' }),
+          ? 'すでに入っている月は除きます。'
+          : '年月と「支援金」の欄を拾います。すでに入っている月は除きます。' }),
         fixed ? null : ui.field('貼り付け', ta),
         colWrap,
         overWrap,
@@ -516,27 +492,6 @@
     });
     update();
     if (!fixed) setTimeout(function () { ta.focus(); }, 100);
-  }
-
-  /* 1ヶ月ぶんだけ手で足す・直す */
-  function manualSheet(y) {
-    var ym = ui.input({ type: 'month', value: U.today().slice(0, 7) });
-    var amount = ui.input({ type: 'number', inputmode: 'numeric', min: 0, value: '' });
-    var close = ui.sheet({
-      title: '支援金を入れる',
-      body: el('div', { class: 'form' }, [
-        ui.field('年月', ym),
-        ui.field('支援金（円）', amount, '同じ年月がすでにあれば置き換えます')
-      ]),
-      actions: [
-        ui.btn('キャンセル', 'ghost', function () { close(); }),
-        ui.btn('保存', 'primary', function () {
-          if (!/^\d{4}-\d{2}$/.test(ym.value)) { ui.toast('年月を選んでください', 'warn'); return; }
-          S.putFanbox([{ ym: ym.value, amount: U.num(amount.value, 0) }], { overwrite: true });
-          close(); ui.toast('保存しました');
-        })
-      ]
-    });
   }
 
   function sumBox(label, value, cls) {
@@ -644,8 +599,6 @@
     var rows = el('div', { class: 'list' });
     list.forEach(function (e) { rows.appendChild(docRow(e)); });
     box.appendChild(rows);
-    box.appendChild(el('p', { class: 'muted small pad', text:
-      '見積書は売上に数えません。受注したら「この見積書から請求書」で請求書を起こせます。' }));
     return box;
   }
 
@@ -660,7 +613,7 @@
       });
     }
     // 名義も支援金も無いうちは、この機能自体を使っていないので出さない
-    var fbAll = S.fanboxInScope() ? S.fanbox() : [];
+    var fbAll = S.fanbox();
     if (!S.issuers().length && !fbAll.length) return null;
 
     function fanIn(prefix) {
