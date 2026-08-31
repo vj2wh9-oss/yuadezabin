@@ -656,7 +656,8 @@ h1, h2, h3, p { margin: 0; }
 .sheet-head { display: flex; align-items: center; gap: 8px; padding: 10px 10px 9px 14px; border-bottom: 1px solid var(--line); }
 .sheet-title { flex: 1; font-size: 15px; font-weight: 700; letter-spacing: .02em; }
 .sheet-body { padding: 14px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-.sheet-msg { font-size: 14.5px; }
+/* 確認の文は2行以上になることがあるので、改行をそのまま出す */
+.sheet-msg { font-size: 14.5px; white-space: pre-line; }
 .sheet-foot { display: flex; gap: 8px; padding: 10px 14px 14px; border-top: 1px solid var(--line); }
 .sheet-foot .btn { flex: 1; }
 

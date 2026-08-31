@@ -631,6 +631,23 @@
     return removed;
   }
 
+  /**
+   * サーバーに無くなった写真の紐付けを、経費から外す。
+   * ファイルの一覧（全件）を取り直したときだけ呼ぶこと。
+   * 前に写真だけ消してしまい、経費に消えた ID が残っている分もここで片付く。
+   * @param {string[]} existingIds いま在るファイルの ID
+   * @returns {number} 外した件数
+   */
+  function pruneReceiptLinks(existingIds) {
+    var have = {};
+    (existingIds || []).forEach(function (id) { have[id] = true; });
+    var gone = [];
+    (state.settings.expenses || []).forEach(function (x) {
+      if (x.fileId && !have[x.fileId]) gone.push(x.fileId);
+    });
+    return gone.length ? retargetExpenseFiles(gone, '') : 0;
+  }
+
   /* ---------------- 支援サイトの月ごとの支援金 ---------------- */
 
   /** 年月の重複をまとめ、古い順に並べ直す */
@@ -993,6 +1010,53 @@
 
   function removeExpense(id) {
     state.settings.expenses = (state.settings.expenses || []).filter(function (x) { return x.id !== id; });
+    save();
+  }
+
+  /**
+   * その写真をレシートに使っている経費。
+   * 写真を消してよいかを確かめるのに使う。
+   * @param {string} fileId
+   * @param {string} [exceptId] この経費は数に入れない
+   */
+  function expensesWithFile(fileId, exceptId) {
+    if (!fileId) return [];
+    return (state.settings.expenses || []).filter(function (x) {
+      return x.fileId === fileId && x.id !== exceptId;
+    });
+  }
+
+  /**
+   * 写真の側が消えた（または入れ替わった）ときに、経費の紐付けを直す。
+   * 消えた写真の ID を残したままにすると、経費を開くたびに取りに行って失敗する。
+   * @param {string|string[]} fileIds
+   * @param {string} [toId] 入れ替え先のファイルID（省略すると外すだけ）
+   * @returns {number} 直した件数
+   */
+  function retargetExpenseFiles(fileIds, toId) {
+    var ids = {};
+    (Array.isArray(fileIds) ? fileIds : [fileIds]).forEach(function (id) { if (id) ids[id] = true; });
+    var n = 0;
+    (state.settings.expenses || []).forEach(function (x) {
+      if (!x.fileId || !ids[x.fileId]) return;
+      x.fileId = toId || '';
+      n++;
+    });
+    if (n) save();
+    return n;
+  }
+
+  /**
+   * サーバーから消したファイルのことを、この端末の記録からも消す。
+   * 置き場所の対応表と、経費のレシート紐付けの両方を片付ける。
+   * @param {string|string[]} fileIds
+   */
+  function forgetFiles(fileIds) {
+    var list = (Array.isArray(fileIds) ? fileIds : [fileIds]).filter(Boolean);
+    if (!list.length) return;
+    var map = state.settings.fileFolders || {};
+    list.forEach(function (id) { delete map[id]; });
+    retargetExpenseFiles(list, '');
     save();
   }
 
@@ -1630,6 +1694,8 @@
     fanbox: fanbox, fanboxOf: fanboxOf, putFanbox: putFanbox, fanboxInScope: fanboxInScope,
     expenses: expenses, getExpense: getExpense, addExpense: addExpense,
     updateExpense: updateExpense, removeExpense: removeExpense,
+    expensesWithFile: expensesWithFile, retargetExpenseFiles: retargetExpenseFiles,
+    forgetFiles: forgetFiles,
     recurring: recurring, getRecurring: getRecurring, addRecurring: addRecurring,
     updateRecurring: updateRecurring, removeRecurring: removeRecurring, postRecurring: postRecurring,
     events: events, getEvent: getEvent, addEvent: addEvent,
@@ -1639,6 +1705,7 @@
     calMode: calMode, setCalMode: setCalMode,
     removeFanbox: removeFanbox, clearFanbox: clearFanbox,
     fileFolder: fileFolder, setFileFolder: setFileFolder, pruneFileFolders: pruneFileFolders,
+    pruneReceiptLinks: pruneReceiptLinks,
     knowsFileFolder: knowsFileFolder, applyFolderHints: applyFolderHints,
     docs: docs, getDoc: getDoc, addDoc: addDoc, updateDoc: updateDoc, removeDoc: removeDoc,
     issueNumber: issueNumber, peekNumber: peekNumber, allDocs: allDocs,

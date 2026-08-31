@@ -477,6 +477,9 @@
     };
     var picked = null;      // まだ送っていない写真（縮めたもの。これを送る）
     var pickedRaw = null;   // 撮ったままの写真（読み取りに使う。送らない）
+    // 保存したときに、サーバーからも消す写真。
+    // 外した／撮り直しただけで消すと、キャンセルしたときに戻せない
+    var dropIds = [];
 
     var dateIn = ui.input({ type: 'date', value: v.date });
     var amountIn = ui.input({ type: 'number', inputmode: 'numeric', min: 0, value: v.amount, placeholder: '0' });
@@ -560,7 +563,7 @@
         shotBox.appendChild(el('div', { class: 'row-wrap' }, [
           ui.btn('金額を読み取る', 'ghost tiny', function () { readSaved(v.fileId); }, 'search'),
           ui.btn('撮り直す', 'ghost tiny', function () { pick(true); }, 'receipt'),
-          ui.btn('写真を外す', 'ghost tiny', function () { v.fileId = ''; renderShot(); })
+          ui.btn('写真を削除', 'ghost tiny', function () { dropShot(); })
         ]));
         return;
       }
@@ -573,6 +576,24 @@
         ui.btn('レシートを撮る', 'ghost', function () { pick(true); }, 'receipt'),
         ui.btn('写真を選ぶ', 'ghost', function () { pick(false); }, 'illust')
       ]));
+    }
+
+    /* この経費から写真を外す。ファイル側の写真も、保存したときに一緒に消す */
+    function dropShot() {
+      var id = v.fileId;
+      if (!id) return;
+      var also = S.expensesWithFile(id, x ? x.id : '');
+      ui.confirm(
+        also.length
+          ? 'この経費から写真を外します。ほかの経費でも使っているので、フォルダの写真は残します。'
+          : '写真を削除します。フォルダに入っているレシートの写真も、保存したときに一緒に消えます。',
+        { danger: true, okText: also.length ? '外す' : '削除' }
+      ).then(function (ok) {
+        if (!ok) return;
+        if (!also.length) dropIds.push(id);
+        v.fileId = '';
+        renderShot();
+      });
     }
 
     /* --- レシートから金額を読み取る --- */
@@ -653,18 +674,49 @@
         projSel ? ui.field('案件', projSel, '印刷費などを案件に紐づけると、案件ごとの出費が分かります') : null,
         issuerSel ? ui.field('名義', issuerSel, '名義を絞って見ているとき、その名義の経費として数えます') : null,
         ui.field('レシート', shotBox),
-        !isNew ? ui.btn('この経費を削除', 'danger full mt', function () {
-          ui.confirm('この経費を削除します。', { danger: true, okText: '削除' }).then(function (ok) {
-            if (!ok) return;
-            S.removeExpense(x.id); close(); ui.toast('削除しました');
-          });
-        }, 'trash') : null
+        !isNew ? ui.btn('この経費を削除', 'danger full mt', function () { removeThis(); }, 'trash') : null
       ]),
       actions: [
         ui.btn('キャンセル', 'ghost', function () { close(); }),
         ui.btn('保存', 'primary', function () { save(); })
       ]
     });
+
+    /**
+     * 経費を消す。レシートの写真も一緒に消して、片方だけ残らないようにする。
+     * ほかの経費でも同じ写真を使っているときは、写真は残す。
+     */
+    function removeThis() {
+      var id = v.fileId;
+      var alone = id && !S.expensesWithFile(id, x.id).length;
+      ui.confirm(
+        alone ? 'この経費と、レシートの写真を削除します。' : 'この経費を削除します。',
+        { danger: true, okText: '削除' }
+      ).then(function (ok) {
+        if (!ok) return;
+        S.removeExpense(x.id);
+        close();
+        if (!alone) { ui.toast('削除しました'); return; }
+        ui.toast('削除しています…');
+        dropFiles([id]).then(function () {
+          ui.toast('削除しました（写真も消しました）');
+        }).catch(function () {
+          // 経費はもう消えている。写真だけ残ったことを伝える
+          ui.toast('経費を削除しました（写真は消せませんでした）', 'warn');
+        });
+      });
+    }
+
+    /* サーバーからも写真を消し、この端末が憶えている紐付けも片付ける */
+    function dropFiles(ids) {
+      var list = (ids || []).filter(Boolean);
+      if (!list.length || !F.ready()) return Promise.resolve();
+      var chain = Promise.resolve();
+      list.forEach(function (id) {
+        chain = chain.then(function () { return F.remove(id); }).then(function () { S.forgetFiles(id); });
+      });
+      return chain;
+    }
 
     function save() {
       var amount = U.num(amountIn.value, 0);
@@ -689,6 +741,10 @@
         .then(function (r) {
           if (r && r.id) {
             S.setFileFolder(r.id, S.ensureFolderPath(folder));
+            // 撮り直したときは、前の写真をフォルダに置き去りにしない
+            if (v.fileId && v.fileId !== r.id && !S.expensesWithFile(v.fileId, x ? x.id : '').length) {
+              dropIds.push(v.fileId);
+            }
             data.fileId = r.id;
           }
           commit(data);
@@ -704,6 +760,11 @@
       else S.updateExpense(x.id, data);
       close();
       ui.toast(isNew ? '追加しました' : '保存しました');
+      // 外した写真・撮り直す前の写真は、ここで初めてサーバーから消す
+      dropFiles(dropIds).catch(function () {
+        ui.toast('前のレシートの写真は消せませんでした', 'warn');
+      });
+      dropIds = [];
     }
 
     if (opts.shoot && F.ready()) setTimeout(function () { pick(true); }, 250);

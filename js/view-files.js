@@ -345,7 +345,10 @@
               var targets = (cache.files || []).filter(function (x) { return inTree[S.fileFolder(x.id)]; });
               ui.toast('削除しています…');
               var chain = Promise.resolve();
-              targets.forEach(function (t) { chain = chain.then(function () { return F.remove(t.id); }); });
+              targets.forEach(function (t) {
+                chain = chain.then(function () { return F.remove(t.id); })
+                  .then(function () { S.forgetFiles(t.id); });   // 経費のレシート紐付けも外す
+              });
               chain.then(function () {
                 leave();
                 S.removeFolder(f.id);
@@ -547,7 +550,10 @@
       // これをしないと、もう片方の端末で入れたファイルがいちばん上に出てしまう
       S.applyFolderHints(r.files || []);
       // 消えたファイルの割り当てが残らないように掃除する
-      S.pruneFileFolders((r.files || []).map(function (f) { return f.id; }));
+      var ids = (r.files || []).map(function (f) { return f.id; });
+      S.pruneFileFolders(ids);
+      // 写真だけ先に消えている経費があれば、レシートの紐付けを外す
+      S.pruneReceiptLinks(ids);
       DL.app.render();
     }).catch(function (e) {
       error = e.message; fetchedAt = Date.now(); loading = false; DL.app.render();
@@ -570,10 +576,15 @@
           }),
           item('trash', '削除する', function () {
             close();
-            ui.confirm('「' + f.name + '」をサーバーから削除します。元に戻せません。', { danger: true, okText: '削除' })
+            // レシートとして経費に紐づいている写真なら、消えることを先に伝える
+            var used = S.expensesWithFile(f.id).length;
+            ui.confirm('「' + f.name + '」をサーバーから削除します。元に戻せません。'
+              + (used ? '\nこの写真はレシートとして' + used + '件の経費に紐づいています。経費は残りますが、写真は外れます。' : ''),
+              { danger: true, okText: '削除' })
               .then(function (ok) {
                 if (!ok) return;
                 F.remove(f.id).then(function () {
+                  S.forgetFiles(f.id);
                   ui.toast('削除しました'); load(true);
                 }).catch(function (e) { ui.toast(e.message, 'danger'); });
               });
@@ -639,8 +650,11 @@
           F.fetchBytes(f.id).then(function (bytes) {
             var file = new File([bytes], f.name, { type: f.type || 'application/octet-stream' });
             return F.upload(file, { projectId: sel.value, folder: S.folderPath(folderId) }).then(function (r) {
-              if (r && r.id) S.setFileFolder(r.id, folderId);   // フォルダは保つ
-              return F.remove(f.id);
+              if (r && r.id) {
+                S.setFileFolder(r.id, folderId);              // フォルダは保つ
+                S.retargetExpenseFiles(f.id, r.id);           // レシートの紐付けも新しい ID へ移す
+              }
+              return F.remove(f.id).then(function () { S.forgetFiles(f.id); });
             });
           }).then(function () {
             ui.toast('変更しました'); load(true);
