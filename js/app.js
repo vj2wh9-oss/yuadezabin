@@ -70,6 +70,8 @@
       DL.sync.touch().then(function (r) {
         if (r.status === 'pulled' || r.status === 'merged') render();
       });
+      // 通知の予定表も預け直す（予定を直したぶんを反映するため）
+      queueNotify();
     }
 
     // 同期ボタン（つないでいるときだけ）
@@ -202,6 +204,17 @@
     ]);
 
     var close = ui.sheet({ title: '名義の切り替え', body: body });
+  }
+
+  /* 通知の予定表を預け直す。連続して呼ばれても1回にまとめる */
+  var notifyTimer = null;
+  function queueNotify() {
+    if (!DL.notify || !DL.notify.settings().enabled) return;
+    if (notifyTimer) clearTimeout(notifyTimer);
+    notifyTimer = setTimeout(function () {
+      notifyTimer = null;
+      DL.notify.sync().catch(function () { /* つながらないときは次の機会に */ });
+    }, 3000);
   }
 
   function updateFab() {

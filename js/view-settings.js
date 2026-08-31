@@ -134,6 +134,11 @@
       DL.sync.active() ? ui.chip('有効', 'ok') : ui.chip('未接続', 'ghosty')));
     wrap.appendChild(syncCard(s));
 
+    /* ---- 通知 ---- */
+    wrap.appendChild(ui.section('通知',
+      DL.notify.settings().enabled ? ui.chip('この端末で受け取る', 'ok') : ui.chip('切', 'ghosty')));
+    wrap.appendChild(notifyCard());
+
     /* ---- iCloud へ書き出す ---- */
     wrap.appendChild(ui.section('iCloud への書き出し'));
     wrap.appendChild(el('div', { class: 'card' }, [
@@ -199,6 +204,263 @@
     ]));
 
     root.appendChild(wrap);
+  }
+
+
+  /* ---------------- 通知 ---------------- */
+
+  function notifyCard() {
+    var N = DL.notify;
+    var nf = N.settings();
+    var st = N.status();
+    var box = el('div', { class: 'card' });
+
+    box.appendChild(el('p', { class: 'muted small', text:
+      'アプリを閉じていても知らせます。時刻が来たら同期サーバーから送る仕組みなので、'
+      + '「PC・iPhone の同期」を設定しておく必要があります。' }));
+
+    if (!st.ok) {
+      box.appendChild(el('div', { class: 'alert warn mt' }, [
+        el('span', { class: 'alert-icon' }, ui.icon('alert', 17)),
+        el('span', { text: st.why })
+      ]));
+    }
+
+    box.appendChild(el('div', { class: 'row-wrap mt' }, [
+      nf.enabled
+        ? ui.btn('この端末で受け取るのをやめる', 'ghost', function () {
+            N.disable().then(function () { ui.toast('通知を止めました'); });
+          }, 'close')
+        : ui.btn('この端末で受け取る', 'primary', function () {
+            ui.toast('登録しています…');
+            N.enable().then(function (r) {
+              ui.toast(r.ok ? '通知を受け取ります' : r.why, r.ok ? '' : 'danger');
+              DL.app.render();
+            });
+          }, 'alert'),
+      nf.enabled ? ui.btn('テスト送信', 'ghost', function () {
+        N.testSend().then(function (r) {
+          ui.toast(r.ok ? '送りました。数秒で届きます' : '送れませんでした', r.ok ? '' : 'danger');
+        }, function (e) { ui.toast(e.message, 'danger'); });
+      }, 'refresh') : null,
+      ui.btn('様子を見る', 'ghost tiny', function () { notifyStateSheet(); }, 'info'),
+      ui.btn('サーバーの鍵を作る', 'ghost tiny', function () { vapidSheet(); }, 'settings')
+    ]));
+
+    box.appendChild(el('h3', { class: 'sub-title mt', text: '知らせるもの' }));
+    var rules = N.rules();
+    if (!rules.length) {
+      box.appendChild(el('p', { class: 'muted small', text: 'まだ何も決めていません。' }));
+      box.appendChild(ui.btn('よく使う組み合わせを入れる', 'ghost full mt', function () {
+        saveRules(N.defaultRules());
+        ui.toast('前日20時・当日8時・今日やること を入れました');
+      }, 'plus'));
+    } else {
+      var list = el('div', { class: 'list' });
+      rules.forEach(function (r) { list.appendChild(ruleRow(r)); });
+      box.appendChild(list);
+    }
+
+    box.appendChild(ui.btn('知らせるものを足す', 'ghost full mt', function () { ruleSheet(null); }, 'plus'));
+    return box;
+  }
+
+  function saveRules(rules) {
+    S.updateSettings({ notify: Object.assign({}, DL.notify.settings(), { rules: rules }) });
+    DL.notify.sync().catch(function () { /* つながらないときは次の機会に */ });
+  }
+
+  function ruleText(r) {
+    if (r.when === 'beforeMin') return '開始の' + r.minutes + '分前';
+    if (r.when === 'beforeDay') return (r.kind === 'deadline' ? r.days + '日前の ' : '前日の ') + r.time;
+    return '当日の ' + r.time;
+  }
+
+  function ruleRow(r) {
+    var k = DL.notify.KINDS[r.kind] || { label: r.kind };
+    return el('div', { class: 'row' + (r.active ? '' : ' is-done') }, [
+      el('div', { class: 'row-main', onclick: function () { ruleSheet(r); } }, [
+        el('div', { class: 'row-title', text: k.label }),
+        el('div', { class: 'row-sub' }, [
+          ui.chip(ruleText(r), 'soft'),
+          r.importantOnly ? ui.iconChip('alert', '重要だけ', 'warn') : null,
+          !r.active ? ui.chip('停止中', 'ghosty') : null
+        ])
+      ]),
+      el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+    ]);
+  }
+
+  function ruleSheet(r) {
+    var N = DL.notify;
+    var isNew = !r;
+    var v = r || { id: U.uid(), kind: 'lifeEvent', active: true, when: 'beforeDay',
+                   time: '20:00', days: 3, minutes: 30, importantOnly: false };
+
+    var kindSel = ui.select(Object.keys(N.KINDS).map(function (k) {
+      return { value: k, label: N.KINDS[k].label };
+    }), v.kind);
+    var noteEl = el('p', { class: 'muted small' });
+    var whenWrap = el('div', {});
+    var timeIn = ui.input({ type: 'time', value: v.time });
+    var daysIn = ui.input({ type: 'number', min: 1, max: 60, value: v.days });
+    var minIn = ui.input({ type: 'number', min: 5, max: 720, step: 5, value: v.minutes });
+    var impIn = el('input', { type: 'checkbox', checked: !!v.importantOnly });
+    var activeIn = el('input', { type: 'checkbox', checked: v.active !== false });
+    var when = v.when;
+
+    function draw() {
+      var k = N.KINDS[kindSel.value];
+      noteEl.textContent = k ? k.note : '';
+      U.clear(whenWrap);
+      var opts = (k && k.whens) || [];
+      if (opts.map(function (o) { return o.value; }).indexOf(when) < 0) {
+        when = opts.length ? opts[0].value : 'onDay';
+      }
+      whenWrap.appendChild(ui.field('鳴らし方', ui.segmented(opts, when, function (val) { when = val; draw(); })));
+      if (when === 'beforeMin') {
+        whenWrap.appendChild(ui.field('何分前', minIn, '時刻を決めた予定にだけ効きます'));
+      } else {
+        if (when === 'beforeDay' && kindSel.value === 'deadline') {
+          whenWrap.appendChild(ui.field('何日前', daysIn));
+        }
+        whenWrap.appendChild(ui.field('時刻', timeIn));
+      }
+      if (kindSel.value === 'lifeEvent') {
+        whenWrap.appendChild(el('label', { class: 'row-check' }, [
+          impIn, el('span', { text: '「重要」にした予定だけ知らせる' })
+        ]));
+      }
+    }
+    kindSel.addEventListener('change', draw);
+    draw();
+
+    var close = ui.sheet({
+      title: isNew ? '知らせるものを足す' : '通知の設定',
+      body: el('div', { class: 'form' }, [
+        ui.field('種別', kindSel),
+        noteEl,
+        whenWrap,
+        el('label', { class: 'row-check' }, [activeIn, el('span', { text: '有効にする' })]),
+        !isNew ? ui.btn('これを削除', 'danger full mt', function () {
+          saveRules(DL.notify.rules().filter(function (x) { return x.id !== v.id; }));
+          close(); ui.toast('削除しました');
+        }, 'trash') : null
+      ]),
+      actions: [
+        ui.btn('キャンセル', 'ghost', function () { close(); }),
+        ui.btn('保存', 'primary', function () {
+          var next = {
+            id: v.id, kind: kindSel.value, active: activeIn.checked, when: when,
+            time: timeIn.value || '08:00', days: U.num(daysIn.value, 3),
+            minutes: U.num(minIn.value, 30), importantOnly: impIn.checked
+          };
+          var rules = DL.notify.rules().filter(function (x) { return x.id !== v.id; });
+          rules.push(next);
+          saveRules(rules);
+          close();
+          ui.toast('保存しました');
+        })
+      ]
+    });
+  }
+
+  /* いま何件が控えているか、次はいつか */
+  function notifyStateSheet() {
+    var body = el('div', { class: 'form' }, el('p', { class: 'muted', text: '見に行っています…' }));
+    ui.sheet({ title: '通知の様子', body: body });
+    var items = DL.notify.build();
+    DL.notify.state().then(function (st) {
+      U.clear(body);
+      body.appendChild(el('div', { class: 'kv' }, [
+        kvRow('サーバーの鍵（VAPID）', st.vapid ? '設定済み' : '未設定'),
+        kvRow('受け取る端末', (st.subs || []).length + '台'),
+        kvRow('預けてある予定', st.queued + '件（これから ' + st.pending + '件）'),
+        kvRow('送信済み', st.sent + '件'),
+        kvRow('この端末で作った予定', items.length + '件'),
+        kvRow('次に鳴るもの', st.next ? (fmtAt(st.next.at) + '　' + st.next.title) : 'なし')
+      ]));
+      if (items.length) {
+        body.appendChild(el('h3', { class: 'sub-title mt', text: 'これから鳴る予定（先頭10件）' }));
+        var list = el('div', { class: 'list' });
+        items.slice(0, 10).forEach(function (x) {
+          list.appendChild(el('div', { class: 'row' }, el('div', { class: 'row-main' }, [
+            el('div', { class: 'row-title', text: x.title }),
+            el('div', { class: 'row-sub' }, [
+              ui.chip(fmtAt(x.at), 'soft'),
+              el('span', { class: 'muted small', text: x.body })
+            ])
+          ])));
+        });
+        body.appendChild(list);
+      }
+      body.appendChild(ui.btn('いま預け直す', 'ghost full mt', function () {
+        DL.notify.sync().then(function (r) {
+          ui.toast(r ? (r.queued + '件を預けました') : '通知が切になっています');
+        }, function (e) { ui.toast(e.message, 'danger'); });
+      }, 'refresh'));
+    }, function (e) {
+      U.clear(body);
+      body.appendChild(el('p', { class: 'muted', text: '見に行けませんでした：' + e.message }));
+    });
+  }
+
+  function kvRow(k, v) {
+    return el('div', { class: 'kv-row' }, [
+      el('span', { class: 'muted small', text: k }), el('strong', { text: String(v) })
+    ]);
+  }
+
+
+  /* 通知に使う鍵（VAPID）をその場で作る。
+     Cloudflare に貼るのは持ち主だけなので、作るところもここで済ませる。
+     秘密鍵はアプリに保存しない（画面に出すだけ）。 */
+  function vapidSheet() {
+    var body = el('div', { class: 'form' });
+    var close = ui.sheet({ title: '通知サーバーの鍵を作る', body: body });
+
+    body.appendChild(el('p', { class: 'muted small', text:
+      '通知を送るには、Cloudflare の Worker に鍵（VAPID）を登録します。下の「作る」を押すと2つの文字列が出るので、Cloudflare のダッシュボードで Worker →「設定」→「変数とシークレット」に貼ってください。' }));
+
+    var out = el('div', { class: 'mt' });
+    body.appendChild(ui.btn('作る', 'primary full', function () {
+      crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify'])
+        .then(function (kp) {
+          return Promise.all([
+            crypto.subtle.exportKey('raw', kp.publicKey),
+            crypto.subtle.exportKey('jwk', kp.privateKey)
+          ]);
+        }).then(function (r) {
+          var pub = b64url(new Uint8Array(r[0]));
+          var priv = r[1].d;                    // jwk の d がそのまま base64url
+          U.clear(out);
+          out.appendChild(keyRow('VAPID_PUBLIC', pub, 'シークレット'));
+          out.appendChild(keyRow('VAPID_PRIVATE', priv, 'シークレット'));
+          out.appendChild(keyRow('VAPID_SUBJECT', 'mailto:' + (S.settings.issuers[0] && S.settings.issuers[0].email || 'you@example.com'), '変数（テキスト）'));
+          out.appendChild(el('p', { class: 'muted small mt', text:
+            'あわせて、Worker の「トリガー」に Cron を1つ足してください（* * * * * ＝毎分）。これが通知を送るきっかけになります。' }));
+          out.appendChild(el('p', { class: 'muted small', text:
+            '※ この画面を閉じると秘密鍵は消えます（アプリには保存しません）。貼り終わってから閉じてください。' }));
+        }).catch(function (e) { ui.toast('作れませんでした：' + e.message, 'danger'); });
+    }, 'plus'));
+    body.appendChild(out);
+  }
+
+  function keyRow(name, value, kind) {
+    var inp = ui.input({ value: value, readonly: true });
+    return el('div', { class: 'mt' }, [
+      el('div', { class: 'row-sub' }, [ui.chip(name, 'soft'), ui.chip(kind, 'ghosty')]),
+      el('div', { class: 'row-wrap' }, [
+        inp,
+        ui.btn('コピー', 'ghost tiny', function () { copyText(value); }, 'folder')
+      ])
+    ]);
+  }
+
+  function b64url(bytes) {
+    var s = '';
+    for (var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   }
 
   /* 同期の設定カード */

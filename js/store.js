@@ -104,6 +104,9 @@
     // カレンダーからは消さないので、いつでも戻せる
     eventDone: {},
     calMode: 'work',       // カレンダーの表示（work=案件 / life=日常）。この端末だけのもの
+    // 通知の決まりごと [{id,kind,active,when,time,days,minutes,importantOnly}]
+    notify: { enabled: false, rules: [] },
+    notifyDevice: {},      // この端末の通知の登録（端末ごと。同期には送らない）
     sync: {                // 同期サーバーの接続情報（この端末だけのもの）
       url: '', token: '', enabled: false, deviceName: '',
       rev: 0,              // 最後にやりとりした版番号
@@ -117,7 +120,7 @@
   };
 
   /* 端末ごとの設定。同期・読み込み・復元で持ち込まず、この端末のものを守る */
-  var LOCAL_SETTING_KEYS = ['sync', 'scopeIssuerId', 'calMode', 'lastBackupAt', 'lastAutoBackupAt'];
+  var LOCAL_SETTING_KEYS = ['sync', 'scopeIssuerId', 'calMode', 'notifyDevice', 'lastBackupAt', 'lastAutoBackupAt'];
 
   var state = null;
   var listeners = [];
@@ -223,6 +226,7 @@
     s.settings.events = (s.settings.events || []).map(normalizeEvent);
     s.settings.duties = normalizeDuties(s.settings.duties);
     s.settings.eventDone = normalizeEventDone(s.settings.eventDone);
+    s.settings.notify = normalizeNotify(s.settings.notify);
     s.settings.docSeq = migrateDocSeq(s.settings.docSeq);
     s.projects = (s.projects || []).map(normalizeProject);
     return s;
@@ -848,6 +852,28 @@
       out[k] = true;
     });
     return out;
+  }
+
+  /* 通知の決まりごと。おかしな値はここで落とす */
+  function normalizeNotify(n) {
+    n = (n && typeof n === 'object') ? n : {};
+    var rules = Array.isArray(n.rules) ? n.rules : [];
+    return {
+      enabled: !!n.enabled,
+      rules: rules.slice(0, 30).map(function (r) {
+        r = r || {};
+        return {
+          id: r.id || U.uid(),
+          kind: String(r.kind || '').slice(0, 24),
+          active: r.active !== false,
+          when: String(r.when || 'onDay').slice(0, 16),
+          time: /^([01]\d|2[0-3]):[0-5]\d$/.test(String(r.time)) ? r.time : '08:00',
+          days: Math.min(60, Math.max(0, U.num(r.days, 1))),
+          minutes: Math.min(720, Math.max(0, U.num(r.minutes, 30))),
+          importantOnly: !!r.importantOnly
+        };
+      }).filter(function (r) { return r.kind; })
+    };
   }
 
   function isEventDone(id, date) { return !!(state.settings.eventDone || {})[doneKey(id, date)]; }

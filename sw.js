@@ -1,10 +1,10 @@
 /* オフライン用のシンプルなキャッシュ（アプリ本体のみ。データは localStorage） */
-var CACHE = 'shimekiri-v33';
+var CACHE = 'shimekiri-v34';
 var ASSETS = [
   './', './index.html', './assets/style.css', './manifest.webmanifest',
   './assets/icon-180.png', './assets/icon-192.png', './assets/icon-512.png',
   './assets/icon-maskable-512.png', './assets/favicon-64.png',
-  './js/util.js', './js/icons.js', './js/db.js', './js/store.js', './js/schedule.js', './js/events.js', './js/documents.js', './js/fanbox.js', './js/expenses.js', './js/ocr.js', './js/sync.js', './js/zip.js', './js/files.js', './js/ui.js', './js/forms.js',
+  './js/util.js', './js/icons.js', './js/db.js', './js/store.js', './js/schedule.js', './js/events.js', './js/notify.js', './js/documents.js', './js/fanbox.js', './js/expenses.js', './js/ocr.js', './js/sync.js', './js/zip.js', './js/files.js', './js/ui.js', './js/forms.js',
   './js/view-home.js', './js/view-calendar.js', './js/view-events.js', './js/view-projects.js',
   './js/view-detail.js', './js/view-doc.js', './js/view-sales.js', './js/view-books.js', './js/view-files.js', './js/view-settings.js', './js/app.js'
 ];
@@ -54,4 +54,36 @@ self.addEventListener('fetch', function (e) {
       return caches.match(e.request).then(function (hit) { return hit || caches.match('./index.html'); });
     })
   );
+});
+
+/* ---------------- 通知 ---------------- */
+
+// サーバーから届いた通知を出す
+self.addEventListener('push', function (e) {
+  var d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (err) { d = { title: 'METEO365', body: (e.data && e.data.text()) || '' }; }
+  e.waitUntil(self.registration.showNotification(d.title || 'METEO365', {
+    body: d.body || '',
+    tag: d.tag || 'meteo365',
+    renotify: false,
+    icon: './assets/icon-192.png',
+    badge: './assets/favicon-64.png',
+    data: { url: d.url || '#/home' }
+  }));
+});
+
+// 通知を押したら、その画面を開く（すでに開いていればそこへ移す）
+self.addEventListener('notificationclick', function (e) {
+  e.notification.close();
+  var hash = (e.notification.data && e.notification.data.url) || '#/home';
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
+    for (var i = 0; i < list.length; i++) {
+      var c = list[i];
+      if (c.url.indexOf(self.registration.scope) === 0 && 'focus' in c) {
+        if ('navigate' in c) c.navigate(c.url.split('#')[0] + hash).catch(function () {});
+        return c.focus();
+      }
+    }
+    return self.clients.openWindow('./' + hash);
+  }));
 });

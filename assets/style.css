@@ -1050,3 +1050,12 @@ h1, h2, h3, p { margin: 0; }
 .upload-row .row-title { align-items: center; gap: 6px; font-size: 12.5px; }
 .upload-row.failed { color: var(--danger); }
 .upload-row.failed .icon { color: var(--danger); }
+
+/* ---------------- 通知 ---------------- */
+.sub-title { font-size: 12.5px; font-weight: 700; color: var(--muted); margin: 0; }
+.kv { display: flex; flex-direction: column; gap: 6px; }
+.kv-row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  padding: 5px 0; border-bottom: 1px solid var(--line);
+}
+.kv-row strong { font-size: 13px; text-align: right; min-width: 0; }
