@@ -24,8 +24,9 @@
  *   毎分の Cron で、時刻が来たものを送る（送った印を残すので二度送らない）
  *
  * 外から届くもの（FANBOX の取り込み）
- *   POST   /v1/inbox/fanbox → 本文 {text, from} を1件だけ預かる（新しいものが上書き）
- *   GET    /v1/inbox/fanbox → { exists, at, from, text }
+ *   POST   /v1/inbox/fanbox → 本文 {rows|text, from} を1件だけ預かる（新しいものが上書き）
+ *                              rows は [{ym:'2026-08', amount, fee, net}]
+ *   GET    /v1/inbox/fanbox → { exists, at, from, source, rows, text }
  *   DELETE /v1/inbox/fanbox → 消す
  *   FANBOX のページで動かすブックマークレットが送り、アプリが受け取って読む。
  *   合鍵で守るので、CORS は fanbox.cc からの送信も通す。
@@ -47,6 +48,7 @@ const MAX_FILE_BYTES = 100 * 1024 * 1024;
 // 外から預かる文字（FANBOX のページの文字）。表1枚ぶんに十分な大きさ
 const MAX_INBOX_BYTES = 256 * 1024;
 const INBOX_KEEP_DAYS = 14;
+const MAX_INBOX_ROWS = 400;          // 月ごとの金額。30年ぶんあれば足りる
 
 export default {
   async fetch(request, env) {
@@ -180,7 +182,10 @@ async function inbox(request, env, cors, id) {
   if (request.method === 'GET') {
     const rec = await env.SYNC.get(key, 'json');
     if (!rec) return json({ exists: false }, 200, cors);
-    return json({ exists: true, at: rec.at, from: rec.from || '', text: rec.text || '' }, 200, cors);
+    return json({
+      exists: true, at: rec.at, from: rec.from || '', source: rec.source || '',
+      rows: rec.rows || null, text: rec.text || ''
+    }, 200, cors);
   }
 
   if (request.method === 'DELETE') {
@@ -191,20 +196,45 @@ async function inbox(request, env, cors, id) {
   if (request.method === 'POST' || request.method === 'PUT') {
     let body;
     try { body = await request.json(); } catch (e) { return json({ error: 'bad_json' }, 400, cors); }
+
+    // FANBOX の窓口から取れたとき（月ごとの金額そのもの）
+    const rows = cleanRows(body && body.rows);
     const text = String(body && body.text || '');
-    if (!text.trim()) return json({ error: 'empty' }, 400, cors);
+    if (!rows.length && !text.trim()) return json({ error: 'empty' }, 400, cors);
     if (text.length > MAX_INBOX_BYTES) return json({ error: 'too_large' }, 413, cors);
+
     const rec = {
       at: new Date().toISOString(),
       from: String(body && body.from || '').slice(0, 80),
-      text: text
+      source: rows.length ? 'api' : 'page',
+      rows: rows.length ? rows : null,
+      text: rows.length ? '' : text
     };
     // 置きっぱなしにしない。取り込まれなくても2週間で消える
     await env.SYNC.put(key, JSON.stringify(rec), { expirationTtl: INBOX_KEEP_DAYS * 24 * 3600 });
-    return json({ ok: true, at: rec.at, length: text.length }, 200, cors);
+    return json({ ok: true, at: rec.at, rows: rows.length, length: rec.text.length }, 200, cors);
   }
 
   return json({ error: 'not_found' }, 404, cors);
+}
+
+/* 送られてきた月ごとの金額を、形だけ整える（中身は信用せず、型と桁だけ見る） */
+function cleanRows(list) {
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  for (const r of list.slice(0, MAX_INBOX_ROWS)) {
+    const ym = String(r && r.ym || '');
+    const amount = Math.round(Number(r && r.amount));
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(ym)) continue;
+    if (!isFinite(amount) || amount < 0 || amount > 1e9) continue;
+    out.push({
+      ym,
+      amount,
+      fee: Math.max(0, Math.round(Number(r && r.fee) || 0)),
+      net: Math.max(0, Math.round(Number(r && r.net) || 0))
+    });
+  }
+  return out;
 }
 
 /* ---------------- 共有ファイル（R2） ---------------- */

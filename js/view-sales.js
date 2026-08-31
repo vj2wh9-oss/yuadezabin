@@ -339,15 +339,20 @@
     // FANBOX のページから送られてきたものがあれば、いちばん上で知らせる
     var waiting = DL.fanbox.inbox();
     if (waiting) {
+      var got = waiting.rows && waiting.rows.length
+        ? waiting.rows.length + 'ヶ月ぶん（FANBOX から直接）'
+        : 'ページの文字';
       box.appendChild(el('div', { class: 'alert info' }, [
         el('span', { class: 'alert-icon' }, ui.icon('cloud', 17)),
         el('span', {}, [
           el('div', { text: 'FANBOX からデータが届いています' }),
-          el('div', { class: 'muted small', text: when(waiting.at) + 'に送られました' })
+          el('div', { class: 'muted small', text: when(waiting.at) + 'に送られました・' + got })
         ])
       ]));
       box.appendChild(el('div', { class: 'row-wrap' }, [
-        ui.btn('内容を見て取り込む', 'primary', function () { pasteSheet(waiting.text); }, 'arrowDown'),
+        ui.btn('内容を見て取り込む', 'primary', function () {
+          pasteSheet(waiting.text, waiting.rows);
+        }, 'arrowDown'),
         ui.btn('捨てる', 'ghost', function () {
           DL.fanbox.clearInbox().then(function () { ui.toast('捨てました'); DL.app.render(); });
         }, 'trash')
@@ -406,9 +411,13 @@
   /**
    * 貼り付けた表を読み取る。列が複数あるときは、どれが支援金かを選ばせる。
    * @param {string} [initial] FANBOX から届いた文字（あればそれを入れて開く）
+   * @param {Array} [given] FANBOX の窓口から取れた月ごとの金額。あれば読み取らずにそのまま使う
    */
-  function pasteSheet(initial) {
-    var fromInbox = !!initial;
+  function pasteSheet(initial, given) {
+    var fixed = given && given.length ? given.map(function (r) {
+      return { ym: r.ym, amount: U.num(r.amount, 0) };
+    }) : null;
+    var fromInbox = !!initial || !!fixed;
     var ta = ui.textarea({ value: initial || '', placeholder: '例）\n2026年1月　¥12,000\n2025年12月　¥9,500' });
     ta.rows = 6;
     var preview = el('div', { class: 'fb-preview' });
@@ -423,7 +432,9 @@
     ]);
 
     function update() {
-      parsed = DL.fanbox.parse(ta.value, col);
+      parsed = fixed
+        ? { rows: fixed, columns: 0, samples: [], labeled: true }
+        : DL.fanbox.parse(ta.value, col);
       U.clear(colWrap);
       // 「支援金」の見出しで拾えなかった表だけ、どの列を使うか選ばせる
       if (!parsed.labeled && parsed.columns > 1) {
@@ -443,13 +454,14 @@
       overWrap.hidden = !dup.length;
 
       U.clear(preview);
-      if (!ta.value.trim()) {
+      if (!fixed && !ta.value.trim()) {
         preview.appendChild(el('span', { class: 'muted small', text: 'ここに読み取り結果が出ます。' }));
       } else if (!parsed.rows.length) {
         preview.appendChild(el('span', { class: 'muted small', text: '年月と金額を見つけられませんでした。画面をそのまま選んでコピーし、貼り付けてみてください。' }));
       } else {
-        var note = parsed.rows.length + 'ヶ月ぶんを読み取りました'
-          + (parsed.labeled ? '（「支援金」の欄を使います）' : '')
+        var note = parsed.rows.length + 'ヶ月ぶん'
+          + (fixed ? 'を FANBOX から受け取りました（支援金・手数料を引く前）'
+            : 'を読み取りました' + (parsed.labeled ? '（「支援金」の欄を使います）' : ''))
           + (dup.length ? ' ／ うち ' + dup.length + 'ヶ月はすでに入っています'
               + (overwrite ? '（入れ直します）' : '（そのままにします）') : '');
         preview.appendChild(el('div', { class: 'muted small', text: note }));
@@ -475,10 +487,12 @@
     var close = ui.sheet({
       title: '支援金を取り込む',
       body: el('div', { class: 'form' }, [
-        el('p', { class: 'muted small', text: fromInbox
-          ? 'FANBOX のページから届いた文字です。年月と「支援金」の欄だけを拾います。すでに入っている月は自動で除きます。'
-          : 'FANBOX の「支援金管理／振込」の画面を上から下までそのまま選んでコピーし、貼り付けてください。年月と「支援金」の欄だけを拾います。すでに入っている月は自動で除きます。' }),
-        ui.field('貼り付け', ta),
+        el('p', { class: 'muted small', text: fixed
+          ? 'FANBOX から受け取った月ごとの支援金です。すでに入っている月は自動で除きます。'
+          : fromInbox
+            ? 'FANBOX のページから届いた文字です。年月と「支援金」の欄だけを拾います。すでに入っている月は自動で除きます。'
+            : 'FANBOX の「支援金管理／振込」の画面を上から下までそのまま選んでコピーし、貼り付けてください。年月と「支援金」の欄だけを拾います。すでに入っている月は自動で除きます。' }),
+        fixed ? null : ui.field('貼り付け', ta),
         colWrap,
         overWrap,
         preview
@@ -501,7 +515,7 @@
       ]
     });
     update();
-    setTimeout(function () { ta.focus(); }, 100);
+    if (!fixed) setTimeout(function () { ta.focus(); }, 100);
   }
 
   /* 1ヶ月ぶんだけ手で足す・直す */

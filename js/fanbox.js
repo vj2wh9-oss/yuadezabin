@@ -190,7 +190,9 @@
     if (!force && Date.now() - checkedAt < CHECK_MS) return Promise.resolve(box);
     checkedAt = Date.now();
     return api('GET').then(function (r) {
-      box = r && r.exists ? { at: r.at, from: r.from, text: r.text } : null;
+      box = r && r.exists
+        ? { at: r.at, from: r.from, source: r.source, rows: r.rows || null, text: r.text || '' }
+        : null;
       return box;
     }).catch(function () {
       return box;   // つながらないときは、前に受け取ったものをそのまま使う

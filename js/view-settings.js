@@ -218,8 +218,9 @@
   function fanboxCard() {
     var card = el('div', { class: 'card' });
     card.appendChild(el('p', { class: 'muted small', text:
-      'FANBOX のページで1回押すだけで、支援金の表をこのアプリへ送れます。'
-      + 'FANBOX のログイン情報はアプリにもサーバーにも預けません（送るのは、その画面に出ている文字だけです）。' }));
+      'FANBOX のページで1回押すだけで、月ごとの支援金をこのアプリへ送れます。'
+      + '開いているログインをその場で使うので、ログイン情報はアプリにもサーバーにも預けません。'
+      + '始めた月からの全部が一度に取れます（読み取れなかったときは、画面の文字を送って読み解きます）。' }));
 
     if (!DL.sync.active()) {
       card.appendChild(el('div', { class: 'alert warn' }, [
@@ -288,7 +289,7 @@
       box.appendChild(el('ol', { class: 'howto' }, [
         el('li', { text: '下の「PC用をコピー」を押す' }),
         el('li', { text: 'ブラウザでブックマークを新規作成し、URL 欄に貼り付ける（名前は「FANBOX→締切」など）' }),
-        el('li', { text: 'FANBOX の支援金の画面を開いて、そのブックマークを押す' })
+        el('li', { text: '自分の FANBOX（◯◯.fanbox.cc）を開いて、そのブックマークを押す' })
       ]));
       box.appendChild(copyRow('PC用をコピー', mark));
 
@@ -297,7 +298,7 @@
         el('li', { text: '下の「iPhone用をコピー」を押す' }),
         el('li', { text: 'ショートカットアプリで新規作成 →「Webページで JavaScript を実行」を追加し、中身を貼り付ける' }),
         el('li', { text: 'そのショートカットの設定で「共有シートに表示」を入にする' }),
-        el('li', { text: 'Safari で FANBOX の支援金の画面を開き、共有ボタンからそのショートカットを選ぶ' })
+        el('li', { text: 'Safari で自分の FANBOX（◯◯.fanbox.cc）を開き、共有ボタンからそのショートカットを選ぶ' })
       ]));
       box.appendChild(copyRow('iPhone用をコピー', plain));
 

@@ -29,21 +29,65 @@
     return;
   }
 
-  /* 画面に出ている文字をそのまま集める。
-     innerText なので、隠れている部分は入らない＝見えているものが送られる */
+  /* 画面に出ている文字。API が使えなかったときの控え */
   var text = (document.body && document.body.innerText) || '';
   text = text.replace(/\u00a0/g, ' ');   // 空白に見える NBSP は普通の空白に直す
   if (text.length > LIMIT) text = text.slice(0, LIMIT);
 
-  /* ここでは読み取らず、「それらしいか」だけ数える */
+  /* 文字から読むときの当たり。ここでは読み取らず、「それらしいか」だけ数える */
   var months = (text.match(/(?:^|\n)\s*(?:1[0-2]|0?[1-9])\s*月/g) || []).length;
   var yen = (text.match(/[¥￥]\s*[\d,]+/g) || []).length;
 
+  var rows = null;   // API から取れた月ごとの金額
+
+  /**
+   * FANBOX 自身の窓口から、月ごとの支援金をまとめて取る。
+   * このページ（*.fanbox.cc）から呼ぶぶんには、いま開いているログインが
+   * そのまま使われる。合鍵の類は何も要らないし、どこにも保存しない。
+   *
+   * 返ってくるもの（legacy/payout_request）：
+   *   body.monthlyMaxPayoutRequestAmountHistory: [{
+   *     targetMonth: '2026-08-01',      その月
+   *     supportTotal: 500,              支援金（手数料を引く前）
+   *     paymentCharge: 64,              手数料
+   *     maxPayoutRequestAmount: 436     受け取れる額
+   *   }, …]
+   */
+  function fromApi() {
+    return fetch('https://api.fanbox.cc/legacy/payout_request', {
+      credentials: 'include',
+      headers: { accept: 'application/json' }
+    }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function (d) {
+      var hist = d && d.body && d.body.monthlyMaxPayoutRequestAmountHistory;
+      if (!hist || !hist.length) throw new Error('履歴がありません');
+      var out = [];
+      hist.forEach(function (x) {
+        var ym = String(x.targetMonth || '').slice(0, 7);
+        var amount = Number(x.supportTotal) || 0;
+        if (!/^\d{4}-\d{2}$/.test(ym) || amount <= 0) return;
+        out.push({
+          ym: ym,
+          amount: amount,
+          fee: Number(x.paymentCharge) || 0,
+          net: Number(x.maxPayoutRequestAmount) || 0
+        });
+      });
+      if (!out.length) throw new Error('金額のある月がありません');
+      return out;
+    });
+  }
+
   function post() {
+    var payload = rows
+      ? { rows: rows, from: 'FANBOX', source: 'api' }
+      : { text: text, from: 'FANBOX', source: 'page' };
     return fetch(API.replace(/\/+$/, '') + '/v1/inbox/fanbox', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: 'Bearer ' + TOKEN },
-      body: JSON.stringify({ text: text, from: 'FANBOX' })
+      body: JSON.stringify(payload)
     }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (b) {
         if (!r.ok) throw new Error(b.error || ('HTTP ' + r.status));
@@ -52,14 +96,28 @@
     });
   }
 
-  /* ---- ショートカットから：そのまま送って結果を返す ---- */
+  function yenStr(n) { return '¥' + Math.round(n).toLocaleString('ja-JP'); }
+
+  /* 送るものの説明。API から取れていればその中身、だめならページの文字 */
+  function summary() {
+    if (rows) {
+      var sum = rows.reduce(function (a, x) { return a + x.amount; }, 0);
+      return rows.length + 'ヶ月ぶん（' + rows[rows.length - 1].ym + '〜' + rows[0].ym
+        + '／合計 ' + yenStr(sum) + '）が取れました。';
+    }
+    return months + 'ヶ月ぶんの見出しと、' + yen + '件の金額が見つかりました。';
+  }
+
+  /* ---- ショートカットから：確認を出さずに送って、結果を返す ---- */
   if (inShortcut) {
-    if (!months || !yen) { finish('支援金の表が見当たりませんでした'); return; }
-    post().then(function () {
-      finish('送りました（' + months + 'ヶ月ぶんらしき記述）');
-    }).catch(function (e) {
-      finish('送れませんでした：' + e.message);
-    });
+    fromApi().then(function (r) { rows = r; }).catch(function () { /* 文字から拾う */ })
+      .then(function () {
+        if (!rows && (!months || !yen)) { finish('支援金の表が見当たりませんでした'); return null; }
+        return post().then(function () {
+          finish('送りました：' + summary());
+        });
+      })
+      .catch(function (e) { finish('送れませんでした：' + e.message); });
     return;
   }
 
@@ -97,13 +155,7 @@
     return b;
   }
 
-  if (!months || !yen) {
-    line('このページには支援金の表が見当たりませんでした。');
-    line('月ごとの金額が並んでいる画面（支援金の管理・振込の画面）を開いてから、もう一度押してください。');
-  } else {
-    line(months + 'ヶ月ぶんの見出しと、' + yen + '件の金額が見つかりました。');
-    line('このページの文字を送ります。金額の確認と取り込みは、アプリの「売上」でできます。');
-  }
+  var status = line('FANBOX に問い合わせています…');
 
   var row = document.createElement('div');
   row.setAttribute('style', 'display:flex;gap:8px;margin-top:14px');
@@ -124,7 +176,25 @@
       line('送れませんでした：' + e.message);
     });
   });
+  send.disabled = true;
   row.appendChild(send);
 
   document.body.appendChild(box);
+
+  // まず FANBOX 自身の窓口を試し、だめならページの文字で送る
+  fromApi().then(function (r) {
+    rows = r;
+    status.textContent = summary();
+    line('この内容を送ります。取り込みはアプリの「売上」で確かめてからできます。');
+    send.disabled = false;
+  }).catch(function () {
+    if (!months || !yen) {
+      status.textContent = 'このページからは支援金を読み取れませんでした。';
+      line('支援金の管理・振込の画面（月ごとの金額が並ぶ画面）を開いてから、もう一度押してください。');
+      return;
+    }
+    status.textContent = summary();
+    line('このページの文字を送ります。金額の確認と取り込みは、アプリの「売上」でできます。');
+    send.disabled = false;
+  });
 })();
