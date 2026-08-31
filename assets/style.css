@@ -282,6 +282,8 @@ h1, h2, h3, p { margin: 0; }
 .alert.warn .alert-icon { color: var(--warn); }
 .alert.info { border-left-color: var(--accent); }
 .alert.info .alert-icon { color: var(--accent); }
+.alert.ok { border-left-color: var(--ok); }
+.alert.ok .alert-icon { color: var(--ok); }
 /* 「重要」にした日常の予定。押せる本体と、ホームから消すチェックを並べる */
 .plan-alert { padding: 5px 6px 5px 10px; }
 .alert-main {

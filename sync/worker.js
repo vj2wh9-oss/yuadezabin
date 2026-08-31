@@ -604,12 +604,15 @@ function bearer(request) {
  * CORS のヘッダ。
  * ALLOW_ORIGIN を決めているときでも、FANBOX のページからの送信だけは通す
  * （取り込みのブックマークレットがそこで動くため）。合鍵で守るので開けても危なくない。
+ *
+ * 作者ごとのページは datemeteo.fanbox.cc のように下の階層に付くので、
+ * fanbox.cc とその下の名前をまとめて許す。
  */
-const EXTRA_ORIGINS = ['https://www.fanbox.cc', 'https://fanbox.cc'];
+const FANBOX_ORIGIN = /^https:\/\/([a-z0-9-]+\.)*fanbox\.cc$/i;
 
 function corsHeaders(env, request) {
   const from = request && request.headers.get('origin');
-  const allow = env.ALLOW_ORIGIN && EXTRA_ORIGINS.indexOf(from) >= 0
+  const allow = env.ALLOW_ORIGIN && from && FANBOX_ORIGIN.test(from)
     ? from
     : (env.ALLOW_ORIGIN || '*');
   return {

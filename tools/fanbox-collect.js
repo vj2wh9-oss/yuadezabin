@@ -90,9 +90,17 @@
       body: JSON.stringify(payload)
     }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (b) {
+        if (r.status === 404) {
+          throw new Error('送り先に受け口がありません（worker.js を貼り直してください）');
+        }
         if (!r.ok) throw new Error(b.error || ('HTTP ' + r.status));
         return b;
       });
+    }, function () {
+      // fetch 自体が失敗したときは中身が分からない。よくある原因を書いておく
+      throw new Error('送り先に届きませんでした。'
+        + 'アプリの 設定 →「FANBOX の取り込み」→「送り先を確かめる」で、'
+        + 'worker.js が新しいかどうかを見てください');
     });
   }
 

@@ -250,7 +250,48 @@
         DL.app.render();
       });
     }, 'refresh'));
+    card.appendChild(ui.btn('送り先を確かめる', 'ghost full', function () { checkServer(); }, 'cloud'));
+    card.appendChild(el('span', { class: 'field-hint',
+      text: '「送れませんでした」と出るときは、まずこれを押してください' }));
     return card;
+  }
+
+  /**
+   * 同期サーバーが、FANBOX の受け口を持っているか確かめる。
+   * worker.js を貼り直していないと受け口が無く、送っても弾かれる。
+   */
+  function checkServer() {
+    var sy = S.syncSettings();
+    var url = String(sy.url || '').replace(/\/+$/, '');
+    if (!url) { ui.toast('同期の接続先が未設定です', 'warn'); return; }
+    ui.toast('確かめています…');
+    fetch(url + '/health', { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var eps = (d && d.endpoints) || [];
+        var hasInbox = eps.indexOf('/v1/inbox/fanbox') >= 0;
+        ui.sheet({
+          title: '送り先の様子',
+          body: el('div', { class: 'form' }, [
+            el('div', { class: 'alert ' + (hasInbox ? 'ok' : 'warn') }, [
+              el('span', { class: 'alert-icon' }, ui.icon(hasInbox ? 'check' : 'alert', 17)),
+              el('span', { text: hasInbox
+                ? '受け口があります。FANBOX から送れる状態です。'
+                : 'このサーバーには FANBOX の受け口がありません。sync/worker.js を新しいものに貼り直して、デプロイし直してください。' })
+            ]),
+            kvRow('接続先', url),
+            kvRow('受け口', hasInbox ? 'あり' : 'なし（古いままです）'),
+            kvRow('保管', d && d.bindings && d.bindings.kv ? 'つながっている' : 'つながっていない'),
+            el('p', { class: 'muted small', text:
+              '「送れませんでした：Failed to fetch」と出るときは、たいてい受け口が無いか、'
+              + 'Worker の ALLOW_ORIGIN が FANBOX を弾いています。'
+              + '新しい worker.js は fanbox.cc からの送信を通します。' })
+          ])
+        });
+      })
+      .catch(function (e) {
+        ui.toast('送り先につながりませんでした：' + e.message, 'danger');
+      });
   }
 
   /**
