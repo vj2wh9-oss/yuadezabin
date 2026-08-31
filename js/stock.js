@@ -85,9 +85,11 @@
   /**
    * イベント（即売会の案件）ごとの頒布のまとめ。
    * 印刷費は、その案件に紐づけた経費から拾う。
+   * @param {string} projectId
+   * @param {number|string} [year] その年のぶんだけ数える
    */
-  function eventSummary(projectId) {
-    var moves = S.stockMoves({ projectId: projectId, kind: 'sale' });
+  function eventSummary(projectId, year) {
+    var moves = S.stockMoves({ projectId: projectId, kind: 'sale', year: year });
     var out = { sold: 0, revenue: 0, cost: 0, profit: 0, lines: [], expense: 0 };
     var byItem = {};
     moves.forEach(function (m) {
@@ -103,7 +105,8 @@
     out.lines = Object.keys(byItem).map(function (k) { return byItem[k]; })
       .sort(function (a, b) { return b.revenue - a.revenue; });
     // その案件に紐づけた経費（印刷費・交通費など）
-    out.expense = S.expenses({ projectId: projectId }).reduce(function (n, x) { return n + U.num(x.amount, 0); }, 0);
+    out.expense = S.expenses({ projectId: projectId, year: year })
+      .reduce(function (n, x) { return n + U.num(x.amount, 0); }, 0);
     out.profit = out.revenue - out.cost;
     return out;
   }
@@ -121,17 +124,11 @@
     return out;
   }
 
-  /** 在庫のある頒布物のうち、残りが少ないもの（イベント前の刷り増しの目安） */
-  function lowStock(limit) {
-    limit = U.num(limit, 5);
-    return all().filter(function (s) { return s.left > 0 && s.left <= limit; });
-  }
-
   DL.stock = {
     MOVES: MOVES, KIND_LABEL: KIND_LABEL,
     moveDef: moveDef, moveLabel: moveLabel, kindLabel: kindLabel,
     delta: delta, money: money,
     summary: summary, all: all, totals: totals,
-    eventSummary: eventSummary, salesOf: salesOf, lowStock: lowStock
+    eventSummary: eventSummary, salesOf: salesOf
   };
 })(window.DL);

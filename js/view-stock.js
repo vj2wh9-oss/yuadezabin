@@ -140,7 +140,7 @@
       var moves = S.stockMoves({ projectId: p.id, kind: 'sale' });
       if (!moves.length) return;
       if (y && !moves.some(function (m) { return m.date.slice(0, 4) === String(y); })) return;
-      out.push({ project: p, sum: K.eventSummary(p.id) });
+      out.push({ project: p, sum: K.eventSummary(p.id, y) });
     });
     return out.sort(function (a, b) {
       return U.cmp(b.project.eventDate || b.project.deadline || '', a.project.eventDate || a.project.deadline || '');
