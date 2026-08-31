@@ -20,6 +20,7 @@
 
   var HORIZON_DAYS = 60;     // 何日先ぶんまで先に作って預けるか
   var MAX_ITEMS = 400;
+  var DIGEST_DAYS = 7;       // 「気になること」を先に作っておく日数
 
   /* ---------------- 種別ごとの作り方 ----------------
      足すときはここに1つ書く。設定画面と予定表づくりが自動でついてくる。 */
@@ -104,6 +105,7 @@
     deadline: {
       label: '案件の締切',
       note: '入稿締切・納品日・即売会の当日を知らせます',
+      days: true,
       whens: [
         { value: 'beforeDay', label: '◯日前の指定時刻' },
         { value: 'onDay', label: '当日の指定時刻' }
@@ -128,8 +130,233 @@
         });
         return out;
       }
+    },
+
+    /* 請求書の入金 */
+    unpaid: {
+      label: '請求書の入金',
+      note: '発行済みで、まだ入金していない請求書の支払期限を知らせます',
+      days: true,
+      whens: [
+        { value: 'beforeDay', label: '支払期限の◯日前' },
+        { value: 'onDay', label: '支払期限の当日' },
+        { value: 'afterDay', label: '支払期限から◯日後' }
+      ],
+      build: function (rule, from, to) {
+        var out = [];
+        var n = Math.max(1, U.num(rule.days, 3));
+        var shift = rule.when === 'beforeDay' ? -n : rule.when === 'afterDay' ? n : 0;
+        S.allDocs().forEach(function (e) {
+          var d = e.doc;
+          // 下書きはまだ出していない。入金済みは用が済んでいる
+          if (d.type !== 'invoice' || d.status !== 'issued') return;
+          if (!U.isISO(d.dueDate)) return;
+          var fire = U.addDays(d.dueDate, shift);
+          if (U.cmp(fire, from) < 0 || U.cmp(fire, to) > 0) return;
+          var at = atLocal(fire, rule.time || '09:00', 0);
+          if (!at) return;
+          var yen = DL.docs.yen(DL.docs.calc(d).payable);
+          out.push({
+            id: 'unpaid|' + rule.id + '|' + d.id + '|' + fire,
+            at: at,
+            title: shift < 0 ? n + '日後が入金予定日'
+              : shift > 0 ? '入金予定日を ' + n + '日 過ぎました' : '今日が入金予定日',
+            body: (d.clientName || e.project.title) + '　' + yen,
+            tag: 'unpaid-' + d.id,
+            url: '#/doc/' + e.project.id + '/' + d.id
+          });
+        });
+        return out;
+      }
+    },
+
+    /* 請求漏れ */
+    uninvoiced: {
+      label: '請求漏れ',
+      note: '納品日を過ぎたお仕事に請求書が1枚も無ければ知らせます',
+      days: true,
+      whens: [{ value: 'afterDay', label: '納品日から◯日後' }],
+      build: function (rule, from, to) {
+        var out = [];
+        var n = Math.max(0, U.num(rule.days, 3));
+        S.projects().forEach(function (p) {
+          if (p.kind !== 'work' || p.status === 'archived') return;
+          if (!U.isISO(p.deadline)) return;
+          if ((p.docs || []).some(function (d) { return d.type === 'invoice'; })) return;
+          var fire = U.addDays(p.deadline, n);
+          if (U.cmp(fire, from) < 0 || U.cmp(fire, to) > 0) return;
+          var at = atLocal(fire, rule.time || '09:00', 0);
+          if (!at) return;
+          out.push({
+            id: 'uninv|' + rule.id + '|' + p.id,
+            at: at,
+            title: '請求書がまだです',
+            body: p.title + '　納品日 ' + U.fmtMD(p.deadline),
+            tag: 'uninv-' + p.id,
+            url: '#/docs/' + p.id
+          });
+        });
+        return out;
+      }
+    },
+
+    /* 固定費の引き落とし */
+    recurring: {
+      label: '固定費の引き落とし',
+      note: '毎月きまって出るお金の日を知らせます（残高の用意に）',
+      whens: [
+        { value: 'beforeDay', label: '前日の指定時刻' },
+        { value: 'onDay', label: '当日の指定時刻' }
+      ],
+      build: function (rule, from, to) {
+        var out = [];
+        var list = S.recurring().filter(function (r) { return r.active; });
+        if (!list.length) return out;
+        var shift = rule.when === 'beforeDay' ? -1 : 0;
+
+        monthsIn(from, to).forEach(function (ym) {
+          // 同じ日に重なるものは1通にまとめる
+          var byDate = {};
+          list.forEach(function (r) {
+            if (U.cmp(ym, r.startYm) < 0) return;       // 始める前の月は数えない
+            var date = U.clampDay(ym, r.day);
+            (byDate[date] || (byDate[date] = [])).push(r);
+          });
+          Object.keys(byDate).forEach(function (date) {
+            var fire = U.addDays(date, shift);
+            if (U.cmp(fire, from) < 0 || U.cmp(fire, to) > 0) return;
+            var at = atLocal(fire, rule.time || '20:00', 0);
+            if (!at) return;
+            var rs = byDate[date];
+            var sum = rs.reduce(function (a, r) { return a + U.num(r.amount, 0); }, 0);
+            out.push({
+              id: 'rec|' + rule.id + '|' + date,
+              at: at,
+              title: (shift ? '明日' : '今日') + 'の引き落とし ' + DL.docs.yen(sum),
+              body: rs.map(function (r) { return r.name; }).slice(0, 4).join('、')
+                + (rs.length > 4 ? ' ほか' : ''),
+              tag: 'rec-' + date,
+              url: '#/books'
+            });
+          });
+        });
+        return out;
+      }
+    },
+
+    /* 見積書の有効期限 */
+    estimate: {
+      label: '見積書の有効期限',
+      note: '出したままの見積書が切れる前に知らせます（出し直しの目安）',
+      days: true,
+      whens: [
+        { value: 'beforeDay', label: '有効期限の◯日前' },
+        { value: 'onDay', label: '有効期限の当日' }
+      ],
+      build: function (rule, from, to) {
+        var out = [];
+        var n = Math.max(1, U.num(rule.days, 3));
+        var shift = rule.when === 'beforeDay' ? -n : 0;
+        S.allDocs().forEach(function (e) {
+          var d = e.doc;
+          // 受注・見送りが決まったものは、もう気にしなくていい
+          if (d.type !== 'estimate' || d.status !== 'issued') return;
+          if (!U.isISO(d.validUntil)) return;
+          var fire = U.addDays(d.validUntil, shift);
+          if (U.cmp(fire, from) < 0 || U.cmp(fire, to) > 0) return;
+          var at = atLocal(fire, rule.time || '09:00', 0);
+          if (!at) return;
+          out.push({
+            id: 'est|' + rule.id + '|' + d.id + '|' + fire,
+            at: at,
+            title: shift ? '見積書の期限まで ' + n + '日' : '今日で見積書の期限',
+            body: (d.clientName || e.project.title) + '　' + DL.docs.yen(DL.docs.calc(d).payable),
+            tag: 'est-' + d.id,
+            url: '#/doc/' + e.project.id + '/' + d.id
+          });
+        });
+        return out;
+      }
+    },
+
+    /* 即売会前の在庫 */
+    stock: {
+      label: '即売会前の在庫',
+      note: '即売会の前に、残りが少ない頒布物を知らせます（刷り増し・持ち出しの判断に）',
+      days: true,
+      numbers: [{ key: 'count', label: '残部がいくつ以下か', min: 1, max: 999, def: 10 }],
+      whens: [{ value: 'beforeDay', label: '即売会の◯日前' }],
+      build: function (rule, from, to) {
+        var out = [];
+        if (!DL.stock) return out;
+        var n = Math.max(1, U.num(rule.days, 14));
+        var limit = Math.max(1, U.num(rule.count, 10));
+        var low = DL.stock.all().filter(function (x) { return x.left > 0 && x.left <= limit; });
+        if (!low.length) return out;
+
+        S.projects().forEach(function (p) {
+          if (p.kind !== 'event' || p.status === 'archived') return;
+          if (!U.isISO(p.eventDate)) return;
+          var fire = U.addDays(p.eventDate, -n);
+          if (U.cmp(fire, from) < 0 || U.cmp(fire, to) > 0) return;
+          var at = atLocal(fire, rule.time || '10:00', 0);
+          if (!at) return;
+          out.push({
+            id: 'stk|' + rule.id + '|' + p.id,
+            at: at,
+            title: (p.eventName || p.title) + 'まで ' + n + '日',
+            body: '残りわずか：' + low.map(function (x) {
+              return x.item.title + '（残' + x.left + '）';
+            }).slice(0, 4).join('、'),
+            tag: 'stk-' + p.id,
+            url: '#/stock'
+          });
+        });
+        return out;
+      }
+    },
+
+    /* 気になることのまとめ */
+    alert: {
+      label: '気になることのまとめ',
+      note: 'ホームのいちばん上に出ている注意（遅れ・締切・入金・請求漏れ）を、まとめて1通で知らせます',
+      whens: [{ value: 'onDay', label: '毎日の指定時刻' }],
+      build: function (rule, from, to) {
+        var out = [];
+        // 先の日ぶんは「これ以上進めなかったら」という見立てになる。
+        // アプリを開くたびに作り直すので、近い日ぶんだけ持たせておく
+        var last = U.addDays(from, Math.min(DIGEST_DAYS, Math.max(0, U.diffDays(from, to))));
+        U.rangeDays(from, last).forEach(function (date) {
+          var list = DL.schedule.alerts(date, { all: true })
+            .filter(function (a) { return a.level === 'danger' || a.level === 'warn'; });
+          if (!list.length) return;
+          var at = atLocal(date, rule.time || '09:00', 0);
+          if (!at) return;
+          out.push({
+            id: 'alert|' + rule.id + '|' + date,
+            at: at,
+            title: '気になること ' + list.length + '件',
+            body: list.slice(0, 3).map(function (a) {
+              return (a.project ? a.project.title + '：' : '') + a.text;
+            }).join('\n'),
+            tag: 'alert-' + date,
+            url: '#/home'
+          });
+        });
+        return out;
+      }
     }
   };
+
+  /* from〜to にかかる 'YYYY-MM' を並べる */
+  function monthsIn(from, to) {
+    var out = [], ym = String(from).slice(0, 7), endYm = String(to).slice(0, 7), guard = 0;
+    while (U.cmp(ym, endYm) <= 0 && guard++ < 40) {
+      out.push(ym);
+      ym = U.addYm(ym, 1);
+    }
+    return out;
+  }
 
   function bodyOf(o) {
     var t = DL.events.timeText(o.ev);

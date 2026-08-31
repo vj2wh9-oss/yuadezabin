@@ -236,8 +236,20 @@
   }
 
   /* 警告の一覧 */
-  function alerts(today) {
+  /**
+   * 気になることの一覧。
+   * @param {string} [today]
+   * @param {object} [opts] {all:true} で名義の絞り込みを無視する
+   *   （通知はどの名義ぶんも知らせたいので、そちらから使う）
+   */
+  /* 名義で絞るか、全部見るか。通知は端末ごとの絞り込みに引きずられたくない */
+  function projectsFor(opts) {
+    return (opts && opts.all) ? DL.store.projects() : DL.store.scopedProjects();
+  }
+
+  function alerts(today, opts) {
     today = today || U.today();
+    opts = opts || {};
     var out = [];
 
     // バックアップ忘れはホーム上部の案内で扱うので、ここでは出さない
@@ -250,7 +262,7 @@
       });
     });
 
-    DL.store.scopedProjects().forEach(function (p) {
+    projectsFor(opts).forEach(function (p) {
       if (p.status !== 'active') return;
       var st = projectStatus(p, today);
       if (st === 'overdue') {
@@ -277,7 +289,7 @@
       });
     });
 
-    out = out.concat(moneyAlerts(today));
+    out = out.concat(moneyAlerts(today, opts));
 
     // 重い順に並べる（ホームは先頭数件しか出さないため）。同じ重さなら元の順を保つ
     var ORDER = ['danger', 'warn', 'info'];
@@ -298,12 +310,12 @@
    *  - 納品が済んだのに請求書を作っていない仕事
    *  - 発行済みのまま支払期限を過ぎている請求書
    */
-  function moneyAlerts(today) {
+  function moneyAlerts(today, opts) {
     today = today || U.today();
     var out = [];
     var yen = DL.docs ? DL.docs.yen : function (n) { return '¥' + n; };
 
-    DL.store.scopedProjects().forEach(function (p) {
+    projectsFor(opts).forEach(function (p) {
       if (p.status === 'archived') return;
       var docs = p.docs || [];
 

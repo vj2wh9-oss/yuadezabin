@@ -1011,6 +1011,8 @@
           time: /^([01]\d|2[0-3]):[0-5]\d$/.test(String(r.time)) ? r.time : '08:00',
           days: Math.min(60, Math.max(0, U.num(r.days, 1))),
           minutes: Math.min(720, Math.max(0, U.num(r.minutes, 30))),
+          // 種別ごとの数（いまは在庫のしきい値だけ）。使わない種別では 0 のまま
+          count: Math.min(9999, Math.max(0, U.num(r.count, 0))),
           importantOnly: !!r.importantOnly
         };
       }).filter(function (r) { return r.kind; })

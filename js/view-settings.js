@@ -432,8 +432,11 @@
   }
 
   function ruleText(r) {
+    var k = DL.notify.KINDS[r.kind] || {};
     if (r.when === 'beforeMin') return '開始の' + r.minutes + '分前';
-    if (r.when === 'beforeDay') return (r.kind === 'deadline' ? r.days + '日前の ' : '前日の ') + r.time;
+    // 日数を使う種別（締切・入金など）は「◯日前」、そうでなければ「前日」
+    if (r.when === 'beforeDay') return (k.days ? r.days + '日前の ' : '前日の ') + r.time;
+    if (r.when === 'afterDay') return r.days + '日後の ' + r.time;
     return '当日の ' + r.time;
   }
 
@@ -467,26 +470,41 @@
     var daysIn = ui.input({ type: 'number', min: 1, max: 60, value: v.days });
     var minIn = ui.input({ type: 'number', min: 5, max: 720, step: 5, value: v.minutes });
     var impIn = el('input', { type: 'checkbox', checked: !!v.importantOnly });
+    // 種別ごとの数字（在庫のしきい値など）。使う種別だけが出す
+    var numIns = {};
     var activeIn = el('input', { type: 'checkbox', checked: v.active !== false });
     var when = v.when;
 
     function draw() {
-      var k = N.KINDS[kindSel.value];
-      noteEl.textContent = k ? k.note : '';
+      var k = N.KINDS[kindSel.value] || {};
+      noteEl.textContent = k.note || '';
       U.clear(whenWrap);
-      var opts = (k && k.whens) || [];
+      var opts = k.whens || [];
       if (opts.map(function (o) { return o.value; }).indexOf(when) < 0) {
         when = opts.length ? opts[0].value : 'onDay';
       }
       whenWrap.appendChild(ui.field('鳴らし方', ui.segmented(opts, when, function (val) { when = val; draw(); })));
+
       if (when === 'beforeMin') {
         whenWrap.appendChild(ui.field('何分前', minIn, '時刻を決めた予定にだけ効きます'));
       } else {
-        if (when === 'beforeDay' && kindSel.value === 'deadline') {
-          whenWrap.appendChild(ui.field('何日前', daysIn));
+        // 日数を使う種別だけ、何日前（後）を聞く
+        if (k.days && (when === 'beforeDay' || when === 'afterDay')) {
+          whenWrap.appendChild(ui.field(when === 'afterDay' ? '何日後' : '何日前', daysIn));
         }
         whenWrap.appendChild(ui.field('時刻', timeIn));
       }
+
+      (k.numbers || []).forEach(function (n) {
+        if (!numIns[n.key]) {
+          numIns[n.key] = ui.input({
+            type: 'number', min: n.min, max: n.max,
+            value: v[n.key] === undefined ? n.def : v[n.key]
+          });
+        }
+        whenWrap.appendChild(ui.field(n.label, numIns[n.key]));
+      });
+
       if (kindSel.value === 'lifeEvent') {
         whenWrap.appendChild(el('label', { class: 'row-check' }, [
           impIn, el('span', { text: '「重要」にした予定だけ知らせる' })
@@ -516,6 +534,10 @@
             time: timeIn.value || '08:00', days: U.num(daysIn.value, 3),
             minutes: U.num(minIn.value, 30), importantOnly: impIn.checked
           };
+          // 種別ごとの数字も持たせる
+          ((N.KINDS[kindSel.value] || {}).numbers || []).forEach(function (n) {
+            next[n.key] = numIns[n.key] ? U.num(numIns[n.key].value, n.def) : n.def;
+          });
           var rules = DL.notify.rules().filter(function (x) { return x.id !== v.id; });
           rules.push(next);
           saveRules(rules);
