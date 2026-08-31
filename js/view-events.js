@@ -18,7 +18,12 @@
     if (!list.length) {
       wrap.appendChild(ui.empty('この日に予定はありません。'));
     } else {
-      wrap.appendChild(el('div', { class: 'list' }, list.map(function (o) { return row(o); })));
+      wrap.appendChild(el('div', { class: 'list' }, list.map(function (o) { return row(o, true); })));
+      // 押し間違えても、ここからいつでも戻せる
+      if (list.some(function (o) { return E.isDone(o); })) {
+        wrap.appendChild(el('p', { class: 'muted small pad',
+          text: 'チェックの付いた予定は、ホームの「今日やること」には出ません。もう一度押すと戻ります。' }));
+      }
     }
 
     wrap.appendChild(el('div', { class: 'pad' },
@@ -58,18 +63,34 @@
       text: '選ぶとカレンダーのその日に色が付きます（出社＝黄・リモートワーク＝赤・泊まり勤務＝青）。もう一度押すと外れます。' }));
   }
 
-  function row(o) {
-    return el('button', { class: 'row ev-row', onclick: function () { form(o.ev, { occurrence: o }); } }, [
+  /**
+   * 予定1行。
+   * @param {object} o 予定の回
+   * @param {boolean} [withCheck] ホームに出すかどうかの印を付ける（日別画面だけ）
+   */
+  function row(o, withCheck) {
+    var done = E.isDone(o);
+    return el('div', { class: 'row ev-row' + (withCheck && done ? ' is-done' : '') }, [
       el('div', { class: 'row-bar', style: { background: o.ev.color } }),
-      el('div', { class: 'row-main' }, [
+      el('div', { class: 'row-main', onclick: function () { form(o.ev, { occurrence: o }); } }, [
         el('div', { class: 'row-title', text: o.ev.title }),
         el('div', { class: 'row-sub' }, [
           ui.chip(E.whenText(o), 'soft'),
-          o.ev.repeat ? ui.iconChip('refresh', E.repeatLabel(o.ev.repeat), 'ghosty') : null
+          o.ev.repeat ? ui.iconChip('refresh', E.repeatLabel(o.ev.repeat), 'ghosty') : null,
+          withCheck && done ? ui.chip('ホームから外し中', 'ghosty') : null
         ]),
         o.ev.memo ? el('p', { class: 'muted small ev-memo', text: o.ev.memo }) : null
       ]),
-      el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+      withCheck
+        ? el('button', {
+            class: 'checkbtn' + (done ? ' on' : ''),
+            'aria-label': done ? '今日やることに戻す' : 'やった（今日やることから消す）',
+            onclick: function () {
+              S.setEventDone(o.ev.id, o.date, !done);
+              ui.toast(done ? 'ホームの「今日やること」に戻しました' : 'ホームの「今日やること」から外しました');
+            }
+          }, ui.icon('check', 17))
+        : el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
     ]);
   }
 

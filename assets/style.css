@@ -24,6 +24,7 @@
   --duty-office: #d9a520;    /* 出社：黄 */
   --duty-remote: #e0555f;    /* リモートワーク：赤 */
   --duty-stay: #4a8ff5;      /* 泊まり勤務：青 */
+  --sky: #38bdf8;            /* 日常の予定（ホームでの目印の水色） */
   /* グラフの系列色。色覚の見分けやすさを検証して決めた2色 */
   --series1: #3b82f6;
   --series2: #e0507f;
@@ -59,6 +60,7 @@
     --duty-office: #c08a00;
     --duty-remote: #d94b56;
     --duty-stay: #3b82f6;
+    --sky: #0b8fd0;
     --series1: #1d63d8;
     --series2: #d6336c;
     --warn: #9a6a05;
@@ -399,11 +401,15 @@ h1, h2, h3, p { margin: 0; }
   .cal-page.cal-life .cal-line b { display: none; }
 }
 
-/* 予定の一覧（日別・月の一覧） */
-.ev-row {
-  width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer;
+/* 予定の一覧（日別・月の一覧・ホーム）。
+   .plan-row は自動スケジュールの行が先に使っているので、別の名前にする */
+.ev-row, .home-plan {
+  width: 100%; text-align: left; font: inherit; color: inherit;
 }
-.ev-row .ev-memo { margin: 0; white-space: pre-wrap; }
+.ev-row .row-main, .home-plan .row-main { cursor: pointer; }
+.ev-row .ev-memo, .home-plan .ev-memo { margin: 0; white-space: pre-wrap; }
+/* ホームでは案件のノルマと混ざるので、日常の予定だけ薄い水色を敷く */
+.view-home .home-plan { background: color-mix(in srgb, var(--sky) 14%, var(--card)); }
 .ev-day {
   font-size: 12px; font-weight: 700; color: var(--muted);
   padding: 6px 2px 0; font-variant-numeric: tabular-nums;

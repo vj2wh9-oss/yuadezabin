@@ -100,6 +100,9 @@
     // 日常の予定。案件のカレンダーとは混ぜず、上部の切替ボタンで見る側を選ぶ
     events: [],            // [{id,date,days,title,start,end,memo,color,repeat,until}]
     duties: {},            // その日の働き方 { 'YYYY-MM-DD': 'office'|'remote'|'stay' }
+    // ホームの「今日やること」から外した予定 { '<予定ID>|YYYY-MM-DD': true }。
+    // カレンダーからは消さないので、いつでも戻せる
+    eventDone: {},
     calMode: 'work',       // カレンダーの表示（work=案件 / life=日常）。この端末だけのもの
     sync: {                // 同期サーバーの接続情報（この端末だけのもの）
       url: '', token: '', enabled: false, deviceName: '',
@@ -219,6 +222,7 @@
     s.settings.recurring = (s.settings.recurring || []).map(normalizeRecurring);
     s.settings.events = (s.settings.events || []).map(normalizeEvent);
     s.settings.duties = normalizeDuties(s.settings.duties);
+    s.settings.eventDone = normalizeEventDone(s.settings.eventDone);
     s.settings.docSeq = migrateDocSeq(s.settings.docSeq);
     s.projects = (s.projects || []).map(normalizeProject);
     return s;
@@ -819,7 +823,40 @@
 
   function removeEvent(id) {
     state.settings.events = (state.settings.events || []).filter(function (e) { return e.id !== id; });
+    // 消した予定の「やった」印も一緒に片づける
+    var done = state.settings.eventDone || {};
+    Object.keys(done).forEach(function (k) { if (k.slice(0, k.indexOf('|')) === id) delete done[k]; });
     save();
+  }
+
+  /* ホームの「今日やること」から外した予定。
+     繰り返しの予定は日ごとに別ものなので、予定IDと日付を組にして覚える。
+     カレンダーからは消さないので、あとから何度でも戻せる */
+
+  function doneKey(id, date) { return id + '|' + date; }
+
+  function normalizeEventDone(map) {
+    var out = {};
+    var limit = U.addDays(U.today(), -90);   // 昔の分は溜め込まない（ホームは今日しか見ない）
+    Object.keys(map || {}).forEach(function (k) {
+      var i = String(k).indexOf('|');
+      if (i <= 0 || !map[k]) return;
+      var date = k.slice(i + 1);
+      if (!U.isISO(date) || U.cmp(date, limit) < 0) return;
+      out[k] = true;
+    });
+    return out;
+  }
+
+  function isEventDone(id, date) { return !!(state.settings.eventDone || {})[doneKey(id, date)]; }
+
+  function setEventDone(id, date, on) {
+    if (!id || !U.isISO(date)) return false;
+    var map = state.settings.eventDone || (state.settings.eventDone = {});
+    if (on) map[doneKey(id, date)] = true;
+    else delete map[doneKey(id, date)];
+    save();
+    return !!map[doneKey(id, date)];
   }
 
   /* ---------------- その日の働き方（日常のカレンダー） ---------------- */
@@ -1375,6 +1412,10 @@
         if (!duties[d]) duties[d] = incoming.settings.duties[d];
       });
       state.settings.duties = normalizeDuties(duties);
+      // ホームから外した印も、こちらに無いものだけ足す
+      var edone = state.settings.eventDone || (state.settings.eventDone = {});
+      Object.keys(incoming.settings.eventDone || {}).forEach(function (k) { edone[k] = true; });
+      state.settings.eventDone = normalizeEventDone(edone);
       var have = {};
       state.projects.forEach(function (p) { have[p.id] = true; });
       incoming.projects.forEach(function (p) {
@@ -1566,6 +1607,7 @@
     events: events, getEvent: getEvent, addEvent: addEvent,
     updateEvent: updateEvent, removeEvent: removeEvent,
     duty: duty, setDuty: setDuty, dutyLabel: dutyLabel,
+    isEventDone: isEventDone, setEventDone: setEventDone,
     calMode: calMode, setCalMode: setCalMode,
     removeFanbox: removeFanbox, clearFanbox: clearFanbox,
     fileFolder: fileFolder, setFileFolder: setFileFolder, pruneFileFolders: pruneFileFolders,

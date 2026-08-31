@@ -47,7 +47,10 @@
 
     var tab = { home: 'home', calendar: 'calendar', day: 'calendar', projects: 'projects', project: 'projects', docs: 'projects', doc: 'projects', sales: 'sales', books: 'books', files: 'files' }[route.name];
     U.$$('.tab').forEach(function (t) { t.classList.toggle('on', t.dataset.tab === tab); });
-    // 設定は下のタブから外し、題名の右の歯車から開く
+    // 設定は下のタブから外し、題名の右の歯車から開く。
+    // 歯車を出すのはホームだけにして、ほかのタブでは邪魔をしない
+    // （設定の画面でも出しておかないと、開いた先で行き場が分からなくなる）
+    gearBtn.hidden = ['home', 'settings'].indexOf(route.name) < 0;
     gearBtn.classList.toggle('on', route.name === 'settings');
 
     // カレンダーの切替（案件 / 日常）。効くのはカレンダーの画面だけなので、そこにだけ出す

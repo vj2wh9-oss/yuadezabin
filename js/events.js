@@ -85,7 +85,8 @@
 
   /**
    * [from, to] に掛かる予定を日付ごとに割り振る。
-   * @returns {object} { 'YYYY-MM-DD': [{ev, start, span, index}] } index は何日目か（0 始まり）
+   * @returns {object} { 'YYYY-MM-DD': [{ev, date, start, span, index}] }
+   *   date は出ている日、index は何日目か（0 始まり）
    */
   function byDay(from, to) {
     var map = {};
@@ -96,13 +97,16 @@
           var d = U.addDays(s, i);
           if (U.cmp(d, from) < 0) continue;
           if (U.cmp(d, to) > 0) break;
-          (map[d] = map[d] || []).push({ ev: ev, start: s, span: span, index: i });
+          (map[d] = map[d] || []).push({ ev: ev, date: d, start: s, span: span, index: i });
         }
       });
     });
     Object.keys(map).forEach(function (d) { map[d].sort(order); });
     return map;
   }
+
+  /* ホームの「今日やること」から外したか。カレンダーからは消さない */
+  function isDone(o) { return S.isEventDone(o.ev.id, o.date); }
 
   function ofDay(date) { return byDay(date, date)[date] || []; }
 
@@ -121,7 +125,7 @@
     U.rangeDays(first, last).forEach(function (d) {
       (map[d] || []).forEach(function (o) {
         // またがる予定は初日（か月初）だけ出す
-        if (o.index === 0 || d === first) out.push(Object.assign({ date: d }, o));
+        if (o.index === 0 || d === first) out.push(o);
       });
     });
     return out;
@@ -152,7 +156,7 @@
 
   DL.events = {
     REPEATS: REPEATS, repeatLabel: repeatLabel, repeatNote: repeatNote,
-    starts: starts, byDay: byDay, ofDay: ofDay, ofMonth: ofMonth,
+    starts: starts, byDay: byDay, ofDay: ofDay, ofMonth: ofMonth, isDone: isDone,
     timeText: timeText, cellNote: cellNote, whenText: whenText
   };
 })(window.DL);

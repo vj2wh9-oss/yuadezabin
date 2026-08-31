@@ -9,7 +9,8 @@
 
     /* 今日。案件のノルマと日常の予定を、どちらもここに出す */
     var load = sc.loadOfDay(today);
-    var plans = DL.events.ofDay(today);
+    // チェックを付けたものはホームから消す（カレンダーには残る）
+    var plans = DL.events.ofDay(today).filter(function (o) { return !DL.events.isDone(o); });
     var todo = load.entries.length + plans.length;
     wrap.appendChild(el('div', { class: 'today-head' }, [
       el('div', {}, [
@@ -129,12 +130,13 @@
     return row;
   }
 
-  /* 日常の予定1行。押すとその予定を直せる（日別画面と同じ入力） */
+  /* 日常の予定1行。中身を押すと直せる。チェックを押すとホームから消える。
+     ボタンの中にボタンは置けないので、案件のノルマと同じ組み立てにする */
   function planRow(o) {
     var ev = o.ev, E = DL.events;
-    return el('button', { class: 'row ev-row', onclick: function () { DL.views.events.form(ev, { occurrence: o }); } }, [
+    return el('div', { class: 'row home-plan' }, [
       el('div', { class: 'row-bar', style: { background: ev.color } }),
-      el('div', { class: 'row-main' }, [
+      el('div', { class: 'row-main', onclick: function () { DL.views.events.form(ev, { occurrence: o }); } }, [
         el('div', { class: 'row-title', text: ev.title }),
         el('div', { class: 'row-sub' }, [
           ui.chip('日常', 'ghosty'),
@@ -143,7 +145,13 @@
         ]),
         ev.memo ? el('p', { class: 'muted small ev-memo', text: ev.memo }) : null
       ]),
-      el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+      el('button', {
+        class: 'checkbtn', 'aria-label': 'やった（今日やることから消す）',
+        onclick: function () {
+          S.setEventDone(ev.id, o.date, true);
+          ui.toast('「' + ev.title + '」を今日やることから消しました（カレンダーには残ります）');
+        }
+      }, ui.icon('check', 17))
     ]);
   }
 
