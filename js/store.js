@@ -272,6 +272,7 @@
     p.site = p.site || '';     // 支援サイト名
     p.plan = p.plan || '';     // 支援プラン
     p.docs = (p.docs || []).map(normalizeDoc);   // 請求書・領収書
+    p.eventCash = normalizeCash(p.eventCash);    // 当日モードの釣銭とレジ締め
     p.createdAt = p.createdAt || new Date().toISOString();
     // 作業開始日が未設定の既存データは、一番早いタスクの開始日で補う
     if (!p.startDate) {
@@ -279,6 +280,16 @@
       if (starts.length) p.startDate = starts[0];
     }
     return p;
+  }
+
+  /* イベント当日の現金まわり。釣銭の準備金と、締めたときに数えた額 */
+  function normalizeCash(c) {
+    c = c || {};
+    return {
+      float: Math.max(0, Math.round(U.num(c.float, 0))),
+      counted: Math.max(0, Math.round(U.num(c.counted, 0))),
+      closedAt: String(c.closedAt || '')
+    };
   }
 
   function normalizeTask(t) {
@@ -830,6 +841,7 @@
     m.price = Math.max(0, Math.round(U.num(m.price, 0)));   // 0＝頒布物の価格を使う
     m.place = String(m.place || '').slice(0, 60);           // 即売会名・通販など
     m.projectId = m.projectId || '';
+    m.saleId = String(m.saleId || '').slice(0, 24);         // 当日モードの1回ぶんの会計
     m.memo = String(m.memo || '').slice(0, 200);
     m.createdAt = m.createdAt || new Date().toISOString();
     return m;

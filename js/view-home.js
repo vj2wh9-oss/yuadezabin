@@ -23,6 +23,26 @@
     // iCloud への書き出しは Cloudflare 同期の予備なので、ホームでは案内しない。
     // 使うときは 設定 →「iCloud への書き出し」から。
 
+    /* 今日が即売会なら、いちばん上に当日モードの入口を置く */
+    var onsite = S.projects().filter(function (p) {
+      return p.kind === 'event' && p.status !== 'archived' && p.eventDate === today;
+    })[0];
+    if (onsite) {
+      wrap.appendChild(el('a', { class: 'row onsite-entry', href: '#/onsite/' + onsite.id }, [
+        el('div', { class: 'row-main' }, [
+          el('div', { class: 'row-title' }, [
+            ui.icon('sales', 17),
+            el('span', { text: '当日モードを開く' })
+          ]),
+          el('div', { class: 'row-sub' }, [
+            ui.chip(onsite.eventName || onsite.title, 'soft'),
+            onsite.space ? ui.chip(onsite.space, 'ghosty') : null
+          ])
+        ]),
+        el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+      ]));
+    }
+
     /* 警告。「重要」にした日常の予定は、その日いちばん上に出す */
     var al = sc.alerts(today);
     var urgent = plans.filter(function (o) { return o.ev.important; });

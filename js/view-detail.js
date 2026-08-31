@@ -106,6 +106,9 @@
 
     /* ---- 頒布と在庫（即売会のみ） ---- */
     if (p.kind === 'event') {
+      wrap.appendChild(ui.btn('当日モードを開く', 'primary full', function () {
+        location.hash = '#/onsite/' + p.id;
+      }, 'sales'));
       var st = DL.stock.eventSummary(p.id);
       wrap.appendChild(el('a', { class: 'row docs-entry', href: '#/stock' }, [
         el('div', { class: 'row-main' }, [

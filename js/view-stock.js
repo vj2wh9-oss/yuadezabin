@@ -23,6 +23,15 @@
       el('button', { class: 'iconbtn', 'aria-label': '次の年', onclick: function () { year = y + 1; DL.app.render(); } }, ui.icon('chevronRight', 20))
     ]));
 
+    /* ---- 当日モード（近いイベントがあるとき） ---- */
+    var next = nextEvent();
+    if (next) {
+      wrap.appendChild(ui.btn(
+        '当日モード：' + (next.eventName || next.title),
+        'primary full', function () { location.hash = '#/onsite/' + next.id; }, 'sales'
+      ));
+    }
+
     var list = K.all({ year: y, withArchived: showArchived });
     if (!list.length && !S.items({ withArchived: true }).length) {
       wrap.appendChild(ui.empty(
@@ -122,6 +131,18 @@
       ]),
       el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
     ]);
+  }
+
+  /* 当日モードの入口を出す相手。開催が近い（前後1か月の）即売会 */
+  function nextEvent() {
+    var today = U.today();
+    return S.projects().filter(function (p) {
+      if (p.kind !== 'event' || p.status === 'archived' || !U.isISO(p.eventDate)) return false;
+      var d = U.diffDays(today, p.eventDate);
+      return d >= -30 && d <= 30;
+    }).sort(function (a, b) {
+      return Math.abs(U.diffDays(today, a.eventDate)) - Math.abs(U.diffDays(today, b.eventDate));
+    })[0] || null;
   }
 
   /* 頒布の記録がある即売会の案件を、新しい順に */

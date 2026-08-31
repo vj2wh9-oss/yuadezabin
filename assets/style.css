@@ -1114,3 +1114,66 @@ h1, h2, h3, p { margin: 0; }
   padding: 5px 0; border-bottom: 1px solid var(--line);
 }
 .kv-row strong { font-size: 13px; text-align: right; min-width: 0; }
+
+/* ---------------- イベント当日モード ---------------- */
+/* 会計バーのぶんだけ、下に場所を空けておく */
+.onsite-spacer { height: 210px; }
+
+.onsite-head { display: flex; flex-direction: column; gap: 8px; }
+.onsite-head .sum-box.big { grid-column: span 1; }
+.onsite-head .row-wrap .btn { flex: 1; }
+.onsite-head .sum-box.big b { font-size: 17px; }
+
+/* ホームと在庫からの入口 */
+.onsite-entry { border-color: var(--accent); }
+.onsite-entry .row-title { color: var(--accent); }
+
+/* 頒布物のボタン。指で押しやすいよう大きめに */
+.onsite-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.onsite-tile {
+  position: relative; min-height: 84px; padding: 10px 10px 8px;
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; gap: 2px;
+  background: var(--card); border: 1px solid var(--line2); border-radius: var(--radius);
+  color: var(--text); text-align: left; cursor: pointer;
+}
+.onsite-tile:active { background: var(--accent-soft); }
+.onsite-tile.on { border-color: var(--accent); background: var(--accent-soft); }
+.onsite-tile.out { opacity: .55; }
+.onsite-name { font-size: 14px; line-height: 1.3; word-break: break-word; }
+.onsite-price { font-size: 18px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+.onsite-left { font-size: 11px; color: var(--muted); }
+.onsite-left.none { color: var(--warn); }
+.onsite-badge {
+  position: absolute; top: -6px; right: -6px; min-width: 24px; height: 24px; padding: 0 5px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent); color: var(--accent-ink);
+  border-radius: 12px; font-size: 13px; font-weight: 700;
+}
+
+/* 会計トレイ。タブバーの上に貼り付ける */
+.onsite-bar {
+  position: fixed; left: 0; right: 0; z-index: 39;
+  bottom: calc(var(--tab-h) + env(safe-area-inset-bottom));
+  background: var(--bg2); border-top: 1px solid var(--line2);
+  padding: 8px 12px 10px; display: flex; flex-direction: column; gap: 6px;
+}
+.onsite-lines { display: flex; flex-direction: column; gap: 4px; max-height: 120px; overflow-y: auto; }
+.onsite-line { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.onsite-line .stepbtn { width: 34px; height: 30px; flex: none; }
+.onsite-line-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.onsite-line-qty { min-width: 22px; text-align: center; font-variant-numeric: tabular-nums; }
+.onsite-line-sum { min-width: 64px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+.onsite-total { display: flex; align-items: baseline; justify-content: space-between; }
+.onsite-total b { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.pay-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+.pay-row .btn { min-width: 0; padding: 7px 2px; font-size: 12.5px; }
+.pay-row .btn.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.onsite-change {
+  display: flex; align-items: baseline; gap: 8px;
+  border: 1px solid var(--ok); border-radius: var(--radius-s); padding: 6px 10px;
+  color: var(--ok);
+}
+.onsite-change b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.onsite-change.short { border-color: var(--danger); color: var(--danger); }
+.onsite-act { display: grid; grid-template-columns: 1fr 1.7fr; gap: 6px; }
+.onsite-act .btn { padding: 13px 4px; font-size: 15px; white-space: nowrap; min-width: 0; }
