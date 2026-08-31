@@ -110,6 +110,10 @@ h1, h2, h3, p { margin: 0; }
 .appbar-gap { flex: 1; }
 .gearbtn { flex: none; color: var(--muted); }
 .gearbtn.on { color: var(--accent); }
+/* 横断検索（虫めがね）。歯車の右に並べる */
+.searchbtn { flex: none; color: var(--muted); }
+.searchbtn.on { color: var(--accent); }
+.searchbtn[hidden] { display: none; }
 /* 案件と日常のカレンダーを行き来するボタン（歯車の右） */
 .modebtn {
   flex: none; display: inline-flex; align-items: center; gap: 4px;
@@ -551,6 +555,19 @@ h1, h2, h3, p { margin: 0; }
 .searchbox .icon { color: var(--muted); }
 .searchbox .input { border: 0; background: transparent; padding-left: 0; }
 .searchbox .input:focus { outline: 0; }
+/* 横断検索の入力欄。指で触りやすいように、ふつうの検索欄より高くする */
+.searchbox.big { padding: 2px 8px 2px 12px; }
+.searchbox.big .input { font-size: 16px; padding-top: 12px; padding-bottom: 12px; }
+/* ブラウザが付ける消すボタンは隠す（自前のものと2つ並んでしまうため） */
+.searchbox .input::-webkit-search-cancel-button,
+.searchbox .input::-webkit-search-decoration { -webkit-appearance: none; appearance: none; }
+.searchbox .search-clear { color: var(--muted); }
+.searchbox .search-clear[hidden] { display: none; }
+/* 検索でしか出ない、種類のちがう行が並ぶ場所 */
+.search-results { display: flex; flex-direction: column; }
+.sr-row { width: 100%; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.sr-row > .icon { color: var(--muted); flex: none; }
+.sr-row.dim { opacity: .6; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .grid3 { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: center; }
 .panel { background: var(--card2); border: 1px solid var(--line); border-radius: var(--radius-s); padding: 10px; display: flex; flex-direction: column; gap: 8px; }

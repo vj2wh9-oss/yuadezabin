@@ -774,6 +774,12 @@
   DL.views.books = {
     render: render,
     addExpense: addExpense,
+    // 横断検索から、その1件を直接開くために使う
+    editExpense: editExpense,
+    editRecurring: function (id) {
+      var r = S.getRecurring(id);
+      if (r) recurringSheet(r);
+    },
     reset: function () { book = 'work'; year = 0; cat = ''; dropThumbs(); }
   };
 })(window.DL);

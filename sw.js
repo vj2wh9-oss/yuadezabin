@@ -1,12 +1,12 @@
 /* オフライン用のシンプルなキャッシュ（アプリ本体のみ。データは localStorage） */
-var CACHE = 'shimekiri-v34';
+var CACHE = 'shimekiri-v35';
 var ASSETS = [
   './', './index.html', './assets/style.css', './manifest.webmanifest',
   './assets/icon-180.png', './assets/icon-192.png', './assets/icon-512.png',
   './assets/icon-maskable-512.png', './assets/favicon-64.png',
-  './js/util.js', './js/icons.js', './js/db.js', './js/store.js', './js/schedule.js', './js/events.js', './js/notify.js', './js/documents.js', './js/fanbox.js', './js/expenses.js', './js/ocr.js', './js/sync.js', './js/zip.js', './js/files.js', './js/ui.js', './js/forms.js',
+  './js/util.js', './js/icons.js', './js/db.js', './js/store.js', './js/schedule.js', './js/events.js', './js/notify.js', './js/search.js', './js/documents.js', './js/fanbox.js', './js/expenses.js', './js/ocr.js', './js/sync.js', './js/zip.js', './js/files.js', './js/ui.js', './js/forms.js',
   './js/view-home.js', './js/view-calendar.js', './js/view-events.js', './js/view-projects.js',
-  './js/view-detail.js', './js/view-doc.js', './js/view-sales.js', './js/view-books.js', './js/view-files.js', './js/view-settings.js', './js/app.js'
+  './js/view-detail.js', './js/view-doc.js', './js/view-sales.js', './js/view-books.js', './js/view-files.js', './js/view-search.js', './js/view-settings.js', './js/app.js'
 ];
 
 self.addEventListener('install', function (e) {

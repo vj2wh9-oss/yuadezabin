@@ -8,6 +8,7 @@
   var actionsEl = U.$('#appActions');
   var backBtn = U.$('#backBtn');
   var gearBtn = U.$('#gearBtn');
+  var searchBtn = U.$('#searchBtn');
   var modeBtn = U.$('#modeBtn');
   var fab = U.$('#fab');
 
@@ -41,7 +42,8 @@
     var titles = {
       home: 'METEO365', calendar: 'カレンダー', projects: '案件',
       settings: '設定', day: '日別', project: '案件の詳細',
-      docs: '書類', doc: '書類', sales: '売上', files: 'ファイル', books: '経理'
+      docs: '書類', doc: '書類', sales: '売上', files: 'ファイル', books: '経理',
+      search: '検索'
     };
     titleEl.textContent = titles[route.name] || 'METEO365';
 
@@ -53,6 +55,10 @@
     gearBtn.hidden = ['home', 'settings'].indexOf(route.name) < 0;
     gearBtn.classList.toggle('on', route.name === 'settings');
 
+    // 横断検索。書類の中身まで探すので、データのあるタブからは常に開けるようにする
+    searchBtn.hidden = SEARCH_VIEWS.indexOf(route.name) < 0;
+    searchBtn.classList.toggle('on', route.name === 'search');
+
     // カレンダーの切替（案件 / 日常）。効くのはカレンダーの画面だけなので、そこにだけ出す
     var onCal = CAL_VIEWS.indexOf(route.name) >= 0;
     var life = S.calMode() === 'life';
@@ -60,12 +66,15 @@
     if (onCal) drawModeBtn(life);
 
     // 売上は下のタブから直接開くので、戻るボタンは要らない
-    var showBack = ['project', 'day', 'docs', 'doc'].indexOf(route.name) >= 0;
+    var showBack = ['project', 'day', 'docs', 'doc', 'search'].indexOf(route.name) >= 0;
     backBtn.hidden = !showBack;
 
     // 画面が切り替わった瞬間を、同期のきっかけにする
     if (route.name !== prevRoute) {
       prevRoute = route.name;
+      // 別の画面へ移ったら、開きっぱなしのシートは畳む。
+      // （検索から経費を開いたあと戻る、のように画面をまたぐ移動があるため）
+      ui.closeAllSheets();
       if (route.name === 'files') DL.views.files.entered();
       DL.sync.touch().then(function (r) {
         if (r.status === 'pulled' || r.status === 'merged') render();
@@ -93,6 +102,7 @@
       case 'sales': DL.views.sales.render(view); break;
       case 'books': DL.views.books.render(view); break;
       case 'files': DL.views.files.render(view); break;
+      case 'search': DL.views.search.render(view); break;
       case 'settings': DL.views.settings.render(view); break;
       default: DL.views.home.render(view);
     }
@@ -154,6 +164,9 @@
   /* ---------------- 名義の切り替え ---------------- */
 
   var SCOPE_VIEWS = ['home', 'calendar', 'day', 'projects', 'project', 'sales'];
+
+  /* 虫めがねを出す画面。検索の画面自身にも出して、押せば戻れるようにする */
+  var SEARCH_VIEWS = ['home', 'projects', 'sales', 'books', 'files', 'search'];
 
   function scopeBtn() {
     var cur = S.scopeIssuer();
@@ -219,7 +232,7 @@
 
   function updateFab() {
     // カレンダーは画面いっぱいに出すので、重なるボタンは置かない
-    if (['settings', 'calendar', 'docs', 'doc', 'sales'].indexOf(route.name) >= 0) { fab.hidden = true; return; }
+    if (['settings', 'calendar', 'docs', 'doc', 'sales', 'search'].indexOf(route.name) >= 0) { fab.hidden = true; return; }
     fab.hidden = false;
     fab.onclick = function () {
       // 日常のカレンダーの日別画面では、ここが予定の追加口になる

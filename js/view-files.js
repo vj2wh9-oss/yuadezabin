@@ -754,6 +754,8 @@
     up: up,
     // タブに入るたびに取り直す（もう片方の端末が上げたものをすぐ見せる）
     entered: function () { if (F.ready()) load(true); },
+    // 横断検索から、そのファイルが入っているフォルダを開く
+    openAt: function (fileId) { cwd = S.fileFolder(fileId) || ''; },
     reset: function () { cache = null; fetchedAt = 0; error = ''; cwd = ''; dropThumbs(); }
   };
 })(window.DL);
