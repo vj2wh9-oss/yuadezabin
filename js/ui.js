@@ -181,6 +181,20 @@
     return el('span', { class: 'chip ' + (cls || '') }, [icon(name, 13), el('span', { text: text })]);
   }
 
+  /* 大きな日付の見出し（2026年8月31日(月)）。数字を大きく、年と単位は控えめに */
+  function dateHead(iso) {
+    if (!U.isISO(iso)) return el('div', { class: 'today-date', text: '—' });
+    var p = iso.split('-'), w = U.dow(iso);
+    return el('div', { class: 'today-date' }, [
+      el('span', { class: 'td-year', text: (+p[0]) + '年' }),
+      el('b', { class: 'td-num', text: String(+p[1]) }),
+      el('span', { class: 'td-unit', text: '月' }),
+      el('b', { class: 'td-num', text: String(+p[2]) }),
+      el('span', { class: 'td-unit', text: '日' }),
+      el('span', { class: 'td-wd ' + (w === 0 ? 'sun' : w === 6 ? 'sat' : ''), text: U.wdName(w) })
+    ]);
+  }
+
   function section(title, right) {
     return el('div', { class: 'section' }, [
       el('h2', { class: 'section-title', text: title }),
@@ -252,7 +266,7 @@
     toast: toast, sheet: sheet, closeAllSheets: closeAllSheets, confirm: confirmSheet,
     field: field, input: input, textarea: textarea, select: select, segmented: segmented,
     stepper: stepper, progress: progress, chip: chip, iconChip: iconChip, icon: icon,
-    section: section, card: card,
+    section: section, card: card, dateHead: dateHead,
     empty: empty, btn: btn, kindChip: kindChip, catChip: catChip,
     KIND_LABEL: KIND_LABEL, CAT_LABEL: CAT_LABEL, KIND_ICON: KIND_ICON, CAT_ICON: CAT_ICON,
     download: download, shareFile: shareFile

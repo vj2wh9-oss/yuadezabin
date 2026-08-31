@@ -296,6 +296,13 @@
     return d > 0 ? 'あと' + d + '日' : Math.abs(d) + '日前';
   }
 
+  /* 日別の見出し。休業日の印は日付の右に並べる */
+  function dayTitle(date, isHoliday) {
+    var head = ui.dateHead(date);
+    if (isHoliday) head.appendChild(ui.chip('休業日', 'soft'));
+    return head;
+  }
+
   function renderDay(root, params) {
     var date = U.isISO(params.date) ? params.date : U.today();
     var today = U.today();
@@ -306,10 +313,7 @@
     wrap.appendChild(el('div', { class: 'daynav' }, [
       el('a', { class: 'iconbtn', href: '#/day/' + U.addDays(date, -1), 'aria-label': '前の日' }, ui.icon('chevronLeft', 20)),
       el('div', { class: 'daytitle' }, [
-        el('div', { class: 'today-date' }, [
-          el('span', { text: U.fmtYMDW(date) }),
-          isHoliday ? ui.chip('休業日', 'soft') : null
-        ]),
+        dayTitle(date, isHoliday),
         el('div', { class: 'today-sub', text: life ? dayRel(date, today) : U.untilLabel(date, today) })
       ]),
       el('a', { class: 'iconbtn', href: '#/day/' + U.addDays(date, 1), 'aria-label': '次の日' }, ui.icon('chevronRight', 20))

@@ -12,9 +12,7 @@
     // チェックを付けたものはホームから消す（カレンダーには残る）
     var plans = DL.events.ofDay(today).filter(function (o) { return !DL.events.isDone(o); });
     var todo = load.entries.length + plans.length;
-    wrap.appendChild(el('div', { class: 'today-head' }, [
-      el('div', { class: 'today-date', text: U.fmtYMDW(today) })
-    ]));
+    wrap.appendChild(el('div', { class: 'today-head' }, [ui.dateHead(today)]));
 
     // iCloud への書き出しは Cloudflare 同期の予備なので、ホームでは案内しない。
     // 使うときは 設定 →「iCloud への書き出し」から。

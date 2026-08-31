@@ -263,13 +263,32 @@ h1, h2, h3, p { margin: 0; }
 
 /* ---------------- ホーム ---------------- */
 .today-head {
+  position: relative;
   display: flex; align-items: flex-end; justify-content: space-between;
-  padding: 0 0 8px; border-bottom: 2px solid var(--line);
+  padding: 2px 0 10px; border-bottom: 1px solid var(--line);
 }
-.today-date { font-size: 20px; font-weight: 800; letter-spacing: .01em; font-variant-numeric: tabular-nums; }
-/* ホームは日付だけを出すので、その分だけ大きくする */
-.today-head .today-date { font-size: 27px; line-height: 1.15; }
+/* 見出しの下線の左端だけを差し色にする */
+.today-head::after {
+  content: ''; position: absolute; left: 0; bottom: -1px; width: 56px; height: 2px; background: var(--accent);
+}
+
+/* 日付の見出し。数字を大きく、年と「月日」は控えめにして読みやすくする */
+.today-date { display: flex; align-items: baseline; gap: 1px; letter-spacing: .01em; }
+.td-year { font-size: 14px; font-weight: 700; color: var(--muted); margin-right: 5px; }
+.td-num { font-size: 30px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.td-unit { font-size: 16px; font-weight: 700; color: var(--muted); margin-right: 3px; }
+.td-wd {
+  margin-left: 6px; padding: 1px 6px; border: 1px solid var(--line2); border-radius: var(--radius-s);
+  font-size: 12.5px; font-weight: 700; color: var(--muted);
+}
+.td-wd.sun { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--line2)); }
+.td-wd.sat { color: var(--accent2); border-color: color-mix(in srgb, var(--accent2) 45%, var(--line2)); }
 .today-sub { font-size: 12.5px; color: var(--muted); }
+
+/* 日別の画面では少し小さめに、中央へ寄せる */
+.daytitle .td-num { font-size: 23px; }
+.daytitle .td-year { font-size: 12.5px; }
+.daytitle .td-unit { font-size: 14px; }
 
 .alerts { display: flex; flex-direction: column; gap: 5px; }
 .alert {
@@ -464,7 +483,8 @@ h1, h2, h3, p { margin: 0; }
 .daynav { display: flex; align-items: center; gap: 6px; }
 .daytitle { flex: 1; text-align: center; }
 /* 休業日の印を日付の横に並べる */
-.daytitle .today-date { display: flex; align-items: center; justify-content: center; gap: 7px; flex-wrap: wrap; }
+.daytitle .today-date { justify-content: center; flex-wrap: wrap; }
+.daytitle .today-date .chip { margin-left: 6px; align-self: center; }
 
 /* ---------------- 案件詳細 ---------------- */
 .phead {
