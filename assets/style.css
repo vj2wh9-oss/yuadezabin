@@ -267,6 +267,8 @@ h1, h2, h3, p { margin: 0; }
   padding: 0 0 8px; border-bottom: 2px solid var(--line);
 }
 .today-date { font-size: 20px; font-weight: 800; letter-spacing: .01em; font-variant-numeric: tabular-nums; }
+/* ホームは日付だけを出すので、その分だけ大きくする */
+.today-head .today-date { font-size: 27px; line-height: 1.15; }
 .today-sub { font-size: 12.5px; color: var(--muted); }
 
 .alerts { display: flex; flex-direction: column; gap: 5px; }

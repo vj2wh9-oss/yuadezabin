@@ -13,11 +13,7 @@
     var plans = DL.events.ofDay(today).filter(function (o) { return !DL.events.isDone(o); });
     var todo = load.entries.length + plans.length;
     wrap.appendChild(el('div', { class: 'today-head' }, [
-      el('div', {}, [
-        el('div', { class: 'today-date', text: U.fmtYMDW(today) }),
-        el('div', { class: 'today-sub', text: todo ? '今日やること ' + todo + '件' : '今日やることはありません' })
-      ]),
-      el('a', { class: 'btn tiny ghost', href: '#/calendar', text: 'カレンダー' })
+      el('div', { class: 'today-date', text: U.fmtYMDW(today) })
     ]));
 
     // iCloud への書き出しは Cloudflare 同期の予備なので、ホームでは案内しない。
