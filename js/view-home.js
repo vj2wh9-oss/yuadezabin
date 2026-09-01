@@ -156,7 +156,7 @@
     if (!W.place()) {
       // まだ地点を決めていないときは、設定への入口だけ小さく出す
       return el('a', { class: 'wx wx-none', href: '#/settings', 'aria-label': '天気の地点を設定' }, [
-        ui.icon('wUnknown', 20), el('span', { class: 'wx-set', text: '天気' })
+        ui.icon('wUnknown', 24), el('span', { class: 'wx-set', text: '天気' })
       ]);
     }
 
@@ -175,7 +175,7 @@
     var d = W.dayOf(today);
     if (!d) {
       return el('button', { class: 'wx wx-none', onclick: function () { sheet(); } }, [
-        ui.icon('wUnknown', 20), el('span', { class: 'wx-set', text: '取得中' })
+        ui.icon('wUnknown', 24), el('span', { class: 'wx-set', text: '取得中' })
       ]);
     }
     var info = W.codeInfo(d.code);
@@ -183,7 +183,7 @@
     return el('button', {
       class: 'wx', 'aria-label': (c.name || '天気') + '　' + info.label, onclick: function () { sheet(); }
     }, [
-      ui.icon(info.icon, 26),
+      ui.icon(info.icon, 36),
       el('span', { class: 'wx-t' }, [
         el('b', { text: temp === null ? '—' : temp + '°' }),
         el('span', { class: 'wx-hl', text: (d.max === null ? '—' : d.max) + '/' + (d.min === null ? '—' : d.min) })
