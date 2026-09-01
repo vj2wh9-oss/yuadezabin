@@ -105,7 +105,11 @@
       el('button', { class: 'crumb-up', onclick: function () { up(); } }, [
         ui.icon('chevronLeft', 15), el('span', { text: parent ? parent.name : 'ファイル' })
       ]),
-      el('span', { class: 'ftool-here', text: f.name, title: S.folderPath(f.id) }),
+      // 中に入っているときは、フォルダの色を名前そのものに乗せる（幅を取らない）
+      el('span', {
+        class: 'ftool-here', text: f.name, title: S.folderPath(f.id),
+        style: f.color ? { '--fc': f.color } : null
+      }),
       // 入れ子にできるので、フォルダの中でもフォルダを作れる
       ui.btn('フォルダを作る', 'ghost tiny', function () { newFolder(); }, 'plus'),
       el('button', {
@@ -145,7 +149,8 @@
     var bytes = inside.reduce(function (s, x) { return s + x.size; }, 0);
     return tile({
       icon: 'folderFill',
-      cls: 'is-folder',
+      cls: 'is-folder' + (f.color ? ' tinted' : ''),
+      color: f.color,
       name: f.name,
       note: inside.length ? inside.length + '項目・' + size(bytes)
         : subs ? subs + 'フォルダ' : '0項目',
@@ -173,7 +178,7 @@
   }
 
   function tile(o) {
-    return el('div', { class: 'ftile ' + (o.cls || '') }, [
+    return el('div', { class: 'ftile ' + (o.cls || ''), style: o.color ? { '--fc': o.color } : null }, [
       el('button', { class: 'ftile-main', onclick: o.onOpen }, [
         el('span', { class: 'ftile-icon' }, ui.icon(o.icon, 46)),
         el('span', { class: 'ftile-name', text: o.name }),
@@ -278,6 +283,7 @@
       body: el('div', { class: 'menu' }, [
         cwd === f.id ? null : item('folder', '開く', function () { close(); cwd = f.id; DL.app.render(); }),
         item('edit', '名前を変える', function () { close(); renameFolder(f); }),
+        item('folder', '色を変える', function () { close(); colorFolder(f); }),
         item('trash', '削除する', function () { close(); deleteFolder(f, count); })
       ])
     });
@@ -298,6 +304,40 @@
           if (!input.value.trim()) { ui.toast('名前を入れてください', 'warn'); return; }
           S.renameFolder(f.id, input.value);
           close(); ui.toast('変更しました');
+        })
+      ]
+    });
+  }
+
+  /* フォルダの色。日常の予定と同じ色見本から選ぶ */
+  function colorFolder(f) {
+    var color = f.color || '';
+    var row = el('div', { class: 'sw-row' });
+
+    function sw(value, label) {
+      var b = el('button', {
+        type: 'button', class: 'sw' + (value === color ? ' on' : '') + (value ? '' : ' sw-none'),
+        'aria-label': label, style: value ? { background: value } : null,
+        onclick: function () {
+          color = value;
+          U.$$('.sw', row).forEach(function (x) { x.classList.remove('on'); });
+          b.classList.add('on');
+        }
+      }, value ? null : ui.icon('close', 16));
+      return b;
+    }
+
+    row.appendChild(sw('', '色を付けない'));
+    S.EVENT_COLORS.forEach(function (c) { row.appendChild(sw(c.value, c.label)); });
+
+    var close = ui.sheet({
+      title: f.name + ' の色',
+      body: el('div', { class: 'form' }, ui.field('フォルダの色', row, '左端の×で色なしに戻せます')),
+      actions: [
+        ui.btn('キャンセル', 'ghost', function () { close(); }),
+        ui.btn('保存', 'primary', function () {
+          S.setFolderColor(f.id, color);
+          close(); ui.toast(color ? '色を変えました' : '色を外しました');
         })
       ]
     });

@@ -113,7 +113,13 @@ window.DL = window.DL || {};
         if (k === 'class') node.className = v;
         else if (k === 'text') node.textContent = v;
         else if (k === 'html') node.innerHTML = v;
-        else if (k === 'style' && typeof v === 'object') Object.assign(node.style, v);
+        // --xx のような変数は代入では入らないので setProperty で渡す
+        else if (k === 'style' && typeof v === 'object') {
+          Object.keys(v).forEach(function (name) {
+            if (name.slice(0, 2) === '--') node.style.setProperty(name, v[name]);
+            else node.style[name] = v[name];
+          });
+        }
         // textarea の中身は value 属性ではなく中身の文字なので、属性で置いても
         // 何も起きない。空のまま開いて、そのまま保存すると書いた内容が消える
         else if (k === 'value' && node.tagName === 'TEXTAREA') node.value = v;

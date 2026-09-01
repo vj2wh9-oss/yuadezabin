@@ -348,6 +348,7 @@
     f.id = f.id || U.uid();
     f.name = f.name || '(名称未設定)';
     f.parentId = f.parentId || '';     // 空＝いちばん上。入れ子にできる
+    f.color = HEX.test(String(f.color)) ? f.color : '';   // 空＝既定の青
     f.fromHint = !!f.fromHint;         // R2 の記録から組み直したものか
     f.createdAt = f.createdAt || new Date().toISOString();
     return f;
@@ -546,6 +547,16 @@
     });
     state.settings.folders = folders().concat([f]);
     save(quiet ? { quiet: true } : null);
+    return f;
+  }
+
+  /* フォルダの色。空を渡すと既定に戻す */
+  function setFolderColor(id, color) {
+    var f = getFolder(id);
+    if (!f) return null;
+    f.color = HEX.test(String(color)) ? color : '';
+    f.fromHint = false;
+    save();
     return f;
   }
 
@@ -1821,7 +1832,7 @@
     updateClient: updateClient, removeClient: removeClient,
     clientProjects: clientProjects, clientDocs: clientDocs,
     folders: folders, getFolder: getFolder, addFolder: addFolder,
-    folderChildren: folderChildren, folderPath: folderPath,
+    folderChildren: folderChildren, folderPath: folderPath, setFolderColor: setFolderColor,
     ensureFolderPath: ensureFolderPath, folderTreeIds: folderTreeIds,
     renameFolder: renameFolder, removeFolder: removeFolder,
     fanbox: fanbox, fanboxOf: fanboxOf, putFanbox: putFanbox,

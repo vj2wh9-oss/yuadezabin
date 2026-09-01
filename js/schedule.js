@@ -266,7 +266,7 @@
       if (p.status !== 'active') return;
       var st = projectStatus(p, today);
       if (st === 'overdue') {
-        out.push({ level: 'danger', project: p, text: '締切を ' + Math.abs(U.diffDays(today, p.deadline)) + '日 過ぎています' });
+        out.push({ level: 'danger', overdue: true, project: p, text: '締切を ' + Math.abs(U.diffDays(today, p.deadline)) + '日 過ぎています' });
       } else if (st === 'urgent') {
         out.push({ level: 'warn', project: p, text: '締切まで ' + U.diffDays(today, p.deadline) + '日' });
       }
@@ -282,7 +282,7 @@
           return;
         }
         if (pace.overdue) {
-          out.push({ level: 'danger', project: p, task: t, text: t.name + ' が期間を過ぎています（残り ' + pace.remaining + unit(t) + '）' });
+          out.push({ level: 'danger', overdue: true, project: p, task: t, text: t.name + ' が期間を過ぎています（残り ' + pace.remaining + unit(t) + '）' });
         } else if (pace.behind > 0) {
           out.push({ level: 'warn', project: p, task: t, text: t.name + ' が ' + pace.behind + unit(t) + ' 遅れています' });
         }
@@ -336,7 +336,7 @@
         if (!U.isISO(d.dueDate) || U.cmp(d.dueDate, today) >= 0) return;
         var amount = DL.docs ? DL.docs.calc(d).payable : 0;
         out.push({
-          level: 'danger', project: p, href: '#/doc/' + p.id + '/' + d.id,
+          level: 'danger', overdue: true, project: p, href: '#/doc/' + p.id + '/' + d.id,
           text: '入金予定日を ' + Math.abs(U.diffDays(today, d.dueDate)) + '日 過ぎています（' + yen(amount) + '）'
         });
       });
