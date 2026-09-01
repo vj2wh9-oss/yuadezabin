@@ -395,6 +395,8 @@
           [ui.icon('arrowRight', 18), el('span', { text: 'できなかった → 翌日以降に回す' })]),
         el('button', { class: 'menu-item', onclick: function () { close(); DL.forms.planOverrideSheet(e.project.id, e.task.id, date); } },
           [ui.icon('edit', 18), el('span', { text: 'この日のノルマを調整' })]),
+        el('button', { class: 'menu-item', onclick: function () { close(); DL.forms.shiftTaskSheet(e.project.id, e.task.id); } },
+          [ui.icon('swap', 18), el('span', { text: 'この工程を別の日に動かす' })]),
         el('a', { class: 'menu-item', href: '#/project/' + e.project.id, onclick: function () { close(); } },
           [ui.icon('projects', 18), el('span', { text: '案件を開く' })])
       ])

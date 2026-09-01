@@ -754,6 +754,134 @@
     });
   }
 
+  /* =============== 工程を別の日へ動かす（前倒し） =============== */
+
+  function shiftTaskSheet(pid, tid) {
+    var p = S.getProject(pid), t = S.getTask(pid, tid);
+    if (!p || !t) return;
+    if (!U.isISO(t.start) || !U.isISO(t.end)) {
+      ui.toast('先にこの工程の期間を決めてください', 'warn');
+      DL.forms.taskForm(pid, tid);
+      return;
+    }
+    var unit = S.UNIT_LABEL[t.unit] || '';
+    var today = U.today();
+    var span = U.diffDays(t.start, t.end);          // 期間の長さ（日数-1）
+    var keepEnd = false;                            // 既定は期間ごとずらす
+
+    var dateI = ui.input({ type: 'date', value: U.addDays(t.start, -1) });
+    var out = el('div');
+
+    var modeSeg = ui.segmented([
+      { value: 'shift', label: '期間ごと動かす' },
+      { value: 'keep', label: '始まりだけ' }
+    ], 'shift', function (v) { keepEnd = v === 'keep'; preview(); });
+
+    /* 手早く選べるように、よく使う移動先をボタンにする */
+    function quick(label, date) {
+      if (!U.isISO(date) || U.cmp(date, t.start) >= 0) return null;
+      return ui.btn(label, 'ghost tiny', function () { dateI.value = date; preview(); });
+    }
+    var quicks = el('div', { class: 'row-wrap' }, [
+      quick('1日前', U.addDays(t.start, -1)),
+      quick('3日前', U.addDays(t.start, -3)),
+      quick('1週間前', U.addDays(t.start, -7)),
+      quick('今日から', today)
+    ]);
+
+    function preview() {
+      U.clear(out);
+      var to = dateI.value;
+      if (!U.isISO(to)) return;
+      if (U.cmp(to, t.start) === 0) {
+        out.appendChild(el('p', { class: 'muted small', text: 'いまと同じ日です。' }));
+        return;
+      }
+      var r = sc.shiftTask(p, t, to, { keepEnd: keepEnd, dry: true });
+      if (!r.ok) {
+        out.appendChild(el('div', { class: 'alert warn' }, [
+          el('span', { class: 'alert-icon' }, ui.icon('alert', 17)),
+          el('span', { text: r.reason })
+        ]));
+        return;
+      }
+      var qs = r.plan.days.map(function (d) { return d.qty; });
+      var lo = Math.min.apply(null, qs), hi = Math.max.apply(null, qs);
+      out.appendChild(el('div', { class: 'preview' }, [
+        el('div', { class: 'preview-main' }, [
+          el('strong', { text: U.fmtMDW(r.start) + ' 〜 ' + U.fmtMDW(r.end) }),
+          el('span', { class: 'muted', text: '　稼働 ' + r.plan.dayCount + '日'
+            + (t.unit === 'none' ? '' : '・1日あたり ' + (lo === hi ? lo + unit : lo + '〜' + hi + unit)) })
+        ])
+      ]));
+
+      var strip = el('div', { class: 'daystrip' });
+      r.plan.days.slice(0, 14).forEach(function (d) {
+        strip.appendChild(el('div', { class: 'daychip' }, [
+          el('b', { text: U.fmtMD(d.date) }),
+          el('span', { text: t.unit === 'none' ? '作業' : (sc.rangeText(t, d.from, d.to, { noUnit: true }) || '—') }),
+          d.qty ? el('u', { text: d.qty + unit }) : null
+        ]));
+      });
+      out.appendChild(strip);
+
+      if (U.cmp(to, today) < 0) {
+        out.appendChild(note('info', '過ぎた日から始まります。'));
+      }
+      if (r.beforeStart) {
+        out.appendChild(note('info', '案件の作業開始日も ' + U.fmtMD(r.start) + ' に合わせます。'));
+      }
+      if (r.overlap.length) {
+        out.appendChild(note('info', r.overlap.join('・') + ' と日が重なります。'));
+      }
+      if (r.pastDeadline) {
+        out.appendChild(note('warn', sc.deadlineLabel(p) + ' ' + U.fmtMD(p.deadline) + ' を過ぎます。'));
+      }
+      if (Object.keys(t.planOverride || {}).length) {
+        out.appendChild(note('info', '手で決めたノルマは外して、移動先から割り振り直します。'));
+      }
+    }
+
+    function note(kind, text) {
+      return el('div', { class: 'alert ' + kind }, [
+        el('span', { class: 'alert-icon' }, ui.icon(kind === 'warn' ? 'alert' : 'info', 17)),
+        el('span', { text: text })
+      ]);
+    }
+
+    dateI.addEventListener('change', preview);
+
+    var body = el('div', { class: 'form' }, [
+      el('div', { class: 'prog-head' }, [
+        el('div', { class: 'dot', style: { background: p.color } }),
+        el('div', {}, [
+          el('strong', { text: t.name }),
+          el('div', { class: 'muted small', text: p.title + '　いま ' + U.fmtMD(t.start) + '〜' + U.fmtMD(t.end)
+            + '（' + (span + 1) + '日間）' })
+        ])
+      ]),
+      quicks,
+      ui.field('いつから始める', dateI),
+      ui.field('動かし方', modeSeg, '「期間ごと」は同じ日数のまま前へ。「始まりだけ」は終わりを変えずに前へ広げます'),
+      out
+    ]);
+    preview();
+
+    var close = ui.sheet({
+      title: '別の日に動かす', body: body,
+      actions: [
+        ui.btn('キャンセル', 'ghost', function () { close(); }),
+        ui.btn('動かす', 'primary', function () {
+          var r = sc.shiftTask(p, t, dateI.value, { keepEnd: keepEnd });
+          if (!r.ok) { ui.toast(r.reason, 'warn'); return; }
+          close();
+          ui.toast(t.name + ' を ' + U.fmtMD(r.start) + '〜' + U.fmtMD(r.end) + ' に動かしました',
+            r.pastDeadline ? 'warn' : '');
+        })
+      ]
+    });
+  }
+
   /* =============== 休みの変更にともなう組み直し =============== */
 
   // 変更前の「各タスクが使える稼働日数」を控えておく
@@ -1352,7 +1480,8 @@
 
   DL.forms = {
     projectForm: projectForm, taskForm: taskForm, progressSheet: progressSheet,
-    planOverrideSheet: planOverrideSheet, autoScheduleSheet: autoScheduleSheet,
+    planOverrideSheet: planOverrideSheet, shiftTaskSheet: shiftTaskSheet,
+    autoScheduleSheet: autoScheduleSheet,
     addProgressSheet: addProgressSheet, deferSheet: deferSheet,
     planSnapshot: planSnapshot, offerReschedule: offerReschedule,
     issuerSheet: issuerSheet, docSheet: docSheet,

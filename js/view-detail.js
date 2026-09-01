@@ -286,6 +286,9 @@
       ui.btn('今日の進捗', 'ghost tiny', function () { DL.forms.progressSheet(p.id, t.id, today); }),
       ui.btn('実績を追加', 'ghost tiny', function () { DL.forms.addProgressSheet(p.id, t.id); }),
       ui.btn('編集', 'ghost tiny', function () { DL.forms.taskForm(p.id, t.id); }),
+      (U.isISO(t.start) && U.isISO(t.end))
+        ? ui.btn('日を動かす', 'ghost tiny', function () { DL.forms.shiftTaskSheet(p.id, t.id); })
+        : null,
       ui.btn(t.done ? '未完了に戻す' : '完了にする', 'ghost tiny', function () { S.updateTask(p.id, t.id, { done: !t.done }); }),
       (t.unit !== 'none' && pace.remainingDays > 0)
         ? ui.btn('残りを再配分', 'ghost tiny', function () { reschedule(p, t, today); })

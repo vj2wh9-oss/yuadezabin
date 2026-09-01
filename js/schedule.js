@@ -529,6 +529,50 @@
     return { ok: true, plan: taskPlan(project, task), end: end, grew: grew, pastDeadline: late };
   }
 
+  /**
+   * 工程を別の日から始めるように動かす（主に前倒し）。
+   * 既定は期間の長さを保ったままずらす。keepEnd なら終わりは動かさず、
+   * 始まりだけを動かす（1日あたりが軽くなる）。
+   * どちらも手入れは捨てて、移動先から配分し直す。
+   * @param {object} [opts] {keepEnd:true, dry:true}
+   */
+  function shiftTask(project, task, newStart, opts) {
+    opts = opts || {};
+    if (!U.isISO(task.start) || !U.isISO(task.end)) return { ok: false, reason: 'この工程は期間が未設定です' };
+    if (!U.isISO(newStart)) return { ok: false, reason: '日付を選んでください' };
+
+    var end = opts.keepEnd ? task.end : U.addDays(newStart, U.diffDays(task.start, task.end));
+    if (U.cmp(newStart, end) > 0) return { ok: false, reason: '終わりより後ろへは動かせません' };
+    if (!workdays(project, newStart, end).length) {
+      return { ok: false, reason: 'その期間は全部が休みです' };
+    }
+
+    var copy = U.clone(task);
+    copy.start = newStart; copy.end = end; copy.planOverride = {};
+    var plan = taskPlan(project, copy);
+    // ほかの工程と日が重なるか（重ねてもよいが、知らせる）
+    var overlap = (project.tasks || []).filter(function (o) {
+      return o.id !== task.id && U.isISO(o.start) && U.isISO(o.end)
+        && U.cmp(o.start, end) <= 0 && U.cmp(newStart, o.end) <= 0;
+    }).map(function (o) { return o.name; });
+
+    var r = {
+      ok: true, start: newStart, end: end, plan: plan, overlap: overlap,
+      beforeStart: U.isISO(project.startDate) && U.cmp(newStart, project.startDate) < 0,
+      pastDeadline: U.isISO(project.deadline) && U.cmp(end, project.deadline) > 0
+    };
+    if (opts.dry) return r;
+
+    task.start = newStart;
+    task.end = end;
+    task.planOverride = {};        // 移動先から配分し直す
+    delete task.endBase;
+    // 案件の作業開始日より前へ動かしたときは、そちらも合わせる
+    if (r.beforeStart) project.startDate = newStart;
+    DL.store.save();
+    return r;
+  }
+
   /* その日の手入れだけを取り消す。date を省くとタスクの手入れを全部消す */
   function clearDayQuota(project, task, date) {
     if (date) {
@@ -643,6 +687,7 @@
     actualPace: actualPace, isOverloaded: isOverloaded, overloadedDays: overloadedDays,
     deferDay: deferDay, rescheduleRemaining: rescheduleRemaining,
     setDayQuota: setDayQuota, clearDayQuota: clearDayQuota, quotaRoom: quotaRoom,
+    shiftTask: shiftTask,
     autoSchedule: autoSchedule, loadOfDay: loadOfDay, buildICS: buildICS, ICS_ALARMS: ICS_ALARMS
   };
 })(window.DL);
