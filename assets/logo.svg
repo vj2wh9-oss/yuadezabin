@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 176 34" width="176" height="34" role="img" aria-label="METEO365">
+  <title>METEO365</title>
+  <!-- 文字だけのロゴ。METEO は本文色、365 はインディゴ -->
+  <text x="2" y="25" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'Hiragino Sans', sans-serif"
+        font-size="23" font-weight="800" letter-spacing="1.1">
+    <tspan fill="#141c28">METEO</tspan><tspan fill="#4356c8">365</tspan>
+  </text>
+</svg>

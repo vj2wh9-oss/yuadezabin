@@ -46,7 +46,7 @@
       docs: '書類', doc: '書類', sales: '売上', files: 'ファイル', books: '経理',
       search: '検索', stock: '頒布と在庫', onsite: '当日モード'
     };
-    titleEl.textContent = titles[route.name] || 'METEO365';
+    setTitle(titles[route.name] || 'METEO365');
 
     var tab = { home: 'home', calendar: 'calendar', day: 'calendar', projects: 'projects', project: 'projects', docs: 'projects', doc: 'projects', sales: 'sales', stock: 'sales', onsite: 'sales', books: 'books', files: 'files' }[route.name];
     U.$$('.tab').forEach(function (t) { t.classList.toggle('on', t.dataset.tab === tab); });
@@ -120,6 +120,20 @@
     lastKey = key;
 
     updateFab();
+  }
+
+  /* アプリの名前のところだけロゴの組みにする。ほかの画面は画面名の文字のまま */
+  function setTitle(text) {
+    U.clear(titleEl);
+    var isLogo = text === 'METEO365';
+    titleEl.classList.toggle('is-logo', isLogo);
+    if (isLogo) {
+      titleEl.appendChild(el('span', { class: 'logo-word' }, [
+        el('b', { text: 'METEO' }), el('i', { text: '365' })
+      ]));
+    } else {
+      titleEl.textContent = text;
+    }
   }
 
   /* ---------------- 同期ボタン ---------------- */

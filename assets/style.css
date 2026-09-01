@@ -24,6 +24,10 @@
   --duty-office: #d9a520;    /* 出社：黄 */
   --duty-remote: #e0555f;    /* リモートワーク：赤 */
   --duty-stay: #4a8ff5;      /* 泊まり勤務：青 */
+  /* マスに敷く色。日付と予定を読む邪魔をしないよう、うっすらとだけ乗せる */
+  --duty-office-bg: color-mix(in srgb, var(--duty-office) 12%, var(--card));
+  --duty-remote-bg: color-mix(in srgb, var(--duty-remote) 11%, var(--card));
+  --duty-stay-bg: color-mix(in srgb, var(--duty-stay) 11%, var(--card));
   --sky: #38bdf8;            /* 日常の予定（ホームでの目印の水色） */
   /* グラフの系列色。色覚の見分けやすさを検証して決めた3色 */
   --series1: #3b82f6;
@@ -61,6 +65,9 @@
     --duty-office: #c08a00;
     --duty-remote: #d94b56;
     --duty-stay: #3b82f6;
+    --duty-office-bg: #fdfce9;
+    --duty-remote-bg: #fcf2f2;
+    --duty-stay-bg: #f0f5fe;
     --sky: #0b8fd0;
     --series1: #1d63d8;
     --series2: #d6336c;
@@ -109,6 +116,10 @@ h1, h2, h3, p { margin: 0; }
   font-size: 15px; font-weight: 700; text-align: left; letter-spacing: .02em;
   padding-left: 2px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* ロゴ（文字だけ）。アプリの名前を出すところで、365 をインディゴにする */
+.logo-word { font-size: 16.5px; font-weight: 800; letter-spacing: .05em; line-height: 1; }
+.logo-word i { font-style: normal; color: var(--indigo); margin-left: 1px; }
+
 .appbar-gap { flex: 1; }
 .gearbtn { flex: none; color: var(--muted); }
 .gearbtn.on { color: var(--accent); }
@@ -424,9 +435,9 @@ h1, h2, h3, p { margin: 0; }
    勤務の3色に紛れて、どれが働き方の色か読み取れなくなる */
 .cal-cell.has-plan { background: var(--card); }
 /* その日の勤務の色。.has-plan より後に置いて、予定があっても勤務の色を優先する */
-.cal-cell.duty-office { background: color-mix(in srgb, var(--duty-office) 26%, var(--card)); }
-.cal-cell.duty-remote { background: color-mix(in srgb, var(--duty-remote) 22%, var(--card)); }
-.cal-cell.duty-stay { background: color-mix(in srgb, var(--duty-stay) 22%, var(--card)); }
+.cal-cell.duty-office { background: var(--duty-office-bg); }
+.cal-cell.duty-remote { background: var(--duty-remote-bg); }
+.cal-cell.duty-stay { background: var(--duty-stay-bg); }
 /* 敷いた色がそのまま見えるよう、日常の行には下地を置かない
    （案件側は card2 の帯のままにして、見分けが付くようにしておく） */
 .cal-page.cal-life .cal-line { background: transparent; }
