@@ -191,26 +191,80 @@
     ]);
   }
 
-  /* 押したときの3日ぶんの予報 */
+  /* 押したとき：いまの様子と、これからの見通しだけを出す */
   function sheet() {
     var W = DL.weather;
-    var c = W.cache();
-    var list = el('div', { class: 'list' });
+    var body = el('div', { class: 'form wx-sheet' });
 
     function draw() {
-      U.clear(list);
-      c = W.cache();
-      if (!c) {
-        list.appendChild(ui.empty('まだ取れていません。'));
-        return;
+      U.clear(body);
+      var c = W.cache();
+      if (!c) { body.appendChild(ui.empty('まだ取れていません。')); return; }
+      var n = c.now || {};
+      var today = W.dayOf(U.today()) || c.days[0] || {};
+      var info = W.codeInfo(n.code >= 0 ? n.code : today.code, n.night);
+
+      /* いまの様子 */
+      body.appendChild(el('div', { class: 'wx-now' }, [
+        ui.icon(info.icon, 46),
+        el('div', { class: 'wx-now-main' }, [
+          el('div', { class: 'wx-now-temp' }, [
+            el('b', { text: n.temp === null || n.temp === undefined ? '—' : n.temp + '°' }),
+            el('span', { class: 'wx-now-label', text: info.label })
+          ]),
+          el('div', { class: 'muted small', text: [
+            (c.name || '登録した地点'),
+            (n.feels !== null && n.feels !== undefined) ? '体感 ' + n.feels + '°' : '',
+            (today.max !== null && today.min !== null) ? '最高 ' + today.max + '° / 最低 ' + today.min + '°' : ''
+          ].filter(Boolean).join('　') })
+        ])
+      ]));
+
+      /* いまの数字 */
+      var facts = [];
+      if (n.humidity >= 0) facts.push(['湿度', n.humidity + '%']);
+      if (n.wind !== null && n.wind !== undefined) facts.push(['風', (n.dir || '') + ' ' + n.wind + 'm/s']);
+      if (n.rain !== null && n.rain !== undefined) facts.push(['降水', n.rain + 'mm']);
+      if (today.pop !== undefined) facts.push(['降水確率', today.pop + '%']);
+      if (today.uv !== null && today.uv !== undefined) facts.push(['紫外線', String(today.uv)]);
+      if (today.sunrise) facts.push(['日の出', today.sunrise]);
+      if (today.sunset) facts.push(['日の入り', today.sunset]);
+      if (facts.length) {
+        body.appendChild(el('div', { class: 'wx-facts' }, facts.map(function (f) {
+          return el('div', { class: 'wx-fact' }, [
+            el('span', { text: f[0] }), el('b', { text: f[1] })
+          ]);
+        })));
       }
+
+      /* これから12時間 */
+      var hours = (c.hours || []).filter(function (h) {
+        return new Date(h.time.replace(' ', 'T')).getTime() >= Date.now() - 3600000;
+      });
+      if (hours.length) {
+        body.appendChild(ui.section('これから'));
+        var strip = el('div', { class: 'wx-hours' });
+        hours.slice(0, 12).forEach(function (h) {
+          var hi = W.codeInfo(h.code);
+          strip.appendChild(el('div', { class: 'wx-hour' }, [
+            el('span', { class: 'wx-h-time', text: (h.time.slice(11, 13) | 0) + '時' }),
+            ui.icon(hi.icon, 20),
+            el('b', { text: h.temp === null ? '—' : h.temp + '°' }),
+            el('span', { class: 'wx-h-pop' + (h.pop >= 50 ? ' on' : ''), text: h.pop + '%' })
+          ]));
+        });
+        body.appendChild(strip);
+      }
+
+      /* 3日ぶん */
+      body.appendChild(ui.section('3日間'));
+      var list = el('div', { class: 'list' });
       c.days.forEach(function (d) {
-        var info = W.codeInfo(d.code);
+        var di = W.codeInfo(d.code);
         list.appendChild(el('div', { class: 'row wx-row' }, [
           el('span', { class: 'wx-day', text: U.fmtMDW(d.date) }),
-          ui.icon(info.icon, 24),
-          el('span', { class: 'wx-label', text: info.label }),
-          // 低い確率まで出すと天気の呼び名を押し出してしまうので、30%からにする
+          ui.icon(di.icon, 24),
+          el('span', { class: 'wx-label', text: di.label }),
           d.pop >= 30 ? ui.chip(d.pop + '%', d.pop >= 50 ? 'soft' : 'ghosty') : null,
           el('span', { class: 'wx-temp' }, [
             el('b', { text: (d.max === null ? '—' : d.max) + '°' }),
@@ -218,24 +272,29 @@
           ])
         ]));
       });
+      body.appendChild(list);
+
+      var rain = c.days.filter(function (d) { return d.rain; });
+      if (rain.length) {
+        body.appendChild(el('p', { class: 'muted small', text: '雨量の見込み：' + rain.map(function (d) {
+          return U.fmtMD(d.date) + ' ' + d.rain + 'mm';
+        }).join('　') }));
+      }
+
+      body.appendChild(el('p', { class: 'muted small',
+        text: U.fmtMD(U.toISO(new Date(c.at))) + ' ' + hhmm(c.at) + ' 時点（Open-Meteo）' }));
     }
     draw();
 
-    var body = el('div', { class: 'form' }, [
-      list,
-      el('p', { class: 'muted small', text: c
-        ? (c.name || '登録した地点') + '　' + U.fmtMD(U.toISO(new Date(c.at))) + ' ' + hhmm(c.at) + ' 時点'
-        : '' }),
-      ui.btn('取り直す', 'ghost full', function () {
-        ui.toast('取りに行きます…');
-        W.load({ force: true }).then(function () { draw(); DL.app.render(); });
-      }, 'refresh'),
-      ui.btn('地点を変える', 'ghost full', function () { close(); location.hash = '#/settings'; }, 'settings')
-    ]);
-
     var close = ui.sheet({
       title: '天気', body: body,
-      actions: [ui.btn('閉じる', 'ghost', function () { close(); })]
+      actions: [
+        ui.btn('取り直す', 'ghost', function () {
+          ui.toast('取りに行きます…');
+          W.load({ force: true }).then(function () { draw(); DL.app.render(); });
+        }, 'refresh'),
+        ui.btn('閉じる', 'primary', function () { close(); })
+      ]
     });
   }
 

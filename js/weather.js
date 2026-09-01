@@ -6,8 +6,10 @@
 
   var API = 'https://api.open-meteo.com/v1/forecast';
   var GEO = 'https://geocoding-api.open-meteo.com/v1/search';
+  var REV = 'https://api.bigdatacloud.net/data/reverse-geocode-client';
   var FRESH_MIN = 30;       // これより新しければ取り直さない
   var DAYS = 3;
+  var HOURS = 12;           // 「これから」に出す時間数
 
   /* WMO の記号 → アイコンと呼び名 */
   var CODES = [
@@ -24,11 +26,31 @@
     { max: 99, icon: 'wThunder', label: '雷雨' }
   ];
 
-  function codeInfo(code) {
+  /* 夜のあいだは、晴れの記号を月にする */
+  var NIGHT = { wSun: 'wMoon', wSunCloud: 'wMoonCloud' };
+
+  /**
+   * @param {number} code WMO の記号
+   * @param {boolean} [night] 夜なら true（現在の天気にだけ使う）
+   */
+  function codeInfo(code, night) {
     var c = U.num(code, -1);
-    if (c < 0) return { icon: 'wUnknown', label: '—' };
-    for (var i = 0; i < CODES.length; i++) if (c <= CODES[i].max) return CODES[i];
-    return { icon: 'wUnknown', label: '—' };
+    var hit = null;
+    if (c >= 0) {
+      for (var i = 0; i < CODES.length && !hit; i++) if (c <= CODES[i].max) hit = CODES[i];
+    }
+    if (!hit) return { icon: 'wUnknown', label: '—' };
+    if (!night || !NIGHT[hit.icon]) return hit;
+    return { icon: NIGHT[hit.icon], label: hit.label };
+  }
+
+  /* 風向き（16方位） */
+  var DIRS = ['北', '北北東', '北東', '東北東', '東', '東南東', '南東', '南南東',
+              '南', '南南西', '南西', '西南西', '西', '西北西', '北西', '北北西'];
+  function windDir(deg) {
+    var d = U.num(deg, -1);
+    if (d < 0) return '';
+    return DIRS[Math.round((d % 360) / 22.5) % 16];
   }
 
   /* ---------------- 地点 ---------------- */
@@ -70,12 +92,18 @@
     });
   }
 
-  /* 緯度経度から地名を引く（現在地を登録するとき） */
+  /**
+   * 緯度経度から市区町村の名前を引く（現在地を登録するとき）。
+   * Open-Meteo の検索は地名からしか引けないので、ここだけ別の
+   * 鍵の要らない逆引き（BigDataCloud）を使う。取れなければ空を返す。
+   */
   function nameOf(lat, lon) {
-    var url = GEO + '?latitude=' + lat + '&longitude=' + lon + '&count=1&language=ja&format=json';
+    var url = REV + '?latitude=' + lat + '&longitude=' + lon + '&localityLanguage=ja';
     return fetchJSON(url).then(function (j) {
-      var r = (j && j.results && j.results[0]) || null;
-      return r ? r.name : '';
+      if (!j) return '';
+      // 市区町村 → 市 → 都道府県 の順に、いちばん細かいものを使う
+      var name = j.locality || j.city || j.principalSubdivision || '';
+      return String(name).slice(0, 40);
     }).catch(function () { return ''; });
   }
 
@@ -121,9 +149,12 @@
     if (busy) return busy;
 
     var url = API + '?latitude=' + p.lat + '&longitude=' + p.lon
-      + '&current=weather_code,temperature_2m'
-      + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max'
-      + '&timezone=auto&forecast_days=' + DAYS;
+      + '&current=weather_code,temperature_2m,apparent_temperature,relative_humidity_2m,'
+      + 'precipitation,wind_speed_10m,wind_direction_10m,is_day'
+      + '&hourly=weather_code,temperature_2m,precipitation_probability'
+      + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,'
+      + 'precipitation_sum,sunrise,sunset,uv_index_max,wind_speed_10m_max'
+      + '&timezone=auto&forecast_days=' + DAYS + '&forecast_hours=' + HOURS;
 
     busy = fetchJSON(url).then(function (j) {
       busy = null;
@@ -147,17 +178,54 @@
         code: U.num(d.weather_code[i], -1),
         max: round1(d.temperature_2m_max[i]),
         min: round1(d.temperature_2m_min[i]),
-        pop: U.num((d.precipitation_probability_max || [])[i], 0)
+        pop: U.num((d.precipitation_probability_max || [])[i], 0),
+        rain: num1((d.precipitation_sum || [])[i]),
+        uv: round1((d.uv_index_max || [])[i]),
+        wind: num1((d.wind_speed_10m_max || [])[i]),
+        sunrise: hhmm((d.sunrise || [])[i]),
+        sunset: hhmm((d.sunset || [])[i])
       };
     });
+
+    var h = j.hourly || {};
+    var hours = (h.time || []).map(function (t, i) {
+      return {
+        time: t,
+        code: U.num((h.weather_code || [])[i], -1),
+        temp: round1((h.temperature_2m || [])[i]),
+        pop: U.num((h.precipitation_probability || [])[i], 0)
+      };
+    });
+
     var now = j.current || {};
     return {
       at: new Date().toISOString(),
       key: keyOf(p),
       name: p.name,
       days: days,
-      now: { code: U.num(now.weather_code, -1), temp: round1(now.temperature_2m) }
+      hours: hours,
+      now: {
+        code: U.num(now.weather_code, -1),
+        temp: round1(now.temperature_2m),
+        feels: round1(now.apparent_temperature),
+        humidity: U.num(now.relative_humidity_2m, -1),
+        rain: num1(now.precipitation),
+        wind: num1(now.wind_speed_10m),
+        dir: windDir(now.wind_direction_10m),
+        night: U.num(now.is_day, 1) === 0
+      }
     };
+  }
+
+  /* 小数1桁まで（降水量・風速） */
+  function num1(v) {
+    var n = parseFloat(v);
+    return isFinite(n) ? Math.round(n * 10) / 10 : null;
+  }
+
+  function hhmm(t) {
+    var m = /T(\d\d:\d\d)/.exec(String(t || ''));
+    return m ? m[1] : '';
   }
 
   function round1(v) {
@@ -182,6 +250,7 @@
 
   DL.weather = {
     place: place, setPlace: setPlace, search: search, nameOf: nameOf, locate: locate,
-    load: load, cache: cache, dayOf: dayOf, codeInfo: codeInfo, FRESH_MIN: FRESH_MIN
+    load: load, cache: cache, dayOf: dayOf, codeInfo: codeInfo,
+    windDir: windDir, FRESH_MIN: FRESH_MIN
   };
 })(window.DL);

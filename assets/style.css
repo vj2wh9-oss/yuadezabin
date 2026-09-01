@@ -318,6 +318,35 @@ h1, h2, h3, p { margin: 0; }
 .wx-none .icon { color: var(--muted); }
 .wx-set { font-size: 12px; font-weight: 700; }
 
+/* 天気の画面 */
+.wx-sheet { gap: 8px; }
+.wx-now { display: flex; align-items: center; gap: 12px; padding: 2px 0 6px; }
+.wx-now .icon { color: var(--accent); flex: none; }
+.wx-now-main { min-width: 0; }
+.wx-now-temp { display: flex; align-items: baseline; gap: 8px; }
+.wx-now-temp b { font-size: 32px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.wx-now-label { font-size: 14px; font-weight: 700; }
+.wx-facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.wx-fact {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-s);
+  padding: 6px 4px; text-align: center; min-width: 0;
+}
+.wx-fact span { display: block; font-size: 10px; color: var(--muted); }
+.wx-fact b { font-size: 13px; font-variant-numeric: tabular-nums; }
+/* これから12時間。横に流して見る */
+.wx-hours {
+  display: flex; gap: 6px; overflow-x: auto; padding: 1px; -webkit-overflow-scrolling: touch;
+}
+.wx-hour {
+  flex: none; width: 54px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-s); padding: 6px 2px;
+}
+.wx-hour .icon { color: var(--accent); }
+.wx-hour b { font-size: 13px; font-variant-numeric: tabular-nums; }
+.wx-h-time { font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.wx-h-pop { font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.wx-h-pop.on { color: var(--accent); font-weight: 700; }
+
 /* 3日ぶんの予報 */
 .wx-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
 .wx-row .icon { color: var(--accent); flex: none; }
