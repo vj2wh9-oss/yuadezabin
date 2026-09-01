@@ -43,6 +43,9 @@
     var cur = S.duty(date);
 
     wrap.appendChild(ui.section('この日の勤務', cur ? ui.chip(S.dutyLabel(cur), 'soft') : null));
+    if (cur === 'stay') {
+      wrap.appendChild(el('p', { class: 'muted small', text: '泊まり勤務の日は、案件のほうを休業日にしています。' }));
+    }
 
     wrap.appendChild(el('div', { class: 'duty-row' }, S.DUTIES.map(function (d) {
       var on = cur === d.value;
@@ -50,8 +53,16 @@
         type: 'button', class: 'duty-btn duty-' + d.value + (on ? ' on' : ''),
         'aria-pressed': on ? 'true' : 'false',
         onclick: function () {
+          var before = DL.forms.planSnapshot();
+          var wasOff = (S.settings.holidays || []).indexOf(date) >= 0;
           S.setDuty(date, on ? '' : d.value);      // 同じものをもう一度押したら外す
-          ui.toast(on ? d.label + 'を外しました' : d.label + 'にしました');
+          var isOff = (S.settings.holidays || []).indexOf(date) >= 0;
+          var msg = on ? d.label + 'を外しました' : d.label + 'にしました';
+          if (!wasOff && isOff) msg += '\n案件のほうは休業日にしました';
+          else if (wasOff && !isOff) msg += '\n案件の休業日も外しました';
+          ui.toast(msg);
+          // 休みが増えたぶん、残りの割り振りを組み直すか聞く
+          if (!wasOff && isOff) DL.forms.offerReschedule(before);
         }
       }, [
         el('i', { class: 'duty-dot' }),

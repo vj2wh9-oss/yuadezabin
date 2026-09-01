@@ -73,6 +73,9 @@
 
   var DEFAULT_SETTINGS = {
     holidays: [],          // 休業日 'YYYY-MM-DD'（カレンダーの日別画面から指定する）
+    // そのうち「泊まり勤務」で自動的に付いたぶん。勤務を外したらこれだけ戻す
+    stayHolidays: [],
+    stayHolidayInit: false,   // 前からある泊まり勤務の日に、一度だけ休みを当てたか
     bufferDays: 1,         // 締切の何日前までに終わらせるか
     warnDays: 14,          // 締切が近いと警告する日数
     weekStart: 0,          // 0=日曜はじまり 1=月曜はじまり
@@ -230,6 +233,20 @@
     s.settings.stock = (s.settings.stock || []).map(normalizeMove);
     s.settings.events = (s.settings.events || []).map(normalizeEvent);
     s.settings.duties = normalizeDuties(s.settings.duties);
+    s.settings.holidays = (s.settings.holidays || []).filter(U.isISO);
+    // 手で休みを外した日は、自動で付けた記録のほうも落とす（また付け直さないため）
+    s.settings.stayHolidays = (s.settings.stayHolidays || []).filter(function (d) {
+      return U.isISO(d) && s.settings.holidays.indexOf(d) >= 0;
+    });
+    // 泊まり勤務は案件の休みにする決まりにしたので、前からある日にも一度だけ当てる
+    if (!s.settings.stayHolidayInit) {
+      Object.keys(s.settings.duties).forEach(function (d) {
+        if (s.settings.duties[d] !== 'stay') return;
+        if (s.settings.holidays.indexOf(d) < 0) s.settings.holidays.push(d);
+        if (s.settings.stayHolidays.indexOf(d) < 0) s.settings.stayHolidays.push(d);
+      });
+      s.settings.stayHolidayInit = true;
+    }
     s.settings.eventDone = normalizeEventDone(s.settings.eventDone);
     s.settings.notify = normalizeNotify(s.settings.notify);
     s.settings.docSeq = migrateDocSeq(s.settings.docSeq);
@@ -1070,10 +1087,54 @@
   function setDuty(date, kind) {
     if (!U.isISO(date)) return '';
     var map = state.settings.duties || (state.settings.duties = {});
+    var was = map[date] || '';
     if (isDuty(kind)) map[date] = kind;
     else delete map[date];
+    var now = map[date] || '';
+
+    // 泊まり勤務の日は案件のほうを休みにする。外したら、その休みも戻す
+    if (now === 'stay' && was !== 'stay') addStayHoliday(date);
+    else if (was === 'stay' && now !== 'stay') dropStayHoliday(date);
+
     save();
-    return map[date] || '';
+    return now;
+  }
+
+  function addStayHoliday(date) {
+    var s = state.settings;
+    // もともと自分で休みにしていた日は、そのまま自分のものとして扱う
+    // （あとで勤務を外したときに、勝手に休みを消さないため）
+    if ((s.holidays || []).indexOf(date) >= 0) return;
+    s.holidays = (s.holidays || []).concat([date]);
+    if ((s.stayHolidays || []).indexOf(date) < 0) s.stayHolidays = (s.stayHolidays || []).concat([date]);
+  }
+
+  /* 自分で付けた休みはそのまま。泊まり勤務で付いたものだけ外す */
+  function dropStayHoliday(date) {
+    var s = state.settings;
+    if ((s.stayHolidays || []).indexOf(date) < 0) return;
+    s.stayHolidays = s.stayHolidays.filter(function (d) { return d !== date; });
+    s.holidays = (s.holidays || []).filter(function (d) { return d !== date; });
+  }
+
+  /* 泊まり勤務のせいで休みになっている日か */
+  function isStayHoliday(date) {
+    return (state.settings.stayHolidays || []).indexOf(date) >= 0;
+  }
+
+  /**
+   * 案件の休業日を付け外しする。
+   * 手で外したときは、泊まり勤務で付けた記録も一緒に落とす
+   * （そうしないと、勤務を外したときにもう一度消しに行ってしまう）
+   */
+  function setHoliday(date, on) {
+    if (!U.isISO(date)) return;
+    var s = state.settings;
+    var hs = (s.holidays || []).filter(function (d) { return d !== date; });
+    if (on) hs.push(date);
+    s.holidays = hs;
+    if (!on) s.stayHolidays = (s.stayHolidays || []).filter(function (d) { return d !== date; });
+    save();
   }
 
   /* カレンダーの表示（案件 / 日常）。この端末での見え方なので同期には送らない */
@@ -1849,6 +1910,7 @@
     events: events, getEvent: getEvent, addEvent: addEvent,
     updateEvent: updateEvent, removeEvent: removeEvent,
     duty: duty, setDuty: setDuty, dutyLabel: dutyLabel,
+    setHoliday: setHoliday, isStayHoliday: isStayHoliday,
     isEventDone: isEventDone, setEventDone: setEventDone,
     calMode: calMode, setCalMode: setCalMode,
     removeFanbox: removeFanbox, clearFanbox: clearFanbox,

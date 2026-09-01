@@ -373,12 +373,13 @@
     wrap.appendChild(el('div', { class: 'pad' }, [
       ui.btn(isHoliday ? 'この日の休みを解除' : 'この日を休みにする', 'ghost full', function () {
         var before = DL.forms.planSnapshot();
-        var hs = S.settings.holidays || [];
-        S.updateSettings({ holidays: isHoliday ? hs.filter(function (x) { return x !== date; }) : hs.concat([date]) });
+        S.setHoliday(date, !isHoliday);
         ui.toast(isHoliday ? '休みを解除しました' : '休みに設定しました');
         if (!isHoliday) DL.forms.offerReschedule(before);
       }),
-      el('p', { class: 'muted small', text: '休みにすると、その日のノルマを振り分け直します。' })
+      el('p', { class: 'muted small', text: S.isStayHoliday(date)
+        ? '泊まり勤務にしたので休みにしています。解除すると、この日だけ休みでなくなります。'
+        : '休みにすると、その日のノルマを振り分け直します。' })
     ]));
 
     root.appendChild(wrap);
