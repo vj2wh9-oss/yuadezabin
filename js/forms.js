@@ -496,7 +496,7 @@
             name: nameI.value.trim() || 'タスク',
             unit: unitSeg.dataset.value,
             qty: qtyI ? U.num(qtyI.value, 0) : null,
-            start: startI.value, end: endI.value,
+            start: startI.value, end: endI.value, endBase: '',
             weight: U.num(weightI.value, 10), note: noteI.value
           };
           if (U.isISO(data.start) && U.isISO(data.end) && U.cmp(data.start, data.end) > 0) {
@@ -660,6 +660,7 @@
 
     var step = ui.stepper({ value: cur, max: room, onChange: function () { preview(); } });
     var range = el('div', { class: 'quota-range' });
+    var grow = el('div');
     var after = el('div', { class: 'list' });
 
     /* 入れた数のときに、この日と続きの日がどうなるかを出す */
@@ -675,17 +676,29 @@
       range.appendChild(el('b', { text: sc.rangeText(t, nrg.from, nrg.to) || ('0' + unit) }));
       range.appendChild(el('span', { class: 'muted small', text: q === cur ? 'いまのまま' : ('もとは ' + sc.rangeText(t, rg.from, rg.to)) }));
 
+      // 置く日が足りずに期間が伸びるときは、そう言っておく
+      U.clear(grow);
+      if (r.grew) {
+        grow.appendChild(el('div', { class: 'alert ' + (r.pastDeadline ? 'warn' : 'info') }, [
+          el('span', { class: 'alert-icon' }, ui.icon(r.pastDeadline ? 'alert' : 'info', 17)),
+          el('span', { text: '残りを置く日が足りないので、' + t.name + ' の期間を ' + U.fmtMDW(r.end) + ' まで伸ばします。'
+            + (r.pastDeadline ? '（' + sc.deadlineLabel(p) + ' ' + U.fmtMD(p.deadline) + ' を過ぎます）' : '') })
+        ]));
+      }
+
       var rest = np.days.filter(function (d) { return U.cmp(d.date, date) > 0; });
       if (!rest.length) {
         after.appendChild(el('p', { class: 'muted small', text: 'この日がいちばん最後の日です。' }));
         return;
       }
       rest.slice(0, 6).forEach(function (d) {
-        var was = plan.byDate[d.date];
+        var was = plan.byDate[d.date];          // undefined＝伸ばして増えた日
+        var note = was === undefined ? '（増えた日）'
+          : d.qty !== was ? '（もとは ' + was + '）' : '';
         after.appendChild(el('div', { class: 'row after-row' + (d.qty !== was ? ' moved' : '') }, [
           el('span', { class: 'after-date', text: U.fmtMDW(d.date) }),
           el('b', { text: sc.rangeText(t, d.from, d.to) || '—' }),
-          el('span', { class: 'muted small', text: d.qty + unit + (d.qty !== was ? '（もとは ' + was + '）' : '') })
+          el('span', { class: 'muted small', text: d.qty + unit + note })
         ]));
       });
       if (rest.length > 6) {
@@ -705,9 +718,12 @@
       ui.field('この日にやる量（' + unit + '）', step,
         head + unit + '目からの分です。この日から最後までの残りは ' + room + unit),
       range,
+      grow,
       ui.section('この日のあと'),
       after,
-      fixedElse ? ui.btn('すべて自動配分に戻す', 'ghost full', function () {
+      U.isISO(t.endBase) ? el('p', { class: 'muted small',
+        text: 'この工程は手を入れて ' + U.fmtMD(t.end) + ' まで伸ばしてあります（もとは ' + U.fmtMD(t.endBase) + '）。' }) : null,
+      (fixedElse || U.isISO(t.endBase)) ? ui.btn('すべて自動配分に戻す', 'ghost full', function () {
         sc.clearDayQuota(p, t, null); close(); ui.toast('すべて自動配分に戻しました');
       }, 'refresh') : null
     ]);
@@ -730,7 +746,9 @@
           close();
           var next = r.plan.days.filter(function (d) { return U.cmp(d.date, date) > 0 && d.qty > 0; })[0];
           ui.toast(U.fmtMD(date) + ' を ' + q + unit + ' にしました'
-            + (next ? '（次は ' + U.fmtMD(next.date) + ' に ' + sc.rangeText(t, next.from, next.to) + '）' : ''));
+            + (next ? '（次は ' + U.fmtMD(next.date) + ' に ' + sc.rangeText(t, next.from, next.to) + '）' : '')
+            + (r.grew ? '\n期間を ' + U.fmtMD(r.end) + ' まで伸ばしました' : ''),
+            r.pastDeadline ? 'warn' : '');
         })
       ]
     });

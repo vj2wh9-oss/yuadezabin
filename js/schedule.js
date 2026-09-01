@@ -374,7 +374,7 @@
       // 日数がタスク数より少ない場合は1日ずつ（最終日に寄せる）
       targets.forEach(function (t, i) {
         var d = days[Math.min(i, n - 1)];
-        t.start = d; t.end = d; t.planOverride = {};
+        t.start = d; t.end = d; t.planOverride = {}; delete t.endBase;
       });
       DL.store.save();
       return { ok: true, tight: true };
@@ -403,7 +403,7 @@
     targets.forEach(function (t, i) {
       t.start = days[pos];
       t.end = days[Math.min(n - 1, pos + counts[i] - 1)];
-      t.planOverride = {};
+      t.planOverride = {}; delete t.endBase;
       pos += counts[i];
     });
     DL.store.save();
@@ -476,10 +476,21 @@
     return { ok: true, nextDate: next.date, nextQty: next.qty };
   }
 
+  /* end の翌日から数えて、稼働日で n 日ぶん後ろの日付 */
+  function extendEnd(project, end, n) {
+    var d = end, got = 0, guard = 0;
+    while (got < n && guard++ < 400) {
+      d = U.addDays(d, 1);
+      if (isWorkday(project, d)) got++;
+    }
+    return d;
+  }
+
   /**
    * ある日のノルマを手で決める。
    * その日より前は今の配分のまま押さえ、その日より後ろだけを
    * 残量で配分し直す（前の日が勝手に動かないようにするため）。
+   * 後ろに置く日が無いときは、その日に決めた量をペースにして期間を伸ばす。
    * @param {object} [opts] {dry:true} で保存せず、そうなったときの計画だけ返す
    */
   function setDayQuota(project, task, date, qty, opts) {
@@ -487,26 +498,46 @@
     var plan = taskPlan(project, task);
     var idx = plan.days.findIndex(function (d) { return d.date === date; });
     if (idx < 0) return { ok: false, reason: 'この日はこのタスクの期間に入っていません' };
+    var q = Math.max(0, Math.round(U.num(qty, 0)));
 
     var ov = {};
     Object.keys(task.planOverride || {}).forEach(function (k) { ov[k] = task.planOverride[k]; });
     plan.days.slice(0, idx).forEach(function (d) { ov[d.date] = d.qty; });
-    ov[date] = Math.max(0, Math.round(U.num(qty, 0)));
+    ov[date] = q;
+
+    // この日までで置いた残り。後ろに日が無ければ、置ける日ができるまで期間を伸ばす
+    var before = U.sum(plan.days.slice(0, idx), function (d) { return d.qty; });
+    var leftover = Math.max(0, taskTotal(task) - before - q);
+    var end = task.end, grew = 0;
+    if (leftover > 0 && idx === plan.days.length - 1) {
+      grew = Math.max(1, Math.ceil(leftover / (q > 0 ? q : leftover)));
+      end = extendEnd(project, task.end, grew);
+    }
+    var late = U.isISO(project.deadline) && U.cmp(end, project.deadline) > 0;
 
     if (opts.dry) {
       var copy = U.clone(task);
+      copy.end = end;
       copy.planOverride = ov;
-      return { ok: true, plan: taskPlan(project, copy) };
+      return { ok: true, plan: taskPlan(project, copy), end: end, grew: grew, pastDeadline: late };
     }
+    // 伸ばす前の終了日を控えておく（「すべて自動配分に戻す」で返せるように）
+    if (grew && !U.isISO(task.endBase)) task.endBase = task.end;
+    task.end = end;
     task.planOverride = ov;
     DL.store.save();
-    return { ok: true, plan: taskPlan(project, task) };
+    return { ok: true, plan: taskPlan(project, task), end: end, grew: grew, pastDeadline: late };
   }
 
   /* その日の手入れだけを取り消す。date を省くとタスクの手入れを全部消す */
   function clearDayQuota(project, task, date) {
-    if (date) delete (task.planOverride || {})[date];
-    else task.planOverride = {};
+    if (date) {
+      delete (task.planOverride || {})[date];
+    } else {
+      task.planOverride = {};
+      // 手で伸ばした期間も元に戻す
+      if (U.isISO(task.endBase)) { task.end = task.endBase; delete task.endBase; }
+    }
     DL.store.save();
     return { ok: true, plan: taskPlan(project, task) };
   }

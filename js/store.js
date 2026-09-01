@@ -300,6 +300,7 @@
     t.qty = t.unit === 'none' ? null : U.num(t.qty, 0);
     t.progress = t.progress || {};
     t.planOverride = t.planOverride || {};
+    if (!U.isISO(t.endBase)) delete t.endBase;   // 手で伸ばす前の終了日（無ければ持たない）
     t.done = !!t.done;
     t.note = t.note || '';
     return t;
