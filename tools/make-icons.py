@@ -6,7 +6,7 @@
   1. 元にしたい画像を assets/app-icon.png（.jpg / .jpeg / .webp でも可）として置く
   2. python3 tools/make-icons.py
 
-正方形でない画像は中央で正方形に切り出す。
+正方形でない画像は正方形に切り出す（縦長のときは上を残す）。
 maskable 用は Android の安全領域に収まるよう少し縮めて、四隅から拾った色で余白を埋める。
 """
 import os
@@ -38,19 +38,32 @@ def find_source():
 
 
 def to_square(im):
+    """正方形に切り出す。
+    縦長の絵は顔が上にあることが多いので、中央ではなく上を残す
+    （中央で切ると髪の先が欠けてしまう）。"""
     w, h = im.size
     s = min(w, h)
-    left, top = (w - s) // 2, (h - s) // 2
+    left = (w - s) // 2
+    top = 0 if h > w else (h - s) // 2
     return im.crop((left, top, left + s, top + s))
 
 
-def corner_color(im):
-    """四隅の平均色。maskable の余白に使う"""
+def edge_color(im):
+    """縁でいちばん多い色。maskable の余白に使う。
+    四隅の平均だと、下が服・上が背景のような絵で濁った色になってしまう。"""
     px = im.convert('RGB')
     w, h = px.size
-    pts = [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)]
-    cols = [px.getpixel(p) for p in pts]
-    return tuple(sum(c[i] for c in cols) // len(cols) for i in range(3))
+    pts = []
+    for i in range(24):
+        x = int((w - 1) * i / 23)
+        y = int((h - 1) * i / 23)
+        pts += [(x, 0), (x, h - 1), (0, y), (w - 1, y)]
+    counts = {}
+    for p in pts:
+        c = px.getpixel(p)
+        c = (c[0] // 8 * 8, c[1] // 8 * 8, c[2] // 8 * 8)   # 少しの差は同じ色とみなす
+        counts[c] = counts.get(c, 0) + 1
+    return max(counts.items(), key=lambda kv: kv[1])[0]
 
 
 def main():
@@ -67,7 +80,7 @@ def main():
             os.path.join(ASSETS, name), 'PNG', optimize=True)
         print('  ->', name, size)
 
-    bg = corner_color(im)
+    bg = edge_color(im)
     canvas = Image.new('RGB', (512, 512), bg)
     inner = im.resize((400, 400), Image.LANCZOS)
     canvas.paste(inner, (56, 56))
