@@ -118,6 +118,9 @@
       baseSavedAt: '',     // 同期した時点の savedAt（以後の変更の有無を見る）
       lastAt: '', lastError: ''
     },
+    // 天気を出す地点（Open-Meteo）。予報そのものは端末ごとに持つ
+    weather: { name: '', lat: null, lon: null },
+    weatherCache: null,    // { at, key, name, days:[{date,code,max,min,pop}], now }
     docSeq: { estimate: {}, invoice: {}, receipt: {} },  // 書類番号の連番（年ごと）
     taxRate: 10,           // 消費税率(%)
     withholdingRate: 10.21,// 源泉徴収税率(%)
@@ -125,7 +128,8 @@
   };
 
   /* 端末ごとの設定。同期・読み込み・復元で持ち込まず、この端末のものを守る */
-  var LOCAL_SETTING_KEYS = ['sync', 'scopeIssuerId', 'calMode', 'notifyDevice', 'lastBackupAt', 'lastAutoBackupAt'];
+  var LOCAL_SETTING_KEYS = ['sync', 'scopeIssuerId', 'calMode', 'notifyDevice', 'lastBackupAt', 'lastAutoBackupAt',
+    'weatherCache'];   // 取ってきた予報は端末ごと。地点（weather）のほうは同期する
 
   var state = null;
   var listeners = [];
@@ -1527,9 +1531,13 @@
 
   /* ---------------- 設定 ---------------- */
 
-  function updateSettings(patch) {
+  /**
+   * @param {object} patch
+   * @param {object} [opts] {quiet:true} で「変更あり」にしない（端末ごとの値を書くとき）
+   */
+  function updateSettings(patch, opts) {
     Object.assign(state.settings, patch);
-    save();
+    save(opts);
   }
 
   /* ---------------- 入出力 ---------------- */

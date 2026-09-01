@@ -24,6 +24,11 @@
 
     /* 休業日はカレンダーの日別画面から指定する（ここには置かない） */
 
+    /* ---- 天気 ---- */
+    wrap.appendChild(ui.section('天気', DL.weather.place()
+      ? el('span', { class: 'muted small', text: DL.weather.place().name || '登録済み' }) : null));
+    wrap.appendChild(weatherCard());
+
     /* ---- テンプレート ---- */
     wrap.appendChild(ui.section('基本タスクのテンプレート'));
     wrap.appendChild(el('div', { class: 'card' }, [
@@ -214,6 +219,103 @@
   /* ---------------- 通知 ---------------- */
 
   /* FANBOX のページから送るための、ブックマークレットの作り方 */
+  /* ---------------- 天気の地点 ---------------- */
+
+  function weatherCard() {
+    var W = DL.weather;
+    var p = W.place();
+    var box = el('div', { class: 'card' });
+
+    if (p) {
+      var c = W.cache();
+      var d = c && c.days && c.days[0];
+      var info = d ? W.codeInfo(d.code) : null;
+      box.appendChild(el('div', { class: 'row wx-place' }, [
+        info ? ui.icon(info.icon, 26) : ui.icon('wUnknown', 26),
+        el('div', { class: 'row-main' }, [
+          el('div', { class: 'row-title', text: p.name || '登録した地点' }),
+          el('div', { class: 'row-sub' }, [
+            el('span', { class: 'muted small', text: p.lat + ', ' + p.lon }),
+            d ? ui.chip(info.label + ' ' + d.max + '°/' + d.min + '°', 'ghosty') : null
+          ])
+        ])
+      ]));
+      box.appendChild(el('div', { class: 'row-wrap' }, [
+        ui.btn('取り直す', 'ghost', function () {
+          ui.toast('取りに行きます…');
+          W.load({ force: true }).then(function (r) {
+            ui.toast(r ? '取れました' : 'いまは取れませんでした', r ? '' : 'warn');
+            DL.app.render();
+          });
+        }, 'refresh'),
+        ui.btn('地点を変える', 'ghost', function () { placeSheet(); }, 'edit'),
+        ui.btn('やめる', 'ghost', function () {
+          W.setPlace(null); ui.toast('天気を出さないようにしました');
+        }, 'close')
+      ]));
+    } else {
+      box.appendChild(el('p', { class: 'muted small', text: '地点を登録すると、ホームの日付の右に天気を出します。' }));
+      box.appendChild(ui.btn('地点を登録する', 'primary full', function () { placeSheet(); }, 'plus'));
+    }
+    return box;
+  }
+
+  function placeSheet() {
+    var W = DL.weather;
+    var input = ui.input({ value: '', placeholder: '例）Tokyo / Osaka / Sapporo', maxlength: 40 });
+    var list = el('div', { class: 'menu' });
+    var note = el('p', { class: 'muted small' });
+
+    function pick(o) {
+      W.setPlace(o);
+      close();
+      ui.toast(o.name + ' にしました');
+      W.load({ force: true }).then(function () { DL.app.render(); });
+    }
+
+    function run() {
+      var q = input.value.trim();
+      if (!q) { ui.toast('地名を入れてください', 'warn'); return; }
+      U.clear(list);
+      note.textContent = '探しています…';
+      W.search(q).then(function (rows) {
+        U.clear(list);
+        note.textContent = rows.length ? '' : '見つかりませんでした。ローマ字で試してください。';
+        rows.forEach(function (r) {
+          list.appendChild(el('button', { class: 'menu-item', onclick: function () { pick(r); } }, [
+            ui.icon('wSun', 18), el('span', { text: r.label })
+          ]));
+        });
+      }).catch(function () {
+        note.textContent = 'つながりませんでした。あとでもう一度お試しください。';
+      });
+    }
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); run(); } });
+
+    var body = el('div', { class: 'form' }, [
+      ui.field('地名で探す', input, 'Open-Meteo の検索はローマ字で当たります（表示は日本語）'),
+      el('div', { class: 'row-wrap' }, [
+        ui.btn('探す', 'primary', run, 'search'),
+        ui.btn('いまいる場所', 'ghost', function () {
+          note.textContent = '位置を確かめています…';
+          W.locate().then(function (pos) {
+            return W.nameOf(pos.lat, pos.lon).then(function (name) {
+              pick({ name: name || 'いまいる場所', lat: pos.lat, lon: pos.lon });
+            });
+          }).catch(function (e) { note.textContent = e.message; });
+        }, 'home')
+      ]),
+      note,
+      list
+    ]);
+
+    var close = ui.sheet({
+      title: '天気の地点', body: body,
+      actions: [ui.btn('閉じる', 'ghost', function () { close(); })]
+    });
+    setTimeout(function () { input.focus(); }, 100);
+  }
+
   function fanboxCard() {
     var card = el('div', { class: 'card' });
     card.appendChild(el('p', { class: 'muted small', text:

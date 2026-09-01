@@ -303,6 +303,30 @@ h1, h2, h3, p { margin: 0; }
 .td-wd.sat { color: var(--accent2); border-color: color-mix(in srgb, var(--accent2) 45%, var(--line2)); }
 .today-sub { font-size: 12.5px; color: var(--muted); }
 
+/* 天気（日付の右）。日付の邪魔をしないよう、控えめに置く */
+.wx {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  background: transparent; border: 1px solid var(--line); border-radius: var(--radius-s);
+  padding: 4px 8px; color: var(--text); cursor: pointer;
+}
+.wx:active { background: var(--card2); }
+.wx .icon { color: var(--accent); }
+.wx-t { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.15; }
+.wx-t b { font-size: 15px; font-variant-numeric: tabular-nums; }
+.wx-hl { font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.wx-none { color: var(--muted); border-style: dashed; }
+.wx-none .icon { color: var(--muted); }
+.wx-set { font-size: 12px; font-weight: 700; }
+
+/* 3日ぶんの予報 */
+.wx-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
+.wx-row .icon { color: var(--accent); flex: none; }
+.wx-day { font-size: 12.5px; color: var(--muted); min-width: 5em; flex: none; }
+.wx-label { flex: 1; min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wx-temp { font-variant-numeric: tabular-nums; font-size: 13px; flex: none; }
+.wx-place { display: flex; align-items: center; gap: 10px; padding: 4px 0 10px; }
+.wx-place .icon { color: var(--accent); flex: none; }
+
 /* 日別の画面では少し小さめに、中央へ寄せる */
 .daytitle .td-num { font-size: 23px; }
 .daytitle .td-year { font-size: 12.5px; }

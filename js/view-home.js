@@ -12,7 +12,7 @@
     // チェックを付けたものはホームから消す（カレンダーには残る）
     var plans = DL.events.ofDay(today).filter(function (o) { return !DL.events.isDone(o); });
     var todo = load.entries.length + plans.length;
-    wrap.appendChild(el('div', { class: 'today-head' }, [ui.dateHead(today)]));
+    wrap.appendChild(el('div', { class: 'today-head' }, [ui.dateHead(today), weatherChip(today)]));
 
     // iCloud への書き出しは Cloudflare 同期の予備なので、ホームでは案内しない。
     // 使うときは 設定 →「iCloud への書き出し」から。
@@ -144,6 +144,104 @@
       }, ui.icon('check', 17))
     ]);
     return row;
+  }
+
+  /* ---------------- 天気（日付の右） ---------------- */
+
+  var pending = false;    // いま取りに行っている最中か
+  var lastTry = 0;        // 前に取りに行った時刻（つながらないとき叩き続けないため）
+
+  function weatherChip(today) {
+    var W = DL.weather;
+    if (!W.place()) {
+      // まだ地点を決めていないときは、設定への入口だけ小さく出す
+      return el('a', { class: 'wx wx-none', href: '#/settings', 'aria-label': '天気の地点を設定' }, [
+        ui.icon('wUnknown', 20), el('span', { class: 'wx-set', text: '天気' })
+      ]);
+    }
+
+    var c = W.cache();
+    // 古くなっていたら取りに行き、新しい値が届いたときだけ描き直す
+    var old = !c || (Date.now() - new Date(c.at).getTime()) / 60000 >= W.FRESH_MIN;
+    if (old && !pending && Date.now() - lastTry > 120000) {
+      pending = true;
+      lastTry = Date.now();
+      W.load().then(function (r) {
+        pending = false;
+        if (r && (!c || r.at !== c.at)) DL.app.render();
+      });
+    }
+
+    var d = W.dayOf(today);
+    if (!d) {
+      return el('button', { class: 'wx wx-none', onclick: function () { sheet(); } }, [
+        ui.icon('wUnknown', 20), el('span', { class: 'wx-set', text: '取得中' })
+      ]);
+    }
+    var info = W.codeInfo(d.code);
+    var temp = (c.now && c.now.temp !== null && c.now.temp !== undefined) ? c.now.temp : d.max;
+    return el('button', {
+      class: 'wx', 'aria-label': (c.name || '天気') + '　' + info.label, onclick: function () { sheet(); }
+    }, [
+      ui.icon(info.icon, 26),
+      el('span', { class: 'wx-t' }, [
+        el('b', { text: temp === null ? '—' : temp + '°' }),
+        el('span', { class: 'wx-hl', text: (d.max === null ? '—' : d.max) + '/' + (d.min === null ? '—' : d.min) })
+      ])
+    ]);
+  }
+
+  /* 押したときの3日ぶんの予報 */
+  function sheet() {
+    var W = DL.weather;
+    var c = W.cache();
+    var list = el('div', { class: 'list' });
+
+    function draw() {
+      U.clear(list);
+      c = W.cache();
+      if (!c) {
+        list.appendChild(ui.empty('まだ取れていません。'));
+        return;
+      }
+      c.days.forEach(function (d) {
+        var info = W.codeInfo(d.code);
+        list.appendChild(el('div', { class: 'row wx-row' }, [
+          el('span', { class: 'wx-day', text: U.fmtMDW(d.date) }),
+          ui.icon(info.icon, 24),
+          el('span', { class: 'wx-label', text: info.label }),
+          // 低い確率まで出すと天気の呼び名を押し出してしまうので、30%からにする
+          d.pop >= 30 ? ui.chip(d.pop + '%', d.pop >= 50 ? 'soft' : 'ghosty') : null,
+          el('span', { class: 'wx-temp' }, [
+            el('b', { text: (d.max === null ? '—' : d.max) + '°' }),
+            el('span', { class: 'muted', text: ' / ' + (d.min === null ? '—' : d.min) + '°' })
+          ])
+        ]));
+      });
+    }
+    draw();
+
+    var body = el('div', { class: 'form' }, [
+      list,
+      el('p', { class: 'muted small', text: c
+        ? (c.name || '登録した地点') + '　' + U.fmtMD(U.toISO(new Date(c.at))) + ' ' + hhmm(c.at) + ' 時点'
+        : '' }),
+      ui.btn('取り直す', 'ghost full', function () {
+        ui.toast('取りに行きます…');
+        W.load({ force: true }).then(function () { draw(); DL.app.render(); });
+      }, 'refresh'),
+      ui.btn('地点を変える', 'ghost full', function () { close(); location.hash = '#/settings'; }, 'settings')
+    ]);
+
+    var close = ui.sheet({
+      title: '天気', body: body,
+      actions: [ui.btn('閉じる', 'ghost', function () { close(); })]
+    });
+  }
+
+  function hhmm(iso) {
+    var d = new Date(iso);
+    return U.pad(d.getHours()) + ':' + U.pad(d.getMinutes());
   }
 
   /**
