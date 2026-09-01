@@ -536,8 +536,15 @@
         el('div', { class: 'quota-box' }, [el('span', { text: '期間' }), el('b', { text: U.fmtMD(t.start) + '〜' + U.fmtMD(t.end) })]),
         el('div', { class: 'quota-box' }, [el('span', { text: '残り日数' }), el('b', { text: pace.remainingDays + '日' })])
       ] : [
-        el('div', { class: 'quota-box' }, [
-          el('span', { text: 'この日のノルマ' + (quota ? '（' + quota + unit + '）' : '') }),
+        // ノルマそのものを押して直せるようにする（自動配分の手直し）
+        el('button', {
+          class: 'quota-box tap', 'aria-label': 'この日のノルマを調整',
+          onclick: function () { close(); planOverrideSheet(pid, tid, date); }
+        }, [
+          el('span', {}, [
+            el('span', { text: 'この日のノルマ' + (quota ? '（' + quota + unit + '）' : '') }),
+            ui.icon('edit', 12)
+          ]),
           el('b', { text: sc.rangeText(t, range.from, range.to) || (quota + unit) })
         ]),
         el('div', { class: 'quota-box' }, [el('span', { text: '残り' }), el('b', { text: pace.remaining + unit })]),
@@ -641,26 +648,89 @@
     var p = S.getProject(pid), t = S.getTask(pid, tid);
     if (!p || !t || t.unit === 'none') return;
     var plan = sc.taskPlan(p, t);
+    if (plan.byDate[date] === undefined) { ui.toast('この日はこのタスクの期間に入っていません', 'warn'); return; }
+
+    var unit = S.UNIT_LABEL[t.unit] || '';
     var cur = plan.byDate[date] || 0;
-    var step = ui.stepper({ value: cur });
     var rg = plan.rangeByDate[date] || {};
-    var rt = sc.rangeText(t, rg.from, rg.to);
+    var head = rg.from || 1;                       // この日の始まりの番号は動かない
+    var room = sc.quotaRoom(p, t, date);           // この日以降に残っている量
+    var fixedElse = Object.keys(t.planOverride || {})
+      .filter(function (d) { return d !== date && plan.byDate[d] !== undefined; }).length;
+
+    var step = ui.stepper({ value: cur, max: room, onChange: function () { preview(); } });
+    var range = el('div', { class: 'quota-range' });
+    var after = el('div', { class: 'list' });
+
+    /* 入れた数のときに、この日と続きの日がどうなるかを出す */
+    function preview() {
+      var q = step.getValue();
+      var r = sc.setDayQuota(p, t, date, q, { dry: true });
+      U.clear(range);
+      U.clear(after);
+      if (!r.ok) return;
+
+      var np = r.plan;
+      var nrg = np.rangeByDate[date] || {};
+      range.appendChild(el('b', { text: sc.rangeText(t, nrg.from, nrg.to) || ('0' + unit) }));
+      range.appendChild(el('span', { class: 'muted small', text: q === cur ? 'いまのまま' : ('もとは ' + sc.rangeText(t, rg.from, rg.to)) }));
+
+      var rest = np.days.filter(function (d) { return U.cmp(d.date, date) > 0; });
+      if (!rest.length) {
+        after.appendChild(el('p', { class: 'muted small', text: 'この日がいちばん最後の日です。' }));
+        return;
+      }
+      rest.slice(0, 6).forEach(function (d) {
+        var was = plan.byDate[d.date];
+        after.appendChild(el('div', { class: 'row after-row' + (d.qty !== was ? ' moved' : '') }, [
+          el('span', { class: 'after-date', text: U.fmtMDW(d.date) }),
+          el('b', { text: sc.rangeText(t, d.from, d.to) || '—' }),
+          el('span', { class: 'muted small', text: d.qty + unit + (d.qty !== was ? '（もとは ' + was + '）' : '') })
+        ]));
+      });
+      if (rest.length > 6) {
+        after.appendChild(el('p', { class: 'muted small', text: 'ほか ' + (rest.length - 6) + '日' }));
+      }
+    }
+
     var body = el('div', { class: 'form' }, [
-      el('p', { class: 'muted small', text: U.fmtYMDW(date) + ' のノルマを固定します（残りは他の日へ配分し直します）。' }),
-      rt ? el('div', { class: 'preview' }, el('div', { class: 'preview-main' }, [
-        el('strong', { text: t.name + ' ' + rt }),
-        el('span', { class: 'muted', text: '　現在 ' + cur + (S.UNIT_LABEL[t.unit] || '') })
-      ])) : null,
-      ui.field('この日のノルマ', step)
+      el('div', { class: 'prog-head' }, [
+        el('div', { class: 'dot', style: { background: p.color } }),
+        el('div', {}, [
+          el('strong', { text: t.name }),
+          el('div', { class: 'muted small', text: p.title + '　' + U.fmtYMDW(date) })
+        ])
+      ]),
+      el('p', { class: 'muted small', text: '前の日はいまのまま押さえて、この日より後ろだけを割り振り直します。' }),
+      ui.field('この日にやる量（' + unit + '）', step,
+        head + unit + '目からの分です。この日から最後までの残りは ' + room + unit),
+      range,
+      ui.section('この日のあと'),
+      after,
+      fixedElse ? ui.btn('すべて自動配分に戻す', 'ghost full', function () {
+        sc.clearDayQuota(p, t, null); close(); ui.toast('すべて自動配分に戻しました');
+      }, 'refresh') : null
     ]);
+    preview();
+
     var close = ui.sheet({
       title: 'ノルマを調整', body: body,
       actions: [
-        ui.btn('自動に戻す', 'ghost', function () {
-          delete t.planOverride[date]; S.save(); close(); ui.toast('自動配分に戻しました');
-        }),
-        ui.btn('固定する', 'primary', function () {
-          t.planOverride[date] = step.getValue(); S.save(); close(); ui.toast('ノルマを固定しました');
+        (t.planOverride || {})[date] !== undefined
+          ? ui.btn('自動に戻す', 'ghost', function () {
+              sc.clearDayQuota(p, t, date); close(); ui.toast('この日を自動配分に戻しました');
+            })
+          : ui.btn('キャンセル', 'ghost', function () { close(); }),
+        ui.btn('決定', 'primary', function () {
+          var q = step.getValue();
+          // 何も変えずに閉じたときは、前の日を押さえるだけの記録を残さない
+          if (q === cur && (t.planOverride || {})[date] === undefined) { close(); return; }
+          var r = sc.setDayQuota(p, t, date, q);
+          if (!r.ok) { ui.toast(r.reason, 'warn'); return; }
+          close();
+          var next = r.plan.days.filter(function (d) { return U.cmp(d.date, date) > 0 && d.qty > 0; })[0];
+          ui.toast(U.fmtMD(date) + ' を ' + q + unit + ' にしました'
+            + (next ? '（次は ' + U.fmtMD(next.date) + ' に ' + sc.rangeText(t, next.from, next.to) + '）' : ''));
         })
       ]
     });

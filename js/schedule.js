@@ -477,6 +477,50 @@
   }
 
   /**
+   * ある日のノルマを手で決める。
+   * その日より前は今の配分のまま押さえ、その日より後ろだけを
+   * 残量で配分し直す（前の日が勝手に動かないようにするため）。
+   * @param {object} [opts] {dry:true} で保存せず、そうなったときの計画だけ返す
+   */
+  function setDayQuota(project, task, date, qty, opts) {
+    opts = opts || {};
+    var plan = taskPlan(project, task);
+    var idx = plan.days.findIndex(function (d) { return d.date === date; });
+    if (idx < 0) return { ok: false, reason: 'この日はこのタスクの期間に入っていません' };
+
+    var ov = {};
+    Object.keys(task.planOverride || {}).forEach(function (k) { ov[k] = task.planOverride[k]; });
+    plan.days.slice(0, idx).forEach(function (d) { ov[d.date] = d.qty; });
+    ov[date] = Math.max(0, Math.round(U.num(qty, 0)));
+
+    if (opts.dry) {
+      var copy = U.clone(task);
+      copy.planOverride = ov;
+      return { ok: true, plan: taskPlan(project, copy) };
+    }
+    task.planOverride = ov;
+    DL.store.save();
+    return { ok: true, plan: taskPlan(project, task) };
+  }
+
+  /* その日の手入れだけを取り消す。date を省くとタスクの手入れを全部消す */
+  function clearDayQuota(project, task, date) {
+    if (date) delete (task.planOverride || {})[date];
+    else task.planOverride = {};
+    DL.store.save();
+    return { ok: true, plan: taskPlan(project, task) };
+  }
+
+  /* この日より後ろに残っている量（手で決められる上限） */
+  function quotaRoom(project, task, date) {
+    var plan = taskPlan(project, task);
+    var idx = plan.days.findIndex(function (d) { return d.date === date; });
+    if (idx < 0) return 0;
+    var before = U.sum(plan.days.slice(0, idx), function (d) { return d.qty; });
+    return Math.max(0, taskTotal(task) - before);
+  }
+
+  /**
    * 未完了の工程を「今日（または作業開始日）〜締切」の稼働日へ割り振り直す。
    * 休みを増やしてタスクの枠内に収まらなくなったときに使う。
    */
@@ -567,6 +611,7 @@
     alerts: alerts, moneyAlerts: moneyAlerts,
     actualPace: actualPace, isOverloaded: isOverloaded, overloadedDays: overloadedDays,
     deferDay: deferDay, rescheduleRemaining: rescheduleRemaining,
+    setDayQuota: setDayQuota, clearDayQuota: clearDayQuota, quotaRoom: quotaRoom,
     autoSchedule: autoSchedule, loadOfDay: loadOfDay, buildICS: buildICS, ICS_ALARMS: ICS_ALARMS
   };
 })(window.DL);
