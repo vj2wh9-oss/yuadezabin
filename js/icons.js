@@ -69,6 +69,10 @@
     arrowUp: '<path d="M12 20V5"/><path d="M6 11 12 5l6 6"/>',
     arrowDown: '<path d="M12 4v15"/><path d="M6 13l6 6 6-6"/>',
     edit: '<path d="M4 20v-4.2L15.8 4l4.2 4.2L8.2 20z"/><path d="M13.8 6l4.2 4.2"/>',
+    // ひらめき：豆電球。他と揃えて角は落とさず、灯りの線を3本添える
+    idea: '<path d="M8.2 13.4A5 5 0 1 1 15.8 13.4L14.6 15.6h-5.2z"/>' +
+          '<path d="M9.4 18h5.2"/><path d="M10.4 20.5h3.2"/>' +
+          '<path d="M12 1.8v2M3.9 6.2l1.7 1M20.1 6.2l-1.7 1"/>',
     more: '<path d="M3.5 10.5h3.4v3.4H3.5zM10.3 10.5h3.4v3.4h-3.4zM17.1 10.5h3.4v3.4h-3.4z" fill="currentColor" stroke="none"/>',
     search: '<circle cx="10.6" cy="10.6" r="6.4"/><path d="M15.4 15.4 20.5 20.5"/>',
     trash: '<path d="M4.5 6.5h15"/><path d="M9 6.5V3.5h6v3"/><path d="M6.5 6.5 7.6 20.5h8.8L17.5 6.5"/><path d="M10 10.5v6M14 10.5v6"/>',

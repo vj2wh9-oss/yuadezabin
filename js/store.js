@@ -374,6 +374,7 @@
     f.name = f.name || '(名称未設定)';
     f.parentId = f.parentId || '';     // 空＝いちばん上。入れ子にできる
     f.color = HEX.test(String(f.color)) ? f.color : '';   // 空＝既定の青
+    f.order = U.num(f.order, 0);       // 画面に並べる順（R2 の中身とは関わらない）
     f.fromHint = !!f.fromHint;         // R2 の記録から組み直したものか
     f.createdAt = f.createdAt || new Date().toISOString();
     return f;
@@ -556,10 +557,42 @@
     return folders().filter(function (f) { return f.id === id; })[0] || null;
   }
 
-  /** 直下のフォルダだけを返す。parentId が空ならいちばん上の階層 */
+  /**
+   * 直下のフォルダだけを返す。parentId が空ならいちばん上の階層。
+   * 並べ替えた順（order）で返し、同じ順のものは名前順にする。
+   * order は画面に並べる順でしかなく、R2 側の置き場所は変わらない。
+   */
   function folderChildren(parentId) {
     parentId = parentId || '';
-    return folders().filter(function (f) { return (f.parentId || '') === parentId; });
+    return folders().filter(function (f) { return (f.parentId || '') === parentId; })
+      .sort(function (a, b) { return (U.num(a.order, 0) - U.num(b.order, 0)) || U.cmp(a.name, b.name); });
+  }
+
+  /**
+   * 並べ替える。渡された順に 0,1,2… を振り直す。
+   * @param {string} parentId その階層
+   * @param {string[]} ids 並べたい順のフォルダID
+   */
+  function reorderFolders(parentId, ids) {
+    var here = folderChildren(parentId);
+    var by = {};
+    here.forEach(function (f) { by[f.id] = f; });
+    var n = 0;
+    (ids || []).forEach(function (id) {
+      if (!by[id]) return;
+      by[id].order = n++;
+      by[id].fromHint = false;
+      delete by[id];
+    });
+    // 渡されなかったぶん（画面に出ていなかったもの）は後ろへ、元の並びのまま
+    here.forEach(function (f) { if (by[f.id]) f.order = n++; });
+    save();
+    return folderChildren(parentId);
+  }
+
+  function nextFolderOrder(parentId) {
+    var here = folderChildren(parentId);
+    return here.length ? U.num(here[here.length - 1].order, 0) + 1 : 0;
   }
 
   /** @param {boolean} [quiet] R2 の記録から組み直すときは保存日時を動かさない */
@@ -568,6 +601,7 @@
       id: U.uid(),
       name: String(name || '').trim() || '新しいフォルダ',
       parentId: parentId || '',
+      order: nextFolderOrder(parentId),   // 新しいものは、その階層のいちばん後ろへ
       fromHint: !!quiet     // 自分で作ったのではなく R2 の記録から復元したもの
     });
     state.settings.folders = folders().concat([f]);
@@ -1083,19 +1117,30 @@
     var out = {
       text: String(l.text || '').slice(0, 4000),
       mood: Math.min(5, Math.max(0, Math.round(U.num(l.mood, 0)))),   // 0＝入れていない
+      ideas: normalizeIdeas(l.ideas),
       updatedAt: l.updatedAt || new Date().toISOString()
     };
-    // その日の天気は、あとから引けないのでここに写しておく
+    // その日の天気（正午のもの）は、あとから引けないのでここに写しておく
     if (l.weather && U.num(l.weather.code, -1) >= 0) {
       out.weather = {
         code: U.num(l.weather.code, -1),
         // 気温は整数まで。切り捨てると 20.9℃ が 20℃ になってしまうので四捨五入する
         max: deg(l.weather.max),
-        min: deg(l.weather.min),
-        name: String(l.weather.name || '').slice(0, 40)
+        min: deg(l.weather.min)
       };
     }
     return out;
+  }
+
+  /* ひらめきメモ。ふと思いついたものを、その日にぶら下げる */
+  function normalizeIdeas(list) {
+    return (list || []).map(function (x) {
+      return {
+        id: x.id || U.uid(),
+        text: String(x.text || '').slice(0, 1000),
+        at: x.at || new Date().toISOString()
+      };
+    }).filter(function (x) { return !!x.text; }).slice(0, 200);
   }
 
   function deg(v) {
@@ -1106,7 +1151,7 @@
 
   /* 中身が空になった日は持たない（ゴミを残さない） */
   function emptyLog(l) {
-    return !l || (!l.text && !l.mood && !l.weather);
+    return !l || (!l.text && !l.mood && !l.weather && !(l.ideas || []).length);
   }
 
   function normalizeLogs(map) {
@@ -1141,6 +1186,40 @@
   /* 何か書いてある日を新しい順に */
   function logDates() {
     return Object.keys(state.settings.logs || {}).sort(function (a, b) { return U.cmp(b, a); });
+  }
+
+  /* ---- ひらめきメモ ---- */
+
+  function ideas(date) { return ((getLog(date) || {}).ideas || []).slice(); }
+
+  function addIdea(date, text) {
+    text = String(text || '').trim();
+    if (!U.isISO(date) || !text) return null;
+    var list = ideas(date).concat([{ id: U.uid(), text: text, at: new Date().toISOString() }]);
+    setLog(date, { ideas: list });
+    return list[list.length - 1];
+  }
+
+  function updateIdea(date, id, text) {
+    var list = ideas(date).map(function (x) {
+      return x.id === id ? { id: x.id, text: String(text || '').trim(), at: x.at } : x;
+    });
+    setLog(date, { ideas: list });
+    return getLog(date);
+  }
+
+  function removeIdea(date, id) {
+    setLog(date, { ideas: ideas(date).filter(function (x) { return x.id !== id; }) });
+    return getLog(date);
+  }
+
+  /* 全部のひらめきを新しい順に（検索と一覧のため） */
+  function allIdeas() {
+    var out = [];
+    logDates().forEach(function (d) {
+      ideas(d).slice().reverse().forEach(function (x) { out.push({ date: d, idea: x }); });
+    });
+    return out;
   }
 
   /* ---------------- その日の働き方（日常のカレンダー） ---------------- */
@@ -1989,6 +2068,7 @@
     clientProjects: clientProjects, clientDocs: clientDocs,
     folders: folders, getFolder: getFolder, addFolder: addFolder,
     folderChildren: folderChildren, folderPath: folderPath, setFolderColor: setFolderColor,
+    reorderFolders: reorderFolders,
     ensureFolderPath: ensureFolderPath, folderTreeIds: folderTreeIds,
     renameFolder: renameFolder, removeFolder: removeFolder,
     fanbox: fanbox, fanboxOf: fanboxOf, putFanbox: putFanbox,
@@ -2005,6 +2085,7 @@
     updateEvent: updateEvent, removeEvent: removeEvent,
     duty: duty, setDuty: setDuty, dutyLabel: dutyLabel,
     getLog: getLog, setLog: setLog, logDates: logDates, MOODS: MOODS,
+    ideas: ideas, addIdea: addIdea, updateIdea: updateIdea, removeIdea: removeIdea, allIdeas: allIdeas,
     setHoliday: setHoliday, isStayHoliday: isStayHoliday,
     isEventDone: isEventDone, setEventDone: setEventDone,
     calMode: calMode, setCalMode: setCalMode,

@@ -31,10 +31,23 @@
   /* 天気。記録に写してあればそれを、無ければいま持っている予報から */
   function weatherOf(date, log) {
     if (log && log.weather) return log.weather;
-    var d = DL.weather && DL.weather.dayOf(date);
-    if (!d) return null;
-    var c = DL.weather.cache();
-    return { code: d.code, max: d.max, min: d.min, name: (c && c.name) || '' };
+    return (DL.weather && DL.weather.noonOf(date)) || null;
+  }
+
+  /**
+   * その日の正午の天気を、記録に写しておく。
+   * 過去の天気はあとから引けないので、その日のうちに残す。
+   * 今日ぶんは開くたびに写し直す（朝は予報、夕方には実績に近づくため）。
+   */
+  function keepWeather(date) {
+    date = U.isISO(date) ? date : U.today();
+    if (date !== U.today()) return null;       // 過ぎた日は上書きしない
+    var w = DL.weather && DL.weather.noonOf(date);
+    if (!w) return null;
+    var had = (S.getLog(date) || {}).weather;
+    if (had && had.code === w.code && had.max === w.max && had.min === w.min) return had;
+    S.setLog(date, { weather: w }, { quiet: true });    // 天気の写しで「変更あり」にしない
+    return w;
   }
 
   /**
@@ -103,7 +116,8 @@
 
   /* その日に何かあったか（記録として残す値があるか） */
   function has(d) {
-    return !!(d.log.text || d.log.mood || d.duty || d.works.length || d.plans.length
+    return !!(d.log.text || d.log.mood || (d.log.ideas || []).length
+      || d.duty || d.works.length || d.plans.length
       || d.money.expenses.length || d.stock.length || d.docs.length || d.marks.length);
   }
 
@@ -112,6 +126,7 @@
     var parts = [];
     var pages = U.sum(d.works, function (w) { return w.done; });
     if (pages) parts.push('進み ' + pages);
+    if ((d.log.ideas || []).length) parts.push('ひらめき ' + d.log.ideas.length + '件');
     if (d.plans.length) parts.push('予定 ' + d.plans.length + '件');
     if (d.money.expenses.length) parts.push('経費 ' + d.money.expenses.length + '件');
     var sold = U.sum(d.stock.filter(function (x) { return x.move.kind === 'sale'; }),
@@ -121,5 +136,5 @@
     return parts.join('　');
   }
 
-  DL.daylog = { of: of, has: has, summary: summary };
+  DL.daylog = { of: of, has: has, summary: summary, keepWeather: keepWeather };
 })(window.DL);

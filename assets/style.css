@@ -1376,3 +1376,51 @@ h1, h2, h3, p { margin: 0; }
 /* ホームとカレンダーから記録へ */
 .log-link { margin-top: 2px; }
 .log-link.has-note { border-color: var(--line2); }
+
+/* ---------------- ひらめきメモ ---------------- */
+.idea-card { display: flex; flex-direction: column; gap: 10px; }
+.idea-add { display: flex; gap: 6px; align-items: stretch; }
+.idea-add input { flex: 1; min-width: 0; }
+.idea-add .btn { flex: none; white-space: nowrap; }
+.idea-hint { margin: 0; }
+.idea-list { display: flex; flex-direction: column; gap: 5px; }
+.idea {
+  display: flex; align-items: center; gap: 4px;
+  border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--card2);
+  padding: 2px 2px 2px 0;
+}
+.idea-text {
+  flex: 1; min-width: 0; text-align: left; padding: 8px 4px 8px 10px;
+  background: none; border: 0;
+  font-size: 13.5px; line-height: 1.5; color: var(--fg); cursor: pointer;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.idea-text:active { color: var(--accent); }
+.idea .iconbtn { flex: none; color: var(--muted); }
+/* 一覧に添えるひらめきの一行 */
+.idea-excerpt { display: flex; align-items: flex-start; gap: 5px; -webkit-line-clamp: 1; }
+.idea-excerpt .icon { flex: none; margin-top: 1px; }
+
+/* ---------------- フォルダの並べ替え ---------------- */
+.fgrid-hint { padding: 6px 2px 0; }
+/* 長押ししたときに、文字が選ばれたり吹き出しが出たりしないように */
+.fgrid .ftile.is-folder { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+/* つまんでいる間は、画面が一緒に動かないようにする */
+.fgrid.sorting { touch-action: none; }
+.fgrid.sorting .ftile-main { pointer-events: none; }
+/* つまんだタイル。指について動く */
+.ftile-held {
+  position: fixed; z-index: 60; margin: 0; pointer-events: none;
+  transform: scale(1.06); opacity: .95;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .35);
+  border-radius: var(--radius);
+}
+.ftile-held .ftile-main { background: var(--card2); }
+.ftile-held .ftile-more { display: none; }
+/* 放したら入る場所。まわりのフォルダが脇へ寄って、ここが空く */
+.ftile-hole {
+  border: 1px dashed var(--accent); border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+/* 脇へ寄るときの動き。位置ではなく見た目だけ動かすので、マス目はずれない */
+.fgrid.sorting .ftile { transition: transform .16s ease; }

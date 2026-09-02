@@ -8,8 +8,9 @@
     var d = DL.daylog.of(date);
     var wrap = el('div', { class: 'page log-page' });
 
-    // 今日ぶんは、いま分かっている天気を記録に写しておく（あとから引けないため）
-    keepWeather(d);
+    // 今日ぶんは、正午の天気を記録に写しておく（あとから引けないため）。
+    // 描いている最中に書き込むと描き直しが入れ子になるので、描き終えてから
+    setTimeout(function () { DL.daylog.keepWeather(date); }, 0);
 
     /* ---- 日付の行 ---- */
     wrap.appendChild(el('div', { class: 'daynav' }, [
@@ -47,6 +48,11 @@
 
     /* ---- 書くところ ---- */
     wrap.appendChild(noteCard(d));
+
+    /* ---- ひらめきメモ ---- */
+    wrap.appendChild(ui.section('ひらめきメモ',
+      el('span', { class: 'muted small', text: (d.log.ideas || []).length ? d.log.ideas.length + '件' : '' })));
+    wrap.appendChild(ideaCard(d));
 
     /* ---- 進んだ作業 ---- */
     if (d.works.length) {
@@ -165,16 +171,13 @@
     ]));
 
     root.appendChild(wrap);
-  }
 
-  /* その日の天気を記録に写す（今日ぶんだけ。過去の天気は引けないため） */
-  function keepWeather(d) {
-    if (d.log.weather || d.date !== U.today()) return;
-    var w = DL.weather.dayOf(d.date);
-    if (!w || U.num(w.code, -1) < 0) return;
-    var c = DL.weather.cache();
-    S.setLog(d.date, { weather: { code: w.code, max: w.max, min: w.min, name: (c && c.name) || '' } },
-      { quiet: true });
+    // ひらめきを足した直後は、続けて書けるように入力欄へ戻す
+    if (refocus) {
+      refocus = false;
+      var box = wrap.querySelector('.idea-add input');
+      if (box) box.focus();
+    }
   }
 
   /* ---------------- 書くところ ---------------- */
@@ -215,6 +218,76 @@
         }, 'check')
       ])
     ]);
+  }
+
+  /* ---------------- ひらめきメモ ---------------- */
+
+  // 続けて書けるように、足したあとは入力欄へ戻す（画面はまるごと描き直されるため）
+  var refocus = false;
+
+  function ideaCard(d) {
+    var list = (d.log.ideas || []).slice().reverse();     // 新しいものを上に
+    var input = ui.input({ placeholder: '思いついたことを書く', maxlength: 1000 });
+
+    function add() {
+      var t = input.value.trim();
+      if (!t) { input.focus(); return; }
+      refocus = true;
+      S.addIdea(d.date, t);      // ここで画面が描き直される
+    }
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); add(); }
+    });
+
+    var box = el('div', { class: 'card idea-card' }, [
+      el('div', { class: 'idea-add' }, [
+        input,
+        ui.btn('足す', 'primary', add, 'plus')
+      ])
+    ]);
+
+    if (!list.length) {
+      box.appendChild(el('p', { class: 'muted small idea-hint', text: 'ネタ・構図・言い回しなど、あとで使いそうなことを短く。' }));
+      return box;
+    }
+
+    var ul = el('div', { class: 'idea-list' });
+    list.forEach(function (x) {
+      ul.appendChild(el('div', { class: 'idea' }, [
+        el('button', {
+          class: 'idea-text', text: x.text, title: '押すと直せます',
+          onclick: function () { editIdea(d.date, x); }
+        }),
+        el('button', {
+          class: 'iconbtn small', 'aria-label': 'このひらめきを消す',
+          onclick: function () {
+            ui.confirm(x.text, { title: 'このひらめきを消しますか', okText: '消す', danger: true })
+              .then(function (yes) { if (yes) S.removeIdea(d.date, x.id); });
+          }
+        }, ui.icon('trash', 16))
+      ]));
+    });
+    box.appendChild(ul);
+    return box;
+  }
+
+  function editIdea(date, x) {
+    var input = ui.textarea({ value: x.text, maxlength: 1000 });
+    input.rows = 3;
+    var close = ui.sheet({
+      title: 'ひらめきを直す',
+      body: el('div', { class: 'form' }, ui.field('内容', input)),
+      actions: [
+        ui.btn('やめる', 'ghost', function () { close(); }),
+        ui.btn('保存', 'primary', function () {
+          var t = input.value.trim();
+          if (!t) { ui.toast('中身を書いてください', 'danger'); return; }
+          close();
+          S.updateIdea(date, x.id, t);
+          ui.toast('直しました');
+        }, 'check')
+      ]
+    });
   }
 
   function workRow(w, date) {
@@ -276,6 +349,12 @@
             d.weather ? ui.icon(DL.weather.codeInfo(d.weather.code).icon, 16) : null
           ]),
           d.log.text ? el('p', { class: 'log-excerpt', text: d.log.text }) : null,
+          (d.log.ideas || []).length
+            ? el('p', { class: 'log-excerpt idea-excerpt' }, [
+              ui.icon('idea', 14),
+              el('span', { text: d.log.ideas[d.log.ideas.length - 1].text })
+            ])
+            : null,
           el('div', { class: 'row-sub' }, [
             el('span', { class: 'muted small', text: DL.daylog.summary(d) })
           ])

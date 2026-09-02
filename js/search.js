@@ -14,6 +14,7 @@
     { key: 'expense', label: '経費', icon: 'books' },
     { key: 'recurring', label: '固定費', icon: 'refresh' },
     { key: 'event', label: '日常の予定', icon: 'calendar' },
+    { key: 'idea', label: 'ひらめきメモ', icon: 'idea' },
     { key: 'log', label: '1日の記録', icon: 'edit' },
     { key: 'client', label: '取引先', icon: 'client' },
     { key: 'file', label: 'ファイル', icon: 'folder' }
@@ -152,6 +153,16 @@
         ],
         note: e.memo,
         date: e.date || '', color: e.color, open: 'event'
+      });
+    });
+
+    /* ひらめきメモ。
+       「ひらめき」と打つだけで全部そろうよう、種類の名前も探される側に入れておく */
+    S.allIdeas().forEach(function (x) {
+      if (!hit([x.idea.text, 'ひらめきメモ', U.fmtYMDW(x.date)], ts)) return;
+      out.idea.push({
+        kind: 'idea', id: x.idea.id, title: x.idea.text,
+        sub: [U.fmtYMDW(x.date)], date: x.date, icon: 'idea', href: '#/log/' + x.date
       });
     });
 

@@ -57,8 +57,8 @@
     var all = cache.files || [];
     var here = all.filter(function (f) { return S.fileFolder(f.id) === cwd; })
       .sort(function (a, b) { return U.cmp(a.name, b.name); });
-    // いま開いている階層の直下のフォルダ
-    var subs = S.folderChildren(cwd).slice().sort(function (a, b) { return U.cmp(a.name, b.name); });
+    // いま開いている階層の直下のフォルダ（並べ替えた順）
+    var subs = S.folderChildren(cwd);
 
     /* ---- フォルダとファイルを同じ並びで ---- */
     var grid = el('div', { class: 'fgrid' });
@@ -69,6 +69,12 @@
       wrap.appendChild(ui.empty(cwd ? 'このフォルダは空です。' : 'まだ何もありません。右下の＋から追加できます。'));
     } else {
       wrap.appendChild(grid);
+      // フォルダは長押しでつまんで動かせる（並び順はこの端末の見え方の話で、
+      // 置き場所そのものは変わらない）
+      if (subs.length > 1) {
+        makeSortable(grid);
+        wrap.appendChild(el('p', { class: 'muted small fgrid-hint', text: 'フォルダは長押しすると並べ替えられます。' }));
+      }
     }
 
     // PC ではこの一帯にドラッグ＆ドロップできる
@@ -147,7 +153,7 @@
     var inside = all.filter(function (x) { return ids[S.fileFolder(x.id)]; });
     var subs = S.folderChildren(f.id).length;
     var bytes = inside.reduce(function (s, x) { return s + x.size; }, 0);
-    return tile({
+    var t = tile({
       icon: 'folderFill',
       cls: 'is-folder' + (f.color ? ' tinted' : ''),
       color: f.color,
@@ -157,6 +163,8 @@
       onOpen: function () { cwd = f.id; DL.app.render(); },
       onMenu: function () { folderMenu(f, inside.length); }
     });
+    t.dataset.folder = f.id;      // 並べ替えのときに、どのフォルダか分かるように
+    return t;
   }
 
   function fileTile(f) {
@@ -190,6 +198,153 @@
         onclick: function (e) { e.stopPropagation(); o.onMenu(); }
       }, ui.icon('more', 16))
     ]);
+  }
+
+  /* ---------------- フォルダの並べ替え ----------------
+     長押しでつまんで、置きたいところへ動かす（iPhone のホーム画面と同じ感じ）。
+     並び順はこの画面の見え方だけの話で、R2 側の置き場所は動かさない。 */
+
+  var HOLD_MS = 320;       // これだけ押し続けたら「つまんだ」ことにする
+  var SLIP = 8;            // つまむ前にこれ以上動いたら、画面を送る操作だとみなす
+
+  function makeSortable(grid) {
+    var timer = null, held = null, ph = null;
+    var sx = 0, sy = 0, dx = 0, dy = 0, moved = false;
+    // つまんだ時点のマス目の位置。動かしている間は並びを変えないので、
+    // ここがずれない＝置き場所の判断がぶれない
+    var slots = [], others = [], at = 0, from0 = 0;
+
+    grid.addEventListener('pointerdown', function (e) {
+      if (e.button && e.button !== 0) return;
+      var tile = e.target.closest && e.target.closest('.ftile.is-folder');
+      if (!tile || !grid.contains(tile)) return;
+      if (e.target.closest('.ftile-more')) return;      // 「…」は並べ替えの対象外
+
+      sx = e.clientX; sy = e.clientY; moved = false;
+      timer = setTimeout(function () { timer = null; pick(tile, e); }, HOLD_MS);
+    });
+
+    grid.addEventListener('pointermove', function (e) {
+      if (timer && (Math.abs(e.clientX - sx) > SLIP || Math.abs(e.clientY - sy) > SLIP)) {
+        clearTimeout(timer); timer = null;      // 画面を送ろうとしている
+        return;
+      }
+      if (!held) return;
+      e.preventDefault();
+      moved = true;
+      held.style.left = (e.clientX - dx) + 'px';
+      held.style.top = (e.clientY - dy) + 'px';
+      place(e.clientX, e.clientY);
+    });
+
+    ['pointerup', 'pointercancel'].forEach(function (name) {
+      grid.addEventListener(name, function (e) { stop(e, name === 'pointerup'); });
+    });
+
+    // つまんでいる間は画面を送らせない。
+    // touch-action を後から変えても間に合わない（指を置いた時点の値で決まる）ので、
+    // ここで指の動きそのものを止める。止めないと、送る操作と見なされて手が離れてしまう
+    grid.addEventListener('touchmove', function (e) {
+      if (held) e.preventDefault();
+    }, { passive: false });
+    // 長押しで出る「コピー」などの吹き出しも、つまんでいる間は邪魔になる
+    grid.addEventListener('contextmenu', function (e) { if (held) e.preventDefault(); });
+
+    /* つまむ */
+    function pick(tile, e) {
+      var r = tile.getBoundingClientRect();
+      dx = sx - r.left; dy = sy - r.top;
+
+      // つまんだところに、同じ大きさの空きを置いて並びを保つ
+      ph = el('div', { class: 'ftile ftile-hole' });
+      ph.style.width = r.width + 'px';
+      ph.style.height = r.height + 'px';
+      tile.parentNode.insertBefore(ph, tile);
+
+      held = tile;
+      held.classList.add('ftile-held');
+      held.style.width = r.width + 'px';
+      held.style.height = r.height + 'px';
+      held.style.left = r.left + 'px';
+      held.style.top = r.top + 'px';
+      grid.appendChild(held);          // 位置は fixed なので、どこに付いていてもよい
+      grid.classList.add('sorting');
+
+      // 空きと、残りのフォルダ。この並びのまま最後まで動かさない
+      var cells = U.$$('.ftile.is-folder, .ftile-hole', grid).filter(function (n) { return n !== held; });
+      others = cells.filter(function (n) { return n !== ph; });
+      slots = cells.map(function (n) { return n.getBoundingClientRect(); });
+      at = from0 = cells.indexOf(ph);   // いまの場所（動かさずに放したら、ここに戻る）
+
+      try { grid.setPointerCapture(e.pointerId); } catch (err) { /* 拾えなくても動く */ }
+      if (navigator.vibrate) navigator.vibrate(8);
+    }
+
+    /* 置き場所を、指にいちばん近いマスにする（並びは動かさないのでぶれない） */
+    function place(x, y) {
+      var best = at, bestD = Infinity;
+      slots.forEach(function (r, i) {
+        var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+        var d = (x - cx) * (x - cx) + (y - cy) * (y - cy);
+        if (d < bestD) { bestD = d; best = i; }
+      });
+      if (best === at) return;
+      at = best;
+      shuffle();
+    }
+
+    /**
+     * 残りのフォルダを、置き場所が空くように脇へずらす。
+     * ずらすのは見た目（transform）だけなので、マス目の位置は変わらない
+     * ＝ 置き場所の判断がぶれない。
+     */
+    function shuffle() {
+      others.forEach(function (n, i) {
+        // もともと i 番目のフォルダがいたマスと、いま行ってほしいマス
+        move(n, slots[i < from0 ? i : i + 1], slots[i < at ? i : i + 1]);
+      });
+      move(ph, slots[from0], slots[at]);      // 空きも、放したら入る場所へ
+    }
+
+    function move(node, a, b) {
+      if (!node || !a || !b) return;
+      var x = Math.round(b.left - a.left), y = Math.round(b.top - a.top);
+      node.style.transform = (x || y) ? 'translate(' + x + 'px,' + y + 'px)' : '';
+    }
+
+    function settle() {
+      others.forEach(function (n) { n.style.transform = ''; });
+      if (ph) ph.style.transform = '';
+    }
+
+    /* 放す */
+    function stop(e, commit) {
+      if (timer) { clearTimeout(timer); timer = null; }
+      if (!held) return;
+      var tile = held;
+      held = null;
+      settle();
+      grid.classList.remove('sorting');
+      tile.classList.remove('ftile-held');
+      tile.style.width = tile.style.height = tile.style.left = tile.style.top = '';
+      ph.parentNode.insertBefore(tile, ph);
+      ph.parentNode.removeChild(ph);
+      ph = null;
+
+      // 放した直後の click で、フォルダが開いてしまわないようにする
+      if (moved) {
+        grid.addEventListener('click', function once(ev) {
+          ev.stopPropagation(); ev.preventDefault();
+          grid.removeEventListener('click', once, true);
+        }, true);
+      }
+      if (!commit || !moved) return;
+
+      // 残りの並びに、つまんだものを at 番目として入れ直す
+      var ids = others.map(function (n) { return n.dataset.folder; });
+      ids.splice(Math.min(at, ids.length), 0, tile.dataset.folder);
+      S.reorderFolders(cwd, ids);      // ここで画面が描き直される
+    }
   }
 
   /* ---------------- 画像の中身を出す ---------------- */

@@ -10,6 +10,7 @@
   var FRESH_MIN = 30;       // これより新しければ取り直さない
   var DAYS = 3;
   var HOURS = 12;           // 「これから」に出す時間数
+  var PAST_HOURS = 24;      // さかのぼって持っておく時間数（正午の天気を写すため）
 
   /* WMO の記号 → アイコンと呼び名 */
   var CODES = [
@@ -154,13 +155,17 @@
       + '&hourly=weather_code,temperature_2m,precipitation_probability'
       + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,'
       + 'precipitation_sum,sunrise,sunset,uv_index_max,wind_speed_10m_max'
-      + '&timezone=auto&forecast_days=' + DAYS + '&forecast_hours=' + HOURS;
+      // past_hours は、その日の正午を過ぎてから開いても正午の値が残るように取っておく
+      // （1日の記録に写す天気が、正午のものだと言い切れるようにするため）
+      + '&timezone=auto&forecast_days=' + DAYS + '&forecast_hours=' + HOURS + '&past_hours=' + PAST_HOURS;
 
     busy = fetchJSON(url).then(function (j) {
       busy = null;
       var data = shape(j, p);
       if (!data) return c;
       S.updateSettings({ weatherCache: data }, { quiet: true });
+      // 今日の正午の天気を、1日の記録に写しておく（記録の画面を開かない日のため）
+      if (DL.daylog) DL.daylog.keepWeather(U.today());
       return data;
     }).catch(function () {
       busy = null;
@@ -241,6 +246,26 @@
     return hit || null;
   }
 
+  /**
+   * その日の正午の天気と、その日の最高・最低気温。
+   * 1日を1つで言い表すとき、朝晩のにわか雨に引っ張られない正午の値を使う。
+   * @returns {{code:number,max:number,min:number}|null}
+   */
+  function noonOf(date) {
+    date = date || U.today();
+    var d = dayOf(date);
+    if (!d) return null;
+    var c = cache();
+    var noon = (c.hours || []).filter(function (h) {
+      return String(h.time || '').indexOf(date + 'T12') === 0;
+    })[0];
+    var code = noon && U.num(noon.code, -1) >= 0 ? noon.code : d.code;
+    if (U.num(code, -1) < 0) return null;
+    // 記録に写す形（整数の気温）でそろえて返す。
+    // ここで丸めておかないと、写した値と見比べたときに毎回ちがう扱いになる
+    return { code: U.num(code, -1), max: round1(d.max), min: round1(d.min) };
+  }
+
   function fetchJSON(url) {
     return fetch(url, { cache: 'no-store' }).then(function (res) {
       if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -250,7 +275,7 @@
 
   DL.weather = {
     place: place, setPlace: setPlace, search: search, nameOf: nameOf, locate: locate,
-    load: load, cache: cache, dayOf: dayOf, codeInfo: codeInfo,
+    load: load, cache: cache, dayOf: dayOf, noonOf: noonOf, codeInfo: codeInfo,
     windDir: windDir, FRESH_MIN: FRESH_MIN
   };
 })(window.DL);
