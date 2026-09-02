@@ -181,8 +181,10 @@
         ui.icon('wUnknown', 24), el('span', { class: 'wx-set', text: '取得中' })
       ]);
     }
-    var info = W.codeInfo(d.code);
-    var temp = (c.now && c.now.temp !== null && c.now.temp !== undefined) ? c.now.temp : d.max;
+    // その日の代表ではなく、いまの時刻にいちばん近い天気を出す
+    var cur = W.current() || { code: d.code, temp: d.max, night: false };
+    var info = W.codeInfo(cur.code, cur.night);
+    var temp = (cur.temp === null || cur.temp === undefined) ? d.max : cur.temp;
     return el('button', {
       class: 'wx', 'aria-label': (c.name || '天気') + '　' + info.label, onclick: function () { sheet(); }
     }, [
@@ -205,14 +207,15 @@
       if (!c) { body.appendChild(ui.empty('まだ取れていません。')); return; }
       var n = c.now || {};
       var today = W.dayOf(U.today()) || c.days[0] || {};
-      var info = W.codeInfo(n.code >= 0 ? n.code : today.code, n.night);
+      var cur = W.current() || { code: today.code, temp: n.temp, night: n.night };
+      var info = W.codeInfo(cur.code, cur.night);
 
       /* いまの様子 */
       body.appendChild(el('div', { class: 'wx-now' }, [
         ui.icon(info.icon, 46),
         el('div', { class: 'wx-now-main' }, [
           el('div', { class: 'wx-now-temp' }, [
-            el('b', { text: n.temp === null || n.temp === undefined ? '—' : n.temp + '°' }),
+            el('b', { text: cur.temp === null || cur.temp === undefined ? '—' : cur.temp + '°' }),
             el('span', { class: 'wx-now-label', text: info.label })
           ]),
           el('div', { class: 'muted small', text: [
@@ -242,13 +245,13 @@
 
       /* これから12時間 */
       var hours = (c.hours || []).filter(function (h) {
-        return new Date(h.time.replace(' ', 'T')).getTime() >= Date.now() - 3600000;
+        return W.stamp(h.time) >= Date.now() - 3600000;
       });
       if (hours.length) {
         body.appendChild(ui.section('これから'));
         var strip = el('div', { class: 'wx-hours' });
         hours.slice(0, 12).forEach(function (h) {
-          var hi = W.codeInfo(h.code);
+          var hi = W.codeInfo(h.code, W.isNight(h.time));
           strip.appendChild(el('div', { class: 'wx-hour' }, [
             el('span', { class: 'wx-h-time', text: (h.time.slice(11, 13) | 0) + '時' }),
             ui.icon(hi.icon, 20),
@@ -259,30 +262,12 @@
         body.appendChild(strip);
       }
 
-      /* 3日ぶん */
-      body.appendChild(ui.section('3日間'));
+      /* 3日ぶん。押すとその日の細かいところが開く */
+      body.appendChild(ui.section('3日間', el('span', { class: 'muted small', text: '押すと詳しく' })));
       var list = el('div', { class: 'list' });
-      c.days.forEach(function (d) {
-        var di = W.codeInfo(d.code);
-        list.appendChild(el('div', { class: 'row wx-row' }, [
-          el('span', { class: 'wx-day', text: U.fmtMDW(d.date) }),
-          ui.icon(di.icon, 24),
-          el('span', { class: 'wx-label', text: di.label }),
-          d.pop >= 30 ? ui.chip(d.pop + '%', d.pop >= 50 ? 'soft' : 'ghosty') : null,
-          el('span', { class: 'wx-temp' }, [
-            el('b', { text: (d.max === null ? '—' : d.max) + '°' }),
-            el('span', { class: 'muted', text: ' / ' + (d.min === null ? '—' : d.min) + '°' })
-          ])
-        ]));
-      });
+      // どの日も畳んでおく（「これから」がすぐ上にあるので、まずは一覧として読めるように）
+      c.days.forEach(function (d) { list.appendChild(dayRow(d, false)); });
       body.appendChild(list);
-
-      var rain = c.days.filter(function (d) { return d.rain; });
-      if (rain.length) {
-        body.appendChild(el('p', { class: 'muted small', text: '雨量の見込み：' + rain.map(function (d) {
-          return U.fmtMD(d.date) + ' ' + d.rain + 'mm';
-        }).join('　') }));
-      }
 
       body.appendChild(el('p', { class: 'muted small',
         text: U.fmtMD(U.toISO(new Date(c.at))) + ' ' + hhmm(c.at) + ' 時点（Open-Meteo）' }));
@@ -299,6 +284,72 @@
         ui.btn('閉じる', 'primary', function () { close(); })
       ]
     });
+  }
+
+  /**
+   * 3日間の1日ぶん。押すとその日の細かいところが開く。
+   * @param {object} d weather.cache().days の1つ
+   * @param {boolean} open はじめから開いておくか（今日はそうする）
+   */
+  function dayRow(d, open) {
+    var W = DL.weather;
+    var di = W.codeInfo(d.code);
+    var detail = el('div', { class: 'wx-detail', hidden: !open });
+    var head = el('button', {
+      class: 'wx-row-head', 'aria-expanded': open ? 'true' : 'false',
+      onclick: function () {
+        detail.hidden = !detail.hidden;
+        head.setAttribute('aria-expanded', detail.hidden ? 'false' : 'true');
+        head.classList.toggle('open', !detail.hidden);
+      }
+    }, [
+      el('span', { class: 'wx-day', text: U.fmtMDW(d.date) }),
+      ui.icon(di.icon, 24),
+      el('span', { class: 'wx-label', text: di.label }),
+      d.pop >= 30 ? ui.chip(d.pop + '%', d.pop >= 50 ? 'soft' : 'ghosty') : null,
+      el('span', { class: 'wx-temp' }, [
+        el('b', { text: (d.max === null ? '—' : d.max) + '°' }),
+        el('span', { class: 'muted', text: ' / ' + (d.min === null ? '—' : d.min) + '°' })
+      ]),
+      el('span', { class: 'wx-caret' }, ui.icon('chevronDown', 15))
+    ]);
+    if (open) head.classList.add('open');
+
+    /* その日の数字 */
+    var facts = [];
+    if (d.pop !== undefined && d.pop !== null) facts.push(['降水確率', d.pop + '%']);
+    if (d.rain !== null && d.rain !== undefined) facts.push(['雨量', d.rain + 'mm']);
+    if (d.uv !== null && d.uv !== undefined) facts.push(['紫外線', String(d.uv)]);
+    if (d.wind !== null && d.wind !== undefined) facts.push(['最大風速', d.wind + 'm/s']);
+    if (d.sunrise) facts.push(['日の出', d.sunrise]);
+    if (d.sunset) facts.push(['日の入り', d.sunset]);
+    if (facts.length) {
+      detail.appendChild(el('div', { class: 'wx-facts' }, facts.map(function (f) {
+        return el('div', { class: 'wx-fact' }, [el('span', { text: f[0] }), el('b', { text: f[1] })]);
+      })));
+    }
+
+    /* その日の移り変わり（3時間おき） */
+    var hours = W.hoursOf(d.date).filter(function (h) {
+      return (h.time.slice(11, 13) | 0) % 3 === 0;
+    });
+    if (hours.length) {
+      var strip = el('div', { class: 'wx-hours' });
+      hours.forEach(function (h) {
+        var hi = W.codeInfo(h.code, W.isNight(h.time));
+        strip.appendChild(el('div', { class: 'wx-hour' }, [
+          el('span', { class: 'wx-h-time', text: (h.time.slice(11, 13) | 0) + '時' }),
+          ui.icon(hi.icon, 20),
+          el('b', { text: h.temp === null ? '—' : h.temp + '°' }),
+          el('span', { class: 'wx-h-pop' + (h.pop >= 50 ? ' on' : ''), text: h.pop + '%' })
+        ]));
+      });
+      detail.appendChild(strip);
+    } else {
+      detail.appendChild(el('p', { class: 'muted small', text: 'この日の時刻ごとの予報は取れていません。' }));
+    }
+
+    return el('div', { class: 'row wx-row' }, [head, detail]);
   }
 
   function hhmm(iso) {

@@ -9,7 +9,7 @@
   var REV = 'https://api.bigdatacloud.net/data/reverse-geocode-client';
   var FRESH_MIN = 30;       // これより新しければ取り直さない
   var DAYS = 3;
-  var HOURS = 12;           // 「これから」に出す時間数
+  var HOURS = 12;           // 「これから」の帯に出す時間数
   var PAST_HOURS = 24;      // さかのぼって持っておく時間数（正午の天気を写すため）
 
   /* WMO の記号 → アイコンと呼び名 */
@@ -155,9 +155,10 @@
       + '&hourly=weather_code,temperature_2m,precipitation_probability'
       + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,'
       + 'precipitation_sum,sunrise,sunset,uv_index_max,wind_speed_10m_max'
-      // past_hours は、その日の正午を過ぎてから開いても正午の値が残るように取っておく
+      // 時刻ごとの予報は3日ぶん丸ごと受け取る（日ごとの内訳を出すため）。
+      // past_hours は、正午を過ぎてから開いても正午の値が残るように取っておく
       // （1日の記録に写す天気が、正午のものだと言い切れるようにするため）
-      + '&timezone=auto&forecast_days=' + DAYS + '&forecast_hours=' + HOURS + '&past_hours=' + PAST_HOURS;
+      + '&timezone=auto&forecast_days=' + DAYS + '&past_hours=' + PAST_HOURS;
 
     busy = fetchJSON(url).then(function (j) {
       busy = null;
@@ -246,6 +247,78 @@
     return hit || null;
   }
 
+  /* 「YYYY-MM-DDTHH:MM」を、この端末の時刻として読む（予報は現地時間で届く） */
+  function stamp(t) {
+    var m = /^(\d{4})-(\d\d)-(\d\d)[T ](\d\d):(\d\d)/.exec(String(t || ''));
+    if (!m) return NaN;
+    return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]).getTime();
+  }
+
+  /* その日の時刻ごとの予報だけを取り出す */
+  function hoursOf(date) {
+    var c = cache();
+    if (!c) return [];
+    return (c.hours || []).filter(function (h) {
+      return String(h.time || '').indexOf(date + 'T') === 0
+        || String(h.time || '').indexOf(date + ' ') === 0;
+    });
+  }
+
+  /* その時刻が夜かどうか（日の出前・日の入り後） */
+  function isNight(time) {
+    var date = String(time || '').slice(0, 10);
+    var c = cache();
+    var d = c && c.days.filter(function (x) { return x.date === date; })[0];
+    if (!d || !d.sunrise || !d.sunset) return false;
+    var hm = String(time).slice(11, 16);
+    return hm < d.sunrise || hm >= d.sunset;
+  }
+
+  /**
+   * いま持っている中で、指定の時刻にいちばん近い予報。
+   * ホームのアイコンは、その日の代表ではなくこれを出す。
+   * @param {number} [at] ミリ秒（省略すると今）
+   * @returns {{time:string,code:number,temp:number,pop:number,night:boolean}|null}
+   */
+  function nearHour(at) {
+    var c = cache();
+    if (!c || !(c.hours || []).length) return null;
+    var t = at || Date.now();
+    var best = null, bestD = Infinity;
+    c.hours.forEach(function (h) {
+      var ms = stamp(h.time);
+      if (isNaN(ms) || U.num(h.code, -1) < 0) return;
+      var d = Math.abs(ms - t);
+      if (d < bestD) { bestD = d; best = h; }
+    });
+    if (!best) return null;
+    return {
+      time: best.time, code: best.code, temp: best.temp, pop: best.pop,
+      night: isNight(best.time)
+    };
+  }
+
+  /**
+   * 「いまの天気」として出すもの。
+   * 取ってきた時点の現況が新しければそれを、古くなっていたら
+   * 持っている予報のうち、いまの時刻にいちばん近いものを使う。
+   * どちらも無ければその日の代表値。
+   */
+  function current() {
+    var c = cache();
+    if (!c) return null;
+    var n = c.now || {};
+    var freshNow = U.num(n.code, -1) >= 0 && (Date.now() - new Date(c.at).getTime()) / 60000 < FRESH_MIN;
+    if (freshNow) return { code: n.code, temp: n.temp, night: !!n.night, from: 'now' };
+
+    var near = nearHour();
+    if (near) return { code: near.code, temp: near.temp, night: near.night, from: 'hour' };
+
+    var d = dayOf(U.today());
+    if (!d) return null;
+    return { code: d.code, temp: d.max, night: false, from: 'day' };
+  }
+
   /**
    * その日の正午の天気と、その日の最高・最低気温。
    * 1日を1つで言い表すとき、朝晩のにわか雨に引っ張られない正午の値を使う。
@@ -276,6 +349,7 @@
   DL.weather = {
     place: place, setPlace: setPlace, search: search, nameOf: nameOf, locate: locate,
     load: load, cache: cache, dayOf: dayOf, noonOf: noonOf, codeInfo: codeInfo,
+    nearHour: nearHour, hoursOf: hoursOf, isNight: isNight, stamp: stamp, current: current,
     windDir: windDir, FRESH_MIN: FRESH_MIN
   };
 })(window.DL);

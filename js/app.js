@@ -196,7 +196,8 @@
 
   /* ---------------- 名義の切り替え ---------------- */
 
-  var SCOPE_VIEWS = ['home', 'calendar', 'day', 'projects', 'project', 'sales'];
+  // ホームには出さない（名義を切り替えるのは案件・カレンダー・売上を見ているとき）
+  var SCOPE_VIEWS = ['calendar', 'day', 'projects', 'project', 'sales'];
 
   /* 虫めがねを出す画面。検索の画面自身にも出して、押せば戻れるようにする */
   var SEARCH_VIEWS = ['home', 'projects', 'sales', 'stock', 'books', 'files', 'search', 'logs'];
