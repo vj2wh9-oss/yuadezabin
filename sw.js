@@ -1,5 +1,5 @@
 /* オフライン用のシンプルなキャッシュ（アプリ本体のみ。データは localStorage） */
-var CACHE = 'shimekiri-v54';
+var CACHE = 'shimekiri-v55';
 var ASSETS = [
   './', './index.html', './assets/style.css', './manifest.webmanifest',
   './assets/icon-180.png', './assets/icon-192.png', './assets/icon-512.png',

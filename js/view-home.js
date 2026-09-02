@@ -82,26 +82,7 @@
       wrap.appendChild(sales);
     }
 
-    /* 直近の締切 */
-    var tl = sc.timeline(today, 180);
-    wrap.appendChild(ui.section('近い締切', el('a', { class: 'link', href: '#/projects', text: '一覧' })));
-    if (!tl.length) {
-      wrap.appendChild(ui.empty('予定されている締切はありません。'));
-    } else {
-      var dl = el('div', { class: 'list' });
-      tl.slice(0, 8).forEach(function (item) { dl.appendChild(deadlineRow(item, today)); });
-      wrap.appendChild(dl);
-    }
-
-    /* 進行中の案件 */
-    var actives = S.activeProjects();
-    if (actives.length) {
-      wrap.appendChild(ui.section('進行中の案件'));
-      var pl = el('div', { class: 'list' });
-      actives.sort(function (a, b) { return U.cmp(a.deadline || '9999', b.deadline || '9999'); })
-        .forEach(function (p) { pl.appendChild(projectRow(p, today)); });
-      wrap.appendChild(pl);
-    }
+    // 「近い締切」「進行中の案件」は案件タブと重なるので、ホームには出さない
 
     root.appendChild(wrap);
   }
@@ -432,25 +413,6 @@
     ]);
   }
 
-  /* 案件1行 */
-  function projectRow(p, today) {
-    var prog = sc.projectProgress(p);
-    return el('a', { class: 'row proj', href: '#/project/' + p.id }, [
-      el('div', { class: 'row-bar', style: { background: p.color } }),
-      el('div', { class: 'row-main' }, [
-        el('div', { class: 'row-title' }, [
-          el('span', { text: p.title })
-        ]),
-        el('div', { class: 'row-sub' }, [
-          ui.kindChip(p), ui.catChip(p),
-          ui.iconChip('deadline', U.fmtMD(p.deadline) + '　' + U.untilLabel(p.deadline, today), 'ghosty')
-        ]),
-        ui.progress(prog.pct, p.color)
-      ]),
-      el('span', { class: 'pct', text: prog.pct + '%' })
-    ]);
-  }
-
   DL.views = DL.views || {};
-  DL.views.home = { render: render, quotaRow: quotaRow, projectRow: projectRow, deadlineRow: deadlineRow };
+  DL.views.home = { render: render, quotaRow: quotaRow, deadlineRow: deadlineRow };
 })(window.DL);
