@@ -1379,24 +1379,42 @@ h1, h2, h3, p { margin: 0; }
 
 /* ---------------- ひらめきメモ ---------------- */
 .idea-card { display: flex; flex-direction: column; gap: 10px; }
-.idea-add { display: flex; gap: 6px; align-items: stretch; }
-.idea-add input { flex: 1; min-width: 0; }
+/* 書き足すところ。改行できるので、下から生える形にする */
+.idea-add { display: flex; gap: 6px; align-items: flex-end; }
+.idea-add .idea-in {
+  flex: 1; min-width: 0; min-height: 56px; max-height: 220px;
+  resize: none; overflow-y: auto; line-height: 1.6;
+}
 .idea-add .btn { flex: none; white-space: nowrap; }
 .idea-hint { margin: 0; }
 .idea-list { display: flex; flex-direction: column; gap: 5px; }
 .idea {
-  display: flex; align-items: center; gap: 4px;
+  display: flex; align-items: flex-start; gap: 4px;
   border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--card2);
   padding: 2px 2px 2px 0;
 }
 .idea-text {
   flex: 1; min-width: 0; text-align: left; padding: 8px 4px 8px 10px;
   background: none; border: 0;
-  font-size: 13.5px; line-height: 1.5; color: var(--fg); cursor: pointer;
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  font-size: 13.5px; line-height: 1.6; color: var(--fg); cursor: pointer;
+  /* 書いたとおりに改行を出す。長すぎるものは6行で切る */
+  white-space: pre-wrap; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden;
 }
 .idea-text:active { color: var(--accent); }
-.idea .iconbtn { flex: none; color: var(--muted); }
+.idea .iconbtn { flex: none; color: var(--muted); margin-top: 3px; }
+
+/* ひらめきメモの一覧（上のバーの電球から） */
+.ideas-page { display: flex; flex-direction: column; gap: 10px; }
+.ideas-page .section { margin-top: 2px; }
+.idea-day {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 2px 2px; font-size: 13px; font-weight: 600; color: var(--fg);
+}
+.idea-day .chev { margin-left: auto; color: var(--muted); }
+.ideabtn { flex: none; color: var(--muted); }
+.ideabtn.on { color: var(--accent); }
+.ideabtn[hidden] { display: none; }
 /* 一覧に添えるひらめきの一行 */
 .idea-excerpt { display: flex; align-items: flex-start; gap: 5px; -webkit-line-clamp: 1; }
 .idea-excerpt .icon { flex: none; margin-top: 1px; }

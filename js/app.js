@@ -9,6 +9,7 @@
   var backBtn = U.$('#backBtn');
   var gearBtn = U.$('#gearBtn');
   var searchBtn = U.$('#searchBtn');
+  var ideaBtn = U.$('#ideaBtn');
   var modeBtn = U.$('#modeBtn');
   var fab = U.$('#fab');
 
@@ -46,7 +47,7 @@
       settings: '設定', day: '日別', project: '案件の詳細',
       docs: '書類', doc: '書類', sales: '売上', files: 'ファイル', books: '経理',
       search: '検索', stock: '頒布と在庫', onsite: '当日モード',
-      log: '1日の記録', logs: '記録'
+      log: '1日の記録', logs: '記録', ideas: 'ひらめきメモ'
     };
     setTitle(titles[route.name] || 'METEO365');
 
@@ -57,6 +58,10 @@
     // （設定の画面でも出しておかないと、開いた先で行き場が分からなくなる）
     gearBtn.hidden = ['home', 'settings'].indexOf(route.name) < 0;
     gearBtn.classList.toggle('on', route.name === 'settings');
+
+    // ひらめきメモ。思いついたときにすぐ開けるよう、検索と同じところに出しておく
+    ideaBtn.hidden = IDEA_VIEWS.indexOf(route.name) < 0;
+    ideaBtn.classList.toggle('on', route.name === 'ideas');
 
     // 横断検索。書類の中身まで探すので、データのあるタブからは常に開けるようにする
     searchBtn.hidden = SEARCH_VIEWS.indexOf(route.name) < 0;
@@ -69,7 +74,7 @@
     if (onCal) drawModeBtn(life);
 
     // 売上は下のタブから直接開くので、戻るボタンは要らない
-    var showBack = ['project', 'day', 'docs', 'doc', 'search', 'stock', 'onsite', 'log', 'logs'].indexOf(route.name) >= 0;
+    var showBack = ['project', 'day', 'docs', 'doc', 'search', 'stock', 'onsite', 'log', 'logs', 'ideas'].indexOf(route.name) >= 0;
     backBtn.hidden = !showBack;
 
     // 画面が切り替わった瞬間を、同期のきっかけにする
@@ -113,6 +118,7 @@
       case 'onsite': DL.views.onsite.render(view, route.params); break;
       case 'log': DL.views.daylog.render(view, route.params); break;
       case 'logs': DL.views.daylog.renderList(view); break;
+      case 'ideas': DL.views.daylog.renderIdeas(view); break;
       case 'search': DL.views.search.render(view); break;
       case 'settings': DL.views.settings.render(view); break;
       default: DL.views.home.render(view);
@@ -195,6 +201,9 @@
   /* 虫めがねを出す画面。検索の画面自身にも出して、押せば戻れるようにする */
   var SEARCH_VIEWS = ['home', 'projects', 'sales', 'stock', 'books', 'files', 'search', 'logs'];
 
+  /* 電球（ひらめきメモ）を出す画面。思いついたときにすぐ書けるよう、広めに出す */
+  var IDEA_VIEWS = SEARCH_VIEWS.concat(['settings', 'ideas', 'log', 'calendar', 'day']);
+
   function scopeBtn() {
     var cur = S.scopeIssuer();
     var name = cur ? (cur.name || '(名称未設定)') : 'すべての名義';
@@ -273,7 +282,7 @@
 
   function updateFab() {
     // カレンダーは画面いっぱいに出すので、重なるボタンは置かない
-    if (['settings', 'calendar', 'docs', 'doc', 'sales', 'search', 'onsite', 'log', 'logs'].indexOf(route.name) >= 0) { fab.hidden = true; return; }
+    if (['settings', 'calendar', 'docs', 'doc', 'sales', 'search', 'onsite', 'log', 'logs', 'ideas'].indexOf(route.name) >= 0) { fab.hidden = true; return; }
     fab.hidden = false;
     fab.onclick = function () {
       // 日常のカレンダーの日別画面では、ここが予定の追加口になる

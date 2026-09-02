@@ -1137,7 +1137,7 @@
     return (list || []).map(function (x) {
       return {
         id: x.id || U.uid(),
-        text: String(x.text || '').slice(0, 1000),
+        text: String(x.text || '').slice(0, 2000),
         at: x.at || new Date().toISOString()
       };
     }).filter(function (x) { return !!x.text; }).slice(0, 200);

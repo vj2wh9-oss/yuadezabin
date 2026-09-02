@@ -171,13 +171,15 @@
     ]));
 
     root.appendChild(wrap);
+    keepWriting(wrap);
+  }
 
-    // ひらめきを足した直後は、続けて書けるように入力欄へ戻す
-    if (refocus) {
-      refocus = false;
-      var box = wrap.querySelector('.idea-add input');
-      if (box) box.focus();
-    }
+  /* ひらめきを足した直後は、続けて書けるように入力欄へ戻す */
+  function keepWriting(wrap) {
+    if (!refocus) return;
+    refocus = false;
+    var box = wrap.querySelector('.idea-in');
+    if (box) box.focus();
   }
 
   /* ---------------- 書くところ ---------------- */
@@ -224,56 +226,76 @@
 
   // 続けて書けるように、足したあとは入力欄へ戻す（画面はまるごと描き直されるため）
   var refocus = false;
+  var IDEA_MAX = 2000;
 
-  function ideaCard(d) {
-    var list = (d.log.ideas || []).slice().reverse();     // 新しいものを上に
-    var input = ui.input({ placeholder: '思いついたことを書く', maxlength: 1000 });
+  /**
+   * 書き足すところ。改行できるメモ形式にしてある。
+   * @param {string} date 書き足す先の日
+   */
+  function ideaAdd(date) {
+    var input = ui.textarea({ placeholder: '思いついたことを書く', maxlength: IDEA_MAX });
+    input.rows = 2;
+    input.classList.add('idea-in');
 
     function add() {
       var t = input.value.trim();
       if (!t) { input.focus(); return; }
       refocus = true;
-      S.addIdea(d.date, t);      // ここで画面が描き直される
+      S.addIdea(date, t);      // ここで画面が描き直される
     }
+    // 改行に使うので Enter では送らない。指を離さず送りたいとき用に ⌘/Ctrl+Enter
     input.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') { e.preventDefault(); add(); }
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); add(); }
     });
+    // 書いた行数に合わせて伸ばす（書いている途中で読み返せるように）
+    input.addEventListener('input', function () { grow(input); });
 
-    var box = el('div', { class: 'card idea-card' }, [
-      el('div', { class: 'idea-add' }, [
-        input,
-        ui.btn('足す', 'primary', add, 'plus')
-      ])
+    return el('div', { class: 'idea-add' }, [
+      input,
+      ui.btn('足す', 'primary', add, 'plus')
     ]);
+  }
+
+  function grow(t) {
+    t.style.height = 'auto';
+    t.style.height = Math.min(220, t.scrollHeight) + 'px';
+  }
+
+  /* ひらめき1件ぶん。押すと直せる */
+  function ideaRow(date, x) {
+    return el('div', { class: 'idea' }, [
+      el('button', {
+        class: 'idea-text', text: x.text, title: '押すと直せます',
+        onclick: function () { editIdea(date, x); }
+      }),
+      el('button', {
+        class: 'iconbtn small', 'aria-label': 'このひらめきを消す',
+        onclick: function () {
+          ui.confirm(x.text, { title: 'このひらめきを消しますか', okText: '消す', danger: true })
+            .then(function (yes) { if (yes) S.removeIdea(date, x.id); });
+        }
+      }, ui.icon('trash', 16))
+    ]);
+  }
+
+  function ideaCard(d) {
+    var list = (d.log.ideas || []).slice().reverse();     // 新しいものを上に
+    var box = el('div', { class: 'card idea-card' }, ideaAdd(d.date));
 
     if (!list.length) {
-      box.appendChild(el('p', { class: 'muted small idea-hint', text: 'ネタ・構図・言い回しなど、あとで使いそうなことを短く。' }));
+      box.appendChild(el('p', { class: 'muted small idea-hint', text: 'ネタ・構図・言い回しなど、あとで使いそうなことを。改行できます。' }));
       return box;
     }
 
     var ul = el('div', { class: 'idea-list' });
-    list.forEach(function (x) {
-      ul.appendChild(el('div', { class: 'idea' }, [
-        el('button', {
-          class: 'idea-text', text: x.text, title: '押すと直せます',
-          onclick: function () { editIdea(d.date, x); }
-        }),
-        el('button', {
-          class: 'iconbtn small', 'aria-label': 'このひらめきを消す',
-          onclick: function () {
-            ui.confirm(x.text, { title: 'このひらめきを消しますか', okText: '消す', danger: true })
-              .then(function (yes) { if (yes) S.removeIdea(d.date, x.id); });
-          }
-        }, ui.icon('trash', 16))
-      ]));
-    });
+    list.forEach(function (x) { ul.appendChild(ideaRow(d.date, x)); });
     box.appendChild(ul);
     return box;
   }
 
   function editIdea(date, x) {
-    var input = ui.textarea({ value: x.text, maxlength: 1000 });
-    input.rows = 3;
+    var input = ui.textarea({ value: x.text, maxlength: IDEA_MAX });
+    input.rows = 5;
     var close = ui.sheet({
       title: 'ひらめきを直す',
       body: el('div', { class: 'form' }, ui.field('内容', input)),
@@ -323,6 +345,50 @@
     return n > 0 ? n + '日後' : Math.abs(n) + '日前';
   }
 
+  /* ---------------- ひらめきメモの一覧 ----------------
+     上のバーの電球から開く。ここで書いたものは今日ぶんに入る。 */
+
+  function renderIdeas(root) {
+    var today = U.today();
+    var wrap = el('div', { class: 'page ideas-page' });
+    var all = S.allIdeas();
+
+    // まず書くところ。思いついてから書き出すまでを短くしたいので、いちばん上に置く
+    wrap.appendChild(el('div', { class: 'card idea-card' }, [
+      ideaAdd(today),
+      el('p', { class: 'muted small idea-hint', text: '改行できます。書いたものは今日の記録に入ります。' })
+    ]));
+
+    if (!all.length) {
+      wrap.appendChild(ui.empty('まだ何もありません。ネタ・構図・言い回しなど、思いついたら書いてください。'));
+      root.appendChild(wrap);
+      keepWriting(wrap);
+      return;
+    }
+
+    wrap.appendChild(ui.section('書いたもの', el('span', { class: 'muted small', text: all.length + '件' })));
+
+    // 日ごとにまとめる（新しい日が上、その日の中でも新しいものが上）
+    var seen = '';
+    var group = null;
+    all.forEach(function (x) {
+      if (x.date !== seen) {
+        seen = x.date;
+        wrap.appendChild(el('a', { class: 'idea-day', href: '#/log/' + x.date }, [
+          el('span', { text: U.fmtYMDW(x.date) }),
+          el('span', { class: 'muted small', text: rel(x.date) }),
+          el('span', { class: 'chev' }, ui.icon('chevronRight', 14))
+        ]));
+        group = el('div', { class: 'idea-list' });
+        wrap.appendChild(group);
+      }
+      group.appendChild(ideaRow(x.date, x.idea));
+    });
+
+    root.appendChild(wrap);
+    keepWriting(wrap);
+  }
+
   /* ---------------- 記録の一覧 ---------------- */
 
   function renderList(root) {
@@ -370,5 +436,5 @@
   }
 
   DL.views = DL.views || {};
-  DL.views.daylog = { render: render, renderList: renderList };
+  DL.views.daylog = { render: render, renderList: renderList, renderIdeas: renderIdeas };
 })(window.DL);
