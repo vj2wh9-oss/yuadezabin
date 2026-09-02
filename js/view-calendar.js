@@ -319,6 +319,8 @@
       el('a', { class: 'iconbtn', href: '#/day/' + U.addDays(date, 1), 'aria-label': '次の日' }, ui.icon('chevronRight', 20))
     ]));
 
+    wrap.appendChild(logLink(date));
+
     // 日常を見ているときは、案件の締切・ノルマ・休業日は出さない
     if (life) {
       DL.views.events.dayView(wrap, date);
@@ -383,6 +385,24 @@
     ]));
 
     root.appendChild(wrap);
+  }
+
+  /* その日の記録への入り口。書いてあれば、頭のところを見せる */
+  function logLink(date) {
+    var log = S.getLog(date);
+    var txt = (log && log.text) || '';
+    return el('a', { class: 'row log-link' + (txt ? ' has-note' : ''), href: '#/log/' + date }, [
+      el('div', { class: 'row-main' }, [
+        el('div', { class: 'row-title' }, [
+          ui.icon('edit', 16),
+          el('span', { text: '1日の記録' }),
+          log && log.mood ? el('span', { class: 'mood-dot m' + log.mood }) : null
+        ]),
+        txt ? el('p', { class: 'log-excerpt', text: txt })
+          : el('div', { class: 'row-sub' }, el('span', { class: 'muted small', text: 'この日のことを書く' }))
+      ]),
+      el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+    ]);
   }
 
   /* 予定1件の操作メニュー */

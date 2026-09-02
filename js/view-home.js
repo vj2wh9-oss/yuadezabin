@@ -84,7 +84,29 @@
 
     // 「近い締切」「進行中の案件」は案件タブと重なるので、ホームには出さない
 
+    /* 1日の記録。今日ぶんへの入り口をいちばん下に置く */
+    wrap.appendChild(ui.section('1日の記録', el('a', { class: 'link', href: '#/logs', text: '一覧' })));
+    wrap.appendChild(logCard(today));
+
     root.appendChild(wrap);
+  }
+
+  /* 今日の記録への入り口。書いてあれば頭のところを、無ければ誘い文句を出す */
+  function logCard(date) {
+    var log = S.getLog(date);
+    var txt = (log && log.text) || '';
+    return el('a', { class: 'row log-link' + (txt ? ' has-note' : ''), href: '#/log/' + date }, [
+      el('div', { class: 'row-main' }, [
+        el('div', { class: 'row-title' }, [
+          ui.icon('edit', 16),
+          el('span', { text: txt ? '今日のこと' : '今日のことを書く' }),
+          log && log.mood ? el('span', { class: 'mood-dot m' + log.mood, title: (S.MOODS[log.mood - 1] || {}).label }) : null
+        ]),
+        txt ? el('p', { class: 'log-excerpt', text: txt })
+          : el('div', { class: 'row-sub' }, el('span', { class: 'muted small', text: '進めたことや使ったお金も、まとめて残ります' }))
+      ]),
+      el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+    ]);
   }
 
   /* ノルマ1行 */

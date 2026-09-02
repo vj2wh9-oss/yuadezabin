@@ -14,6 +14,7 @@
     { key: 'expense', label: '経費', icon: 'books' },
     { key: 'recurring', label: '固定費', icon: 'refresh' },
     { key: 'event', label: '日常の予定', icon: 'calendar' },
+    { key: 'log', label: '1日の記録', icon: 'edit' },
     { key: 'client', label: '取引先', icon: 'client' },
     { key: 'file', label: 'ファイル', icon: 'folder' }
   ];
@@ -151,6 +152,17 @@
         ],
         note: e.memo,
         date: e.date || '', color: e.color, open: 'event'
+      });
+    });
+
+    /* 1日の記録（本文を探す） */
+    S.logDates().forEach(function (d) {
+      var l = S.getLog(d);
+      if (!l || !l.text || !hit([l.text, U.fmtYMDW(d)], ts)) return;
+      out.log.push({
+        kind: 'log', id: d, title: U.fmtYMDW(d),
+        sub: [(S.MOODS[l.mood - 1] || {}).label || ''],
+        note: l.text, date: d, href: '#/log/' + d
       });
     });
 

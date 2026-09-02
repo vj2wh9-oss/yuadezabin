@@ -118,6 +118,8 @@
       baseSavedAt: '',     // 同期した時点の savedAt（以後の変更の有無を見る）
       lastAt: '', lastError: ''
     },
+    // 1日の記録（デイリーログ）{ 'YYYY-MM-DD': {text, mood, weather, updatedAt} }
+    logs: {},
     // 天気を出す地点（Open-Meteo）。予報そのものは端末ごとに持つ
     weather: { name: '', lat: null, lon: null },
     weatherCache: null,    // { at, key, name, days:[{date,code,max,min,pop}], now }
@@ -252,6 +254,7 @@
       s.settings.stayHolidayInit = true;
     }
     s.settings.eventDone = normalizeEventDone(s.settings.eventDone);
+    s.settings.logs = normalizeLogs(s.settings.logs);
     s.settings.notify = normalizeNotify(s.settings.notify);
     s.settings.docSeq = migrateDocSeq(s.settings.docSeq);
     s.projects = (s.projects || []).map(normalizeProject);
@@ -1065,6 +1068,81 @@
     return !!map[doneKey(id, date)];
   }
 
+  /* ---------------- 1日の記録（デイリーログ） ---------------- */
+
+  var MOODS = [
+    { value: 1, label: 'よくない' },
+    { value: 2, label: 'いまいち' },
+    { value: 3, label: 'ふつう' },
+    { value: 4, label: 'よい' },
+    { value: 5, label: '絶好調' }
+  ];
+
+  function normalizeLog(l) {
+    l = l || {};
+    var out = {
+      text: String(l.text || '').slice(0, 4000),
+      mood: Math.min(5, Math.max(0, Math.round(U.num(l.mood, 0)))),   // 0＝入れていない
+      updatedAt: l.updatedAt || new Date().toISOString()
+    };
+    // その日の天気は、あとから引けないのでここに写しておく
+    if (l.weather && U.num(l.weather.code, -1) >= 0) {
+      out.weather = {
+        code: U.num(l.weather.code, -1),
+        // 気温は整数まで。切り捨てると 20.9℃ が 20℃ になってしまうので四捨五入する
+        max: deg(l.weather.max),
+        min: deg(l.weather.min),
+        name: String(l.weather.name || '').slice(0, 40)
+      };
+    }
+    return out;
+  }
+
+  function deg(v) {
+    if (v === null || v === undefined || v === '') return null;
+    var n = parseFloat(v);
+    return isNaN(n) ? null : Math.round(n);
+  }
+
+  /* 中身が空になった日は持たない（ゴミを残さない） */
+  function emptyLog(l) {
+    return !l || (!l.text && !l.mood && !l.weather);
+  }
+
+  function normalizeLogs(map) {
+    var out = {};
+    Object.keys(map || {}).forEach(function (d) {
+      if (!U.isISO(d)) return;
+      var l = normalizeLog(map[d]);
+      if (!emptyLog(l)) out[d] = l;
+    });
+    return out;
+  }
+
+  function getLog(date) {
+    return (state.settings.logs || {})[date] || null;
+  }
+
+  /**
+   * その日の記録を書く。渡した項目だけ差し替える。
+   * @param {object} [opts] {quiet:true} で「変更あり」にしない（天気の写しなど）
+   */
+  function setLog(date, patch, opts) {
+    if (!U.isISO(date)) return null;
+    var logs = state.settings.logs || (state.settings.logs = {});
+    var l = normalizeLog(Object.assign({}, logs[date] || {}, patch || {}));
+    l.updatedAt = new Date().toISOString();
+    if (emptyLog(l)) delete logs[date];
+    else logs[date] = l;
+    save(opts);
+    return logs[date] || null;
+  }
+
+  /* 何か書いてある日を新しい順に */
+  function logDates() {
+    return Object.keys(state.settings.logs || {}).sort(function (a, b) { return U.cmp(b, a); });
+  }
+
   /* ---------------- その日の働き方（日常のカレンダー） ---------------- */
 
   function isDuty(v) {
@@ -1716,6 +1794,13 @@
         if (!duties[d]) duties[d] = incoming.settings.duties[d];
       });
       state.settings.duties = normalizeDuties(duties);
+      // 1日の記録は、日ごとに新しいほうを採る
+      var logs = state.settings.logs || (state.settings.logs = {});
+      Object.keys(incoming.settings.logs || {}).forEach(function (d) {
+        var mineL = logs[d], theirs = incoming.settings.logs[d];
+        if (!mineL || U.cmp(theirs.updatedAt || '', mineL.updatedAt || '') > 0) logs[d] = theirs;
+      });
+      state.settings.logs = normalizeLogs(logs);
       // ホームから外した印も、こちらに無いものだけ足す
       var edone = state.settings.eventDone || (state.settings.eventDone = {});
       Object.keys(incoming.settings.eventDone || {}).forEach(function (k) { edone[k] = true; });
@@ -1819,7 +1904,8 @@
       && !(s.items || []).length
       && !(s.stock || []).length
       && !(s.events || []).length
-      && !Object.keys(s.duties || {}).length;
+      && !Object.keys(s.duties || {}).length
+      && !Object.keys(s.logs || {}).length;
   }
 
   /* 最後に同期してから、この端末で変更があったか */
@@ -1918,6 +2004,7 @@
     events: events, getEvent: getEvent, addEvent: addEvent,
     updateEvent: updateEvent, removeEvent: removeEvent,
     duty: duty, setDuty: setDuty, dutyLabel: dutyLabel,
+    getLog: getLog, setLog: setLog, logDates: logDates, MOODS: MOODS,
     setHoliday: setHoliday, isStayHoliday: isStayHoliday,
     isEventDone: isEventDone, setEventDone: setEventDone,
     calMode: calMode, setCalMode: setCalMode,

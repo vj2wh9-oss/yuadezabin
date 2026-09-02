@@ -1,0 +1,295 @@
+/* 1日の記録：その日に起きたことを1枚にまとめ、ひとこと書き添える */
+(function (DL) {
+  'use strict';
+  var U = DL.util, ui = DL.ui, S = DL.store, D = DL.docs, el = U.el;
+
+  function render(root, params) {
+    var date = U.isISO(params.date) ? params.date : U.today();
+    var d = DL.daylog.of(date);
+    var wrap = el('div', { class: 'page log-page' });
+
+    // 今日ぶんは、いま分かっている天気を記録に写しておく（あとから引けないため）
+    keepWeather(d);
+
+    /* ---- 日付の行 ---- */
+    wrap.appendChild(el('div', { class: 'daynav' }, [
+      el('a', { class: 'iconbtn', href: '#/log/' + U.addDays(date, -1), 'aria-label': '前の日' }, ui.icon('chevronLeft', 20)),
+      el('div', { class: 'daytitle' }, [
+        ui.dateHead(date),
+        el('div', { class: 'today-sub', text: rel(date) })
+      ]),
+      el('a', { class: 'iconbtn', href: '#/log/' + U.addDays(date, 1), 'aria-label': '次の日' }, ui.icon('chevronRight', 20))
+    ]));
+
+    /* ---- その日の状態（天気・勤務・印） ---- */
+    var chips = [];
+    if (d.weather) {
+      var wi = DL.weather.codeInfo(d.weather.code);
+      chips.push(el('span', { class: 'log-chip' }, [
+        ui.icon(wi.icon, 17),
+        el('span', { text: wi.label + (d.weather.max !== null && d.weather.max !== undefined
+          ? '　' + d.weather.max + '/' + d.weather.min + '°' : '') })
+      ]));
+    }
+    if (d.duty) chips.push(el('span', { class: 'log-chip duty-' + d.duty }, [
+      el('i', { class: 'duty-dot' }), el('span', { text: S.dutyLabel(d.duty) })
+    ]));
+    if (d.holiday) chips.push(el('span', { class: 'log-chip' }, [
+      ui.icon('clock', 16), el('span', { text: d.stayHoliday ? '休業日（泊まり勤務）' : '休業日' })
+    ]));
+    d.marks.forEach(function (m) {
+      chips.push(el('span', { class: 'log-chip mk-' + m.type }, [
+        ui.icon(m.type === 'event' ? 'event' : m.type === 'printing' ? 'printer' : 'deadline', 16),
+        el('span', { text: m.label })
+      ]));
+    });
+    if (chips.length) wrap.appendChild(el('div', { class: 'log-chips' }, chips));
+
+    /* ---- 書くところ ---- */
+    wrap.appendChild(noteCard(d));
+
+    /* ---- 進んだ作業 ---- */
+    if (d.works.length) {
+      var total = U.sum(d.works, function (w) { return w.done; });
+      wrap.appendChild(ui.section('進めたこと', el('span', { class: 'muted small', text: total ? '合計 ' + total : '' })));
+      var wl = el('div', { class: 'list' });
+      d.works.forEach(function (w) { wl.appendChild(workRow(w, date)); });
+      wrap.appendChild(wl);
+    }
+
+    /* ---- 日常の予定 ---- */
+    if (d.plans.length) {
+      wrap.appendChild(ui.section('予定'));
+      var pl = el('div', { class: 'list' });
+      d.plans.forEach(function (o) {
+        pl.appendChild(el('button', {
+          class: 'row log-row' + (o.done ? ' is-done' : ''),
+          onclick: function () { DL.views.events.form(o.ev, { occurrence: o.occurrence }); }
+        }, [
+          el('div', { class: 'row-bar', style: { background: o.ev.color } }),
+          el('div', { class: 'row-main' }, [
+            el('div', { class: 'row-title', text: o.ev.title }),
+            el('div', { class: 'row-sub' }, [
+              ui.chip(DL.events.whenText(o.occurrence), 'soft'),
+              o.ev.important ? ui.iconChip('alert', '重要', 'warn') : null,
+              o.done ? ui.chip('やった', 'ok') : null
+            ])
+          ])
+        ]));
+      });
+      wrap.appendChild(pl);
+    }
+
+    /* ---- お金 ---- */
+    if (d.money.expenses.length || d.docs.length) {
+      wrap.appendChild(ui.section('お金'));
+      var ml = el('div', { class: 'list' });
+      d.money.expenses.forEach(function (x) {
+        ml.appendChild(el('button', {
+          class: 'row log-row', onclick: function () { DL.views.books.editExpense(x.id); }
+        }, [
+          el('div', { class: 'row-main' }, [
+            el('div', { class: 'row-title' }, [
+              ui.icon('books', 16),
+              el('span', { text: x.vendor || x.category || '経費' })
+            ]),
+            el('div', { class: 'row-sub' }, [
+              ui.chip(x.book === 'life' ? '日常' : '事業', x.book === 'life' ? 'ghosty' : 'soft'),
+              x.category ? ui.chip(x.category, 'ghosty') : null,
+              x.memo ? el('span', { class: 'muted small', text: x.memo }) : null
+            ])
+          ]),
+          el('span', { class: 'log-amount', text: '-' + D.yen(x.amount) })
+        ]));
+      });
+      d.docs.forEach(function (o) {
+        var c = D.calc(o.doc);
+        ml.appendChild(el('a', {
+          class: 'row log-row', href: '#/doc/' + o.project.id + '/' + o.doc.id
+        }, [
+          el('div', { class: 'row-main' }, [
+            el('div', { class: 'row-title' }, [
+              ui.icon(D.TYPE_ICON[o.doc.type], 16),
+              el('span', { text: D.TYPE_LABEL[o.doc.type] + (o.doc.number ? '　' + o.doc.number : '') })
+            ]),
+            el('div', { class: 'row-sub' }, [
+              ui.chip(o.project.title, 'ghosty'),
+              ui.chip(o.kind === 'due' ? '入金予定日' : '発行', o.kind === 'due' ? 'warn' : 'soft'),
+              ui.chip(D.statusLabel(o.doc), D.statusTone(o.doc))
+            ])
+          ]),
+          el('span', { class: 'log-amount plus', text: D.yen(o.doc.type === 'receipt' ? c.total : c.payable) })
+        ]));
+      });
+      wrap.appendChild(ml);
+
+      var sums = [];
+      if (d.money.workTotal) sums.push('事業の経費 ' + D.yen(d.money.workTotal));
+      if (d.money.lifeTotal) sums.push('日常の支出 ' + D.yen(d.money.lifeTotal));
+      if (sums.length) wrap.appendChild(el('p', { class: 'muted small', text: sums.join('　') }));
+    }
+
+    /* ---- 頒布・在庫 ---- */
+    if (d.stock.length) {
+      wrap.appendChild(ui.section('頒布と在庫'));
+      var sl = el('div', { class: 'list' });
+      d.stock.forEach(function (x) {
+        var n = DL.stock.delta(x.move);
+        sl.appendChild(el('a', { class: 'row log-row', href: '#/stock' }, [
+          el('div', { class: 'row-main' }, [
+            el('div', { class: 'row-title' }, [
+              ui.icon('books', 16),
+              el('span', { text: (x.item ? x.item.title : '（消えた頒布物）') })
+            ]),
+            el('div', { class: 'row-sub' }, [
+              ui.chip(x.def.label, 'ghosty'),
+              x.move.place ? ui.chip(x.move.place, 'ghosty') : null,
+              x.move.kind === 'sale' ? ui.chip(D.yen(DL.stock.money(x.move, x.item)), 'soft') : null
+            ])
+          ]),
+          el('span', { class: 'move-qty' + (n < 0 ? ' minus' : ''), text: (n > 0 ? '+' : '') + n })
+        ]));
+      });
+      wrap.appendChild(sl);
+    }
+
+    /* ---- 何もない日 ---- */
+    if (!DL.daylog.has(d)) {
+      wrap.appendChild(ui.empty('この日の記録はまだありません。'));
+    }
+
+    /* ---- 行き先 ---- */
+    wrap.appendChild(el('div', { class: 'row-wrap mt' }, [
+      ui.btn('この日のカレンダー', 'ghost', function () { location.hash = '#/day/' + date; }, 'calendar'),
+      ui.btn('記録の一覧', 'ghost', function () { location.hash = '#/logs'; }, 'task')
+    ]));
+
+    root.appendChild(wrap);
+  }
+
+  /* その日の天気を記録に写す（今日ぶんだけ。過去の天気は引けないため） */
+  function keepWeather(d) {
+    if (d.log.weather || d.date !== U.today()) return;
+    var w = DL.weather.dayOf(d.date);
+    if (!w || U.num(w.code, -1) < 0) return;
+    var c = DL.weather.cache();
+    S.setLog(d.date, { weather: { code: w.code, max: w.max, min: w.min, name: (c && c.name) || '' } },
+      { quiet: true });
+  }
+
+  /* ---------------- 書くところ ---------------- */
+
+  function noteCard(d) {
+    var text = ui.textarea({ value: d.log.text || '', placeholder: 'その日のこと、思ったこと', maxlength: 4000 });
+    text.rows = 4;
+    var mood = d.log.mood || 0;
+
+    var moodRow = el('div', { class: 'mood-row' }, S.MOODS.map(function (m) {
+      var b = el('button', {
+        type: 'button', class: 'mood' + (mood === m.value ? ' on' : ''),
+        'aria-label': m.label, title: m.label,
+        onclick: function () {
+          mood = (mood === m.value) ? 0 : m.value;     // もう一度押したら外す
+          U.$$('.mood', moodRow).forEach(function (x) { x.classList.remove('on'); });
+          if (mood) b.classList.add('on');
+        }
+      }, [
+        // 目盛りの高さで「調子の段階」を出す（顔の絵は使わず、アプリの他と揃える）
+        el('span', { class: 'mood-lv-box' }, el('i', { class: 'mood-lv' })),
+        el('span', { text: m.label })
+      ]);
+      return b;
+    }));
+
+    var saved = el('span', { class: 'muted small' });
+    if (d.log.updatedAt) saved.textContent = U.fmtMD(U.toISO(new Date(d.log.updatedAt))) + ' に書いた';
+
+    return el('div', { class: 'card log-note' }, [
+      ui.field('その日の調子', moodRow),
+      ui.field('メモ', text),
+      el('div', { class: 'log-note-foot' }, [
+        saved,
+        ui.btn('保存', 'primary', function () {
+          S.setLog(d.date, { text: text.value, mood: mood });
+          ui.toast('書きました');
+        }, 'check')
+      ])
+    ]);
+  }
+
+  function workRow(w, date) {
+    var pct = w.qty ? Math.min(100, Math.round(w.done / w.qty * 100)) : (w.done ? 100 : 0);
+    var range = DL.schedule.rangeText(w.task, w.from, w.to);
+    return el('button', {
+      class: 'row log-row', onclick: function () { DL.forms.progressSheet(w.project.id, w.task.id, date); }
+    }, [
+      el('div', { class: 'row-bar', style: { background: w.project.color } }),
+      el('div', { class: 'row-main' }, [
+        el('div', { class: 'row-title' }, [
+          el('span', { text: w.task.name }),
+          range ? el('span', { class: 'range', text: range }) : null,
+          el('span', { class: 'muted small', text: '　' + w.project.title })
+        ]),
+        el('div', { class: 'row-sub' }, [
+          w.task.unit === 'none'
+            ? ui.chip('作業日', 'soft')
+            : ui.chip(w.done + ' / ' + (w.qty || 0) + w.unit, w.qty && w.done >= w.qty ? 'ok' : 'soft'),
+          !w.planned ? ui.chip('予定外', 'ghosty') : null
+        ]),
+        w.qty ? ui.progress(pct, w.project.color) : null
+      ])
+    ]);
+  }
+
+  function rel(date) {
+    var t = U.today();
+    var n = U.diffDays(t, date);
+    if (n === 0) return '今日';
+    if (n === 1) return '明日';
+    if (n === -1) return '昨日';
+    return n > 0 ? n + '日後' : Math.abs(n) + '日前';
+  }
+
+  /* ---------------- 記録の一覧 ---------------- */
+
+  function renderList(root) {
+    var wrap = el('div', { class: 'page' });
+    var dates = S.logDates();
+
+    wrap.appendChild(ui.section('書いた日', el('span', { class: 'muted small', text: dates.length + '日' })));
+    if (!dates.length) {
+      wrap.appendChild(ui.empty('まだ何も書いていません。',
+        ui.btn('今日のぶんを書く', 'primary', function () { location.hash = '#/log/' + U.today(); }, 'edit')));
+      root.appendChild(wrap);
+      return;
+    }
+
+    var list = el('div', { class: 'list' });
+    dates.slice(0, 120).forEach(function (date) {
+      var d = DL.daylog.of(date);
+      var m = d.log.mood;
+      list.appendChild(el('a', { class: 'row log-list-row', href: '#/log/' + date }, [
+        el('div', { class: 'row-main' }, [
+          el('div', { class: 'row-title' }, [
+            el('span', { text: U.fmtYMDW(date) }),
+            m ? el('span', { class: 'mood-dot m' + m, title: (S.MOODS[m - 1] || {}).label }) : null,
+            d.weather ? ui.icon(DL.weather.codeInfo(d.weather.code).icon, 16) : null
+          ]),
+          d.log.text ? el('p', { class: 'log-excerpt', text: d.log.text }) : null,
+          el('div', { class: 'row-sub' }, [
+            el('span', { class: 'muted small', text: DL.daylog.summary(d) })
+          ])
+        ]),
+        el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+      ]));
+    });
+    wrap.appendChild(list);
+    if (dates.length > 120) {
+      wrap.appendChild(el('p', { class: 'muted small', text: 'ほか ' + (dates.length - 120) + '日' }));
+    }
+    root.appendChild(wrap);
+  }
+
+  DL.views = DL.views || {};
+  DL.views.daylog = { render: render, renderList: renderList };
+})(window.DL);

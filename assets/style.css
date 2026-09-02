@@ -1306,3 +1306,73 @@ h1, h2, h3, p { margin: 0; }
 .onsite-change.short { border-color: var(--danger); color: var(--danger); }
 .onsite-act { display: grid; grid-template-columns: 1fr 1.7fr; gap: 6px; }
 .onsite-act .btn { padding: 13px 4px; font-size: 15px; white-space: nowrap; min-width: 0; }
+
+/* ---------------- 1日の記録 ---------------- */
+/* その日の状態（天気・勤務・締切など）を、小さく並べる */
+.log-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.log-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--line2); border-radius: 999px;
+  padding: 4px 10px; font-size: 12.5px; color: var(--muted);
+  background: var(--card);
+}
+.log-chip .icon { color: inherit; }
+.log-chip.duty-office { --dc: var(--duty-office); background: var(--duty-office-bg); }
+.log-chip.duty-remote { --dc: var(--duty-remote); background: var(--duty-remote-bg); }
+.log-chip.duty-stay { --dc: var(--duty-stay); background: var(--duty-stay-bg); }
+.log-chip.mk-event { color: var(--event); border-color: color-mix(in srgb, var(--event) 45%, var(--line2)); }
+.log-chip.mk-deadline { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--line2)); }
+.log-chip.mk-printing { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, var(--line2)); }
+
+/* 書くところ */
+.log-note { display: flex; flex-direction: column; gap: 10px; }
+.log-note textarea { min-height: 96px; }
+.log-note-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mood-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
+.mood {
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  min-width: 0; padding: 8px 2px 7px; font-size: 10px; line-height: 1.25;
+  background: var(--card2); border: 1px solid var(--line); border-radius: var(--radius-s);
+  color: var(--muted); cursor: pointer; text-align: center;
+}
+/* 目盛り。段が上がるほど高くなる */
+.mood-lv-box { display: flex; align-items: flex-end; height: 18px; }
+.mood-lv { display: block; width: 9px; border-radius: 1px; background: var(--line2); }
+.mood:nth-child(1) .mood-lv { height: 4px; }
+.mood:nth-child(2) .mood-lv { height: 7px; }
+.mood:nth-child(3) .mood-lv { height: 10px; }
+.mood:nth-child(4) .mood-lv { height: 14px; }
+.mood:nth-child(5) .mood-lv { height: 18px; }
+.mood.on { border-color: var(--mc, var(--accent)); color: var(--mc, var(--accent)); background: color-mix(in srgb, var(--mc, var(--accent)) 14%, transparent); }
+.mood.on .mood-lv { background: var(--mc, var(--accent)); }
+.mood:nth-child(1) { --mc: var(--danger); }
+.mood:nth-child(2) { --mc: var(--warn); }
+.mood:nth-child(3) { --mc: var(--muted); }
+.mood:nth-child(4) { --mc: var(--accent); }
+.mood:nth-child(5) { --mc: var(--ok); }
+
+/* 一覧に添える、調子の点 */
+.mood-dot { width: 8px; height: 8px; flex: none; display: inline-block; border-radius: 999px; background: var(--muted); }
+.mood-dot.m1 { background: var(--danger); }
+.mood-dot.m2 { background: var(--warn); }
+.mood-dot.m3 { background: var(--muted); }
+.mood-dot.m4 { background: var(--accent); }
+.mood-dot.m5 { background: var(--ok); }
+
+/* その日の中身の1行 */
+.log-row { text-align: left; width: 100%; }
+.log-row.is-done { opacity: .6; }
+.log-amount { flex: none; font-size: 14px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+.log-amount.plus { color: var(--ok); }
+
+/* 本文の抜き出し（2行まで） */
+.log-excerpt {
+  margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.5;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.log-list-row .row-title { gap: 7px; }
+.log-list-row .row-title .icon { color: var(--muted); }
+
+/* ホームとカレンダーから記録へ */
+.log-link { margin-top: 2px; }
+.log-link.has-note { border-color: var(--line2); }
