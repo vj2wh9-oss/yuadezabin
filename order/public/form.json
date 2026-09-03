@@ -1,0 +1,45 @@
+{
+  "_note": "発注ページの選択肢はここだけを直せば変わります。ページも Worker（受け口）も、同じこのファイルを見ています。id は控えに残るので、一度公開したら変えないでください。",
+
+  "title": "デザイン制作のご発注",
+  "lead": "ご契約中のプランの範囲で承ります。内容を確認のうえ、担当より折り返しご連絡いたします。",
+
+  "turnstileSiteKey": "",
+
+  "services": [
+    { "id": "banner",    "label": "バナー・Web用画像" },
+    { "id": "sns",       "label": "SNS用画像・投稿素材" },
+    { "id": "logo",      "label": "ロゴ・マーク" },
+    { "id": "flyer",     "label": "チラシ・ポスター" },
+    { "id": "card",      "label": "名刺・ショップカード" },
+    { "id": "booklet",   "label": "パンフレット・冊子" },
+    { "id": "package",   "label": "商品パッケージ・ラベル" },
+    { "id": "illust",    "label": "イラスト" },
+    { "id": "slide",     "label": "資料・スライドの整形" },
+    { "id": "other",     "label": "その他（ご要望欄にお書きください）" }
+  ],
+
+  "formats": [
+    { "id": "png",      "label": "PNG" },
+    { "id": "jpeg",     "label": "JPEG" },
+    { "id": "pdf-cmyk", "label": "PDF（印刷用・CMYK）" },
+    { "id": "pdf-rgb",  "label": "PDF（配布用・RGB）" },
+    { "id": "svg",      "label": "SVG（ベクター）" },
+    { "id": "ai",       "label": "AI（Illustrator 原稿）" },
+    { "id": "psd",      "label": "PSD（Photoshop 原稿）" },
+    { "id": "all",      "label": "一式（元データ込み）" }
+  ],
+
+  "deadline": {
+    "minLeadDays": 7,
+    "maxAheadDays": 365,
+    "hint": "本日から7日以降の日付をお選びください。お急ぎの場合はご要望欄にお書き添えください。"
+  },
+
+  "limits": {
+    "company": 100,
+    "person": 60,
+    "email": 254,
+    "note": 1000
+  }
+}

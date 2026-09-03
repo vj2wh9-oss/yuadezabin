@@ -1,0 +1,29 @@
+# 発注ページに付ける見出し（Cloudflare Workers の静的アセットが読む）。
+#
+# script-src に challenges.cloudflare.com を許すのは Turnstile（人かどうかの確認）のためだけ。
+# connect-src 'self' なので、入力した内容がこのサイトの外へ出ていくことはない。
+# form-action 'none' は、万一の細工でフォームの送り先を書き換えられても、
+# ブラウザが送信そのものを止めるようにするため（送信は fetch で行っている）。
+
+/*
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://challenges.cloudflare.com; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-src https://challenges.cloudflare.com; form-action 'none'; base-uri 'none'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: no-referrer
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Resource-Policy: same-origin
+  Permissions-Policy: geolocation=(), camera=(), microphone=(), payment=(), usb=(), interest-cohort=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  X-Robots-Tag: noindex, nofollow
+
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/form.js
+  Cache-Control: public, max-age=0, must-revalidate
+
+/style.css
+  Cache-Control: public, max-age=0, must-revalidate
+
+/form.json
+  Cache-Control: public, max-age=0, must-revalidate

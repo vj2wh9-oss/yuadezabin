@@ -35,6 +35,12 @@ jobs:
         with:
           enablement: true
 
+      # 発注ページは Cloudflare（yuadezabin.com）から出す。
+      # ここへ一緒に上げると、同じフォームが2か所に出てしまい、
+      # しかもこちらには受け口が無いので、開いた人が送れずに困る。
+      - name: 発注ページを外す
+        run: rm -rf order
+
       - name: 静的ファイルをアップロード
         uses: actions/upload-pages-artifact@v3
         with:

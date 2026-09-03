@@ -4,3 +4,7 @@ node_modules/
 
 # 同期の開発用サーバーの保存ファイル
 .sync-dev.json
+
+# Cloudflare Workers の作業用（合鍵が入るので、絶対に置かない）
+.wrangler/
+.dev.vars

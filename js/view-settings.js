@@ -144,6 +144,11 @@
       DL.notify.settings().enabled ? ui.chip('この端末で受け取る', 'ok') : ui.chip('切', 'ghosty')));
     wrap.appendChild(notifyCard());
 
+    /* ---- 発注フォーム ---- */
+    wrap.appendChild(ui.section('発注フォーム',
+      DL.orders.unread() ? ui.chip(DL.orders.unread() + '件の未確認', 'warn') : null));
+    wrap.appendChild(orderCard());
+
     /* ---- FANBOX の取り込み ---- */
     wrap.appendChild(ui.section('FANBOX の取り込み',
       DL.fanbox.inbox() ? ui.chip('届いています', 'ok') : null));
@@ -314,6 +319,77 @@
       actions: [ui.btn('閉じる', 'ghost', function () { close(); })]
     });
     setTimeout(function () { input.focus(); }, 100);
+  }
+
+  /**
+   * 発注フォーム（yuadezabin.com）から届いた発注の様子。
+   * 受け取りは同期サーバーを通すので、ここで設定することは無い。
+   */
+  function orderCard() {
+    var card = el('div', { class: 'card' });
+    card.appendChild(el('p', { class: 'muted small', text:
+      'yuadezabin.com の発注ページから届いた発注を、ここで受け取ります。'
+      + '発注ページ側には取引先の一覧を置いていないので、照合はこのアプリの中だけで行います。' }));
+
+    if (!DL.sync.active()) {
+      card.appendChild(el('div', { class: 'alert warn' }, [
+        el('span', { class: 'alert-icon' }, ui.icon('alert', 17)),
+        el('span', { text: '先に「PC・iPhone の同期」を設定してください。発注もそのサーバー経由で届きます。' })
+      ]));
+      return card;
+    }
+
+    var all = DL.orders.list();
+    card.appendChild(el('div', { class: 'info-row' }, [
+      el('span', { class: 'info-k', text: '届いている発注' }),
+      el('span', { class: 'info-v', text: all.length
+        ? all.length + '件（うち未確認 ' + DL.orders.unread() + '件）'
+        : 'まだありません' })
+    ]));
+
+    card.appendChild(ui.btn('発注の一覧を開く', all.length ? 'primary full' : 'ghost full', function () {
+      location.hash = '#/orders';
+    }, 'client'));
+    card.appendChild(ui.btn('届いていないか確かめる', 'ghost full', function () {
+      DL.orders.check(true).then(function (list) {
+        ui.toast(list.length ? list.length + '件の発注を受け取りました' : 'まだ届いていません');
+        DL.app.render();
+      });
+    }, 'refresh'));
+    card.appendChild(ui.btn('受け口があるか確かめる', 'ghost full', function () { checkOrderServer(); }, 'cloud'));
+    return card;
+  }
+
+  /**
+   * 同期サーバーが、発注の受け口を持っているか確かめる。
+   * worker.js を貼り直していないと受け口が無く、発注が届かない。
+   */
+  function checkOrderServer() {
+    var url = String(S.syncSettings().url || '').replace(/\/+$/, '');
+    if (!url) { ui.toast('同期の接続先が未設定です', 'warn'); return; }
+    ui.toast('確かめています…');
+    fetch(url + '/health', { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var ok = ((d && d.endpoints) || []).indexOf('/v1/inbox/orders') >= 0;
+        ui.sheet({
+          title: '発注の受け口',
+          body: el('div', { class: 'form' }, [
+            el('div', { class: 'alert ' + (ok ? 'ok' : 'warn') }, [
+              el('span', { class: 'alert-icon' }, ui.icon(ok ? 'check' : 'alert', 17)),
+              el('span', { text: ok
+                ? '受け口があります。発注ページから届く状態です。'
+                : 'このサーバーには発注の受け口がありません。sync/worker.js を新しいものに貼り直して、デプロイし直してください。' })
+            ]),
+            kvRow('接続先', url),
+            kvRow('受け口', ok ? 'あり' : 'なし（古いままです）'),
+            el('p', { class: 'muted small', text:
+              '発注ページ側（order/ の Worker）にも、同じ合鍵と、この接続先を入れておく必要があります。'
+              + '手順は order/README.md にあります。' })
+          ])
+        });
+      })
+      .catch(function (e) { ui.toast('接続先につながりませんでした：' + e.message, 'danger'); });
   }
 
   function fanboxCard() {

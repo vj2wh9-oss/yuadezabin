@@ -1,0 +1,260 @@
+/* 発注ページの見た目。外部のフォントもスクリプトも読み込まない
+   （読み込むと、お客様の入力画面が他所と繋がってしまうため） */
+
+:root {
+  --bg: #f4f6f9;
+  --panel: #ffffff;
+  --line: #dde3ea;
+  --ink: #1a2130;
+  --ink-soft: #5a6678;
+  --accent: #2f5fd0;
+  --accent-ink: #ffffff;
+  --danger: #c02b3a;
+  --ok: #1f7a4d;
+  --radius: 12px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117;
+    --panel: #161c25;
+    --line: #2a333f;
+    --ink: #e7edf5;
+    --ink-soft: #9aa8b8;
+    --accent: #6f9bff;
+    --accent-ink: #0d1117;
+    --danger: #ff8189;
+    --ok: #4fd08a;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN",
+               "Noto Sans JP", "Yu Gothic", Meiryo, sans-serif;
+  font-size: 16px;
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap {
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+/* ---------------- 見出し ---------------- */
+
+.head {
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  padding: 28px 0 24px;
+}
+
+.brand {
+  margin: 0 0 12px;
+  font-size: 13px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.head h1 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.5;
+  letter-spacing: .02em;
+}
+
+.lead {
+  margin: 10px 0 0;
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+
+main { padding: 28px 20px 8px; }
+
+/* ---------------- 入力 ---------------- */
+
+.field { margin: 0 0 24px; }
+
+.field > label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.req, .opt {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: 2px;
+}
+
+.req { background: var(--accent); color: var(--accent-ink); }
+.opt { border: 1px solid var(--line); color: var(--ink-soft); }
+
+input[type="text"], input[type="email"], input[type="date"], select, textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  line-height: 1.5;
+}
+
+textarea { resize: vertical; min-height: 120px; }
+
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 40px;
+  /* 開き三角。画像を読まずに済むよう、CSS だけで描く */
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: right 20px center, right 15px center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: transparent;
+}
+
+.hint {
+  margin: 7px 2px 0;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+
+.err {
+  margin: 7px 2px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.form-err {
+  padding: 12px 14px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  font-weight: 500;
+}
+
+.bad input, .bad select, .bad textarea { border-color: var(--danger); }
+
+/* 自動送信よけ。読み上げにも出さない */
+.trap {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.turnstile:not(:empty) { margin: 0 0 24px; }
+
+.privacy {
+  margin: 0 0 20px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+/* ---------------- ボタン ---------------- */
+
+.submit, .again {
+  display: block;
+  width: 100%;
+  padding: 15px 16px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.again {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.submit[disabled] { opacity: .55; cursor: progress; }
+
+.submit:active, .again:active { transform: translateY(1px); }
+
+/* ---------------- 受付後 ---------------- */
+
+.done {
+  padding: 24px 22px 26px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.done h2 {
+  margin: 0 0 4px;
+  font-size: 19px;
+  color: var(--ok);
+}
+
+.receipt { margin: 0 0 18px; font-size: 15px; }
+.receipt b { font-size: 18px; letter-spacing: .06em; }
+
+.summary {
+  margin: 0 0 18px;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+
+.summary div {
+  display: flex;
+  gap: 14px;
+  padding: 10px 2px;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+
+.summary dt { flex: 0 0 8em; margin: 0; color: var(--ink-soft); }
+.summary dd { margin: 0; flex: 1 1 auto; word-break: break-word; white-space: pre-wrap; }
+
+.note {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+/* ---------------- 足もと ---------------- */
+
+.foot {
+  padding: 28px 20px 40px;
+  color: var(--ink-soft);
+  font-size: 12px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+
+[hidden] { display: none !important; }

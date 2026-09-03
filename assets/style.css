@@ -1472,3 +1472,11 @@ h1, h2, h3, p { margin: 0; }
 }
 /* 脇へ寄るときの動き。位置ではなく見た目だけ動かすので、マス目はずれない */
 .fgrid.sorting .ftile { transition: transform .16s ease; }
+
+/* ---------------- 発注（発注フォームから届いたもの） ---------------- */
+/* 一覧の行。押して開くのでボタンだが、見た目はほかの行と同じにする */
+.order-row { width: 100%; text-align: left; background: var(--card); cursor: pointer; font: inherit; color: inherit; }
+/* 未確認の発注は、ひと目で分かるように左端に印を付ける */
+.order-row.is-new { border-color: var(--warn); }
+/* ホームの知らせ。押すと発注の画面へ行く */
+.order-notice { border-color: var(--accent); }

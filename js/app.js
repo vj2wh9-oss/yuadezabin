@@ -47,7 +47,7 @@
       settings: '設定', day: '日別', project: '案件の詳細',
       docs: '書類', doc: '書類', sales: '売上', files: 'ファイル', books: '経理',
       search: '検索', stock: '頒布と在庫', onsite: '当日モード',
-      log: '1日の記録', logs: '記録', ideas: 'ひらめきメモ'
+      log: '1日の記録', logs: '記録', ideas: 'ひらめきメモ', orders: '発注'
     };
     setTitle(titles[route.name] || 'METEO365');
 
@@ -74,7 +74,7 @@
     if (onCal) drawModeBtn(life);
 
     // 売上は下のタブから直接開くので、戻るボタンは要らない
-    var showBack = ['project', 'day', 'docs', 'doc', 'search', 'stock', 'onsite', 'log', 'logs', 'ideas'].indexOf(route.name) >= 0;
+    var showBack = ['project', 'day', 'docs', 'doc', 'search', 'stock', 'onsite', 'log', 'logs', 'ideas', 'orders'].indexOf(route.name) >= 0;
     backBtn.hidden = !showBack;
 
     // 画面が切り替わった瞬間を、同期のきっかけにする
@@ -93,6 +93,8 @@
       queueNotify();
       // FANBOX から送られてきたものが無いか見に行く
       if (['home', 'sales', 'settings'].indexOf(route.name) >= 0) checkFanbox();
+      // 発注フォームから届いていないか見に行く
+      if (['home', 'settings', 'orders'].indexOf(route.name) >= 0) checkOrders();
     }
 
     // 同期ボタン（つないでいるときだけ）
@@ -119,6 +121,7 @@
       case 'log': DL.views.daylog.render(view, route.params); break;
       case 'logs': DL.views.daylog.renderList(view); break;
       case 'ideas': DL.views.daylog.renderIdeas(view); break;
+      case 'orders': DL.views.orders.render(view); break;
       case 'search': DL.views.search.render(view); break;
       case 'settings': DL.views.settings.render(view); break;
       default: DL.views.home.render(view);
@@ -166,8 +169,9 @@
           ui.toast(r.status === 'pushed' ? '送りました'
             : r.status === 'pulled' ? '受け取りました'
             : r.status === 'merged' ? '統合しました' : '最新です');
-          // 手で同期したときは、FANBOX から届いていないかも聞き直す
+          // 手で同期したときは、外から届いていないかも聞き直す
           checkFanbox(true);
+          checkOrders(true);
           render();
         });
       }
@@ -270,6 +274,21 @@
     });
   }
 
+  /* 発注フォームから届いた発注が無いか見に行く。
+     新しく増えたときだけ知らせる（画面を開くたびに言われても邪魔になるため） */
+  var lastOrderCount = -1;
+  function checkOrders(force) {
+    if (!DL.orders.ready()) return;
+    DL.orders.check(force).then(function (list) {
+      var n = list.filter(function (o) { return o.status === 'new'; }).length;
+      if (n === lastOrderCount) return;
+      var grew = lastOrderCount >= 0 && n > lastOrderCount;
+      lastOrderCount = n;
+      if (grew) ui.toast('新しい発注が届いています（' + n + '件）');
+      render();
+    });
+  }
+
   /* 通知の予定表を預け直す。連続して呼ばれても1回にまとめる */
   var notifyTimer = null;
   function queueNotify() {
@@ -283,7 +302,7 @@
 
   function updateFab() {
     // カレンダーは画面いっぱいに出すので、重なるボタンは置かない
-    if (['settings', 'calendar', 'docs', 'doc', 'sales', 'search', 'onsite', 'log', 'logs', 'ideas'].indexOf(route.name) >= 0) { fab.hidden = true; return; }
+    if (['settings', 'calendar', 'docs', 'doc', 'sales', 'search', 'onsite', 'log', 'logs', 'ideas', 'orders'].indexOf(route.name) >= 0) { fab.hidden = true; return; }
     fab.hidden = false;
     fab.onclick = function () {
       // 日常のカレンダーの日別画面では、ここが予定の追加口になる

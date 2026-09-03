@@ -1,12 +1,12 @@
 /* オフライン用のシンプルなキャッシュ（アプリ本体のみ。データは localStorage） */
-var CACHE = 'shimekiri-v61';
+var CACHE = 'shimekiri-v62';
 var ASSETS = [
   './', './index.html', './assets/style.css', './manifest.webmanifest',
   './assets/icon-180.png', './assets/icon-192.png', './assets/icon-512.png',
   './assets/icon-maskable-512.png', './assets/favicon-64.png',
-  './js/util.js', './js/icons.js', './js/db.js', './js/store.js', './js/schedule.js', './js/events.js', './js/holidays.js', './js/notify.js', './js/search.js', './js/documents.js', './js/fanbox.js', './js/weather.js', './js/daylog.js', './js/expenses.js', './js/stock.js', './js/ocr.js', './js/sync.js', './js/zip.js', './js/files.js', './js/ui.js', './js/forms.js',
+  './js/util.js', './js/icons.js', './js/db.js', './js/store.js', './js/schedule.js', './js/events.js', './js/holidays.js', './js/notify.js', './js/search.js', './js/documents.js', './js/fanbox.js', './js/orders.js', './js/weather.js', './js/daylog.js', './js/expenses.js', './js/stock.js', './js/ocr.js', './js/sync.js', './js/zip.js', './js/files.js', './js/ui.js', './js/forms.js',
   './js/view-home.js', './js/view-calendar.js', './js/view-events.js', './js/view-daylog.js', './js/view-projects.js',
-  './js/view-detail.js', './js/view-doc.js', './js/view-sales.js', './js/view-books.js', './js/view-files.js', './js/view-stock.js', './js/view-onsite.js', './js/view-search.js', './js/view-settings.js', './js/app.js',
+  './js/view-detail.js', './js/view-doc.js', './js/view-sales.js', './js/view-books.js', './js/view-files.js', './js/view-stock.js', './js/view-onsite.js', './js/view-orders.js', './js/view-search.js', './js/view-settings.js', './js/app.js',
   // FANBOX のページで動かすスクリプト（設定画面がこれを読んで組み立てる）
   './tools/fanbox-collect.js'
 ];

@@ -37,6 +37,26 @@
       ]));
     }
 
+    /* 発注フォームから届いた発注。照合を待たせないよう、警告より先に出す */
+    var newOrders = DL.orders.list()
+      .filter(function (o) { return o.status === 'new'; })
+      .sort(function (a, b) { return U.cmp(b.at || '', a.at || ''); });
+    if (newOrders.length) {
+      wrap.appendChild(el('a', { class: 'row order-notice', href: '#/orders' }, [
+        el('div', { class: 'row-main' }, [
+          el('div', { class: 'row-title' }, [
+            ui.icon('client', 17),
+            el('span', { text: '未確認の発注が ' + newOrders.length + '件' })
+          ]),
+          el('div', { class: 'row-sub' }, [
+            ui.chip('発注社名の照合待ち', 'warn'),
+            ui.chip(newOrders[0].company, 'ghosty')
+          ])
+        ]),
+        el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+      ]));
+    }
+
     /* 警告。「重要」にした日常の予定は、その日いちばん上に出す */
     var al = sc.alerts(today);
     var urgent = plans.filter(function (o) { return o.ev.important; });

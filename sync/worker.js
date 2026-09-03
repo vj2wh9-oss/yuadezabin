@@ -31,6 +31,14 @@
  *   FANBOX のページで動かすブックマークレットが送り、アプリが受け取って読む。
  *   合鍵で守るので、CORS は fanbox.cc からの送信も通す。
  *
+ * 外から届くもの（発注フォーム）
+ *   POST   /v1/inbox/order       → 発注を1件足す（order/ の Worker が合鍵で送る）
+ *   GET    /v1/inbox/orders      → { orders:[…], count, unread }
+ *   PATCH  /v1/inbox/orders/<id> → { status, memo } 照合の結果を控える
+ *   DELETE /v1/inbox/orders/<id> → 消す
+ *   発注ページ自身は合鍵を持たない。ページの受け口（order/worker.js）だけが持ち、
+ *   受け取った発注をここへ預ける。アプリは「発注」の画面でこれを読む。
+ *
  * 設定（wrangler.jsonc）
  *   KV 名前空間 SYNC を bind する
  *   R2 バケット FILES を bind する（ファイル共有を使うときだけ）
@@ -64,7 +72,7 @@ export default {
         ok: true,
         service: '案件ポータルの同期API',
         bindings: { kv: !!env.SYNC, r2: !!env.FILES },
-        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox'],
+        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders'],
         note: '各 /v1/... は Authorization: Bearer <合鍵> が必要です'
       }, 200, cors);
     }
@@ -156,6 +164,11 @@ export default {
       if (url.pathname === '/v1/inbox/fanbox') {
         return inbox(request, env, cors, id);
       }
+
+      if (url.pathname === '/v1/inbox/order' || url.pathname === '/v1/inbox/orders'
+        || url.pathname.startsWith('/v1/inbox/orders/')) {
+        return orders(request, env, cors, url, id);
+      }
     } catch (e) {
       return json({ error: 'server_error', message: String(e && e.message || e) }, 500, cors);
     }
@@ -216,6 +229,125 @@ async function inbox(request, env, cors, id) {
   }
 
   return json({ error: 'not_found' }, 404, cors);
+}
+
+/* ---------------- 外から届くもの（発注フォーム） ----------------
+
+   発注は「1件ずつ」ではなく、1つの入れ物にまとめて置く。
+   数が少なく（1日に数件）、アプリ側は常に一覧で見るため、
+   出し入れが1回で済むほうが簡単で、KV の読み書きも減る。
+
+   置き場： orders:<持ち主> → { list:[発注…] }
+
+   照合の結果（status）はここに書く。PC と iPhone のどちらから触っても
+   同じものを見るので、出先で受領にした案件が、家の PC でも受領になっている。 */
+
+const MAX_ORDERS = 300;              // これを超えたら古いものから落とす
+const ORDER_KEEP_DAYS = 180;         // 触っていない発注を置いておく日数
+const ORDER_STATUS = ['new', 'matched', 'unmatched', 'done'];
+
+async function orders(request, env, cors, url, id) {
+  const key = 'orders:' + id;
+
+  /* 発注ページの受け口から1件届いた */
+  if (url.pathname === '/v1/inbox/order' && request.method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch (e) { return json({ error: 'bad_json' }, 400, cors); }
+
+    const order = cleanOrder(body);
+    if (!order) return json({ error: 'bad_body' }, 400, cors);
+
+    const box = (await env.SYNC.get(key, 'json')) || { list: [] };
+    // 同じ受付番号が二度届いても増やさない（送り直しがあるため）
+    if (box.list.some(o => o.id === order.id)) {
+      return json({ ok: true, id: order.id, duplicate: true }, 200, cors);
+    }
+    box.list.unshift(order);
+    await putOrders(env, key, box);
+    return json({ ok: true, id: order.id }, 200, cors);
+  }
+
+  /* アプリが一覧を取りに来た */
+  if (url.pathname === '/v1/inbox/orders' && request.method === 'GET') {
+    const box = (await env.SYNC.get(key, 'json')) || { list: [] };
+    return json({
+      orders: box.list,
+      count: box.list.length,
+      unread: box.list.filter(o => o.status === 'new').length
+    }, 200, cors);
+  }
+
+  /* 照合の結果を控える／消す */
+  if (url.pathname.startsWith('/v1/inbox/orders/')) {
+    const target = decodeURIComponent(url.pathname.slice('/v1/inbox/orders/'.length));
+    const box = (await env.SYNC.get(key, 'json')) || { list: [] };
+    const hit = box.list.filter(o => o.id === target)[0];
+    if (!hit) return json({ error: 'not_found' }, 404, cors);
+
+    if (request.method === 'DELETE') {
+      box.list = box.list.filter(o => o.id !== target);
+      await putOrders(env, key, box);
+      return json({ ok: true }, 200, cors);
+    }
+
+    if (request.method === 'PATCH' || request.method === 'PUT') {
+      let body;
+      try { body = await request.json(); } catch (e) { return json({ error: 'bad_json' }, 400, cors); }
+      if (body && ORDER_STATUS.indexOf(body.status) >= 0) {
+        hit.status = body.status;
+        hit.statusAt = new Date().toISOString();
+      }
+      if (body && typeof body.memo === 'string') hit.memo = orderText(body.memo, 500);
+      await putOrders(env, key, box);
+      return json({ ok: true, order: hit }, 200, cors);
+    }
+  }
+
+  return json({ error: 'not_found' }, 404, cors);
+}
+
+/* 古いものを落としてから置き直す。触っていないものは半年で消える */
+async function putOrders(env, key, box) {
+  const limit = new Date(Date.now() - ORDER_KEEP_DAYS * 24 * 3600 * 1000).toISOString();
+  box.list = box.list
+    .filter(o => o.status === 'new' || (o.statusAt || o.at || '') > limit)
+    .slice(0, MAX_ORDERS);
+  box.at = new Date().toISOString();
+  await env.SYNC.put(key, JSON.stringify(box));
+}
+
+/* 届いた発注の形を整える。中身は信用せず、型と長さだけを見る */
+function cleanOrder(o) {
+  if (!o || typeof o !== 'object') return null;
+  const id = orderText(o.id, 40);
+  const company = orderText(o.company, 100);
+  if (!id || !company) return null;
+
+  return {
+    id,
+    at: /^\d{4}-\d{2}-\d{2}T/.test(String(o.at || '')) ? String(o.at) : new Date().toISOString(),
+    company,
+    person: orderText(o.person, 60),
+    email: orderText(o.email, 254),
+    service: orderText(o.service, 40),
+    serviceLabel: orderText(o.serviceLabel, 80),
+    deadline: /^\d{4}-\d{2}-\d{2}$/.test(String(o.deadline || '')) ? String(o.deadline) : '',
+    format: orderText(o.format, 40),
+    formatLabel: orderText(o.formatLabel, 80),
+    note: orderText(o.note, 1000),
+    country: orderText(o.country, 4),
+    status: 'new',        // 照合はこれから。アプリ側で変える
+    statusAt: '',
+    memo: ''
+  };
+}
+
+function orderText(v, max) {
+  if (typeof v !== 'string') return '';
+  return v.replace(/\r\n?/g, '\n')
+    .replace(/[\u0000-\u0009\u000B-\u001F\u007F\u200B-\u200D\uFEFF]/g, '')
+    .trim()
+    .slice(0, max);
 }
 
 /* 送られてきた月ごとの金額を、形だけ整える（中身は信用せず、型と桁だけ見る） */
@@ -617,7 +749,7 @@ function corsHeaders(env, request) {
     : (env.ALLOW_ORIGIN || '*');
   return {
     'access-control-allow-origin': allow,
-    'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'access-control-allow-methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
     'access-control-allow-headers': 'authorization, content-type, x-file-name, x-file-folder, x-file-type, x-file-project, x-file-by',
     'access-control-expose-headers': 'content-disposition, content-length',
     'access-control-max-age': '86400',

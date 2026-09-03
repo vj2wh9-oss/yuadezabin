@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f4f6f9" media="(prefers-color-scheme: light)">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="デザイン制作のご発注フォーム">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/style.css">
+<title>ご発注フォーム｜yuadezabin</title>
+</head>
+<body>
+
+<header class="head">
+  <div class="wrap">
+    <p class="brand">yuadezabin</p>
+    <h1 id="pageTitle">デザイン制作のご発注</h1>
+    <p class="lead" id="pageLead">読み込んでいます…</p>
+  </div>
+</header>
+
+<main class="wrap" id="main">
+
+  <!-- 送信前 -->
+  <section id="formPane" hidden>
+    <form id="orderForm" novalidate autocomplete="off">
+
+      <div class="field">
+        <label for="company">発注社名 <span class="req">必須</span></label>
+        <input id="company" name="company" type="text" inputmode="text"
+               autocomplete="organization" spellcheck="false" maxlength="100" required>
+        <p class="hint">ご契約時のお名前でご入力ください。この内容で契約の照合を行います。</p>
+        <p class="err" id="err-company" hidden></p>
+      </div>
+
+      <div class="field">
+        <label for="person">ご担当者名 <span class="opt">任意</span></label>
+        <input id="person" name="person" type="text" autocomplete="off" spellcheck="false" maxlength="60">
+        <p class="err" id="err-person" hidden></p>
+      </div>
+
+      <div class="field">
+        <label for="email">ご連絡先メールアドレス <span class="req">必須</span></label>
+        <input id="email" name="email" type="email" inputmode="email"
+               autocomplete="off" spellcheck="false" maxlength="254" required>
+        <p class="hint">受付・照合の結果をこのアドレスへお返しします。</p>
+        <p class="err" id="err-email" hidden></p>
+      </div>
+
+      <div class="field">
+        <label for="service">サービス種目 <span class="req">必須</span></label>
+        <select id="service" name="service" required>
+          <option value="">選択してください</option>
+        </select>
+        <p class="err" id="err-service" hidden></p>
+      </div>
+
+      <div class="field">
+        <label for="deadline">ご希望の納期 <span class="req">必須</span></label>
+        <input id="deadline" name="deadline" type="date" required>
+        <p class="hint" id="deadlineHint"></p>
+        <p class="err" id="err-deadline" hidden></p>
+      </div>
+
+      <div class="field">
+        <label for="format">納品形式 <span class="req">必須</span></label>
+        <select id="format" name="format" required>
+          <option value="">選択してください</option>
+        </select>
+        <p class="err" id="err-format" hidden></p>
+      </div>
+
+      <div class="field">
+        <label for="note">ご要望・補足 <span class="opt">任意</span></label>
+        <textarea id="note" name="note" rows="5" maxlength="1000"></textarea>
+        <p class="hint"><span id="noteCount">0</span> / <span id="noteMax">1000</span>文字</p>
+        <p class="err" id="err-note" hidden></p>
+      </div>
+
+      <!-- 自動送信よけ。人の目には見えません -->
+      <div class="trap" aria-hidden="true">
+        <label for="website">Website</label>
+        <input id="website" name="website" type="text" tabindex="-1" autocomplete="off">
+      </div>
+
+      <div id="turnstile" class="turnstile"></div>
+
+      <p class="privacy">
+        いただいた内容は、ご発注の確認と制作のためだけに使います。
+        このページはお客様の情報を保存せず、社内の担当者のみが受け取ります。
+      </p>
+
+      <p class="err form-err" id="err-form" hidden></p>
+
+      <button type="submit" id="submitBtn" class="submit">この内容で発注する</button>
+    </form>
+  </section>
+
+  <!-- 送信後 -->
+  <section id="donePane" hidden>
+    <div class="done">
+      <h2>ご発注を受け付けました</h2>
+      <p class="receipt">受付番号　<b id="receiptNo"></b></p>
+      <dl class="summary" id="doneSummary"></dl>
+      <p class="note">
+        ご契約内容の照合を担当が行い、結果をご連絡先メールアドレスへお返しします。
+        照合の都合上、お返事までにお時間をいただく場合があります。
+      </p>
+      <p class="note">この画面を離れると控えは表示できません。受付番号はお手元にお控えください。</p>
+      <button type="button" id="againBtn" class="again">続けてもう1件発注する</button>
+    </div>
+  </section>
+
+  <!-- 読み込みに失敗したとき -->
+  <section id="deadPane" hidden>
+    <p class="err form-err" id="deadMsg"></p>
+  </section>
+
+</main>
+
+<footer class="wrap foot">
+  <p>yuadezabin</p>
+</footer>
+
+<script src="/form.js"></script>
+</body>
+</html>

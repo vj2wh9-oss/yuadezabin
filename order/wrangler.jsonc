@@ -1,0 +1,47 @@
+{
+  // 発注ページと、その受け口。ページも API も、この Worker ひとつで公開する。
+  // （同じ場所から出すので、フォームの送信が別のサイトへ出ていくことがない）
+  "name": "yuadezabin-order",
+  "main": "worker.js",
+
+  // 新しく作るときは、そのときの日付にする
+  "compatibility_date": "2026-09-03",
+
+  // order/public の中身がそのままページになる。
+  // /api/... 以外は Worker を通らず、Cloudflare が直接返す（_headers も効く）
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+
+  // yuadezabin.com で公開する。Cloudflare にドメインを載せてあるので、
+  // dash の Workers → 設定 → ドメインとルート から付けてもよい
+  "routes": [
+    { "pattern": "yuadezabin.com", "custom_domain": true }
+  ],
+
+  "vars": {
+    // 発注が届く先
+    "MAIL_TO": "keisuke@yuadezabin.com",
+    // 差出人。Email Routing を有効にしたドメインのアドレスにする
+    "MAIL_FROM": "order@yuadezabin.com",
+    // 同期サーバー（sync/ の Worker）の URL。アプリの「発注」はここを見る
+    "SYNC_URL": "https://anken-portal-sync.example.workers.dev"
+  },
+
+  // wrangler kv namespace create ORDERS で作った id
+  "kv_namespaces": [
+    { "binding": "ORDERS", "id": "ここに KV 名前空間の id" }
+  ],
+
+  // Cloudflare の Email Routing で送る。
+  // destination_address は「宛先アドレス」として確認済みのものだけ指定できる
+  "send_email": [
+    { "name": "MAIL", "destination_address": "keisuke@yuadezabin.com" }
+  ],
+
+  // 失敗したときにダッシュボードでログを追えるようにする
+  "observability": {
+    "enabled": true
+  }
+}
