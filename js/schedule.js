@@ -268,7 +268,8 @@
       if (st === 'overdue') {
         out.push({ level: 'danger', overdue: true, project: p, text: '締切を ' + Math.abs(U.diffDays(today, p.deadline)) + '日 過ぎています' });
       } else if (st === 'urgent') {
-        out.push({ level: 'warn', project: p, text: '締切まで ' + U.diffDays(today, p.deadline) + '日' });
+        // まだ手遅れではない知らせ。手を打つべきものを上に出したいので、いちばん下に置く
+        out.push({ level: 'warn', soon: true, project: p, text: '締切まで ' + U.diffDays(today, p.deadline) + '日' });
       }
       (p.tasks || []).forEach(function (t) {
         if (taskIsComplete(t)) return;
@@ -292,15 +293,20 @@
 
     out = out.concat(moneyAlerts(today, opts));
 
-    // 重い順に並べる（ホームは先頭数件しか出さないため）。同じ重さなら元の順を保つ
+    /* 手を打つべき順に並べる（ホームは先頭数件しか出さないため）。
+       期限切れ → 遅れ → そのほか（重い順）→「締切まで◯日」。
+       同じ重さなら元の順を保つ */
     var ORDER = ['danger', 'warn', 'info'];
-    function rank(level) {
-      var i = ORDER.indexOf(level);
-      return i < 0 ? ORDER.length : i;
+    function weight(a) {
+      if (a.overdue) return 0;      // もう過ぎている
+      if (a.behind) return 1;       // 遅れが出ている
+      if (a.soon) return 90;        // まだ間に合う知らせは、いちばん下へ
+      var i = ORDER.indexOf(a.level);
+      return 10 + (i < 0 ? ORDER.length : i);
     }
     return out.map(function (a, i) { return { a: a, i: i }; })
       .sort(function (x, y) {
-        var d = rank(x.a.level) - rank(y.a.level);
+        var d = weight(x.a) - weight(y.a);
         return d !== 0 ? d : x.i - y.i;
       })
       .map(function (x) { return x.a; });
