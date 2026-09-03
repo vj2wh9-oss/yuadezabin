@@ -185,13 +185,16 @@
   function dateHead(iso) {
     if (!U.isISO(iso)) return el('div', { class: 'today-date', text: '—' });
     var p = iso.split('-'), w = U.dow(iso);
+    // 祝日は日付のすぐ右に、日付と同じ大きさで添える
+    var hol = DL.holidays ? DL.holidays.name(iso) : '';
     return el('div', { class: 'today-date' }, [
       el('span', { class: 'td-year', text: (+p[0]) + '年' }),
       el('b', { class: 'td-num', text: String(+p[1]) }),
       el('span', { class: 'td-unit', text: '月' }),
       el('b', { class: 'td-num', text: String(+p[2]) }),
       el('span', { class: 'td-unit', text: '日' }),
-      el('span', { class: 'td-wd ' + (w === 0 ? 'sun' : w === 6 ? 'sat' : ''), text: U.wdName(w) })
+      el('span', { class: 'td-wd ' + (w === 0 || hol ? 'sun' : w === 6 ? 'sat' : ''), text: U.wdName(w) }),
+      hol ? el('span', { class: 'td-holiday', text: hol }) : null
     ]);
   }
 

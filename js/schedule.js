@@ -284,7 +284,8 @@
         if (pace.overdue) {
           out.push({ level: 'danger', overdue: true, project: p, task: t, text: t.name + ' が期間を過ぎています（残り ' + pace.remaining + unit(t) + '）' });
         } else if (pace.behind > 0) {
-          out.push({ level: 'warn', project: p, task: t, text: t.name + ' が ' + pace.behind + unit(t) + ' 遅れています' });
+          // 期限切れと同じように、目に付くよう点滅させる（色は注意のまま）
+          out.push({ level: 'warn', behind: true, project: p, task: t, text: t.name + ' が ' + pace.behind + unit(t) + ' 遅れています' });
         }
       });
     });

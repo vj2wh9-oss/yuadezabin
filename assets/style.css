@@ -28,6 +28,7 @@
   /* 期限切れの知らせの点滅。薄い赤と地の色を行き来する */
   --overdue-a: #2e161b;
   --overdue-b: var(--card);
+  --behind-a: #2e2716;       /* 遅れの点滅（薄い黄） */
   --duty-office-bg: color-mix(in srgb, var(--duty-office) 12%, var(--card));
   --duty-remote-bg: color-mix(in srgb, var(--duty-remote) 11%, var(--card));
   --duty-stay-bg: color-mix(in srgb, var(--duty-stay) 11%, var(--card));
@@ -70,6 +71,7 @@
     --duty-stay: #3b82f6;
     --overdue-a: #fdeaec;
     --overdue-b: #ffffff;
+    --behind-a: #fdf4e2;
     --duty-office-bg: #fdfce9;
     --duty-remote-bg: #fcf2f2;
     --duty-stay-bg: #f0f5fe;
@@ -126,11 +128,9 @@ h1, h2, h3, p { margin: 0; }
 .logo-word i { font-style: normal; color: var(--indigo); margin-left: 1px; }
 
 .appbar-gap { flex: 1; }
-.gearbtn { flex: none; color: var(--muted); }
-.gearbtn.on { color: var(--accent); }
+.gearbtn { flex: none; }
 /* 横断検索（虫めがね）。歯車の右に並べる */
-.searchbtn { flex: none; color: var(--muted); }
-.searchbtn.on { color: var(--accent); }
+.searchbtn { flex: none; }
 .searchbtn[hidden] { display: none; }
 /* 案件と日常のカレンダーを行き来するボタン（歯車の右） */
 .modebtn {
@@ -153,6 +153,10 @@ h1, h2, h3, p { margin: 0; }
 .iconbtn:active { background: var(--card2); }
 .iconbtn.small { min-width: 28px; height: 28px; }
 .iconbtn.danger { color: var(--danger); }
+/* 題名の右に並ぶボタン（歯車・電球・虫めがね）は、色も濃さもそろえる。
+   .iconbtn より後ろに置かないと、こちらの色が負けてしまう */
+.gearbtn, .ideabtn, .searchbtn { color: var(--muted); }
+.gearbtn.on, .ideabtn.on, .searchbtn.on { color: var(--accent); }
 
 /* ---------------- 本体 ---------------- */
 .view {
@@ -300,6 +304,9 @@ h1, h2, h3, p { margin: 0; }
   font-size: 12.5px; font-weight: 700; color: var(--muted);
 }
 .td-wd.sun { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--line2)); }
+/* 祝日の名前。日付と同じ大きさで、日付のすぐ右に添える */
+.td-holiday { font-size: 16px; font-weight: 700; color: var(--danger); margin-left: 6px; }
+.daytitle .td-holiday { font-size: 14px; }
 .td-wd.sat { color: var(--accent2); border-color: color-mix(in srgb, var(--accent2) 45%, var(--line2)); }
 .today-sub { font-size: 12.5px; color: var(--muted); }
 
@@ -385,12 +392,14 @@ h1, h2, h3, p { margin: 0; }
 .alert.danger .alert-icon { color: var(--danger); }
 /* 期限を過ぎている知らせは、薄い赤と地の色をゆっくり行き来させて目を引く */
 .alert.overdue { animation: overdue-pulse 3.6s ease-in-out infinite; }
+/* 遅れが出ているものも同じようにゆっくり点滅させる（色は注意の黄のまま） */
+.alert.behind { --overdue-a: var(--behind-a); animation: overdue-pulse 3.6s ease-in-out infinite; }
 @keyframes overdue-pulse {
   0%, 100% { background: var(--overdue-b); }
   50% { background: var(--overdue-a); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .alert.overdue { animation: none; background: var(--overdue-a); }
+  .alert.overdue, .alert.behind { animation: none; background: var(--overdue-a); }
 }
 .alert.warn { border-left-color: var(--warn); }
 .alert.warn .alert-icon { color: var(--warn); }
@@ -509,6 +518,14 @@ h1, h2, h3, p { margin: 0; }
   background: color-mix(in srgb, var(--danger) 20%, transparent); color: var(--danger);
 }
 .cal-line.mk.event { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); }
+/* 祝日の名前。マスの中では、締切などと混ざらないよう控えめに */
+.cal-line.hol {
+  font-weight: 700; color: var(--danger); padding-left: 2px;
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  overflow: hidden; text-overflow: clip; white-space: nowrap;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 6px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 6px), transparent);
+}
 .cal-more { font-size: 9px; color: var(--muted); padding-left: 4px; }
 
 /* ---------------- 日常のカレンダー ---------------- */
@@ -1426,8 +1443,7 @@ h1, h2, h3, p { margin: 0; }
   padding: 6px 2px 2px; font-size: 13px; font-weight: 600; color: var(--fg);
 }
 .idea-day .chev { margin-left: auto; color: var(--muted); }
-.ideabtn { flex: none; color: var(--muted); }
-.ideabtn.on { color: var(--accent); }
+.ideabtn { flex: none; }
 .ideabtn[hidden] { display: none; }
 /* 一覧に添えるひらめきの一行 */
 .idea-excerpt { display: flex; align-items: flex-start; gap: 5px; -webkit-line-clamp: 1; }

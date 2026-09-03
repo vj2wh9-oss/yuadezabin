@@ -191,11 +191,12 @@
     var hasEvent = marks.some(function (m) { return m.type === 'event'; });
     var hasDue = marks.some(function (m) { return m.type === 'deadline' || m.type === 'printing'; });
 
+    var hol = DL.holidays.name(date);
     var cls = 'cal-cell';
     if (!inMonth) cls += ' out';
     if (date === today) cls += ' today';
-    if (d === 0) cls += ' sun';
-    if (d === 6) cls += ' sat';
+    if (d === 0 || hol) cls += ' sun';        // 祝日は日曜と同じ扱いで赤く
+    else if (d === 6) cls += ' sat';
     if (isOff) cls += ' off';
     if (hasEvent) cls += ' has-event';
     else if (hasDue) cls += ' has-due';
@@ -205,6 +206,8 @@
     // 1マスに載せる上限。これを超えた分だけ「＋n」にまとめる。
     // 収まらない月はマスの高さが伸び、カレンダーごと縦にスクロールする
     var MAX = 10, shown = 0;
+
+    if (hol) lines.appendChild(el('span', { class: 'cal-line hol', text: hol }));
 
     marks.forEach(function (m) {
       if (shown >= MAX) return;
@@ -245,11 +248,12 @@
   /* 日常のマス。案件の締切・ノルマは出さず、その日の予定だけを載せる */
   function lifeCell(date, cursorMonth, today, list) {
     var d = U.dow(date);
+    var hol = DL.holidays.name(date);
     var cls = 'cal-cell';
     if (date.slice(0, 7) !== cursorMonth.slice(0, 7)) cls += ' out';
     if (date === today) cls += ' today';
-    if (d === 0) cls += ' sun';
-    if (d === 6) cls += ' sat';
+    if (d === 0 || hol) cls += ' sun';        // 祝日は日曜と同じ扱いで赤く
+    else if (d === 6) cls += ' sat';
     if (list.length) cls += ' has-plan';
     // 出社・リモート・泊まりの色は、予定があるかどうかより優先して敷く
     var duty = S.duty(date);
@@ -257,6 +261,7 @@
 
     var lines = el('div', { class: 'cal-lines' });
     var MAX = 10, shown = 0;
+    if (hol) lines.appendChild(el('span', { class: 'cal-line hol', text: hol }));
     list.forEach(function (o) {
       if (shown >= MAX) return;
       shown++;

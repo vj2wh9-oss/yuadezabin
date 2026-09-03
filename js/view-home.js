@@ -45,7 +45,8 @@
       urgent.forEach(function (o) { box.appendChild(planAlert(o)); });
       al.slice(0, 5).forEach(function (a) {
         var href = a.href || (a.project ? '#/project/' + a.project.id : a.date ? '#/day/' + a.date : '#/settings');
-        box.appendChild(el('a', { class: 'alert ' + a.level + (a.overdue ? ' overdue' : ''), href: href }, [
+        var pulse = a.overdue ? ' overdue' : a.behind ? ' behind' : '';
+        box.appendChild(el('a', { class: 'alert ' + a.level + pulse, href: href }, [
           el('span', { class: 'alert-icon' }, ui.icon(a.level === 'info' ? 'info' : 'alert', 17)),
           el('span', {}, [
             a.project ? el('b', { text: a.project.title }) : null,
