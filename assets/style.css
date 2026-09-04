@@ -1472,3 +1472,42 @@ h1, h2, h3, p { margin: 0; }
 }
 /* 脇へ寄るときの動き。位置ではなく見た目だけ動かすので、マス目はずれない */
 .fgrid.sorting .ftile { transition: transform .16s ease; }
+
+/* ---------------- レシートの読み取り ---------------- */
+/* 経理の上に置く入口 */
+.scan-row { margin: 2px 0 4px; }
+.scan-row .btn { flex: 1; min-width: 0; }
+
+/* 読み取り中と、確認画面のあたま */
+.rc-wait { align-items: center; text-align: center; }
+.rc-shot {
+  display: flex; align-items: center; justify-content: center;
+  background: var(--card2); border: 1px solid var(--line); border-radius: var(--radius-s);
+  overflow: hidden; flex: none;
+}
+.rc-wait .rc-shot { max-height: 200px; }
+.rc-img { display: block; max-width: 100%; max-height: 200px; object-fit: contain; }
+
+.rc-head { display: flex; gap: 10px; align-items: stretch; }
+.rc-head .rc-shot { width: 96px; height: 128px; }
+.rc-head .rc-img { max-height: 128px; }
+.rc-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 4px; }
+.rc-total b { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+/* 品目。名前と金額を並べて、その場で直せる */
+.rc-items { display: flex; flex-direction: column; gap: 5px; }
+.rc-item { display: flex; align-items: center; gap: 5px; }
+.rc-item-name { flex: 1; min-width: 0; }
+.rc-item-price { width: 92px; flex: none; text-align: right; font-variant-numeric: tabular-nums; }
+.rc-item .iconbtn { flex: none; color: var(--muted); }
+.rc-items .btn { align-self: flex-start; }
+
+/* 保存した経費に残る品目 */
+.ex-items { display: flex; flex-direction: column; gap: 3px; }
+.ex-item {
+  display: flex; align-items: baseline; gap: 6px; font-size: 13px;
+  padding: 3px 0; border-bottom: 1px solid var(--line);
+}
+.ex-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ex-item b { flex: none; font-variant-numeric: tabular-nums; }
+.ex-items p { padding-top: 4px; }

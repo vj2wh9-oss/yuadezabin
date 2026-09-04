@@ -34,6 +34,8 @@
       el('button', { class: 'iconbtn', 'aria-label': '次の年', onclick: function () { year = y + 1; DL.app.render(); } }, ui.icon('chevronRight', 20))
     ]));
 
+    if (DL.receipt.ready()) wrap.appendChild(scanCard());
+
     var isLife = book === 'life';
     var all = S.expenses({ book: book, year: y, scoped: !isLife });
     var spent = E.total(all);
@@ -385,11 +387,32 @@
           ui.chip(x.category, 'ghosty'),
           p ? ui.chip(p.title, 'ghosty') : null,
           issuer ? ui.chip(issuer.name || '名義', 'ghosty') : null,
+          // レシートから読み取った品目があれば、件数だけ添える（中身は開けば見える）
+          (x.items || []).length ? ui.chip((x.items.length) + '品目', 'ghosty') : null,
           x.memo ? el('span', { class: 'muted small', text: x.memo }) : null
         ])
       ]),
       el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
     ]);
+  }
+
+  /**
+   * レシートから読み取った品目。読み取ったものを見返せるように出す。
+   * 直したいときは読み取り直しではなく、ここから外す。
+   */
+  function itemsField(x) {
+    var items = (x && x.items) || [];
+    if (!items.length) return null;
+    var sum = items.reduce(function (a, i) { return a + U.num(i.price, 0); }, 0);
+    var list = el('div', { class: 'ex-items' }, items.map(function (i) {
+      return el('div', { class: 'ex-item' }, [
+        el('span', { class: 'ex-item-name', text: i.name }),
+        i.qty ? el('span', { class: 'muted small', text: '×' + i.qty }) : null,
+        el('b', { text: i.price === null ? '—' : D.yen(i.price) })
+      ]);
+    }));
+    list.appendChild(el('p', { class: 'muted small', text: '品目の合計 ' + D.yen(sum) }));
+    return ui.field('購入品目（読み取り）', list);
   }
 
   /* ---------------- レシートの絵を出す ---------------- */
@@ -445,6 +468,18 @@
   /* ---------------- 追加・編集 ---------------- */
 
   function addExpense(opts) { expenseSheet(null, opts || {}); }
+
+  /* レシートを撮って読み取る入口。ここが今のいちばん早い入れ方 */
+  function scanCard() {
+    return el('div', { class: 'row-wrap scan-row' }, [
+      ui.btn('レシートを撮って読み取る', 'primary', function () {
+        DL.views.receipt.scan({ book: book });
+      }, 'receipt'),
+      ui.btn('写真から', 'ghost', function () {
+        DL.views.receipt.scan({ book: book, camera: false });
+      }, 'illust')
+    ]);
+  }
   function editExpense(id) { expenseSheet(S.getExpense(id)); }
 
   /**
@@ -456,7 +491,7 @@
     opts = opts || {};
     var isNew = !x;
     // 編集のときはその記録の帳簿、新規のときはいま見ている帳簿
-    var bk = x ? x.book : book;
+    var bk = x ? x.book : (opts.book || book);
     var isLife = bk === 'life';
     var cats = E.categories(bk);
     var v = {
@@ -469,6 +504,8 @@
       issuerId: x ? x.issuerId : (S.scopeId() || S.settings.defaultIssuerId || ''),
       fileId: x ? x.fileId : ''
     };
+    // 読み取りから来たときなど、あらかじめ入れておきたい値
+    if (isNew && opts.preset) Object.assign(v, opts.preset);
     var picked = null;      // まだ送っていない写真（縮めたもの。これを送る）
     var pickedRaw = null;   // 撮ったままの写真（読み取りに使う。送らない）
     // 保存したときに、サーバーからも消す写真。
@@ -668,6 +705,7 @@
         projSel ? ui.field('案件', projSel) : null,
         issuerSel ? ui.field('名義', issuerSel) : null,
         ui.field('レシート', shotBox),
+        itemsField(x),
         !isNew ? ui.btn('この経費を削除', 'danger full mt', function () { removeThis(); }, 'trash') : null
       ]),
       actions: [

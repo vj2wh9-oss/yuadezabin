@@ -825,8 +825,20 @@
     x.issuerId = x.issuerId || '';    // どの名義の経費か
     x.fileId = x.fileId || '';        // レシートの写真（共有ファイルのID）
     x.recurringId = x.recurringId || '';  // 固定費から起こしたものか
+    // レシートから読み取った品目。金額の内訳を後から見返せるように持っておく
+    x.items = normalizeExpenseItems(x.items);
     x.createdAt = x.createdAt || new Date().toISOString();
     return x;
+  }
+
+  function normalizeExpenseItems(list) {
+    return (list || []).map(function (i) {
+      return {
+        name: String((i && i.name) || '').trim().slice(0, 80),
+        price: i && i.price !== null && i.price !== undefined ? Math.round(U.num(i.price, 0)) : null,
+        qty: i && i.qty !== null && i.qty !== undefined && i.qty !== '' ? U.num(i.qty, 0) : null
+      };
+    }).filter(function (i) { return !!i.name; }).slice(0, 100);
   }
 
   /* ---------------- 固定費（毎月きまって出るもの） ---------------- */
