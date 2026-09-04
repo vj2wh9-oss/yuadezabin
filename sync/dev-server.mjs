@@ -55,6 +55,8 @@ const R2 = {
       key, size: o.size, body: o.body,
       customMetadata: o.customMetadata,
       httpMetadata: o.httpMetadata,
+      async arrayBuffer() { return o.body.buffer.slice(o.body.byteOffset, o.body.byteOffset + o.body.length); },
+      async text() { return o.body.toString('utf8'); },
       writeHttpMetadata(headers) {
         if (o.httpMetadata && o.httpMetadata.contentType) {
           headers.set('content-type', o.httpMetadata.contentType);
@@ -86,6 +88,10 @@ async function readStream(stream) {
 }
 
 const env = { SYNC: KV, FILES: R2, ALLOW_ORIGIN: process.env.ALLOW_ORIGIN || '*' };
+// OPENAI_* は手元の環境変数から通す（レシート読み取りの動きを確かめるため）
+for (const k of Object.keys(process.env)) {
+  if (k.startsWith('OPENAI_') || k.startsWith('VAPID_')) env[k] = process.env[k];
+}
 
 createServer(async (req, res) => {
   const chunks = [];

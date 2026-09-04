@@ -31,6 +31,12 @@
  *   FANBOX のページで動かすブックマークレットが送り、アプリが受け取って読む。
  *   合鍵で守るので、CORS は fanbox.cc からの送信も通す。
  *
+ * レシートの読み取り（OpenAI）
+ *   GET    /v1/ocr/status  → { key, r2, model, strongModel, reasoning, maxTokens }（鍵は返さない）
+ *   POST   /v1/ocr/receipt → 本文 {fileId} → { data:{store,date,total,items,…}, model, retried, usage }
+ *                             R2 に置いた写真を読み、JSON だけ受け取る。
+ *                             鍵は Worker の secret にだけ置き、アプリには渡さない
+ *
  * 設定（wrangler.jsonc）
  *   KV 名前空間 SYNC を bind する
  *   R2 バケット FILES を bind する（ファイル共有を使うときだけ）
@@ -39,6 +45,9 @@
  *     triggers.crons に "* * * * *"
  *     secret VAPID_PUBLIC / VAPID_PRIVATE（アプリの設定画面で作れる）
  *     var VAPID_SUBJECT（"mailto:自分のメールアドレス"）
+ *   レシートの読み取りを使うときだけ：
+ *     secret OPENAI_API_KEY
+ *     var OPENAI_MODEL / OPENAI_MODEL_STRONG / OPENAI_REASONING / OPENAI_MAX_TOKENS
  */
 
 const MAX_BYTES = 20 * 1024 * 1024;   // KV の上限は25MBなので余裕をみる
@@ -63,8 +72,8 @@ export default {
       return json({
         ok: true,
         service: '案件ポータルの同期API',
-        bindings: { kv: !!env.SYNC, r2: !!env.FILES },
-        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox'],
+        bindings: { kv: !!env.SYNC, r2: !!env.FILES, openai: !!env.OPENAI_API_KEY },
+        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/ocr'],
         note: '各 /v1/... は Authorization: Bearer <合鍵> が必要です'
       }, 200, cors);
     }
@@ -156,6 +165,10 @@ export default {
       if (url.pathname === '/v1/inbox/fanbox') {
         return inbox(request, env, cors, id);
       }
+
+      if (url.pathname.startsWith('/v1/ocr/')) {
+        return ocr(request, env, cors, url, id);
+      }
     } catch (e) {
       return json({ error: 'server_error', message: String(e && e.message || e) }, 500, cors);
     }
@@ -168,6 +181,252 @@ export default {
     ctx.waitUntil(sendDue(env));
   }
 };
+
+/* ---------------- レシートの読み取り（OpenAI） ----------------
+
+   アプリが R2 に置いた写真を、ここから OpenAI へ渡して JSON で受け取る。
+   鍵はここ（Worker の secret）にだけ置き、アプリ側には一切渡さない。
+
+   使う量を抑えるための決めごと
+     ・返すのは JSON だけ。レシート全文の書き起こしは求めない
+     ・道具（Web検索・ファイル検索）は付けない
+     ・max_output_tokens で頭を打つ
+     ・推論の出力は既定で切る（OPENAI_REASONING）
+     ・まず軽いほう（OPENAI_MODEL）で読む。
+       合計が合わない・不鮮明だと言われたときだけ、強いほう
+       （OPENAI_MODEL_STRONG）で読み直す
+
+   設定（Worker の Settings）
+     secret OPENAI_API_KEY        …… OpenAI の API キー
+     var    OPENAI_MODEL          …… ふだん使うモデルID
+     var    OPENAI_MODEL_STRONG   …… 読み直すときのモデルID
+     var    OPENAI_REASONING      …… 推論の深さ（空にすると項目ごと送らない）
+     var    OPENAI_MAX_TOKENS     …… 返してよい長さ
+     var    OPENAI_BASE           …… 既定 https://api.openai.com/v1 */
+
+const OCR_DEFAULTS = {
+  model: 'gpt-5.6-luna',
+  strong: 'terra',
+  reasoning: 'none',
+  maxTokens: 1200,
+  base: 'https://api.openai.com/v1'
+};
+const OCR_MAX_IMAGE = 8 * 1024 * 1024;    // これより大きい画像は送らない
+
+/* 受け取りたい形。ここから外れた返事は通さない */
+const RECEIPT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['store', 'date', 'total', 'items', 'itemsComplete', 'confidence', 'unclear'],
+  properties: {
+    store: { type: ['string', 'null'], description: '店舗名。読めなければ null' },
+    date: { type: ['string', 'null'], description: 'YYYY-MM-DD。読めなければ null' },
+    total: { type: ['number', 'null'], description: '合計金額（税込・円）。読めなければ null' },
+    items: {
+      type: 'array',
+      description: '購入品目',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['name', 'price', 'qty'],
+        properties: {
+          name: { type: 'string' },
+          price: { type: ['number', 'null'], description: 'その行の金額（円）' },
+          qty: { type: ['number', 'null'], description: '個数。書いていなければ null' }
+        }
+      }
+    },
+    itemsComplete: { type: 'boolean', description: '品目をすべて拾えたか' },
+    confidence: { type: 'number', description: '0〜1。読み取りの確からしさ' },
+    unclear: { type: 'boolean', description: '字が潰れている・影で読めない箇所があるか' }
+  }
+};
+
+const RECEIPT_PROMPT =
+  'レシートの写真から次の項目だけを取り出し、指定の JSON で返してください。' +
+  '全文の書き起こしや説明は不要です。' +
+  '金額は円の数値のみ（記号・カンマなし）。日付は YYYY-MM-DD。' +
+  '年が書かれていなければ、月日から最も近い過去の年を補ってください。' +
+  '合計は「合計」「お買上げ計」など税込の総額を採り、お預り・お釣り・ポイントは合計にしません。' +
+  '品目は商品名と金額の行だけを拾い、小計・値引・税・ポイントは品目に入れません。' +
+  '読み取れない項目は null にし、推測で埋めないでください。' +
+  '字が潰れて自信が持てないときは unclear を true にしてください。';
+
+async function ocr(request, env, cors, url, id) {
+  const rest = url.pathname.slice('/v1/ocr/'.length);
+
+  // 設定できているかだけ返す。鍵そのものは絶対に返さない
+  if (rest === 'status' && request.method === 'GET') {
+    return json({
+      ok: true,
+      key: !!env.OPENAI_API_KEY,
+      r2: !!env.FILES,
+      model: env.OPENAI_MODEL || OCR_DEFAULTS.model,
+      strongModel: env.OPENAI_MODEL_STRONG || OCR_DEFAULTS.strong,
+      reasoning: env.OPENAI_REASONING === undefined ? OCR_DEFAULTS.reasoning : env.OPENAI_REASONING,
+      maxTokens: Number(env.OPENAI_MAX_TOKENS || OCR_DEFAULTS.maxTokens)
+    }, 200, cors);
+  }
+
+  if (rest !== 'receipt' || request.method !== 'POST') return json({ error: 'not_found' }, 404, cors);
+  if (!env.OPENAI_API_KEY) return json({ error: 'no_api_key' }, 503, cors);
+  if (!env.FILES) return json({ error: 'r2_not_bound' }, 500, cors);
+
+  let body;
+  try { body = await request.json(); } catch (e) { return json({ error: 'bad_json' }, 400, cors); }
+
+  const fileId = String(body && body.fileId || '');
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(fileId)) return json({ error: 'bad_id' }, 400, cors);
+
+  const obj = await env.FILES.get('files/' + id + '/' + fileId);
+  if (!obj) return json({ error: 'not_found' }, 404, cors);
+  if (obj.size > OCR_MAX_IMAGE) return json({ error: 'too_large', max: OCR_MAX_IMAGE }, 413, cors);
+
+  const type = (obj.httpMetadata && obj.httpMetadata.contentType) || 'image/jpeg';
+  if (type.indexOf('image/') !== 0) return json({ error: 'not_image', type }, 400, cors);
+  const dataUrl = 'data:' + type + ';base64,' + b64(new Uint8Array(await obj.arrayBuffer()));
+
+  const light = String(body.model || env.OPENAI_MODEL || OCR_DEFAULTS.model);
+  const strong = String(body.strongModel || env.OPENAI_MODEL_STRONG || OCR_DEFAULTS.strong);
+
+  // 1回目は軽いほうで、画像も控えめに
+  let pass = await askOpenAI(env, light, dataUrl, 'auto');
+  if (!pass.ok) return json(pass.body, pass.status, cors);
+
+  let why = needsRetry(pass.data);
+  let retried = false;
+  // 2回目は強いほうで、画像も細かく見てもらう
+  if (why && strong && !body.noRetry) {
+    const again = await askOpenAI(env, strong, dataUrl, 'high');
+    if (again.ok) {
+      retried = true;
+      pass = again;
+    }
+  }
+
+  return json({
+    ok: true,
+    data: pass.data,
+    model: pass.model,
+    retried,
+    retryReason: retried ? why : '',
+    usage: pass.usage
+  }, 200, cors);
+}
+
+/* 読み直したほうがよいか。合わない・不鮮明のときだけ true */
+function needsRetry(d) {
+  if (!d) return 'no_data';
+  if (d.unclear) return 'unclear';
+  if (typeof d.confidence === 'number' && d.confidence < 0.6) return 'low_confidence';
+  if (d.total === null || d.total === undefined || !(d.total > 0)) return 'no_total';
+  if (!d.date) return 'no_date';
+
+  const items = Array.isArray(d.items) ? d.items : [];
+  const sum = items.reduce((a, x) => a + (Number(x && x.price) || 0), 0);
+  // 品目の合計が総額を超えるのは読み違い。値引きや税で下回るのはふつうなので見逃す
+  if (sum > d.total * 1.05 + 1) return 'items_over_total';
+  // すべて拾えたと言うのに、総額と離れすぎているとき（税・値引きの幅を超える）
+  if (items.length && d.itemsComplete && sum > 0 && sum < d.total * 0.7) return 'items_short';
+  return '';
+}
+
+/**
+ * OpenAI に1回だけ聞く。
+ * @param {string} detail 画像の見かた 'auto' | 'high'
+ */
+async function askOpenAI(env, model, dataUrl, detail) {
+  const base = String(env.OPENAI_BASE || OCR_DEFAULTS.base).replace(/\/+$/, '');
+  const maxTokens = Number(env.OPENAI_MAX_TOKENS || OCR_DEFAULTS.maxTokens);
+  const effort = env.OPENAI_REASONING === undefined ? OCR_DEFAULTS.reasoning : String(env.OPENAI_REASONING);
+
+  const payload = {
+    model,
+    input: [{
+      role: 'user',
+      content: [
+        { type: 'input_text', text: RECEIPT_PROMPT },
+        { type: 'input_image', image_url: dataUrl, detail }
+      ]
+    }],
+    text: {
+      format: {
+        type: 'json_schema',
+        name: 'receipt',
+        strict: true,
+        schema: RECEIPT_SCHEMA
+      }
+    },
+    max_output_tokens: maxTokens,
+    // 道具は付けない（Web検索・ファイル検索を使わせない）
+    tools: [],
+    // 送った画像を向こうに残さない
+    store: false
+  };
+  // 推論の深さ。空にしておけば項目ごと送らない（対応していないモデル向け）
+  if (effort) payload.reasoning = { effort };
+
+  let res;
+  try {
+    res = await fetch(base + '/responses', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer ' + env.OPENAI_API_KEY,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+  } catch (e) {
+    return { ok: false, status: 502, body: { error: 'openai_unreachable', message: String(e && e.message || e) } };
+  }
+
+  const text = await res.text();
+  if (!res.ok) {
+    let detailMsg = text.slice(0, 600);
+    try { detailMsg = JSON.parse(text).error?.message || detailMsg; } catch (e) { /* そのまま出す */ }
+    return { ok: false, status: res.status === 401 ? 502 : res.status,
+      body: { error: 'openai_error', status: res.status, model, message: detailMsg } };
+  }
+
+  let out;
+  try { out = JSON.parse(text); } catch (e) {
+    return { ok: false, status: 502, body: { error: 'openai_bad_json' } };
+  }
+
+  const content = pickText(out);
+  if (!content) {
+    return { ok: false, status: 502,
+      body: { error: 'openai_empty', model, status: out.status || '', incomplete: out.incomplete_details || null } };
+  }
+
+  let data;
+  try { data = JSON.parse(content); } catch (e) {
+    return { ok: false, status: 502, body: { error: 'not_json', sample: content.slice(0, 200) } };
+  }
+  return { ok: true, data, model, usage: out.usage || null };
+}
+
+/* Responses の返事から、本文の文字だけを取り出す */
+function pickText(out) {
+  if (typeof out.output_text === 'string' && out.output_text) return out.output_text;
+  const parts = [];
+  for (const item of out.output || []) {
+    for (const c of item.content || []) {
+      if (typeof c.text === 'string') parts.push(c.text);
+    }
+  }
+  return parts.join('');
+}
+
+/* バイト列を base64 に。まとめて渡すと積みが溢れるので小分けにする */
+function b64(bytes) {
+  let s = '';
+  const step = 0x8000;
+  for (let i = 0; i < bytes.length; i += step) {
+    s += String.fromCharCode.apply(null, bytes.subarray(i, i + step));
+  }
+  return btoa(s);
+}
 
 /* ---------------- 外から届くもの（FANBOX の取り込み） ---------------- */
 
