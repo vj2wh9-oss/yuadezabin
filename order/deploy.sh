@@ -20,7 +20,8 @@ set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
 sync_dir="$(cd "$here/.." && pwd)/sync"
-conf="$here/wrangler.jsonc"
+conf="$here/wrangler.jsonc"          # 元。git の管理下。触らない
+local_conf="$here/wrangler.local.jsonc"   # 作業用。git には入れない
 
 say()  { printf '\n\033[1m%s\033[0m\n' "$*"; }
 note() { printf '  %s\n' "$*"; }
@@ -30,7 +31,6 @@ wr() { npx --yes wrangler@4 "$@"; }
 
 # 設定ファイルを読み書きする小さな道具。Node.js だけで動く
 conf_get() { node "$here/.deploy-conf.cjs" get "$conf" "$1"; }
-conf_set() { node "$here/.deploy-conf.cjs" set "$conf" "$1" "$2"; }
 
 # ---------------------------------------------------------------- 下ごしらえ
 
@@ -55,17 +55,30 @@ const RE = {
   kvId: /("binding"\s*:\s*"ORDERS"\s*,\s*"id"\s*:\s*")([^"]*)(")/,
   site: /("pattern"\s*:\s*")([^"]*)(")/
 };
-const re = RE[what];
-if (!re) { console.error('不明な項目: ' + what); process.exit(1); }
 
-const m = src.match(re);
-if (!m) { console.error('wrangler.jsonc に ' + what + ' が見つかりません'); process.exit(1); }
-
-if (op === 'get') { process.stdout.write(m[2]); process.exit(0); }
-if (op === 'set') {
-  fs.writeFileSync(path, src.replace(re, (s, a, _b, c) => a + value + c), 'utf8');
+// get … テンプレから1か所を読む
+if (op === 'get') {
+  const re = RE[what];
+  if (!re) { console.error('不明な項目: ' + what); process.exit(1); }
+  const m = src.match(re);
+  if (!m) { console.error('wrangler.jsonc に ' + what + ' が見つかりません'); process.exit(1); }
+  process.stdout.write(m[2]);
   process.exit(0);
 }
+
+// build … テンプレを元に、作業用の設定を別ファイルへ書き出す。
+// テンプレ（git の管理下）には一切手を入れないので、あとから git pull できる。
+if (op === 'build') {
+  const [kvId, syncUrl, out] = process.argv.slice(5);
+  let t = src;
+  t = t.replace(RE.kvId, (s, a, _b, c) => a + kvId + c);
+  t = t.replace(RE.syncUrl, (s, a, _b, c) => a + syncUrl + c);
+  t = '// deploy.sh が作った作業用の設定です。直さないでください。\n'
+    + '// 直すときは wrangler.jsonc のほうを直します。\n' + t;
+  fs.writeFileSync(out, t, 'utf8');
+  process.exit(0);
+}
+
 console.error('不明な操作: ' + op);
 process.exit(1);
 JS
@@ -105,11 +118,22 @@ note "つながりました"
 
 say "2. 発注の置き場（KV）を用意する"
 
-kv_id="$(conf_get kvId)"
+# Cloudflare 側の一覧から探す。設定ファイルの中身に頼らないので、
+# 何度走らせても増えない（前回どこまで進んだかを気にしなくてよい）
+note "すでにあるか見ています…"
+kv_id="$(wr kv namespace list 2>/dev/null | node -e '
+let s = ""; process.stdin.on("data", d => s += d).on("end", () => {
+  const a = s.indexOf("["), b = s.lastIndexOf("]");
+  if (a < 0 || b < a) return;
+  let list; try { list = JSON.parse(s.slice(a, b + 1)); } catch (e) { return; }
+  const hit = (list || []).find(n => /(^|-)ORDERS$/.test(String(n.title || "")));
+  if (hit) process.stdout.write(String(hit.id || ""));
+});' || true)"
+
 if printf '%s' "$kv_id" | grep -qE '^[0-9a-f]{32}$'; then
-  note "すでにあります（$kv_id）。作り直しません"
+  note "見つかりました（$kv_id）。作り直しません"
 else
-  note "作っています…"
+  note "無いので作ります…"
   out="$(wr kv namespace create ORDERS 2>&1 || true)"
   kv_id="$(printf '%s' "$out" | grep -oE '[0-9a-f]{32}' | head -1)"
   [ -n "$kv_id" ] || { printf '%s\n' "$out"; die "KV を作れませんでした（上の出力をご確認ください）"; }
@@ -118,12 +142,11 @@ fi
 
 # ---------------------------------------------------------------- 設定を書く
 
-say "3. 設定ファイルを書き替える"
-cp "$conf" "$conf.bak"
-note "控え：wrangler.jsonc.bak"
-conf_set kvId "$kv_id"
-conf_set syncUrl "$sync_url"
-note "書き替えました"
+say "3. 作業用の設定を書き出す"
+# wrangler.jsonc（git の管理下）には手を入れない。
+# 手を入れると、次に git pull したときに弾かれてしまう。
+node "$here/.deploy-conf.cjs" build "$conf" - "$kv_id" "$sync_url" "$local_conf"
+note "$(basename "$local_conf") を作りました（git には入りません）"
 
 # ---------------------------------------------------------------- 合鍵
 
@@ -132,12 +155,22 @@ note "アプリの 設定 →「PC・iPhone の同期」→「合鍵をコピー
 note "貼り付けても画面には出ません（そういう入力です）。"
 note "合鍵は Cloudflare へ直接渡り、この端末には残りません。"
 echo
-( cd "$here" && wr secret put SYNC_TOKEN )
+if wr secret list --config "$local_conf" 2>/dev/null | grep -q SYNC_TOKEN; then
+  note "すでに預けてあります。"
+  printf '  入れ直しますか？（そのままで良ければ Enter、入れ直すなら y）\n  > '
+  read -r again
+  case "$again" in
+    [yY]*) ( cd "$here" && wr secret put SYNC_TOKEN --config "$local_conf" ) ;;
+    *) note "そのまま使います" ;;
+  esac
+else
+  ( cd "$here" && wr secret put SYNC_TOKEN --config "$local_conf" )
+fi
 
 say "5. 連投よけの塩を預ける"
 # 中身は何でもよいので、こちらで作って渡す（画面には出さない）
 node -e 'process.stdout.write(require("crypto").randomBytes(24).toString("hex"))' \
-  | ( cd "$here" && wr secret put RL_SALT )
+  | ( cd "$here" && wr secret put RL_SALT --config "$local_conf" )
 note "できました"
 
 # ---------------------------------------------------------------- 公開
@@ -147,7 +180,7 @@ note "発注の受け口（/v1/inbox/order）を足したものに入れ替え�
 ( cd "$sync_dir" && wr deploy )
 
 say "7. 発注ページを公開する"
-( cd "$here" && wr deploy )
+( cd "$here" && wr deploy --config "$local_conf" )
 
 # ---------------------------------------------------------------- 確かめ
 

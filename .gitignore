@@ -8,3 +8,7 @@ node_modules/
 # Cloudflare Workers の作業用（合鍵が入るので、絶対に置かない）
 .wrangler/
 .dev.vars
+
+# deploy.sh が作る作業用の設定（KV の id と接続先が入る）
+order/wrangler.local.jsonc
+*.jsonc.bak
