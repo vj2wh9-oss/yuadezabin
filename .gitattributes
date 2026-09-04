@@ -1,0 +1,7 @@
+# Windows で取り込んでも、シェルスクリプトの改行を CRLF にしない。
+# CRLF になると Git Bash が「$'\r': command not found」で止まる。
+*.sh text eol=lf
+
+# 画像などは中身をそのまま扱う
+*.png binary
+*.jpg binary
