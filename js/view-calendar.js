@@ -324,11 +324,13 @@
       el('a', { class: 'iconbtn', href: '#/day/' + U.addDays(date, 1), 'aria-label': '次の日' }, ui.icon('chevronRight', 20))
     ]));
 
-    wrap.appendChild(logLink(date));
-
-    // 日常を見ているときは、案件の締切・ノルマ・休業日は出さない
+    // 日常を見ているときは、案件の締切・ノルマ・休業日は出さない。
+    // 1日の時間の振り分けは案件と日常で分けないので、どちらにも同じものを出す。
+    // 1日の記録への入り口は、どちらもいちばん下に置く
     if (life) {
       DL.views.events.dayView(wrap, date);
+      DL.views.time.dayCard(wrap, date);
+      wrap.appendChild(logLink(date));
       root.appendChild(wrap);
       return;
     }
@@ -376,6 +378,9 @@
       ui.btn('この日の実績を追加', 'ghost full', function () { pickTaskSheet(date); }, 'plus')
     ));
 
+    /* 1日の時間の振り分け（日常側と同じもの） */
+    DL.views.time.dayCard(wrap, date);
+
     /* 休業日設定 */
     wrap.appendChild(el('div', { class: 'pad' }, [
       ui.btn(isHoliday ? 'この日の休みを解除' : 'この日を休みにする', 'ghost full', function () {
@@ -388,6 +393,8 @@
         ? '泊まり勤務にしたので休みにしています。解除すると、この日だけ休みでなくなります。'
         : '休みにすると、その日のノルマを振り分け直します。' })
     ]));
+
+    wrap.appendChild(logLink(date));
 
     root.appendChild(wrap);
   }

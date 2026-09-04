@@ -78,6 +78,11 @@
       wrap.appendChild(box);
     }
 
+    /* 今日の時間の振り分け。横長の帯で、いまがどこかも出す */
+    wrap.appendChild(ui.section('今日の時間',
+      el('a', { class: 'link', href: '#/time/' + today, text: '書く' })));
+    wrap.appendChild(DL.views.time.homeCard(today));
+
     /* 今日のノルマと、日常の予定 */
     wrap.appendChild(ui.section('今日やること'));
     if (!todo) {

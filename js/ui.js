@@ -106,6 +106,19 @@
     ]);
   }
 
+  /**
+   * field と同じ見た目だが、<label> にしない。
+   * 中にボタンなどを並べるときはこちら。<label> にすると、その見出しが
+   * 中の最初のボタンの読み上げ名になってしまい、何のボタンか分からなくなる。
+   */
+  function block(label, content, hint) {
+    return el('div', { class: 'field' }, [
+      el('span', { class: 'field-label', text: label }),
+      content,
+      hint ? el('span', { class: 'field-hint', text: hint }) : null
+    ]);
+  }
+
   function input(props) {
     return el('input', Object.assign({ class: 'input', type: 'text' }, props || {}));
   }
@@ -120,6 +133,27 @@
         return el('option', { value: o.value, text: o.label, selected: String(o.value) === String(value) });
       }));
     s.value = value;
+    return s;
+  }
+
+  /**
+   * 品目に付ける分類の選び口。設定で作った分類が並ぶ。
+   * 消された分類が付いたままの品目もあるので、その値は先頭に足して残す。
+   */
+  function tagSelect(value, onchange) {
+    var list = DL.store.tags();
+    var opts = [{ value: '', label: '（分類なし）' }].concat(list.map(function (t) {
+      return { value: t.id, label: t.name };
+    }));
+    if (value && !list.filter(function (t) { return t.id === value; }).length) {
+      opts.push({ value: value, label: '(消された分類)' });
+    }
+    var s = select(opts, value || '', onchange);
+    s.classList.add('tag-select');
+    // まだ付けていないものは薄く出す（付いているものが目に入るように）
+    function mark() { s.classList.toggle('empty', !s.value); }
+    s.addEventListener('change', mark);
+    mark();
     return s;
   }
 
@@ -267,7 +301,7 @@
 
   DL.ui = {
     toast: toast, sheet: sheet, closeAllSheets: closeAllSheets, confirm: confirmSheet,
-    field: field, input: input, textarea: textarea, select: select, segmented: segmented,
+    field: field, block: block, input: input, textarea: textarea, select: select, tagSelect: tagSelect, segmented: segmented,
     stepper: stepper, progress: progress, chip: chip, iconChip: iconChip, icon: icon,
     section: section, card: card, dateHead: dateHead,
     empty: empty, btn: btn, kindChip: kindChip, catChip: catChip,

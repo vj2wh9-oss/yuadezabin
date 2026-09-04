@@ -71,6 +71,18 @@
     { value: 'stay', label: '泊まり勤務' }
   ];
 
+  /* 1日の時間の振り分けで使う種類。案件と日常は分けず、同じものを使う */
+  var TIME_KINDS = [
+    { value: 'sleep', label: '睡眠', color: '#5b6b8c' },
+    { value: 'work', label: '仕事', color: '#2563eb' },
+    { value: 'commute', label: '通勤', color: '#0ea5e9' },
+    { value: 'draw', label: '作業・制作', color: '#8b2fe8' },
+    { value: 'meal', label: '食事', color: '#f2b200' },
+    { value: 'chore', label: '家事', color: '#00a651' },
+    { value: 'free', label: '自由時間', color: '#ff6a00' },
+    { value: 'other', label: 'その他', color: '#94a3b8' }
+  ];
+
   var DEFAULT_SETTINGS = {
     holidays: [],          // 休業日 'YYYY-MM-DD'（カレンダーの日別画面から指定する）
     // そのうち「泊まり勤務」で自動的に付いたぶん。勤務を外したらこれだけ戻す
@@ -99,12 +111,17 @@
     expenses: [],          // 経費 [{id,book,date,amount,category,vendor,memo,projectId,issuerId,fileId}]
     lifeBudget: 0,         // 日常（家計簿）の1ヶ月の予算。0で無効
     recurring: [],         // 固定費 [{id,book,name,amount,category,day,startYm,lastYm,active}]
+    // 自分で決める分類。科目とは別に、種別ごとに見返すための札
+    tags: [],              // [{id,name,color,order}]
     // 頒布物（本・グッズ）と、その出入り
     items: [],             // [{id,title,kind,price,unitCost,releaseDate,projectId,memo,archived}]
     stock: [],             // [{id,itemId,date,kind,qty,price,place,projectId,memo}]
     // 日常の予定。案件のカレンダーとは混ぜず、上部の切替ボタンで見る側を選ぶ
     events: [],            // [{id,date,days,title,start,end,memo,color,important,repeat,until}]
     duties: {},            // その日の働き方 { 'YYYY-MM-DD': 'office'|'remote'|'stay' }
+    // 1日の時間の振り分け { 'YYYY-MM-DD': [{id,kind,start,end,memo}] }。
+    // start/end は 0時からの分。夜勤で日をまたぐぶんは 1440 を超える値で持つ
+    timeblocks: {},
     // ホームの「今日やること」から外した予定 { '<予定ID>|YYYY-MM-DD': true }。
     // カレンダーからは消さないので、いつでも戻せる
     eventDone: {},
@@ -235,10 +252,12 @@
     s.settings.fanbox = normalizeFanbox(s.settings.fanbox);
     s.settings.expenses = (s.settings.expenses || []).map(normalizeExpense);
     s.settings.recurring = (s.settings.recurring || []).map(normalizeRecurring);
+    s.settings.tags = (s.settings.tags || []).map(normalizeTag);
     s.settings.items = (s.settings.items || []).map(normalizeItem);
     s.settings.stock = (s.settings.stock || []).map(normalizeMove);
     s.settings.events = (s.settings.events || []).map(normalizeEvent);
     s.settings.duties = normalizeDuties(s.settings.duties);
+    s.settings.timeblocks = normalizeTimeblocks(s.settings.timeblocks);
     s.settings.holidays = (s.settings.holidays || []).filter(U.isISO);
     // 手で休みを外した日は、自動で付けた記録のほうも落とす（また付け直さないため）
     s.settings.stayHolidays = (s.settings.stayHolidays || []).filter(function (d) {
@@ -825,8 +844,104 @@
     x.issuerId = x.issuerId || '';    // どの名義の経費か
     x.fileId = x.fileId || '';        // レシートの写真（共有ファイルのID）
     x.recurringId = x.recurringId || '';  // 固定費から起こしたものか
+    // レシートから読み取った品目。金額の内訳を後から見返せるように持っておく
+    x.items = normalizeExpenseItems(x.items);
     x.createdAt = x.createdAt || new Date().toISOString();
     return x;
+  }
+
+  function normalizeExpenseItems(list) {
+    return (list || []).map(function (i) {
+      return {
+        name: String((i && i.name) || '').trim().slice(0, 80),
+        price: i && i.price !== null && i.price !== undefined ? Math.round(U.num(i.price, 0)) : null,
+        qty: i && i.qty !== null && i.qty !== undefined && i.qty !== '' ? U.num(i.qty, 0) : null,
+        tagId: String((i && i.tagId) || '')   // 品目ごとの分類
+      };
+    }).filter(function (i) { return !!i.name; }).slice(0, 100);
+  }
+
+  /* 品目を全部ならして返す。分類ごとの集計に使う。
+     @returns {Array<{item, expense}>} */
+  function expenseItems(filter) {
+    var out = [];
+    (state.settings.expenses || []).forEach(function (x) {
+      if (filter && !filter(x)) return;
+      (x.items || []).forEach(function (i) { out.push({ item: i, expense: x }); });
+    });
+    return out;
+  }
+
+  /* ---------------- 分類（買ったものに付ける札） ----------------
+
+     科目は「そのレシート全体」に付くが、こちらは品目ひとつずつに付ける。
+     「画材」「本」「食べもの」のように、あとで種別ごとに見返すために使う。 */
+
+  function normalizeTag(t) {
+    t = t || {};
+    t.id = t.id || U.uid();
+    t.name = String(t.name || '').trim().slice(0, 24) || '(名称未設定)';
+    t.color = HEX.test(String(t.color)) ? t.color : PALETTE[0];
+    t.order = U.num(t.order, 0);
+    t.createdAt = t.createdAt || new Date().toISOString();
+    return t;
+  }
+
+  /* 並べた順に返す。同じ順のものは作った順 */
+  function tags() {
+    return (state.settings.tags || []).slice().sort(function (a, b) {
+      return (U.num(a.order, 0) - U.num(b.order, 0)) || U.cmp(a.createdAt || '', b.createdAt || '');
+    });
+  }
+
+  function getTag(id) {
+    return (state.settings.tags || []).filter(function (t) { return t.id === id; })[0] || null;
+  }
+
+  function addTag(data) {
+    var list = state.settings.tags || (state.settings.tags = []);
+    var t = normalizeTag(Object.assign({
+      order: list.length,
+      color: PALETTE[list.length % PALETTE.length]
+    }, data));
+    list.push(t);
+    save();
+    return t;
+  }
+
+  function updateTag(id, patch) {
+    var t = getTag(id);
+    if (!t) return null;
+    Object.assign(t, patch);
+    normalizeTag(t);
+    save();
+    return t;
+  }
+
+  /* 分類を消す。使っている品目からは、札だけ外す（品目や経費は消さない） */
+  function removeTag(id) {
+    state.settings.tags = (state.settings.tags || []).filter(function (t) { return t.id !== id; });
+    (state.settings.expenses || []).forEach(function (x) {
+      (x.items || []).forEach(function (i) { if (i.tagId === id) i.tagId = ''; });
+    });
+    save();
+    return true;
+  }
+
+  /* 並べ替え。渡された順に 0,1,2… を振り直す */
+  function reorderTags(ids) {
+    var by = {};
+    (state.settings.tags || []).forEach(function (t) { by[t.id] = t; });
+    var n = 0;
+    (ids || []).forEach(function (id) { if (by[id]) { by[id].order = n++; delete by[id]; } });
+    tags().forEach(function (t) { if (by[t.id]) t.order = n++; });
+    save();
+    return tags();
+  }
+
+  /* その分類が付いている品目の数（消すときに知らせるため） */
+  function tagUseCount(id) {
+    return expenseItems().filter(function (p) { return p.item.tagId === id; }).length;
   }
 
   /* ---------------- 固定費（毎月きまって出るもの） ---------------- */
@@ -1235,6 +1350,91 @@
       if (U.isISO(d) && isDuty(map[d])) out[d] = map[d];
     });
     return out;
+  }
+
+  /* ---------------- 1日の時間の振り分け ----------------
+
+     0時からの分で持つ。夜勤のように日をまたぐものは 1440 を超える値になる
+     （32:30 なら 1950）。日ごとの配列で、始まる日のほうに置く。 */
+
+  var DAY_MIN = 1440;
+  var BLOCK_MAX = DAY_MIN * 2;   // 翌日の24時まで
+
+  function isTimeKind(v) {
+    for (var i = 0; i < TIME_KINDS.length; i++) if (TIME_KINDS[i].value === v) return true;
+    return false;
+  }
+
+  function normalizeBlock(b) {
+    b = b || {};
+    var start = Math.max(0, Math.min(BLOCK_MAX, Math.round(U.num(b.start, 0))));
+    var end = Math.max(0, Math.min(BLOCK_MAX, Math.round(U.num(b.end, 0))));
+    return {
+      id: b.id || U.uid(),
+      kind: isTimeKind(b.kind) ? b.kind : 'other',
+      start: start,
+      end: end,
+      memo: String(b.memo || '').trim().slice(0, 40)
+    };
+  }
+
+  function normalizeBlocks(list) {
+    return (list || []).map(normalizeBlock)
+      .filter(function (b) { return b.end > b.start; })
+      .sort(function (a, b) { return a.start - b.start; })
+      .slice(0, 40);
+  }
+
+  function normalizeTimeblocks(map) {
+    var out = {};
+    Object.keys(map || {}).forEach(function (d) {
+      if (!U.isISO(d)) return;
+      var list = normalizeBlocks(map[d]);
+      if (list.length) out[d] = list;
+    });
+    return out;
+  }
+
+  /** その日に登録されている帯。始まる日のぶんだけを、そのまま返す */
+  function timeblocks(date) {
+    return ((state.settings.timeblocks || {})[date] || []).slice();
+  }
+
+  /** その日の帯をまるごと入れ替える。空にすると、その日の記録を消す */
+  function setTimeblocks(date, list) {
+    if (!U.isISO(date)) return [];
+    var map = state.settings.timeblocks || (state.settings.timeblocks = {});
+    var next = normalizeBlocks(list);
+    if (next.length) map[date] = next;
+    else delete map[date];
+    save();
+    return next;
+  }
+
+  /**
+   * 帯を1本置く。ぶつかる帯があれば、あとから置いたほうを通して先にあるものを削る。
+   * カレンダーに予定を入れるときと同じ感じで動くようにする。
+   */
+  function putTimeblock(date, data) {
+    var b = normalizeBlock(data);
+    if (b.end <= b.start) return null;
+    var kept = [];
+    timeblocks(date).forEach(function (o) {
+      if (o.id === b.id) return;                 // 直しているもの自身は置き換える
+      if (o.end <= b.start || o.start >= b.end) { kept.push(o); return; }
+      // 前にはみ出しているぶんは残す
+      if (o.start < b.start) kept.push(Object.assign({}, o, { id: o.id, end: b.start }));
+      // 後ろにはみ出しているぶんは、別の帯として残す
+      if (o.end > b.end) kept.push(Object.assign({}, o, { id: U.uid(), start: b.end }));
+    });
+    kept.push(b);
+    setTimeblocks(date, kept);
+    return b;
+  }
+
+  function removeTimeblock(date, id) {
+    setTimeblocks(date, timeblocks(date).filter(function (b) { return b.id !== id; }));
+    return true;
   }
 
   function duty(date) { return (state.settings.duties || {})[date] || ''; }
@@ -1862,6 +2062,7 @@
       // 経費も、こちらに無いものだけ足す
       r.expenses = mergeById(state.settings.expenses, incoming.settings.expenses || []);
       mergeById(state.settings.recurring, incoming.settings.recurring || []);
+      mergeById(state.settings.tags || (state.settings.tags = []), incoming.settings.tags || []);
       // 頒布物と在庫の出入りも、こちらに無いものだけ足す
       r.items = mergeById(state.settings.items || (state.settings.items = []), incoming.settings.items || []);
       r.stock = mergeById(state.settings.stock || (state.settings.stock = []), incoming.settings.stock || []);
@@ -1873,6 +2074,12 @@
         if (!duties[d]) duties[d] = incoming.settings.duties[d];
       });
       state.settings.duties = normalizeDuties(duties);
+      // 時間の振り分けも、こちらで入れていない日だけ足す
+      var tbs = state.settings.timeblocks || (state.settings.timeblocks = {});
+      Object.keys(incoming.settings.timeblocks || {}).forEach(function (d) {
+        if (!tbs[d]) tbs[d] = incoming.settings.timeblocks[d];
+      });
+      state.settings.timeblocks = normalizeTimeblocks(tbs);
       // 1日の記録は、日ごとに新しいほうを採る
       var logs = state.settings.logs || (state.settings.logs = {});
       Object.keys(incoming.settings.logs || {}).forEach(function (d) {
@@ -1980,10 +2187,12 @@
       && !(s.fanbox || []).length
       && !(s.expenses || []).length
       && !(s.recurring || []).length
+      && !(s.tags || []).length
       && !(s.items || []).length
       && !(s.stock || []).length
       && !(s.events || []).length
       && !Object.keys(s.duties || {}).length
+      && !Object.keys(s.timeblocks || {}).length
       && !Object.keys(s.logs || {}).length;
   }
 
@@ -2075,7 +2284,10 @@
     expenses: expenses, getExpense: getExpense, addExpense: addExpense,
     updateExpense: updateExpense, removeExpense: removeExpense,
     expensesWithFile: expensesWithFile, retargetExpenseFiles: retargetExpenseFiles,
+    expenseItems: expenseItems,
     forgetFiles: forgetFiles,
+    tags: tags, getTag: getTag, addTag: addTag, updateTag: updateTag,
+    removeTag: removeTag, reorderTags: reorderTags, tagUseCount: tagUseCount,
     recurring: recurring, getRecurring: getRecurring, addRecurring: addRecurring,
     updateRecurring: updateRecurring, removeRecurring: removeRecurring, postRecurring: postRecurring,
     items: items, getItem: getItem, addItem: addItem, updateItem: updateItem, removeItem: removeItem,
@@ -2084,6 +2296,9 @@
     events: events, getEvent: getEvent, addEvent: addEvent,
     updateEvent: updateEvent, removeEvent: removeEvent,
     duty: duty, setDuty: setDuty, dutyLabel: dutyLabel,
+    TIME_KINDS: TIME_KINDS, DAY_MIN: DAY_MIN, BLOCK_MAX: BLOCK_MAX,
+    timeblocks: timeblocks, setTimeblocks: setTimeblocks,
+    putTimeblock: putTimeblock, removeTimeblock: removeTimeblock,
     getLog: getLog, setLog: setLog, logDates: logDates, MOODS: MOODS,
     ideas: ideas, addIdea: addIdea, updateIdea: updateIdea, removeIdea: removeIdea, allIdeas: allIdeas,
     setHoliday: setHoliday, isStayHoliday: isStayHoliday,

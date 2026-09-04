@@ -115,7 +115,7 @@
       });
       colorWrap.appendChild(b);
     });
-    body.appendChild(ui.field('色', colorWrap));
+    body.appendChild(ui.block('色', colorWrap));
     body.appendChild(autoWrap);
 
     /* --- 数量欄 --- */

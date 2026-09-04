@@ -1406,6 +1406,8 @@ h1, h2, h3, p { margin: 0; }
 
 /* ホームとカレンダーから記録へ */
 .log-link { margin-top: 2px; }
+/* いちばん下に置いたときは、右下の＋にかぶらないよう少し余白を足す */
+.page > .log-link:last-child { margin-bottom: 56px; }
 .log-link.has-note { border-color: var(--line2); }
 
 /* ---------------- ひらめきメモ ---------------- */
@@ -1472,6 +1474,129 @@ h1, h2, h3, p { margin: 0; }
 }
 /* 脇へ寄るときの動き。位置ではなく見た目だけ動かすので、マス目はずれない */
 .fgrid.sorting .ftile { transition: transform .16s ease; }
+
+/* ---------------- レシートの読み取り ---------------- */
+/* 経理の上に置く入口 */
+.scan-row { margin: 2px 0 4px; }
+.scan-row .btn { flex: 1; min-width: 0; }
+
+/* 読み取り中と、確認画面のあたま */
+.rc-wait { align-items: center; text-align: center; }
+.rc-shot {
+  display: flex; align-items: center; justify-content: center;
+  background: var(--card2); border: 1px solid var(--line); border-radius: var(--radius-s);
+  overflow: hidden; flex: none;
+}
+.rc-wait .rc-shot { max-height: 200px; }
+.rc-img { display: block; max-width: 100%; max-height: 200px; object-fit: contain; }
+
+.rc-head { display: flex; gap: 10px; align-items: stretch; }
+.rc-head .rc-shot { width: 96px; height: 128px; }
+.rc-head .rc-img { max-height: 128px; }
+.rc-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 4px; }
+.rc-total b { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+/* 品目。名前と金額を並べて、その場で直せる */
+.rc-items { display: flex; flex-direction: column; gap: 5px; }
+.rc-item { display: flex; align-items: center; gap: 5px; }
+.rc-item-name { flex: 1; min-width: 0; }
+.rc-item-price { width: 92px; flex: none; text-align: right; font-variant-numeric: tabular-nums; }
+.rc-item .iconbtn { flex: none; color: var(--muted); }
+.rc-items .btn { align-self: flex-start; }
+/* 分類を選ぶときは2段にする。名前・金額・外すが上、分類が下いっぱい。
+   選び口は品目に付く「札」なので、枠を控えめにして1段目より軽く見せる */
+.rc-item.with-tag { flex-wrap: wrap; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.rc-item.with-tag .tag-select { flex: 1 0 100%; padding: 6px 10px; background: transparent; }
+.tag-select.empty { color: var(--muted); }
+
+/* 保存した経費に残る品目 */
+.ex-items { display: flex; flex-direction: column; gap: 3px; }
+.ex-item {
+  display: flex; align-items: baseline; gap: 6px; font-size: 13px;
+  padding: 3px 0; border-bottom: 1px solid var(--line);
+}
+.ex-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ex-item b { flex: none; font-variant-numeric: tabular-nums; }
+.ex-items p { padding-top: 4px; }
+.ex-item.with-tag { flex-wrap: wrap; padding-bottom: 6px; }
+.ex-item .tag-select { flex: 1 0 100%; padding: 6px 10px; background: transparent; }
+
+/* 分類（設定） */
+.tag-row { display: flex; align-items: center; gap: 4px; border-bottom: 1px solid var(--line); }
+.tag-row:last-of-type { border-bottom: 0; }
+.tag-row .tpl-summary { border-bottom: 0; flex: 1; min-width: 0; }
+.tag-move { flex: none; display: flex; flex-direction: column; }
+.tag-move .iconbtn { color: var(--muted); }
+.tag-move .iconbtn[disabled] { opacity: .3; }
+.cat-row .scope-dot { margin-right: 5px; }
+
+/* ==================== 1日の時間の振り分け ==================== */
+
+/* 円グラフ（24時間の時計。0時が上で右回り） */
+.tp-pie { display: block; overflow: visible; }
+.tp-rest { fill: none; stroke: var(--card2); }
+.tp-slice { stroke: var(--card); stroke-width: .8; }
+.tp-slice.tap { cursor: pointer; }
+.tp-slice.tap:active { opacity: .75; }
+.tp-tick { font-size: 7px; fill: var(--muted); }
+.tp-mid-v { font-size: 11px; font-weight: 800; fill: var(--text); }
+.tp-mid-l { font-size: 7px; fill: var(--muted); }
+
+/* 長方形（ホーム。0時が左、24時が右） */
+.tp-barwrap { display: flex; flex-direction: column; gap: 4px; }
+.tp-bar {
+  position: relative; height: 26px; border-radius: 6px; overflow: hidden;
+  background: var(--card2); border: 1px solid var(--line);
+}
+.tp-seg { position: absolute; top: 0; bottom: 0; display: block; }
+.tp-now { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--text); opacity: .8; }
+.tp-scale { position: relative; height: 13px; font-size: 10px; color: var(--muted); }
+.tp-scale span { position: absolute; top: 0; white-space: nowrap; transform: translateX(-50%); }
+.tp-scale span:first-child { transform: none; }
+.tp-scale span:last-child { transform: translateX(-100%); }
+
+/* 種類ごとの合計 */
+.tp-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.tp-leg { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); }
+.tp-leg i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.tp-leg b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* ホームの一枚 */
+.tp-home { display: block; text-decoration: none; color: inherit; }
+.tp-home .tp-legend { margin-top: 8px; }
+.tp-empty { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+/* 日別画面の一枚 */
+.tp-card { display: flex; flex-direction: column; gap: 12px; }
+.tp-top { display: flex; align-items: center; gap: 14px; }
+.tp-top .tp-legend { flex: 1; min-width: 0; flex-direction: column; gap: 6px; }
+.tp-rows { display: flex; flex-direction: column; }
+.tp-row {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  padding: 7px 0; border: 0; border-top: 1px solid var(--line);
+  background: none; color: var(--text); font-size: 13px;
+}
+.tp-row.carry { opacity: .6; }
+.tp-dot { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.tp-row-t { flex: none; font-variant-numeric: tabular-nums; color: var(--muted); width: 88px; font-size: 12px; }
+.tp-row-k { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tp-row-d { flex: none; color: var(--muted); font-size: 11px; }
+
+/* 何をしていたかを選ぶところ */
+.tp-kinds { display: flex; flex-wrap: wrap; gap: 6px; }
+.tp-kind {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 11px; border-radius: 999px; font-size: 13px;
+  background: var(--card2); border: 1px solid var(--line2); color: var(--text);
+}
+.tp-kind i { width: 9px; height: 9px; border-radius: 2px; }
+.tp-kind.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+
+@media (max-width: 380px) {
+  .tp-top { flex-direction: column; align-items: stretch; }
+  .tp-top .tp-pie { align-self: center; }
+  .tp-top .tp-legend { flex-direction: row; flex-wrap: wrap; }
+}
 
 /* ---------------- 発注（発注フォームから届いたもの） ---------------- */
 /* 一覧の行。押して開くのでボタンだが、見た目はほかの行と同じにする */
