@@ -140,9 +140,7 @@
     ],
     office: [
       { kind: 'sleep', start: 0, end: 355 },              // 〜5:55 起床
-      // 頂いた表では「06:60〜08:00」だったので、7:00 と読んで入れてある。
-      // 違っていれば、この画面でそのまま直せる
-      { kind: 'commute', start: 420, end: 480 },          // 7:00〜8:00
+      { kind: 'commute', start: 390, end: 480 },          // 6:30〜8:00
       { kind: 'work', start: 480, end: 990 },             // 8:00〜16:30
       { kind: 'commute', start: 990, end: 1065 }          // 16:30〜17:45
     ],
