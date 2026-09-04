@@ -34,10 +34,11 @@
  * 外から届くもの（発注フォーム）
  *   POST   /v1/inbox/order       → 発注を1件足す（order/ の Worker が合鍵で送る）
  *   GET    /v1/inbox/orders      → { orders:[…], count, unread }
- *   PATCH  /v1/inbox/orders/<id> → { status, memo } 照合の結果を控える
+ *   PATCH  /v1/inbox/orders/<id> → { status, memo, projectId } 照合の結果を控える
  *   DELETE /v1/inbox/orders/<id> → 消す
  *   発注ページ自身は合鍵を持たない。ページの受け口（order/worker.js）だけが持ち、
  *   受け取った発注をここへ預ける。アプリは「発注」の画面でこれを読む。
+ *   1件入るたびに、登録してある端末へ通知を送る（届いたことに気付けるように）。
  *
  * レシートの読み取り（OpenAI）
  *   GET    /v1/ocr/status  → { key, r2, model, strongModel, reasoning, maxTokens }（鍵は返さない）
@@ -68,7 +69,7 @@ const INBOX_KEEP_DAYS = 14;
 const MAX_INBOX_ROWS = 400;          // 月ごとの金額。30年ぶんあれば足りる
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const cors = corsHeaders(env, request);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
@@ -176,7 +177,7 @@ export default {
 
       if (url.pathname === '/v1/inbox/order' || url.pathname === '/v1/inbox/orders'
         || url.pathname.startsWith('/v1/inbox/orders/')) {
-        return orders(request, env, cors, url, id);
+        return orders(request, env, cors, url, id, ctx);
       }
 
       if (url.pathname.startsWith('/v1/ocr/')) {
@@ -505,7 +506,7 @@ const MAX_ORDERS = 300;              // これを超えたら古いものから�
 const ORDER_KEEP_DAYS = 180;         // 触っていない発注を置いておく日数
 const ORDER_STATUS = ['new', 'matched', 'unmatched', 'done'];
 
-async function orders(request, env, cors, url, id) {
+async function orders(request, env, cors, url, id, ctx) {
   const key = 'orders:' + id;
 
   /* 発注ページの受け口から1件届いた */
@@ -523,6 +524,12 @@ async function orders(request, env, cors, url, id) {
     }
     box.list.unshift(order);
     await putOrders(env, key, box);
+
+    // 届いたことに気付けるよう、登録してある端末へ知らせる。
+    // 通知が送れなくても、発注を預かったことは変わらない
+    const tell = notifyOrder(env, id, order);
+    if (ctx && ctx.waitUntil) ctx.waitUntil(tell); else await tell.catch(() => {});
+
     return json({ ok: true, id: order.id }, 200, cors);
   }
 
@@ -557,12 +564,38 @@ async function orders(request, env, cors, url, id) {
         hit.statusAt = new Date().toISOString();
       }
       if (body && typeof body.memo === 'string') hit.memo = orderText(body.memo, 500);
+      if (body && typeof body.projectId === 'string') hit.projectId = orderText(body.projectId, 40);
       await putOrders(env, key, box);
       return json({ ok: true, order: hit }, 200, cors);
     }
   }
 
   return json({ error: 'not_found' }, 404, cors);
+}
+
+/**
+ * 発注が届いたことを、登録してある端末へ知らせる。
+ * 予定表（queue）は時刻が来たら送る仕組みなので、そちらには載せずに直接送る。
+ */
+async function notifyOrder(env, id, order) {
+  if (!env.VAPID_PUBLIC || !env.VAPID_PRIVATE) return;      // 通知の鍵が無い
+  const subsKey = 'push:' + id + ':subs';
+  const subs = (await env.SYNC.get(subsKey, 'json')) || [];
+  if (!subs.length) return;                                  // 宛先がまだ無い
+
+  const r = await deliver(env, subs, {
+    id: 'order-' + order.id,
+    title: '新規発注が届きました',
+    // 誰からかが分かると、開く前に見当がつく
+    body: order.company + (order.serviceLabel ? '　' + order.serviceLabel : ''),
+    tag: 'order-' + order.id,        // 発注ごとに分ける（まとめられて消えないように）
+    url: '#/orders'
+  });
+
+  // 期限切れの宛先は落としておく（機種変のあとなど）
+  if (r.gone.length) {
+    await env.SYNC.put(subsKey, JSON.stringify(subs.filter(x => r.gone.indexOf(x.endpoint) < 0)));
+  }
 }
 
 /* 古いものを落としてから置き直す。触っていないものは半年で消える */
@@ -597,7 +630,8 @@ function cleanOrder(o) {
     country: orderText(o.country, 4),
     status: 'new',        // 照合はこれから。アプリ側で変える
     statusAt: '',
-    memo: ''
+    memo: '',
+    projectId: ''        // カレンダーに入れた案件。二度作らないための目印
   };
 }
 

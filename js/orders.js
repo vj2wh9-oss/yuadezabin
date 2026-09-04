@@ -75,14 +75,69 @@
     return box.filter(function (o) { return o.status === 'new'; }).length;
   }
 
-  /** 照合の結果を控える。PC と iPhone のどちらから触っても同じものが残る */
-  function setStatus(id, status, memo) {
+  /**
+   * 照合の結果を控える。PC と iPhone のどちらから触っても同じものが残る。
+   * @param {string} id
+   * @param {string} status
+   * @param {object} [more] 一緒に控えるもの（memo, projectId）
+   */
+  function setStatus(id, status, more) {
     var body = { status: status };
-    if (typeof memo === 'string') body.memo = memo;
+    if (more && typeof more.memo === 'string') body.memo = more.memo;
+    if (more && typeof more.projectId === 'string') body.projectId = more.projectId;
     return api('/v1/inbox/orders/' + encodeURIComponent(id), 'PATCH', body).then(function (r) {
       var cur = get(id);
       if (cur && r && r.order) Object.assign(cur, r.order);
       return cur;
+    });
+  }
+
+  /* ---------------- 案件にする ----------------
+
+     対応済みにしたときに、その発注を「仕事」の案件として起こす。
+     希望納期がそのまま締切になるので、案件のカレンダーとホームの
+     締切一覧に出るようになる。
+
+     同じ発注から二度作らないよう、作った案件の id を発注のほうに控える。 */
+
+  /**
+   * 発注を案件として起こす。すでに作ってあれば何もしない。
+   * @returns {object|null} 作った案件（作らなかったときは null）
+   */
+  function makeProject(o) {
+    if (!o || !DL.util.isISO(o.deadline)) return null;
+    // すでに作ってあり、その案件がまだ残っているなら、二度は作らない
+    if (o.projectId && DL.store.getProject(o.projectId)) return null;
+
+    var S = DL.store;
+    var service = o.serviceLabel || o.service || '制作';
+
+    // 発注社名がぴたりと合う取引先が1つだけなら、それを紐付ける。
+    // 迷うとき（候補が複数・一部一致だけ）は紐付けず、名前だけ残す
+    var same = candidates(o.company).filter(function (h) { return h.how === 'same'; });
+    var clientId = same.length === 1 ? same[0].client.id : '';
+
+    return S.createProject({
+      kind: 'work',
+      category: 'design',
+      title: o.company + 'の' + service,
+      status: 'active',
+      clientId: clientId,
+      client: o.company,
+      deadline: o.deadline,
+      // 今日から着手できるようにする。納期が今日より前なら、その日に寄せる
+      startDate: DL.util.cmp(DL.util.today(), o.deadline) <= 0 ? DL.util.today() : o.deadline,
+      qty: 1,
+      fee: 0,
+      issuerId: S.settings.defaultIssuerId || S.scopeId() || '',
+      memo: [
+        '発注フォームから',
+        '受付番号 ' + o.id,
+        '納品形式 ' + (o.formatLabel || o.format || ''),
+        o.person ? '担当 ' + o.person : '',
+        o.email,
+        o.note ? '\n' + o.note : ''
+      ].filter(function (t) { return t; }).join('\n')
     });
   }
 
@@ -194,7 +249,7 @@
 
   DL.orders = {
     ready: ready, check: check, list: list, get: get, unread: unread,
-    setStatus: setStatus, remove: remove,
+    setStatus: setStatus, remove: remove, makeProject: makeProject,
     statusOf: statusOf, STATUS: STATUS,
     candidates: candidates, norm: norm,
     replyMail: replyMail, mailtoUrl: mailtoUrl

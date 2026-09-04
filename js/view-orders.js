@@ -125,6 +125,19 @@
     kv(body, '納品形式', o.formatLabel || o.format || '—');
     if (o.note) kv(body, 'ご要望', o.note);   // .info-v は改行をそのまま出す
 
+    // 案件にしてあれば、そこへ飛べるようにする
+    var pj = o.projectId ? S.getProject(o.projectId) : null;
+    if (pj) {
+      body.appendChild(el('a', { class: 'info-row', href: '#/project/' + pj.id,
+        onclick: function () { close(); } }, [
+        el('span', { class: 'info-k', text: '案件' }),
+        el('span', { class: 'info-v' }, [
+          ui.iconChip('deadline', pj.title + '（締切 ' + U.fmtMDW(pj.deadline) + '）', 'ok'),
+          el('span', { class: 'chev' }, ui.icon('chevronRight', 14))
+        ])
+      ]));
+    }
+
     /* ---- 取引先との照らし合わせ ---- */
     body.appendChild(ui.section('取引先の照合'));
     body.appendChild(matchCard(o));
@@ -150,6 +163,10 @@
       res.appendChild(ui.btn('対応済みにする', 'ghost full', function () {
         mark(o, 'done', close);
       }, 'check'));
+      if (U.isISO(o.deadline)) {
+        res.appendChild(el('span', { class: 'field-hint',
+          text: '押すと案件を作り、' + U.fmtMDW(o.deadline) + ' を締切にします' }));
+      }
     }
 
     body.appendChild(el('div', { class: 'pad' },
@@ -226,12 +243,24 @@
     }).catch(function (e) { ui.toast('控えられませんでした：' + e.message, 'danger'); });
   }
 
+  /**
+   * 結果を控える。対応済みにしたときは、その発注を案件として起こす。
+   *
+   * 先に案件を作ってから控えるのは、控えるときに案件の id を一緒に渡すため。
+   * 控えられなかったときは、作った案件も戻す（印の無い案件が残ると、
+   * もう一度押したときに二重にできてしまう）。
+   */
   function mark(o, status, close) {
-    DL.orders.setStatus(o.id, status).then(function () {
+    var pj = status === 'done' ? DL.orders.makeProject(o) : null;
+
+    DL.orders.setStatus(o.id, status, pj ? { projectId: pj.id } : null).then(function () {
       close();
-      ui.toast('控えました');
+      ui.toast(pj ? '案件にしました（締切 ' + U.fmtMD(pj.deadline) + '）' : '控えました');
       DL.app.render();
-    }).catch(function (e) { ui.toast('控えられませんでした：' + e.message, 'danger'); });
+    }).catch(function (e) {
+      if (pj) S.removeProject(pj.id);
+      ui.toast('控えられませんでした：' + e.message, 'danger');
+    });
   }
 
   /* ---------------- 小物 ---------------- */
