@@ -9,7 +9,6 @@
   'use strict';
   var U = DL.util, S = DL.store, F = DL.files;
 
-  var FOLDER = '経費レシート';
 
   function conf() { return S.syncSettings ? S.syncSettings() : (S.settings.sync || {}); }
   function base() { return String(conf().url || '').replace(/\/+$/, ''); }
@@ -57,7 +56,7 @@
   /**
    * 写真1枚を読み取る。
    * @param {File|Blob} file 撮ったままの写真
-   * @param {object} [opts] {onStep:fn(step), keep:false で読み取り後に写真を消す,
+   * @param {object} [opts] {onStep:fn(step), book:'work'|'life'（写真の置き場所）,
    *                         projectId, folder, noRetry}
    * @returns {Promise<{data:object, fileId:string, file:File, crop:object, model:string, retried:boolean, usage:object}>}
    */
@@ -70,13 +69,13 @@
     return DL.crop.receipt(file, { max: opts.max })
       .then(function (c) {
         step('upload');
-        var folder = opts.folder === undefined ? FOLDER : opts.folder;
+        var folder = opts.folder === undefined ? DL.expenses.receiptFolder(opts.book) : opts.folder;
         return F.upload(c.file, { folder: folder, projectId: opts.projectId || '' })
           .then(function (up) {
             // アプリ側にも置き場所を覚えさせる。これをしないと
             // ファイル画面でフォルダの外に出てしまう
             if (up && up.id && folder) S.setFileFolder(up.id, S.ensureFolderPath(folder));
-            return { crop: c, up: up };
+            return { crop: c, up: up, folder: folder };
           });
       })
       .then(function (o) {
@@ -88,6 +87,7 @@
             fileId: o.up.id,
             file: o.crop.file,
             crop: o.crop,
+            folder: o.folder,
             model: r.model,
             retried: !!r.retried,
             retryReason: r.retryReason || '',
@@ -191,6 +191,6 @@
 
   DL.receipt = {
     read: read, status: status, ready: ready, ask: ask,
-    normalize: normalize, fixDate: fixDate, FOLDER: FOLDER
+    normalize: normalize, fixDate: fixDate
   };
 })(window.DL);

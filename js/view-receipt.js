@@ -53,6 +53,8 @@
     shot.appendChild(el('img', { class: 'rc-img', src: url, alt: '' }));
 
     R.read(file, {
+      // 写真の置き場所は帳簿ごとに分かれている。撮った時点の帳簿へ置く
+      book: opts.book,
       onStep: function (s) {
         note.textContent = STEP[s] || '';
         var bar = body.querySelector('.progress i');
@@ -84,7 +86,10 @@
     opts = opts || {};
     var d = r.data;
     var bk = opts.book === 'life' ? 'life' : 'work';
-    var items = d.items.slice();
+    // 分類は品目ごとに付ける。読み取った時点では空
+    var items = d.items.map(function (i) {
+      return { name: i.name, price: i.price, qty: i.qty, tagId: '' };
+    });
 
     var storeIn = ui.input({ value: d.store || '', maxlength: 60, placeholder: '店舗名' });
     var dateIn = ui.input({ type: 'date', value: d.date || U.today() });
@@ -116,8 +121,10 @@
       if (!items.length) {
         itemBox.appendChild(el('p', { class: 'muted small', text: '品目は読み取れませんでした。' }));
       }
+      var hasTags = S.tags().length > 0;
       items.forEach(function (it, i) {
-        itemBox.appendChild(el('div', { class: 'rc-item' }, [
+        var tagSel = hasTags ? ui.tagSelect(it.tagId, function (e) { it.tagId = e.target.value; }) : null;
+        itemBox.appendChild(el('div', { class: 'rc-item' + (hasTags ? ' with-tag' : '') }, [
           el('input', {
             class: 'rc-item-name', value: it.name, maxlength: 80,
             oninput: function (e) { it.name = e.target.value; }
@@ -130,13 +137,21 @@
           el('button', {
             class: 'iconbtn small', 'aria-label': it.name + ' を外す',
             onclick: function () { items.splice(i, 1); drawItems(); drawSum(); }
-          }, ui.icon('close', 16))
+          }, ui.icon('close', 16)),
+          tagSel
         ]));
       });
       itemBox.appendChild(ui.btn('品目を足す', 'ghost tiny', function () {
-        items.push({ name: '', price: null, qty: null });
+        items.push({ name: '', price: null, qty: null, tagId: '' });
         drawItems();
       }, 'plus'));
+      if (!hasTags) {
+        itemBox.appendChild(el('p', { class: 'muted small' }, [
+          el('span', { text: '品目ごとの分類は、' }),
+          el('a', { class: 'link', href: '#/settings', text: '設定' }),
+          el('span', { text: 'から追加すると、ここで選べるようになります。' })
+        ]));
+      }
       drawSum();
     }
 
@@ -206,6 +221,7 @@
         ui.btn('経費に入れる', 'primary', function () {
           var total = U.num(totalIn.value, 0);
           if (!total) { ui.toast('合計金額を入れてください', 'danger'); totalIn.focus(); return; }
+          moveShot(r, bk);
           var x = S.addExpense({
             book: bk,
             date: dateIn.value || U.today(),
@@ -216,6 +232,9 @@
             issuerId: S.scopeId() || S.settings.defaultIssuerId || '',
             fileId: r.fileId,
             items: items.filter(function (i) { return i.name.trim(); })
+              .map(function (i) {
+                return { name: i.name.trim(), price: i.price, qty: i.qty, tagId: i.tagId || '' };
+              })
           });
           close();
           ui.toast('経費に入れました（' + D.yen(total) + '）');
@@ -225,6 +244,18 @@
       ],
       onClose: function () { /* ボタン以外で閉じたときは、写真も記録も触らない */ }
     });
+  }
+
+  /**
+   * 写真は撮った時点の帳簿のフォルダに置いてある。
+   * この画面で帳簿を切り替えたときは、写真も合う方へ移す。
+   */
+  function moveShot(r, book) {
+    if (!r.fileId) return;
+    var want = E.receiptFolder(book);
+    if (want === r.folder) return;
+    S.setFileFolder(r.fileId, S.ensureFolderPath(want));
+    r.folder = want;
   }
 
   /* 入れずにやめたときは、置いたばかりの写真を消す */

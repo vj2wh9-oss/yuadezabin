@@ -21,6 +21,10 @@
            '保険', '税金・社会保険', 'その他']
   };
 
+  // レシートの写真を置くフォルダ。帳簿ごとに分ける
+  var RECEIPT_FOLDER = { work: '経費レシート', life: '日常レシート' };
+  function receiptFolder(book) { return RECEIPT_FOLDER[book] || RECEIPT_FOLDER.work; }
+
   function categories(book) { return CATEGORIES[book] || CATEGORIES.work; }
   function bookLabel(book) { return book === 'life' ? '日常' : '事業'; }
 
@@ -37,6 +41,33 @@
     return Object.keys(map).map(function (k) {
       return { category: k, amount: map[k] };
     }).sort(function (a, b) { return b.amount - a.amount; });
+  }
+
+  /**
+   * 分類ごとの合計。分類は品目ひとつずつに付くので、集計も品目の金額で行う。
+   * 分類の付いていない品目は「未分類」にまとめ、品目そのものが無い記録は数えない。
+   * @returns {Array<{tagId,name,color,amount,count}>} 多い順
+   */
+  function byTag(rows) {
+    var map = {};
+    (rows || []).forEach(function (x) {
+      (x.items || []).forEach(function (i) {
+        var id = i.tagId || '';
+        var m = map[id] || (map[id] = { tagId: id, amount: 0, count: 0 });
+        m.amount += U.num(i.price, 0);
+        m.count++;
+      });
+    });
+    return Object.keys(map).map(function (id) {
+      var t = id ? DL.store.getTag(id) : null;
+      map[id].name = t ? t.name : (id ? '(消された分類)' : '未分類');
+      map[id].color = t ? t.color : '';
+      return map[id];
+    }).sort(function (a, b) {
+      // 「未分類」は下に置く。金額が同じなら名前順
+      if (!a.tagId !== !b.tagId) return a.tagId ? -1 : 1;
+      return (b.amount - a.amount) || U.cmp(a.name, b.name);
+    });
   }
 
   /** 月ごとの合計。1〜12月ぶんを必ず返す */
@@ -98,7 +129,7 @@
     return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
   }
 
-  var CSV_HEADER = ['日付', '帳簿', '科目', '金額', '支払先', 'メモ', '案件', '名義', 'レシート', '固定費'];
+  var CSV_HEADER = ['日付', '帳簿', '科目', '金額', '支払先', 'メモ', '案件', '名義', 'レシート', '固定費', '分類'];
 
   /**
    * 経費をCSVにする。
@@ -106,6 +137,19 @@
    * @param {Array} rows 経費
    * @param {object} ctx {project(id)->名前, issuer(id)->名前}
    */
+  /* その記録に入っている品目の分類を「画材×2・資料×1」の形にまとめる */
+  function tagSummary(x) {
+    var order = [], n = {};
+    (x.items || []).forEach(function (i) {
+      if (!i.tagId) return;
+      var t = DL.store.getTag(i.tagId);
+      var name = t ? t.name : '(消された分類)';
+      if (!n[name]) { n[name] = 0; order.push(name); }
+      n[name]++;
+    });
+    return order.map(function (k) { return n[k] > 1 ? k + '×' + n[k] : k; }).join('・');
+  }
+
   function toCSV(rows, ctx) {
     ctx = ctx || {};
     var lines = [CSV_HEADER.map(cell).join(',')];
@@ -115,7 +159,8 @@
         x.projectId && ctx.project ? (ctx.project(x.projectId) || '') : '',
         x.issuerId && ctx.issuer ? (ctx.issuer(x.issuerId) || '') : '',
         x.fileId ? 'あり' : '',
-        x.recurringId ? '固定費' : ''
+        x.recurringId ? '固定費' : '',
+        tagSummary(x)
       ].map(cell).join(','));
     });
     return '﻿' + lines.join('\r\n') + '\r\n';
@@ -147,8 +192,9 @@
   }
 
   DL.expenses = {
+    RECEIPT_FOLDER: RECEIPT_FOLDER, receiptFolder: receiptFolder,
     BOOKS: BOOKS, categories: categories, bookLabel: bookLabel,
-    total: total, byCategory: byCategory, byMonth: byMonth, shrink: shrink,
+    total: total, byCategory: byCategory, byTag: byTag, byMonth: byMonth, shrink: shrink,
     toCSV: toCSV, dueRecurring: dueRecurring
   };
 })(window.DL);

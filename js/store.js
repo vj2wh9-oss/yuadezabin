@@ -99,6 +99,8 @@
     expenses: [],          // 経費 [{id,book,date,amount,category,vendor,memo,projectId,issuerId,fileId}]
     lifeBudget: 0,         // 日常（家計簿）の1ヶ月の予算。0で無効
     recurring: [],         // 固定費 [{id,book,name,amount,category,day,startYm,lastYm,active}]
+    // 自分で決める分類。科目とは別に、種別ごとに見返すための札
+    tags: [],              // [{id,name,color,order}]
     // 頒布物（本・グッズ）と、その出入り
     items: [],             // [{id,title,kind,price,unitCost,releaseDate,projectId,memo,archived}]
     stock: [],             // [{id,itemId,date,kind,qty,price,place,projectId,memo}]
@@ -235,6 +237,7 @@
     s.settings.fanbox = normalizeFanbox(s.settings.fanbox);
     s.settings.expenses = (s.settings.expenses || []).map(normalizeExpense);
     s.settings.recurring = (s.settings.recurring || []).map(normalizeRecurring);
+    s.settings.tags = (s.settings.tags || []).map(normalizeTag);
     s.settings.items = (s.settings.items || []).map(normalizeItem);
     s.settings.stock = (s.settings.stock || []).map(normalizeMove);
     s.settings.events = (s.settings.events || []).map(normalizeEvent);
@@ -836,9 +839,93 @@
       return {
         name: String((i && i.name) || '').trim().slice(0, 80),
         price: i && i.price !== null && i.price !== undefined ? Math.round(U.num(i.price, 0)) : null,
-        qty: i && i.qty !== null && i.qty !== undefined && i.qty !== '' ? U.num(i.qty, 0) : null
+        qty: i && i.qty !== null && i.qty !== undefined && i.qty !== '' ? U.num(i.qty, 0) : null,
+        tagId: String((i && i.tagId) || '')   // 品目ごとの分類
       };
     }).filter(function (i) { return !!i.name; }).slice(0, 100);
+  }
+
+  /* 品目を全部ならして返す。分類ごとの集計に使う。
+     @returns {Array<{item, expense}>} */
+  function expenseItems(filter) {
+    var out = [];
+    (state.settings.expenses || []).forEach(function (x) {
+      if (filter && !filter(x)) return;
+      (x.items || []).forEach(function (i) { out.push({ item: i, expense: x }); });
+    });
+    return out;
+  }
+
+  /* ---------------- 分類（買ったものに付ける札） ----------------
+
+     科目は「そのレシート全体」に付くが、こちらは品目ひとつずつに付ける。
+     「画材」「本」「食べもの」のように、あとで種別ごとに見返すために使う。 */
+
+  function normalizeTag(t) {
+    t = t || {};
+    t.id = t.id || U.uid();
+    t.name = String(t.name || '').trim().slice(0, 24) || '(名称未設定)';
+    t.color = HEX.test(String(t.color)) ? t.color : PALETTE[0];
+    t.order = U.num(t.order, 0);
+    t.createdAt = t.createdAt || new Date().toISOString();
+    return t;
+  }
+
+  /* 並べた順に返す。同じ順のものは作った順 */
+  function tags() {
+    return (state.settings.tags || []).slice().sort(function (a, b) {
+      return (U.num(a.order, 0) - U.num(b.order, 0)) || U.cmp(a.createdAt || '', b.createdAt || '');
+    });
+  }
+
+  function getTag(id) {
+    return (state.settings.tags || []).filter(function (t) { return t.id === id; })[0] || null;
+  }
+
+  function addTag(data) {
+    var list = state.settings.tags || (state.settings.tags = []);
+    var t = normalizeTag(Object.assign({
+      order: list.length,
+      color: PALETTE[list.length % PALETTE.length]
+    }, data));
+    list.push(t);
+    save();
+    return t;
+  }
+
+  function updateTag(id, patch) {
+    var t = getTag(id);
+    if (!t) return null;
+    Object.assign(t, patch);
+    normalizeTag(t);
+    save();
+    return t;
+  }
+
+  /* 分類を消す。使っている品目からは、札だけ外す（品目や経費は消さない） */
+  function removeTag(id) {
+    state.settings.tags = (state.settings.tags || []).filter(function (t) { return t.id !== id; });
+    (state.settings.expenses || []).forEach(function (x) {
+      (x.items || []).forEach(function (i) { if (i.tagId === id) i.tagId = ''; });
+    });
+    save();
+    return true;
+  }
+
+  /* 並べ替え。渡された順に 0,1,2… を振り直す */
+  function reorderTags(ids) {
+    var by = {};
+    (state.settings.tags || []).forEach(function (t) { by[t.id] = t; });
+    var n = 0;
+    (ids || []).forEach(function (id) { if (by[id]) { by[id].order = n++; delete by[id]; } });
+    tags().forEach(function (t) { if (by[t.id]) t.order = n++; });
+    save();
+    return tags();
+  }
+
+  /* その分類が付いている品目の数（消すときに知らせるため） */
+  function tagUseCount(id) {
+    return expenseItems().filter(function (p) { return p.item.tagId === id; }).length;
   }
 
   /* ---------------- 固定費（毎月きまって出るもの） ---------------- */
@@ -1874,6 +1961,7 @@
       // 経費も、こちらに無いものだけ足す
       r.expenses = mergeById(state.settings.expenses, incoming.settings.expenses || []);
       mergeById(state.settings.recurring, incoming.settings.recurring || []);
+      mergeById(state.settings.tags || (state.settings.tags = []), incoming.settings.tags || []);
       // 頒布物と在庫の出入りも、こちらに無いものだけ足す
       r.items = mergeById(state.settings.items || (state.settings.items = []), incoming.settings.items || []);
       r.stock = mergeById(state.settings.stock || (state.settings.stock = []), incoming.settings.stock || []);
@@ -1992,6 +2080,7 @@
       && !(s.fanbox || []).length
       && !(s.expenses || []).length
       && !(s.recurring || []).length
+      && !(s.tags || []).length
       && !(s.items || []).length
       && !(s.stock || []).length
       && !(s.events || []).length
@@ -2087,7 +2176,10 @@
     expenses: expenses, getExpense: getExpense, addExpense: addExpense,
     updateExpense: updateExpense, removeExpense: removeExpense,
     expensesWithFile: expensesWithFile, retargetExpenseFiles: retargetExpenseFiles,
+    expenseItems: expenseItems,
     forgetFiles: forgetFiles,
+    tags: tags, getTag: getTag, addTag: addTag, updateTag: updateTag,
+    removeTag: removeTag, reorderTags: reorderTags, tagUseCount: tagUseCount,
     recurring: recurring, getRecurring: getRecurring, addRecurring: addRecurring,
     updateRecurring: updateRecurring, removeRecurring: removeRecurring, postRecurring: postRecurring,
     items: items, getItem: getItem, addItem: addItem, updateItem: updateItem, removeItem: removeItem,

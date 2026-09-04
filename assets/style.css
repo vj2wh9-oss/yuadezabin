@@ -1501,6 +1501,11 @@ h1, h2, h3, p { margin: 0; }
 .rc-item-price { width: 92px; flex: none; text-align: right; font-variant-numeric: tabular-nums; }
 .rc-item .iconbtn { flex: none; color: var(--muted); }
 .rc-items .btn { align-self: flex-start; }
+/* 分類を選ぶときは2段にする。名前・金額・外すが上、分類が下いっぱい。
+   選び口は品目に付く「札」なので、枠を控えめにして1段目より軽く見せる */
+.rc-item.with-tag { flex-wrap: wrap; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.rc-item.with-tag .tag-select { flex: 1 0 100%; padding: 6px 10px; background: transparent; }
+.tag-select.empty { color: var(--muted); }
 
 /* 保存した経費に残る品目 */
 .ex-items { display: flex; flex-direction: column; gap: 3px; }
@@ -1511,3 +1516,14 @@ h1, h2, h3, p { margin: 0; }
 .ex-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ex-item b { flex: none; font-variant-numeric: tabular-nums; }
 .ex-items p { padding-top: 4px; }
+.ex-item.with-tag { flex-wrap: wrap; padding-bottom: 6px; }
+.ex-item .tag-select { flex: 1 0 100%; padding: 6px 10px; background: transparent; }
+
+/* 分類（設定） */
+.tag-row { display: flex; align-items: center; gap: 4px; border-bottom: 1px solid var(--line); }
+.tag-row:last-of-type { border-bottom: 0; }
+.tag-row .tpl-summary { border-bottom: 0; flex: 1; min-width: 0; }
+.tag-move { flex: none; display: flex; flex-direction: column; }
+.tag-move .iconbtn { color: var(--muted); }
+.tag-move .iconbtn[disabled] { opacity: .3; }
+.cat-row .scope-dot { margin-right: 5px; }

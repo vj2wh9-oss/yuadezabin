@@ -93,6 +93,11 @@
     clientBox.appendChild(ui.btn('取引先を追加', 'ghost full', function () { DL.forms.clientSheet(null); }, 'plus'));
     wrap.appendChild(clientBox);
 
+    /* ---- 分類（買ったものに付ける札） ---- */
+    wrap.appendChild(ui.section('買ったものの分類',
+      el('a', { class: 'link', href: '#/books', text: '経理' })));
+    wrap.appendChild(tagCard());
+
     /* ---- 自動バックアップ ---- */
     wrap.appendChild(ui.section('自動バックアップ'));
     var autoChk = el('input', { type: 'checkbox', class: 'check', checked: !!s.autoBackup });
@@ -220,6 +225,111 @@
 
   /* FANBOX のページから送るための、ブックマークレットの作り方 */
   /* ---------------- 天気の地点 ---------------- */
+
+  /* ---------------- 分類 ----------------
+
+     科目（印刷費・食費…）は帳簿ごとに決まっているが、
+     こちらは自分で足せて、レシートの品目ひとつずつに付ける。
+     「画材」「資料の本」「差し入れ」のように、あとで種別ごとに見返すためのもの。 */
+
+  function tagCard() {
+    var box = el('div', { class: 'card tag-list' });
+    var list = S.tags();
+    if (!list.length) {
+      box.appendChild(el('p', { class: 'muted small',
+        text: 'レシートの品目ひとつずつに付ける札です。まだありません。' }));
+    }
+    list.forEach(function (t, i) {
+      var n = S.tagUseCount(t.id);
+      box.appendChild(el('div', { class: 'tag-row' }, [
+        el('button', { class: 'tpl-summary', onclick: function () { tagSheet(t); } }, [
+          el('div', {}, [
+            el('strong', {}, [
+              el('span', { class: 'scope-dot big', style: { background: t.color } }),
+              el('span', { text: t.name })
+            ]),
+            el('div', { class: 'muted small', text: n ? n + '品目に付いています' : 'まだ使っていません' })
+          ]),
+          el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+        ]),
+        el('div', { class: 'tag-move' }, [
+          el('button', {
+            class: 'iconbtn small', 'aria-label': t.name + ' を上へ', disabled: i === 0,
+            onclick: function () { moveTag(i, -1); }
+          }, ui.icon('arrowUp', 16)),
+          el('button', {
+            class: 'iconbtn small', 'aria-label': t.name + ' を下へ', disabled: i === list.length - 1,
+            onclick: function () { moveTag(i, 1); }
+          }, ui.icon('arrowDown', 16))
+        ])
+      ]));
+    });
+    box.appendChild(ui.btn('分類を追加', 'ghost full', function () { tagSheet(null); }, 'plus'));
+    return box;
+  }
+
+  function moveTag(i, d) {
+    var ids = S.tags().map(function (t) { return t.id; });
+    var j = i + d;
+    if (j < 0 || j >= ids.length) return;
+    var m = ids.splice(i, 1)[0];
+    ids.splice(j, 0, m);
+    S.reorderTags(ids);
+  }
+
+  function tagSheet(t) {
+    var isNew = !t;
+    var nameIn = ui.input({ value: t ? t.name : '', maxlength: 24, placeholder: '例）画材 / 資料 / 差し入れ' });
+    var color = t ? t.color : S.PALETTE[S.tags().length % S.PALETTE.length];
+
+    var colorWrap = el('div', { class: 'colors' });
+    S.PALETTE.forEach(function (c) {
+      var b = el('button', {
+        type: 'button', class: 'color' + (c === color ? ' on' : ''), style: { background: c },
+        'aria-label': '色', onclick: function () {
+          color = c;
+          U.$$('.color', colorWrap).forEach(function (x) { x.classList.remove('on'); });
+          b.classList.add('on');
+        }
+      });
+      colorWrap.appendChild(b);
+    });
+
+    var close = ui.sheet({
+      title: isNew ? '分類を追加' : '分類を編集',
+      body: el('div', { class: 'form' }, [
+        ui.field('名前', nameIn, 'レシートの品目ひとつずつに付けられます'),
+        ui.field('色', colorWrap),
+        !isNew ? ui.btn('この分類を削除', 'danger full mt', function () { removeThis(); }, 'trash') : null
+      ]),
+      actions: [
+        ui.btn('キャンセル', 'ghost', function () { close(); }),
+        ui.btn('保存', 'primary', function () {
+          var name = nameIn.value.trim();
+          if (!name) { ui.toast('名前を入れてください', 'warn'); nameIn.focus(); return; }
+          if (isNew) S.addTag({ name: name, color: color });
+          else S.updateTag(t.id, { name: name, color: color });
+          close();
+          ui.toast(isNew ? '追加しました' : '保存しました');
+        })
+      ]
+    });
+
+    /* 消しても、その分類が付いていた品目は残る。札だけ外れる */
+    function removeThis() {
+      var n = S.tagUseCount(t.id);
+      ui.confirm(
+        n ? '「' + t.name + '」を削除します。付いている ' + n + ' 件の品目からは札が外れます（品目そのものは残ります）。'
+          : '「' + t.name + '」を削除します。',
+        { danger: true, okText: '削除' }
+      ).then(function (ok) {
+        if (!ok) return;
+        S.removeTag(t.id);
+        close();
+        ui.toast('削除しました');
+      });
+    }
+  }
 
   function weatherCard() {
     var W = DL.weather;
