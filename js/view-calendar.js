@@ -326,9 +326,11 @@
 
     wrap.appendChild(logLink(date));
 
-    // 日常を見ているときは、案件の締切・ノルマ・休業日は出さない
+    // 日常を見ているときは、案件の締切・ノルマ・休業日は出さない。
+    // 1日の時間の振り分けは案件と日常で分けないので、どちらにも同じものを出す
     if (life) {
       DL.views.events.dayView(wrap, date);
+      DL.views.time.dayCard(wrap, date);
       root.appendChild(wrap);
       return;
     }
@@ -375,6 +377,9 @@
     wrap.appendChild(el('div', { class: 'pad' },
       ui.btn('この日の実績を追加', 'ghost full', function () { pickTaskSheet(date); }, 'plus')
     ));
+
+    /* 1日の時間の振り分け（日常側と同じもの） */
+    DL.views.time.dayCard(wrap, date);
 
     /* 休業日設定 */
     wrap.appendChild(el('div', { class: 'pad' }, [

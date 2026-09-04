@@ -28,6 +28,7 @@
     if (name === 'onsite') params.id = parts[1];
     if (name === 'day') params.date = parts[1];
     if (name === 'log') params.date = parts[1];
+    if (name === 'time') params.date = parts[1];
     if (name === 'calendar' && parts[1]) params.month = parts[1] + '-01';
     return { name: name, params: params };
   }
@@ -47,11 +48,11 @@
       settings: '設定', day: '日別', project: '案件の詳細',
       docs: '書類', doc: '書類', sales: '売上', files: 'ファイル', books: '経理',
       search: '検索', stock: '頒布と在庫', onsite: '当日モード',
-      log: '1日の記録', logs: '記録', ideas: 'ひらめきメモ'
+      log: '1日の記録', logs: '記録', ideas: 'ひらめきメモ', time: '1日の時間'
     };
     setTitle(titles[route.name] || 'METEO365');
 
-    var tab = { home: 'home', calendar: 'calendar', day: 'calendar', log: 'calendar', logs: 'calendar', projects: 'projects', project: 'projects', docs: 'projects', doc: 'projects', sales: 'sales', stock: 'sales', onsite: 'sales', books: 'books', files: 'files' }[route.name];
+    var tab = { home: 'home', calendar: 'calendar', day: 'calendar', log: 'calendar', logs: 'calendar', time: 'calendar', projects: 'projects', project: 'projects', docs: 'projects', doc: 'projects', sales: 'sales', stock: 'sales', onsite: 'sales', books: 'books', files: 'files' }[route.name];
     U.$$('.tab').forEach(function (t) { t.classList.toggle('on', t.dataset.tab === tab); });
     // 設定は下のタブから外し、題名の右の歯車から開く。
     // 歯車を出すのはホームだけにして、ほかのタブでは邪魔をしない
@@ -74,7 +75,7 @@
     if (onCal) drawModeBtn(life);
 
     // 売上は下のタブから直接開くので、戻るボタンは要らない
-    var showBack = ['project', 'day', 'docs', 'doc', 'search', 'stock', 'onsite', 'log', 'logs', 'ideas'].indexOf(route.name) >= 0;
+    var showBack = ['project', 'day', 'docs', 'doc', 'search', 'stock', 'onsite', 'log', 'logs', 'ideas', 'time'].indexOf(route.name) >= 0;
     backBtn.hidden = !showBack;
 
     // 画面が切り替わった瞬間を、同期のきっかけにする
@@ -117,6 +118,7 @@
       case 'stock': DL.views.stock.render(view); break;
       case 'onsite': DL.views.onsite.render(view, route.params); break;
       case 'log': DL.views.daylog.render(view, route.params); break;
+      case 'time': DL.views.time.render(view, route.params); break;
       case 'logs': DL.views.daylog.renderList(view); break;
       case 'ideas': DL.views.daylog.renderIdeas(view); break;
       case 'search': DL.views.search.render(view); break;
@@ -283,7 +285,7 @@
 
   function updateFab() {
     // カレンダーは画面いっぱいに出すので、重なるボタンは置かない
-    if (['settings', 'calendar', 'docs', 'doc', 'sales', 'search', 'onsite', 'log', 'logs', 'ideas'].indexOf(route.name) >= 0) { fab.hidden = true; return; }
+    if (['settings', 'calendar', 'docs', 'doc', 'sales', 'search', 'onsite', 'log', 'logs', 'ideas', 'time'].indexOf(route.name) >= 0) { fab.hidden = true; return; }
     fab.hidden = false;
     fab.onclick = function () {
       // 日常のカレンダーの日別画面では、ここが予定の追加口になる

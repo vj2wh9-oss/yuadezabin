@@ -71,6 +71,18 @@
     { value: 'stay', label: '泊まり勤務' }
   ];
 
+  /* 1日の時間の振り分けで使う種類。案件と日常は分けず、同じものを使う */
+  var TIME_KINDS = [
+    { value: 'sleep', label: '睡眠', color: '#5b6b8c' },
+    { value: 'work', label: '仕事', color: '#2563eb' },
+    { value: 'commute', label: '通勤', color: '#0ea5e9' },
+    { value: 'draw', label: '作業・制作', color: '#8b2fe8' },
+    { value: 'meal', label: '食事', color: '#f2b200' },
+    { value: 'chore', label: '家事', color: '#00a651' },
+    { value: 'free', label: '自由時間', color: '#ff6a00' },
+    { value: 'other', label: 'その他', color: '#94a3b8' }
+  ];
+
   var DEFAULT_SETTINGS = {
     holidays: [],          // 休業日 'YYYY-MM-DD'（カレンダーの日別画面から指定する）
     // そのうち「泊まり勤務」で自動的に付いたぶん。勤務を外したらこれだけ戻す
@@ -107,6 +119,9 @@
     // 日常の予定。案件のカレンダーとは混ぜず、上部の切替ボタンで見る側を選ぶ
     events: [],            // [{id,date,days,title,start,end,memo,color,important,repeat,until}]
     duties: {},            // その日の働き方 { 'YYYY-MM-DD': 'office'|'remote'|'stay' }
+    // 1日の時間の振り分け { 'YYYY-MM-DD': [{id,kind,start,end,memo}] }。
+    // start/end は 0時からの分。夜勤で日をまたぐぶんは 1440 を超える値で持つ
+    timeblocks: {},
     // ホームの「今日やること」から外した予定 { '<予定ID>|YYYY-MM-DD': true }。
     // カレンダーからは消さないので、いつでも戻せる
     eventDone: {},
@@ -242,6 +257,7 @@
     s.settings.stock = (s.settings.stock || []).map(normalizeMove);
     s.settings.events = (s.settings.events || []).map(normalizeEvent);
     s.settings.duties = normalizeDuties(s.settings.duties);
+    s.settings.timeblocks = normalizeTimeblocks(s.settings.timeblocks);
     s.settings.holidays = (s.settings.holidays || []).filter(U.isISO);
     // 手で休みを外した日は、自動で付けた記録のほうも落とす（また付け直さないため）
     s.settings.stayHolidays = (s.settings.stayHolidays || []).filter(function (d) {
@@ -1336,6 +1352,91 @@
     return out;
   }
 
+  /* ---------------- 1日の時間の振り分け ----------------
+
+     0時からの分で持つ。夜勤のように日をまたぐものは 1440 を超える値になる
+     （32:30 なら 1950）。日ごとの配列で、始まる日のほうに置く。 */
+
+  var DAY_MIN = 1440;
+  var BLOCK_MAX = DAY_MIN * 2;   // 翌日の24時まで
+
+  function isTimeKind(v) {
+    for (var i = 0; i < TIME_KINDS.length; i++) if (TIME_KINDS[i].value === v) return true;
+    return false;
+  }
+
+  function normalizeBlock(b) {
+    b = b || {};
+    var start = Math.max(0, Math.min(BLOCK_MAX, Math.round(U.num(b.start, 0))));
+    var end = Math.max(0, Math.min(BLOCK_MAX, Math.round(U.num(b.end, 0))));
+    return {
+      id: b.id || U.uid(),
+      kind: isTimeKind(b.kind) ? b.kind : 'other',
+      start: start,
+      end: end,
+      memo: String(b.memo || '').trim().slice(0, 40)
+    };
+  }
+
+  function normalizeBlocks(list) {
+    return (list || []).map(normalizeBlock)
+      .filter(function (b) { return b.end > b.start; })
+      .sort(function (a, b) { return a.start - b.start; })
+      .slice(0, 40);
+  }
+
+  function normalizeTimeblocks(map) {
+    var out = {};
+    Object.keys(map || {}).forEach(function (d) {
+      if (!U.isISO(d)) return;
+      var list = normalizeBlocks(map[d]);
+      if (list.length) out[d] = list;
+    });
+    return out;
+  }
+
+  /** その日に登録されている帯。始まる日のぶんだけを、そのまま返す */
+  function timeblocks(date) {
+    return ((state.settings.timeblocks || {})[date] || []).slice();
+  }
+
+  /** その日の帯をまるごと入れ替える。空にすると、その日の記録を消す */
+  function setTimeblocks(date, list) {
+    if (!U.isISO(date)) return [];
+    var map = state.settings.timeblocks || (state.settings.timeblocks = {});
+    var next = normalizeBlocks(list);
+    if (next.length) map[date] = next;
+    else delete map[date];
+    save();
+    return next;
+  }
+
+  /**
+   * 帯を1本置く。ぶつかる帯があれば、あとから置いたほうを通して先にあるものを削る。
+   * カレンダーに予定を入れるときと同じ感じで動くようにする。
+   */
+  function putTimeblock(date, data) {
+    var b = normalizeBlock(data);
+    if (b.end <= b.start) return null;
+    var kept = [];
+    timeblocks(date).forEach(function (o) {
+      if (o.id === b.id) return;                 // 直しているもの自身は置き換える
+      if (o.end <= b.start || o.start >= b.end) { kept.push(o); return; }
+      // 前にはみ出しているぶんは残す
+      if (o.start < b.start) kept.push(Object.assign({}, o, { id: o.id, end: b.start }));
+      // 後ろにはみ出しているぶんは、別の帯として残す
+      if (o.end > b.end) kept.push(Object.assign({}, o, { id: U.uid(), start: b.end }));
+    });
+    kept.push(b);
+    setTimeblocks(date, kept);
+    return b;
+  }
+
+  function removeTimeblock(date, id) {
+    setTimeblocks(date, timeblocks(date).filter(function (b) { return b.id !== id; }));
+    return true;
+  }
+
   function duty(date) { return (state.settings.duties || {})[date] || ''; }
 
   function dutyLabel(v) {
@@ -1973,6 +2074,12 @@
         if (!duties[d]) duties[d] = incoming.settings.duties[d];
       });
       state.settings.duties = normalizeDuties(duties);
+      // 時間の振り分けも、こちらで入れていない日だけ足す
+      var tbs = state.settings.timeblocks || (state.settings.timeblocks = {});
+      Object.keys(incoming.settings.timeblocks || {}).forEach(function (d) {
+        if (!tbs[d]) tbs[d] = incoming.settings.timeblocks[d];
+      });
+      state.settings.timeblocks = normalizeTimeblocks(tbs);
       // 1日の記録は、日ごとに新しいほうを採る
       var logs = state.settings.logs || (state.settings.logs = {});
       Object.keys(incoming.settings.logs || {}).forEach(function (d) {
@@ -2085,6 +2192,7 @@
       && !(s.stock || []).length
       && !(s.events || []).length
       && !Object.keys(s.duties || {}).length
+      && !Object.keys(s.timeblocks || {}).length
       && !Object.keys(s.logs || {}).length;
   }
 
@@ -2188,6 +2296,9 @@
     events: events, getEvent: getEvent, addEvent: addEvent,
     updateEvent: updateEvent, removeEvent: removeEvent,
     duty: duty, setDuty: setDuty, dutyLabel: dutyLabel,
+    TIME_KINDS: TIME_KINDS, DAY_MIN: DAY_MIN, BLOCK_MAX: BLOCK_MAX,
+    timeblocks: timeblocks, setTimeblocks: setTimeblocks,
+    putTimeblock: putTimeblock, removeTimeblock: removeTimeblock,
     getLog: getLog, setLog: setLog, logDates: logDates, MOODS: MOODS,
     ideas: ideas, addIdea: addIdea, updateIdea: updateIdea, removeIdea: removeIdea, allIdeas: allIdeas,
     setHoliday: setHoliday, isStayHoliday: isStayHoliday,

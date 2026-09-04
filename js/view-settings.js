@@ -299,7 +299,7 @@
       title: isNew ? '分類を追加' : '分類を編集',
       body: el('div', { class: 'form' }, [
         ui.field('名前', nameIn, 'レシートの品目ひとつずつに付けられます'),
-        ui.field('色', colorWrap),
+        ui.block('色', colorWrap),
         !isNew ? ui.btn('この分類を削除', 'danger full mt', function () { removeThis(); }, 'trash') : null
       ]),
       actions: [

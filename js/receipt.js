@@ -101,6 +101,28 @@
       });
   }
 
+  /**
+   * すでに置いてある写真を、もう一度読み取る。
+   * 撮り直さずに済むので、読み違えたときはこちらを使う。
+   * @param {string} fileId 共有ファイルのID
+   * @param {object} [opts] {noRetry, model}
+   */
+  function reread(fileId, opts) {
+    if (!ready()) return Promise.reject(err('同期の接続先が未設定です。設定から先につないでください'));
+    if (!fileId) return Promise.reject(err('読み取る写真がありません'));
+    return ask(fileId, opts).then(function (r) {
+      return {
+        data: normalize(r.data),
+        raw: r.data,
+        fileId: fileId,
+        model: r.model,
+        retried: !!r.retried,
+        retryReason: r.retryReason || '',
+        usage: r.usage || null
+      };
+    });
+  }
+
   /* Worker に「この写真を読んで」と頼む */
   function ask(fileId, opts) {
     var body = { fileId: fileId };
@@ -190,7 +212,7 @@
   function pad(n) { return (+n < 10 ? '0' : '') + (+n); }
 
   DL.receipt = {
-    read: read, status: status, ready: ready, ask: ask,
+    read: read, reread: reread, status: status, ready: ready, ask: ask,
     normalize: normalize, fixDate: fixDate
   };
 })(window.DL);

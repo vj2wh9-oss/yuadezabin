@@ -133,9 +133,12 @@
     all.forEach(function (x) { months[x.date.slice(0, 7)] = true; });
     var n = Object.keys(months).length || 1;
     var sameYear = t.slice(0, 4) === String(y);
+    // いちばん見たいのは今月なので、今月を大きく、年の合計はその隣に置く
     return [
-      sumBox('支出の合計', D.yen(spent), 'big'),
-      sumBox(sameYear ? '今月' : '月あたり', D.yen(sameYear ? thisMonth : Math.round(spent / n))),
+      sameYear
+        ? sumBox('今月', D.yen(thisMonth), 'big')
+        : sumBox('月あたり', D.yen(Math.round(spent / n)), 'big'),
+      sumBox(y + '年の合計', D.yen(spent)),
       sumBox('1ヶ月の平均', D.yen(Math.round(spent / n))),
       sumBox('件数', all.length + '件')
     ];
@@ -455,7 +458,7 @@
       ]);
     }));
     list.appendChild(el('p', { class: 'muted small', text: '品目の合計 ' + D.yen(sum) }));
-    return ui.field('購入品目', list, hasTags ? '品目ごとに分類を付けられます（分類は設定から増やせます）' : '');
+    return ui.block('購入品目', list, hasTags ? '品目ごとに分類を付けられます（分類は設定から増やせます）' : '');
   }
 
   /**
@@ -577,6 +580,13 @@
     var vItems = ((x && x.items) || []).map(function (i) {
       return { name: i.name, price: i.price, qty: i.qty, tagId: i.tagId || '' };
     });
+    // 読み直すと品目ごと入れ替わるので、囲いだけ先に作って中身は描き直す
+    var itemsWrap = el('div', { class: 'ex-items-wrap' });
+    function drawItems() {
+      U.clear(itemsWrap);
+      var f = itemsField(vItems);
+      if (f) itemsWrap.appendChild(f);
+    }
     var picked = null;      // まだ送っていない写真（縮めたもの。これを送る）
     var pickedRaw = null;   // 撮ったままの写真（読み取りに使う。送らない）
     // 保存したときに、サーバーからも消す写真。
@@ -664,6 +674,8 @@
           thumbs[v.fileId] = url; img.src = url;
         }).catch(function () { U.clear(shotBox); shotBox.appendChild(el('div', { class: 'muted small', text: '写真を取り出せませんでした' })); });
         shotBox.appendChild(el('div', { class: 'row-wrap' }, [
+          // 撮り直さなくても、置いてある写真をもう一度読ませられる
+          DL.receipt.ready() ? ui.btn('AIで読み直す', 'ghost tiny', function () { rereadShot(v.fileId); }, 'refresh') : null,
           ui.btn('金額を読み取る', 'ghost tiny', function () { readSaved(v.fileId); }, 'search'),
           ui.btn('撮り直す', 'ghost tiny', function () { pick(true); }, 'receipt'),
           ui.btn('写真を削除', 'ghost tiny', function () { dropShot(); })
@@ -697,6 +709,60 @@
         v.fileId = '';
         renderShot();
       });
+    }
+
+    /* --- すでに置いてある写真を、AI にもう一度読ませる --- */
+    var rereadBusy = false;
+
+    function rereadShot(fileId) {
+      if (rereadBusy || !fileId) return;
+      rereadBusy = true;
+      U.clear(ocrBox);
+      ocrBox.appendChild(el('div', { class: 'muted small', text: 'レシートを読み取っています…' }));
+      ocrBox.appendChild(ui.progress(60, null));
+
+      DL.receipt.reread(fileId).then(function (r) {
+        rereadBusy = false;
+        U.clear(ocrBox);
+        r.imgUrl = thumbs[fileId] || '';
+        // 入れ直すのではなく、いま開いているこの画面に返してもらう
+        DL.views.receipt.confirm(r, {
+          book: bk,
+          was: vItems,
+          onApply: function (patch) { applyRead(patch); }
+        });
+      }).catch(function (e) {
+        rereadBusy = false;
+        U.clear(ocrBox);
+        ocrBox.appendChild(el('div', { class: 'muted small', text: e.message }));
+      });
+    }
+
+    /* 読み直した中身を、開いている入力欄に流し込む */
+    function applyRead(patch) {
+      if (patch.date) dateIn.value = patch.date;
+      if (patch.amount) amountIn.value = patch.amount;
+      if (patch.vendor) vendorIn.value = patch.vendor;
+      if (patch.category && catSel.querySelector('option[value="' + patch.category + '"]')) {
+        catSel.value = patch.category;
+        v.category = patch.category;
+      }
+      if (projSel && patch.projectId) projSel.value = patch.projectId;
+      vItems.length = 0;
+      patch.items.forEach(function (i) { vItems.push(i); });
+      drawItems();
+      // 帳簿を切り替えていたら、それも合わせる（写真は保存のときに移す）
+      if (patch.book !== bk) {
+        ui.toast('帳簿が「' + E.bookLabel(patch.book) + '」に変わりました。保存すると反映されます');
+        var keep = collect();
+        close();
+        expenseSheet(
+          x ? Object.assign({}, x, keep, { book: patch.book, category: patch.category }) : null,
+          { keep: keep, book: patch.book }
+        );
+        return;
+      }
+      ui.toast('読み取った内容を入れました');
     }
 
     /* --- レシートから金額を読み取る --- */
@@ -762,6 +828,7 @@
       input.click();
     }
     renderShot();
+    drawItems();
 
     var close = ui.sheet({
       title: (isNew ? '追加' : '編集') + '（' + E.bookLabel(bk) + '）',
@@ -770,14 +837,14 @@
           ui.field('日付', dateIn),
           ui.field('金額（円）', amountIn)
         ]),
-        ui.field('帳簿', bookSeg, '事業＝仕事の経費／日常＝家計簿'),
+        ui.block('帳簿', bookSeg, '事業＝仕事の経費／日常＝家計簿'),
         ui.field('科目', catSel),
         ui.field('支払先', vendorIn),
         ui.field('メモ', memoIn),
         projSel ? ui.field('案件', projSel) : null,
         issuerSel ? ui.field('名義', issuerSel) : null,
-        ui.field('レシート', shotBox),
-        itemsField(vItems),
+        ui.block('レシート', shotBox),
+        itemsWrap,
         !isNew ? ui.btn('この経費を削除', 'danger full mt', function () { removeThis(); }, 'trash') : null
       ]),
       actions: [

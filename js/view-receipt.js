@@ -86,9 +86,12 @@
     opts = opts || {};
     var d = r.data;
     var bk = opts.book === 'life' ? 'life' : 'work';
-    // 分類は品目ごとに付ける。読み取った時点では空
+    // すでにある経費を読み直したときは、入れ直すのではなく画面に返すだけ
+    var applyMode = !!opts.onApply;
+    // 分類は品目ごとに付ける。読み取った時点では空。
+    // 読み直しのときは、同じ品目に付いていた札を引き継ぐ
     var items = d.items.map(function (i) {
-      return { name: i.name, price: i.price, qty: i.qty, tagId: '' };
+      return { name: i.name, price: i.price, qty: i.qty, tagId: keepTag(i.name, opts.was) };
     });
 
     var storeIn = ui.input({ value: d.store || '', maxlength: 60, placeholder: '店舗名' });
@@ -177,8 +180,10 @@
     if (d.mismatch) flags.push('品目の合計が総額を超えています。読み違えているかもしれません');
     if (r.retried) flags.push('一度で読めなかったので、読み直しました（' + jaReason(r.retryReason) + '）');
 
+    // 撮ったばかりなら手元の写真、読み直しなら取り出しておいた絵を出す
+    var imgUrl = r.imgUrl || (r.file ? URL.createObjectURL(r.file) : '');
     var head = el('div', { class: 'rc-head' }, [
-      el('div', { class: 'rc-shot' }, el('img', { class: 'rc-img', src: URL.createObjectURL(r.file), alt: '' })),
+      el('div', { class: 'rc-shot' }, imgUrl ? el('img', { class: 'rc-img', src: imgUrl, alt: '' }) : null),
       el('div', { class: 'rc-meta' }, [
         el('div', { class: 'rc-total' }, [
           el('b', { text: d.total === null ? '—' : D.yen(d.total) })
@@ -196,7 +201,7 @@
           el('span', { text: t })
         ]);
       })) : null,
-      ui.field('帳簿', bookSeg),
+      ui.block('帳簿', bookSeg),
       el('div', { class: 'grid2' }, [
         ui.field('日付', dateIn),
         ui.field('合計金額', totalIn)
@@ -209,33 +214,46 @@
       sumNote
     ]);
 
+    /* 画面で直したあとの中身。入れるときも、返すときも同じ形 */
+    function collect(total) {
+      return {
+        book: bk,
+        date: dateIn.value || U.today(),
+        amount: total,
+        category: catSel.value,
+        vendor: storeIn.value.trim(),
+        projectId: projSel.value,
+        items: items.filter(function (i) { return i.name.trim(); })
+          .map(function (i) {
+            return { name: i.name.trim(), price: i.price, qty: i.qty, tagId: i.tagId || '' };
+          })
+      };
+    }
+
     var close = ui.sheet({
-      title: 'この内容で入れますか',
+      title: applyMode ? 'この内容に直しますか' : 'この内容で入れますか',
       body: body,
       actions: [
         ui.btn('やめる', 'ghost', function () {
-          // 入れないなら、置いた写真も残さない
-          dropShot(r.fileId);
+          // 入れないなら、置いた写真も残さない。
+          // すでにある経費の読み直しなら、写真はそのまま
+          if (!applyMode) dropShot(r.fileId);
           close();
         }),
-        ui.btn('経費に入れる', 'primary', function () {
+        ui.btn(applyMode ? 'この内容にする' : '経費に入れる', 'primary', function () {
           var total = U.num(totalIn.value, 0);
           if (!total) { ui.toast('合計金額を入れてください', 'danger'); totalIn.focus(); return; }
+          if (applyMode) {
+            var patch = collect(total);
+            close();
+            opts.onApply(patch);
+            return;
+          }
           moveShot(r, bk);
-          var x = S.addExpense({
-            book: bk,
-            date: dateIn.value || U.today(),
-            amount: total,
-            category: catSel.value,
-            vendor: storeIn.value.trim(),
-            projectId: projSel.value,
+          var x = S.addExpense(Object.assign(collect(total), {
             issuerId: S.scopeId() || S.settings.defaultIssuerId || '',
-            fileId: r.fileId,
-            items: items.filter(function (i) { return i.name.trim(); })
-              .map(function (i) {
-                return { name: i.name.trim(), price: i.price, qty: i.qty, tagId: i.tagId || '' };
-              })
-          });
+            fileId: r.fileId
+          }));
           close();
           ui.toast('経費に入れました（' + D.yen(total) + '）');
           if (opts.onDone) opts.onDone(x);
@@ -244,6 +262,12 @@
       ],
       onClose: function () { /* ボタン以外で閉じたときは、写真も記録も触らない */ }
     });
+  }
+
+  /* 読み直す前に付いていた分類。同じ名前の品目なら引き継ぐ */
+  function keepTag(name, was) {
+    var hit = (was || []).filter(function (i) { return i.name === name && i.tagId; })[0];
+    return hit ? hit.tagId : '';
   }
 
   /**

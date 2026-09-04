@@ -106,6 +106,19 @@
     ]);
   }
 
+  /**
+   * field と同じ見た目だが、<label> にしない。
+   * 中にボタンなどを並べるときはこちら。<label> にすると、その見出しが
+   * 中の最初のボタンの読み上げ名になってしまい、何のボタンか分からなくなる。
+   */
+  function block(label, content, hint) {
+    return el('div', { class: 'field' }, [
+      el('span', { class: 'field-label', text: label }),
+      content,
+      hint ? el('span', { class: 'field-hint', text: hint }) : null
+    ]);
+  }
+
   function input(props) {
     return el('input', Object.assign({ class: 'input', type: 'text' }, props || {}));
   }
@@ -288,7 +301,7 @@
 
   DL.ui = {
     toast: toast, sheet: sheet, closeAllSheets: closeAllSheets, confirm: confirmSheet,
-    field: field, input: input, textarea: textarea, select: select, tagSelect: tagSelect, segmented: segmented,
+    field: field, block: block, input: input, textarea: textarea, select: select, tagSelect: tagSelect, segmented: segmented,
     stepper: stepper, progress: progress, chip: chip, iconChip: iconChip, icon: icon,
     section: section, card: card, dateHead: dateHead,
     empty: empty, btn: btn, kindChip: kindChip, catChip: catChip,
