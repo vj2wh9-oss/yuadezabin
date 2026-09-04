@@ -14,10 +14,14 @@
     "binding": "ASSETS"
   },
 
-  // yuadezabin.com で公開する。Cloudflare にドメインを載せてあるので、
-  // dash の Workers → 設定 → ドメインとルート から付けてもよい
+  // 発注ページを出す場所。
+  //
+  // yuadezabin.com（apex）ではなく order. の下に置く。
+  // apex は Squarespace につながっているので、そちらへ Worker を割り当てると
+  // 既にある DNS レコードを消すことになり、Squarespace 側が切れてしまう。
+  // 発注ページは別の入口にしておけば、どちらも並べておける。
   "routes": [
-    { "pattern": "yuadezabin.com", "custom_domain": true }
+    { "pattern": "order.yuadezabin.com", "custom_domain": true }
   ],
 
   "vars": {

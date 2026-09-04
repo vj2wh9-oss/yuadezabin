@@ -52,7 +52,8 @@ const src = fs.readFileSync(path, 'utf8');
 
 const RE = {
   syncUrl: /("SYNC_URL"\s*:\s*")([^"]*)(")/,
-  kvId: /("binding"\s*:\s*"ORDERS"\s*,\s*"id"\s*:\s*")([^"]*)(")/
+  kvId: /("binding"\s*:\s*"ORDERS"\s*,\s*"id"\s*:\s*")([^"]*)(")/,
+  site: /("pattern"\s*:\s*")([^"]*)(")/
 };
 const re = RE[what];
 if (!re) { console.error('不明な項目: ' + what); process.exit(1); }
@@ -151,8 +152,10 @@ say "7. 発注ページを公開する"
 # ---------------------------------------------------------------- 確かめ
 
 say "8. 動いているか確かめる"
-sleep 5
-if health="$(curl -fsS --max-time 20 https://yuadezabin.com/api/health 2>/dev/null)"; then
+site="$(conf_get site)"
+note "$site を見に行きます（DNS が行き渡るまで少しかかることがあります）"
+sleep 8
+if health="$(curl -fsS --max-time 20 "https://$site/api/health" 2>/dev/null)"; then
   printf '  %s\n' "$health"
   case "$health" in
     *'"sync":true'*) note "同期サーバーへの道：つながっています" ;;
@@ -163,11 +166,11 @@ if health="$(curl -fsS --max-time 20 https://yuadezabin.com/api/health 2>/dev/nu
     *) note "※ メールの送り口がまだです。README の手順3（Email Routing）をご覧ください" ;;
   esac
 else
-  note "※ まだ応答がありません。数分おいて https://yuadezabin.com/api/health を開いてみてください"
+  note "※ まだ応答がありません。数分おいて https://$site/api/health を開いてみてください"
 fi
 
 say "できました"
-note "発注ページ　https://yuadezabin.com/"
-note "様子見　　　https://yuadezabin.com/api/health"
+note "発注ページ　https://$site/"
+note "様子見　　　https://$site/api/health"
 note "アプリ側　　設定 →「発注フォーム」→「受け口があるか確かめる」"
 echo

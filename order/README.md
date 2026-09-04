@@ -1,6 +1,6 @@
 # 発注ページの立てかた（Cloudflare Workers）
 
-`yuadezabin.com` に発注ページを出し、届いた発注を
+`order.yuadezabin.com` に発注ページを出し、届いた発注を
 
 1. **keisuke@yuadezabin.com へメール**
 2. **アプリ（METEO365）の「発注」画面**
@@ -18,7 +18,7 @@
 
 ```sh
 cd order
-./deploy.sh
+bash deploy.sh
 ```
 
 聞かれるのは **同期サーバーの URL** と **同期の合鍵** の2つだけです。
@@ -34,7 +34,7 @@ cd order
 ```
 お客様のブラウザ
    ↓ 同じサイトの中だけで送信（外部への送信口を持たない）
-yuadezabin.com（この Worker）
+order.yuadezabin.com（この Worker）
    ├→ メール       keisuke@yuadezabin.com（そのまま返信すればお客様宛）
    └→ 同期サーバー /v1/inbox/order
                         ↓
@@ -125,15 +125,27 @@ wrangler deploy
 
 ## 6. 公開する
 
+> **なぜ apex（yuadezabin.com）ではなく `order.` なのか**
+>
+> yuadezabin.com そのものは Squarespace につながっています。
+> そちらへ Worker を割り当てると、既にある DNS レコードを消すことになり、
+> Squarespace 側が切れてしまいます（Cloudflare もそれを理由に拒みます）。
+> `order.yuadezabin.com` にしておけば、どちらも並べておけます。
+>
+> apex に置きたい場合は、先に Cloudflare の DNS から yuadezabin.com の
+> A / CNAME レコードを消してから、`wrangler.jsonc` の `pattern` を
+> `yuadezabin.com` に戻してください（Squarespace のページは表示されなくなります）。
+
+
 ```sh
 cd ../order
 wrangler deploy
 ```
 
-初回は「`yuadezabin.com` を custom domain にしてよいか」と聞かれるので許可します。
-`https://yuadezabin.com/` を開いて、発注ページが出れば完了です。
+初回は「`order.yuadezabin.com` を custom domain にしてよいか」と聞かれるので許可します。
+`https://order.yuadezabin.com/` を開いて、発注ページが出れば完了です。
 
-`https://yuadezabin.com/api/health` を開くと、どこまで繋がっているかが分かります。
+`https://order.yuadezabin.com/api/health` を開くと、どこまで繋がっているかが分かります。
 
 ```json
 { "bindings": { "kv": true, "mail": true, "sync": true, "turnstile": false } }
@@ -143,7 +155,7 @@ wrangler deploy
 
 Cloudflare の **Turnstile**（無料）を使うと、自動で送られてくる発注を減らせます。
 
-1. ダッシュボードの **Turnstile → Add widget**、ドメインに `yuadezabin.com` を入れる
+1. ダッシュボードの **Turnstile → Add widget**、ドメインに `order.yuadezabin.com` を入れる
 2. 出てきた **Site Key** を `public/form.json` の `turnstileSiteKey` に貼る
 3. **Secret Key** を Worker に渡す
 
