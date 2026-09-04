@@ -1406,6 +1406,8 @@ h1, h2, h3, p { margin: 0; }
 
 /* ホームとカレンダーから記録へ */
 .log-link { margin-top: 2px; }
+/* いちばん下に置いたときは、右下の＋にかぶらないよう少し余白を足す */
+.page > .log-link:last-child { margin-bottom: 56px; }
 .log-link.has-note { border-color: var(--line2); }
 
 /* ---------------- ひらめきメモ ---------------- */
