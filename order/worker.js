@@ -59,7 +59,17 @@ export default {
 
 /* ---------------- 動いているかどうか ---------------- */
 
-function health(env) {
+async function health(env) {
+  // まだ届けられていない発注の件数。中身は返さない（数だけ）。
+  // メールかアプリのどちらかが失敗していると、ここが増えていく
+  let pending = null;
+  if (env.ORDERS) {
+    try {
+      const l = await env.ORDERS.list({ prefix: 'pending:', limit: 100 });
+      pending = (l.keys || []).length;
+    } catch (e) { /* 数えられなくても様子見は返す */ }
+  }
+
   return json({
     ok: true,
     service: '発注の受け口',
@@ -70,6 +80,8 @@ function health(env) {
       sync: !!(env.SYNC_URL && env.SYNC_TOKEN),
       turnstile: !!env.TURNSTILE_SECRET
     },
+    // 届けそこねた件数。0 なら全部さばけている
+    pending,
     endpoints: ['/api/order']
   });
 }
@@ -463,14 +475,30 @@ function jst(iso) {
  * 合鍵はこの Worker だけが持ち、発注ページのブラウザには一切渡さない。
  */
 async function forward(env, o) {
-  if (!env.SYNC_URL || !env.SYNC_TOKEN) throw new Error('sync not set');
-  const res = await fetch(String(env.SYNC_URL).replace(/\/+$/, '') + '/v1/inbox/order', {
-    method: 'POST',
-    headers: { authorization: 'Bearer ' + env.SYNC_TOKEN, 'content-type': 'application/json' },
-    body: JSON.stringify(o),
-    signal: AbortSignal.timeout(10000)
-  });
-  if (!res.ok) throw new Error('sync ' + res.status);
+  if (!env.SYNC_URL || !env.SYNC_TOKEN) {
+    console.error('sync not configured', o.id);
+    throw new Error('sync not set');
+  }
+  const base = String(env.SYNC_URL).replace(/\/+$/, '');
+  let res;
+  try {
+    res = await fetch(base + '/v1/inbox/order', {
+      method: 'POST',
+      headers: { authorization: 'Bearer ' + env.SYNC_TOKEN, 'content-type': 'application/json' },
+      body: JSON.stringify(o),
+      signal: AbortSignal.timeout(10000)
+    });
+  } catch (e) {
+    // つながらない（URL 違い・停止中・時間切れ）
+    console.error('sync unreachable', o.id, base, e && e.message);
+    throw e;
+  }
+  if (!res.ok) {
+    // 401 なら合鍵違い、404 なら受け口が古い
+    const why = await res.text().catch(() => '');
+    console.error('sync refused', o.id, res.status, why.slice(0, 200));
+    throw new Error('sync ' + res.status);
+  }
 }
 
 /* ---------------- 小物 ---------------- */
