@@ -30,8 +30,6 @@
  *   send_email MAIL   Cloudflare の Email Routing で送るときの結び付け
  */
 
-import { EmailMessage } from 'cloudflare:email';
-
 const MAX_BODY = 16 * 1024;        // 発注1件。これを超えることはない
 const KEEP_DAYS = 30;              // KV に控えを置く日数
 const FLUSH_AT_ONCE = 5;           // 1回の受付で送り直す件数
@@ -354,76 +352,102 @@ function mailText(o) {
     '納品形式　　' + o.formatLabel,
     '',
     'ご要望',
-    // ご要望の中の改行も、メールの決まりに合わせて \r\n にそろえる
-    o.note ? o.note.replace(/\n/g, '\r\n') : '（なし）',
+    o.note || '（なし）',
     '',
     '----',
     'このメールにそのまま返信すると、お客様（' + o.email + '）宛になります。',
-    '発注社名の照合は、アプリの「発注」から行ってください。',
-    ''
-  ].join('\r\n');
+    '発注社名の照合は、アプリの「発注」から行ってください。'
+  ].join('\n');
 }
 
+/* HTML のほうも付ける。付けないと迷惑メール扱いされやすくなる */
+function mailHtml(o) {
+  const row = (k, v) => '<tr><th style="text-align:left;padding:4px 16px 4px 0;color:#5a6678;'
+    + 'font-weight:400;white-space:nowrap;vertical-align:top">' + esc(k)
+    + '</th><td style="padding:4px 0">' + esc(v) + '</td></tr>';
+
+  return '<div style="font-family:system-ui,-apple-system,\'Hiragino Sans\',sans-serif;'
+    + 'font-size:15px;line-height:1.7;color:#1a2130">'
+    + '<p>発注フォームから、新しい発注が届きました。</p>'
+    + '<table style="border-collapse:collapse;margin:16px 0">'
+    + row('受付番号', o.id)
+    + row('受付日時', jst(o.at))
+    + row('発注社名', o.company)
+    + row('担当者', o.person || '（未記入）')
+    + row('連絡先', o.email)
+    + row('サービス', o.serviceLabel)
+    + row('希望納期', o.deadline)
+    + row('納品形式', o.formatLabel)
+    + '</table>'
+    + '<p style="margin:0 0 4px;color:#5a6678">ご要望</p>'
+    + '<p style="white-space:pre-wrap;margin:0 0 20px;padding:10px 14px;'
+    + 'background:#f4f6f9;border-radius:8px">' + esc(o.note || '（なし）') + '</p>'
+    + '<hr style="border:0;border-top:1px solid #dde3ea">'
+    + '<p style="font-size:13px;color:#5a6678">'
+    + 'このメールにそのまま返信すると、お客様（' + esc(o.email) + '）宛になります。<br>'
+    + '発注社名の照合は、アプリの「発注」から行ってください。</p>'
+    + '</div>';
+}
+
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * 発注をメールで知らせる。
+ *
+ * Cloudflare の Email Sending を使う。あらかじめ
+ *   wrangler email sending enable yuadezabin.com
+ * でドメインを通しておくこと（SPF と DKIM が入る）。
+ *
+ * send_email の結び付けに destination_address を書くと「その宛先にしか
+ * 送れない」縛りになる。宛先は自分のドメインのアドレスなので、
+ * 縛りは付けない（wrangler.jsonc 参照）。
+ */
 async function sendMail(env, o) {
   const to = env.MAIL_TO || 'keisuke@yuadezabin.com';
   const from = env.MAIL_FROM || ('order@' + to.split('@')[1]);
   const subject = '【発注】' + o.company + '／' + o.serviceLabel + '（' + o.id + '）';
-  const text = mailText(o);
 
   if (env.MAIL) {
-    const raw = mime({ from, to, replyTo: o.email, subject, text, id: o.id });
-    await env.MAIL.send(new EmailMessage(from, to, raw));
-    return;
+    try {
+      await env.MAIL.send({
+        to,
+        from: { email: from, name: '発注フォーム' },
+        replyTo: o.email,          // そのまま返信すればお客様宛になる
+        subject,
+        text: mailText(o),
+        html: mailHtml(o)
+      });
+      return;
+    } catch (e) {
+      // 何が起きたかを残す（wrangler tail / ダッシュボードのログで見える）
+      console.error('mail failed', o.id, e && e.code, e && e.message);
+      throw e;
+    }
   }
 
   if (env.RESEND_API_KEY) {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { authorization: 'Bearer ' + env.RESEND_API_KEY, 'content-type': 'application/json' },
-      body: JSON.stringify({ from: '発注フォーム <' + from + '>', to: [to], reply_to: o.email, subject, text }),
+      body: JSON.stringify({
+        from: '発注フォーム <' + from + '>', to: [to], reply_to: o.email,
+        subject, text: mailText(o), html: mailHtml(o)
+      }),
       signal: AbortSignal.timeout(10000)
     });
-    if (!res.ok) throw new Error('resend ' + res.status);
+    if (!res.ok) {
+      console.error('resend failed', o.id, res.status, await res.text().catch(() => ''));
+      throw new Error('resend ' + res.status);
+    }
     return;
   }
 
+  console.error('mail not configured', o.id);
   throw new Error('no mail binding');
-}
-
-/**
- * メールの元の形（RFC 5322）を組み立てる。
- * 見出しは ASCII しか置けないので、日本語は =?UTF-8?B?…?= にして渡す。
- */
-function mime(m) {
-  const lines = [
-    'From: ' + encHeader('発注フォーム') + ' <' + m.from + '>',
-    'To: <' + m.to + '>',
-    'Reply-To: <' + m.replyTo + '>',
-    'Subject: ' + encHeader(m.subject),
-    'Message-ID: <' + m.id.toLowerCase() + '.' + Date.now().toString(36) + '@' + m.from.split('@')[1] + '>',
-    'Date: ' + new Date().toUTCString().replace('GMT', '+0000'),
-    'MIME-Version: 1.0',
-    'Content-Type: text/plain; charset="UTF-8"',
-    'Content-Transfer-Encoding: base64',
-    '',
-    b64(m.text).replace(/(.{76})/g, '$1\r\n')
-  ];
-  return lines.join('\r\n');
-}
-
-function encHeader(s) {
-  // ASCII だけならそのまま。日本語が混じるときだけ包む
-  if (!/[^\x20-\x7E]/.test(s)) return s.replace(/[<>]/g, '');
-  return '=?UTF-8?B?' + b64(s) + '?=';
-}
-
-function b64(s) {
-  const bytes = new TextEncoder().encode(s);
-  let bin = '';
-  for (let i = 0; i < bytes.length; i += 0x8000) {
-    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-  }
-  return btoa(bin);
 }
 
 function jst(iso) {

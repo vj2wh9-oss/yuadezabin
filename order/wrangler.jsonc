@@ -38,10 +38,17 @@
     { "binding": "ORDERS", "id": "ここに KV 名前空間の id" }
   ],
 
-  // Cloudflare の Email Routing で送る。
-  // destination_address は「宛先アドレス」として確認済みのものだけ指定できる
+  // Cloudflare の Email Sending で送る。
+  //
+  // destination_address は書かない。書くと「その宛先にしか送れない」縛りになり、
+  // しかもそこに指定できるのは Email Routing で確認を済ませた宛先だけ。
+  // keisuke@yuadezabin.com は自分のドメインのアドレスなので当てはまらず、
+  // 縛ったままだと送信そのものが失敗する。
+  //
+  // 送る前に、ドメインを一度だけ通しておくこと（SPF と DKIM が入る）：
+  //   npx wrangler email sending enable yuadezabin.com
   "send_email": [
-    { "name": "MAIL", "destination_address": "keisuke@yuadezabin.com" }
+    { "name": "MAIL" }
   ],
 
   // 失敗したときにダッシュボードでログを追えるようにする

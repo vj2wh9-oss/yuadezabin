@@ -72,26 +72,51 @@ wrangler kv namespace create ORDERS
 "SYNC_URL": "https://anken-portal-sync.<あなたのサブドメイン>.workers.dev"
 ```
 
-## 3. メールを出せるようにする（Cloudflare Email Routing）
+## 3. メールを出せるようにする（Cloudflare Email Sending）
 
-Cloudflare のダッシュボードで yuadezabin.com を開き、**Email → Email Routing**:
+ドメインを一度だけ Email Sending に通します。SPF と DKIM が自動で入ります。
 
-1. Email Routing を **有効にする**（DNS のレコードは自動で入ります）
-2. **Destination addresses** に `keisuke@yuadezabin.com` を追加し、届いた確認メールのリンクを押す
-   - `keisuke@yuadezabin.com` を普段使いのアドレス（Gmail など）へ転送している場合は、
-     転送先で確認メールを受け取れます
-   - うまくいかないときは、**転送先のアドレスそのもの**（例：`〇〇@gmail.com`）を
-     Destination address にして、`wrangler.jsonc` の `MAIL_TO` と `send_email` の
-     `destination_address` をそちらに書き替えてください
-3. `wrangler.jsonc` の `MAIL_FROM`（既定 `order@yuadezabin.com`）は、
-   **受信用に作らなくて構いません**。差出人として使うだけです
+```sh
+npx wrangler email sending enable yuadezabin.com
+npx wrangler email sending dns get yuadezabin.com   # 入ったか確かめる
+```
+
+ダッシュボードからでもできます：
+**Compute & AI → Email Service → Email Sending → Onboard Domain**
+
+DNS が行き渡るまで5〜15分ほどかかります。それより前に送っても届きません。
+
+> **`destination_address` を書かないこと**
+>
+> `wrangler.jsonc` の `send_email` に `destination_address` を書くと、
+> 「その宛先にしか送れない」縛りになります。しかもそこに指定できるのは
+> **Email Routing で確認を済ませた宛先**（ふつうは Gmail などの外部アドレス）だけです。
+> `keisuke@yuadezabin.com` は自分のドメインのアドレスなので当てはまらず、
+> 縛ったままだと送信そのものが失敗します。
+
+### 届かないとき
+
+Worker のログに理由が出ます。
+
+```sh
+cd order
+npx wrangler tail
+```
+
+これを開いたまま発注ページから1件送ると、`mail failed …` の行に原因が出ます。
+
+| 出るもの | 意味 | 直しかた |
+| --- | --- | --- |
+| ドメイン未登録の旨 | `email sending enable` がまだ | 上のコマンドを実行 |
+| `E_VALIDATION_ERROR` | 宛先か差出人の形が不正 | `MAIL_TO` / `MAIL_FROM` を確認 |
+| `mail not configured` | `send_email` の結び付けが無い | `wrangler.jsonc` を確認して deploy し直す |
 
 ### Cloudflare のメールが使えないとき（任意）
 
 [Resend](https://resend.com) の無料枠でも送れます。API キーを作り、ドメインを認証してから:
 
 ```sh
-wrangler secret put RESEND_API_KEY
+npx wrangler secret put RESEND_API_KEY
 ```
 
 `RESEND_API_KEY` を入れておくと、Cloudflare 側が使えないときに自動でこちらを使います。

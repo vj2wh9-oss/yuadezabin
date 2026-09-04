@@ -53,7 +53,8 @@ const src = fs.readFileSync(path, 'utf8');
 const RE = {
   syncUrl: /("SYNC_URL"\s*:\s*")([^"]*)(")/,
   kvId: /("binding"\s*:\s*"ORDERS"\s*,\s*"id"\s*:\s*")([^"]*)(")/,
-  site: /("pattern"\s*:\s*")([^"]*)(")/
+  site: /("pattern"\s*:\s*")([^"]*)(")/,
+  mailFrom: /("MAIL_FROM"\s*:\s*")([^"]*)(")/
 };
 
 // get … テンプレから1か所を読む
@@ -140,9 +141,27 @@ else
   note "できました（$kv_id）"
 fi
 
+# ---------------------------------------------------------------- メール
+
+say "3. メールを出せるようにする"
+
+mail_domain="$(conf_get mailFrom | sed 's/.*@//')"
+if wr email sending list 2>/dev/null | grep -q "$mail_domain"; then
+  note "$mail_domain は登録済みです"
+else
+  note "$mail_domain を Email Sending に登録します"
+  note "（SPF と DKIM のレコードが DNS に足されます。既存の設定は消しません）"
+  if wr email sending enable "$mail_domain"; then
+    note "登録しました。DNS が行き渡るまで5〜15分ほどかかります"
+  else
+    note "※ 登録できませんでした。README の手順3を手で行ってください"
+    note "　 発注そのものは受け付けられ、アプリには届きます"
+  fi
+fi
+
 # ---------------------------------------------------------------- 設定を書く
 
-say "3. 作業用の設定を書き出す"
+say "4. 作業用の設定を書き出す"
 # wrangler.jsonc（git の管理下）には手を入れない。
 # 手を入れると、次に git pull したときに弾かれてしまう。
 node "$here/.deploy-conf.cjs" build "$conf" - "$kv_id" "$sync_url" "$local_conf"
@@ -150,7 +169,7 @@ note "$(basename "$local_conf") を作りました（git には入りません�
 
 # ---------------------------------------------------------------- 合鍵
 
-say "4. 同期の合鍵を預ける"
+say "5. 同期の合鍵を預ける"
 note "アプリの 設定 →「PC・iPhone の同期」→「合鍵をコピー」で取れます。"
 note "貼り付けても画面には出ません（そういう入力です）。"
 note "合鍵は Cloudflare へ直接渡り、この端末には残りません。"
@@ -167,7 +186,7 @@ else
   ( cd "$here" && wr secret put SYNC_TOKEN --config "$local_conf" )
 fi
 
-say "5. 連投よけの塩を預ける"
+say "6. 連投よけの塩を預ける"
 # 中身は何でもよいので、こちらで作って渡す（画面には出さない）
 node -e 'process.stdout.write(require("crypto").randomBytes(24).toString("hex"))' \
   | ( cd "$here" && wr secret put RL_SALT --config "$local_conf" )
@@ -175,16 +194,16 @@ note "できました"
 
 # ---------------------------------------------------------------- 公開
 
-say "6. 同期サーバーを新しくする"
+say "7. 同期サーバーを新しくする"
 note "発注の受け口（/v1/inbox/order）を足したものに入れ替えます"
 ( cd "$sync_dir" && wr deploy )
 
-say "7. 発注ページを公開する"
+say "8. 発注ページを公開する"
 ( cd "$here" && wr deploy --config "$local_conf" )
 
 # ---------------------------------------------------------------- 確かめ
 
-say "8. 動いているか確かめる"
+say "9. 動いているか確かめる"
 site="$(conf_get site)"
 note "$site を見に行きます（DNS が行き渡るまで少しかかることがあります）"
 sleep 8
@@ -192,7 +211,7 @@ if health="$(curl -fsS --max-time 20 "https://$site/api/health" 2>/dev/null)"; t
   printf '  %s\n' "$health"
   case "$health" in
     *'"sync":true'*) note "同期サーバーへの道：つながっています" ;;
-    *) note "※ 同期サーバーへの道が未設定です。4. の合鍵をやり直してください" ;;
+    *) note "※ 同期サーバーへの道が未設定です。5. の合鍵をやり直してください" ;;
   esac
   case "$health" in
     *'"mail":true'*) note "メールの送り口：あります" ;;
