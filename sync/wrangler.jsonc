@@ -11,6 +11,14 @@
     "ALLOW_ORIGIN": "https://vj2wh9-oss.github.io"
   },
 
+  // ダッシュボードで入れた変数を、deploy のときに消さない。
+  // 既定では vars に書いていない平文の変数がぜんぶ消えてしまい、
+  // レシート読み取りのモデル名（OPENAI_MODEL / OPENAI_MODEL_STRONG）や
+  // 通知の差出人（VAPID_SUBJECT）が飛ぶ。
+  // 鍵（secret）は deploy では消えないので、こちらだけ守れば足りる。
+  // ※ここは公開リポジトリなので、モデル名や連絡先はダッシュボード側に置いたままにする
+  "keep_vars": true,
+
   // wrangler kv namespace create SYNC で作った id
   "kv_namespaces": [
     { "binding": "SYNC", "id": "7d206a966f0c418788dab80279599ea4" }

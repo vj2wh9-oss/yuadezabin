@@ -41,6 +41,18 @@ wrangler deploy
 
 `https://anken-portal-sync.<あなたのサブドメイン>.workers.dev` という URL が出ます。**これが接続先です。** 控えておいてください。
 
+### ダッシュボードで入れた変数は消えません
+
+`wrangler deploy` は既定だと、`wrangler.jsonc` の `vars` に書いていない平文の変数を
+ぜんぶ消してしまいます（レシート読み取りのモデル名や、通知の差出人が飛びます）。
+それを避けるため `wrangler.jsonc` に `"keep_vars": true` を入れてあります。
+
+- 平文の変数（`OPENAI_MODEL` / `OPENAI_MODEL_STRONG` / `VAPID_SUBJECT`）… 消えません
+- 鍵（`OPENAI_API_KEY` / `VAPID_PUBLIC` / `VAPID_PRIVATE`）… もともと deploy では消えません
+
+このリポジトリは公開なので、モデル名や連絡先はここには書かず、
+ダッシュボードの **Settings → Variables** に置いたままにしてください。
+
 ## 4.5 ファイル共有を使う場合（任意）
 
 「ファイル」タブを使うときだけ必要です。使わないなら飛ばして構いません。
