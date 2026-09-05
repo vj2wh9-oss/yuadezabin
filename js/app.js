@@ -457,9 +457,43 @@
     check();
   }
 
+  /* 起動の一枚を、そろそろ開ける。
+
+     絵と回りだしは CSS と index.html の側にあるので、ここは幕を引くだけ。
+     読み込みが終わるのを待つが、数字が止まるまでは開けない。
+     押せば飛ばせるし、読み込みでつまずいても必ず開く。
+     @returns {function} 読み込みが終わったときに呼ぶ */
+  function startSplash() {
+    var box = U.$('#splash');
+    if (!box) return function () {};
+    var soft = !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    var least = soft ? 1150 : 450;      // 数字が止まって、ひと呼吸おくまで
+    var t0 = Date.now();
+    var gone = false;
+
+    var leave = function () {
+      if (gone) return;
+      gone = true;
+      box.classList.add('out');
+      setTimeout(function () {
+        if (box.parentNode) box.parentNode.removeChild(box);
+        // 隠れているあいだに描き終わっているので、ここでもう一度動かす
+        ui.introduce(view);
+      }, 320);
+    };
+
+    box.addEventListener('click', leave);          // 押せば飛ばせる
+    setTimeout(leave, soft ? 3000 : 1400);         // 何があっても開く
+
+    return function () {
+      setTimeout(leave, Math.max(0, least - (Date.now() - t0)));
+    };
+  }
+
   function init() {
     mountIcons();
     watchKeyboard();
+    var splashDone = startSplash();
     if (!location.hash) location.hash = '#/home';
 
     // 本体は IndexedDB。読み込みが終わってから描画する
@@ -472,12 +506,14 @@
 
     S.init().then(function () {
       render();
+      splashDone();
       DL.sync.start();
       return S.autoBackupIfDue();
     }).catch(function (e) {
       console.error('読み込みに失敗しました', e);
       S.load();
       render();
+      splashDone();
     });
 
     // 日付が変わったら再描画して、その日ぶんの自動バックアップを取る
