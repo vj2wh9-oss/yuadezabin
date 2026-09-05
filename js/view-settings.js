@@ -123,6 +123,11 @@
       DL.orders.unread() ? ui.chip(DL.orders.unread() + '件の未確認', 'warn') : null));
     at.appendChild(orderCard());
 
+    /* ---- ROOM RESERVE の取り込み ---- */
+    at.appendChild(ui.section('ROOM RESERVE の取り込み',
+      DL.roomreserve.ready() ? ui.chip('使えます', 'ok') : null));
+    at.appendChild(roomCard());
+
     /* ---- FANBOX の取り込み ---- */
     at.appendChild(ui.section('FANBOX の取り込み',
       DL.fanbox.inbox() ? ui.chip('届いています', 'ok') : null));
@@ -496,6 +501,98 @@
    * 発注フォーム（yuadezabin.com）から届いた発注の様子。
    * 受け取りは同期サーバーを通すので、ここで設定することは無い。
    */
+  /* ---------------- ROOM RESERVE ----------------
+
+     ルームシェアの予定表から、部屋を使う予定だけをこちらへ持ってくる。
+     向こうのアプリには一切さわらない（読むだけ）。 */
+
+  function roomCard() {
+    var R = DL.roomreserve;
+    var cur = R.conf();
+    var card = el('div', { class: 'card' });
+
+    card.appendChild(el('p', { class: 'muted small', text:
+      '予定表の URL を入れておくと、日常のカレンダーに「ROOM RESERVE 同期」のボタンが出ます。'
+      + '押したときだけ取りに行き、いまカレンダーに無い時間の登録だけを足します。'
+      + '締切やイベントは取り込みません。' }));
+
+    var urlIn = ui.input({ value: cur.url, placeholder: 'https://....vercel.app/c/xxxxxxxx', maxlength: 300 });
+    var note = el('p', { class: 'muted small' });
+    function showParsed() {
+      var at = R.parseUrl(urlIn.value);
+      note.textContent = !urlIn.value.trim() ? ''
+        : at ? '部屋：' + at.room : 'この URL からは部屋を読み取れません（…/c/xxxx の形）';
+    }
+    urlIn.addEventListener('input', showParsed);
+    showParsed();
+    card.appendChild(ui.field('予定表の URL', urlIn, 'ロックの PIN は要りません（読み取りだけです）'));
+    card.appendChild(note);
+
+    /* 取り込んだ予定に付ける色 */
+    var color = cur.color;
+    var swatches = el('div', { class: 'sw-row' }, S.EVENT_COLORS.map(function (c) {
+      var b = el('button', {
+        type: 'button', class: 'sw' + (c.value === color ? ' on' : ''),
+        style: { background: c.value }, 'aria-label': c.label,
+        onclick: function () {
+          color = c.value;
+          U.$$('.sw', swatches).forEach(function (x) { x.classList.remove('on'); });
+          b.classList.add('on');
+        }
+      });
+      return b;
+    }));
+    card.appendChild(ui.block('取り込んだ予定の色', swatches));
+
+    card.appendChild(ui.btn('保存', 'primary full', function () {
+      var v = urlIn.value.trim();
+      if (v && !R.parseUrl(v)) { ui.toast('URL を読み取れませんでした', 'danger'); return; }
+      S.updateRoomReserve({ url: v, color: color });
+      ui.toast('保存しました');
+      DL.app.render();
+    }, 'check'));
+
+    if (!DL.sync.active()) {
+      card.appendChild(el('div', { class: 'alert warn' }, [
+        el('span', { class: 'alert-icon' }, ui.icon('alert', 17)),
+        el('span', { text: '先に「PC・iPhone の同期」を設定してください。向こうは CORS を返さないので、同期のサーバー経由で取りに行きます。' })
+      ]));
+      return card;
+    }
+
+    card.appendChild(el('div', { class: 'info-row' }, [
+      el('span', { class: 'info-k', text: '最後に取り込んだ日時' }),
+      el('span', { class: 'info-v', text: cur.lastAt ? DL.sync.fmtAt(cur.lastAt) : 'まだありません' })
+    ]));
+    card.appendChild(el('div', { class: 'info-row' }, [
+      el('span', { class: 'info-k', text: '取り込み済みとして覚えている数' }),
+      el('span', { class: 'info-v', text: Object.keys(cur.seen || {}).length + '件' })
+    ]));
+
+    if (R.ready()) {
+      card.appendChild(ui.btn('いま取り込む', 'ghost full', function () {
+        ui.toast('取りに行っています…');
+        R.pull().then(function (r) {
+          ui.toast(r.added.length ? r.added.length + '件を取り込みました' : '新しい予定はありませんでした');
+          DL.app.render();
+        }).catch(function (e) { ui.toast(e.message, 'danger'); });
+      }, 'roomIn'));
+      card.appendChild(ui.btn('取り込み済みの記録を消す', 'ghost full', function () {
+        ui.confirm('「もう取り込んだ」という記録だけを消します。カレンダーの予定は消えません。\n\n'
+          + '次に同期すると、日時が重なっていないものは入り直します。', { okText: '消す' })
+          .then(function (ok) {
+            if (!ok) return;
+            S.updateRoomReserve({ seen: null });
+            S.settings.roomReserve.seen = {};
+            S.save();
+            ui.toast('記録を消しました');
+            DL.app.render();
+          });
+      }, 'trash'));
+    }
+    return card;
+  }
+
   function orderCard() {
     var card = el('div', { class: 'card' });
     card.appendChild(el('p', { class: 'muted small', text:
@@ -590,7 +687,7 @@
 
     card.appendChild(ui.btn('送るボタンを作る', waiting ? 'ghost full' : 'primary full', function () {
       collectSheet();
-    }, 'swap'));
+    }, 'roomIn'));
     card.appendChild(ui.btn('届いていないか確かめる', 'ghost full', function () {
       DL.fanbox.checkInbox(true).then(function (r) {
         ui.toast(r ? 'FANBOX からデータが届いています' : 'まだ届いていません');

@@ -82,7 +82,7 @@ export default {
         ok: true,
         service: '案件ポータルの同期API',
         bindings: { kv: !!env.SYNC, r2: !!env.FILES, openai: !!env.OPENAI_API_KEY },
-        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/ocr'],
+        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/ocr', '/v1/roomreserve'],
         note: '各 /v1/... は Authorization: Bearer <合鍵> が必要です'
       }, 200, cors);
     }
@@ -183,6 +183,10 @@ export default {
       if (url.pathname.startsWith('/v1/ocr/')) {
         return ocr(request, env, cors, url, id);
       }
+
+      if (url.pathname === '/v1/roomreserve') {
+        return roomReserve(request, env, cors, url);
+      }
     } catch (e) {
       return json({ error: 'server_error', message: String(e && e.message || e) }, 500, cors);
     }
@@ -195,6 +199,49 @@ export default {
     ctx.waitUntil(sendDue(env));
   }
 };
+
+/* ---------------- ROOM RESERVE の予定を取り次ぐ ----------------
+
+   ルームシェアの予定表（別に立てている Next.js のアプリ）は CORS を返さないので、
+   ブラウザから直には読めない。ここが代わりに取りに行って、そのまま返す。
+
+   向こうのアプリには一切さわらない。GET で読むだけ。
+   踏み台にされないよう、行き先は vercel.app の /api/rooms/<id>/events に限る。 */
+
+const ROOM_HOST = /(^|\.)vercel\.app$/;
+const ROOM_ID = /^[A-Za-z0-9_-]{6,64}$/;
+
+async function roomReserve(request, env, cors, url) {
+  if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405, cors);
+
+  const base = String(url.searchParams.get('base') || '').trim();
+  const room = String(url.searchParams.get('room') || '').trim();
+  if (!ROOM_ID.test(room)) return json({ error: 'bad_room' }, 400, cors);
+
+  let origin;
+  try { origin = new URL(base); } catch (e) { return json({ error: 'bad_base' }, 400, cors); }
+  if (origin.protocol !== 'https:' || !ROOM_HOST.test(origin.hostname)) {
+    return json({ error: 'base_not_allowed', message: 'vercel.app の https だけ通します' }, 400, cors);
+  }
+
+  const target = origin.origin + '/api/rooms/' + encodeURIComponent(room) + '/events';
+  let res;
+  try {
+    res = await fetch(target, { headers: { accept: 'application/json' }, cf: { cacheTtl: 0 } });
+  } catch (e) {
+    return json({ error: 'room_unreachable', message: String(e && e.message || e) }, 502, cors);
+  }
+
+  const text = await res.text();
+  if (!res.ok) {
+    return json({ error: 'room_error', status: res.status, message: text.slice(0, 300) }, 502, cors);
+  }
+  let data;
+  try { data = JSON.parse(text); } catch (e) {
+    return json({ error: 'room_not_json', message: text.slice(0, 300) }, 502, cors);
+  }
+  return json({ ok: true, events: Array.isArray(data.events) ? data.events : [] }, 200, cors);
+}
 
 /* ---------------- レシートの読み取り（OpenAI） ----------------
 

@@ -133,6 +133,9 @@
     // 日常の予定。案件のカレンダーとは混ぜず、上部の切替ボタンで見る側を選ぶ
     events: [],            // [{id,date,days,title,start,end,memo,color,important,repeat,until}]
     duties: {},            // その日の働き方 { 'YYYY-MM-DD': 'office'|'remote'|'stay' }
+    // ROOM RESERVE（ルームシェアの予定表）の取り込み。
+    // seen は、一度入れた向こうの予定の id（二度入れないため）
+    roomReserve: { url: '', color: '#00b3d4', lastAt: '', seen: {} },
     // 1日の時間の振り分け { 'YYYY-MM-DD': [{id,kind,start,end,memo}] }。
     // start/end は 0時からの分。夜勤で日をまたぐぶんは 1440 を超える値で持つ
     timeblocks: {},
@@ -272,6 +275,7 @@
     s.settings.events = (s.settings.events || []).map(normalizeEvent);
     s.settings.duties = normalizeDuties(s.settings.duties);
     s.settings.timeblocks = normalizeTimeblocks(s.settings.timeblocks);
+    s.settings.roomReserve = normalizeRoomReserve(s.settings.roomReserve);
     s.settings.holidays = (s.settings.holidays || []).filter(U.isISO);
     // 手で休みを外した日は、自動で付けた記録のほうも落とす（また付け直さないため）
     s.settings.stayHolidays = (s.settings.stayHolidays || []).filter(function (d) {
@@ -1507,6 +1511,40 @@
     return true;
   }
 
+  /* ---------------- ROOM RESERVE の取り込み ---------------- */
+
+  function normalizeRoomReserve(r) {
+    r = (r && typeof r === 'object') ? r : {};
+    var seen = {};
+    // 控えは向こうの id だけ。増えすぎないよう上限を置く
+    Object.keys(r.seen || {}).slice(0, 2000).forEach(function (k) {
+      if (/^[A-Za-z0-9_-]{6,64}$/.test(k) && r.seen[k]) seen[k] = true;
+    });
+    return {
+      url: String(r.url || '').trim().slice(0, 300),
+      color: HEX.test(String(r.color)) ? r.color : EVENT_COLORS[1].value,
+      lastAt: String(r.lastAt || ''),
+      seen: seen
+    };
+  }
+
+  function roomReserve() {
+    return state.settings.roomReserve || (state.settings.roomReserve = normalizeRoomReserve({}));
+  }
+
+  /**
+   * 取り込みの設定を変える。seen は入れ替えではなく足していく
+   * （前に入れたぶんを忘れると、同じ予定をまた入れてしまう）。
+   */
+  function updateRoomReserve(patch) {
+    var cur = roomReserve();
+    var next = Object.assign({}, cur, patch || {});
+    if (patch && patch.seen) next.seen = Object.assign({}, cur.seen, patch.seen);
+    state.settings.roomReserve = normalizeRoomReserve(next);
+    save();
+    return state.settings.roomReserve;
+  }
+
   function duty(date) { return (state.settings.duties || {})[date] || ''; }
 
   function dutyLabel(v) {
@@ -2150,6 +2188,13 @@
         if (!tbs[d]) tbs[d] = incoming.settings.timeblocks[d];
       });
       state.settings.timeblocks = normalizeTimeblocks(tbs);
+      // ROOM RESERVE の「取り込み済み」も、両方のぶんを足し合わせる
+      var rr = incoming.settings.roomReserve;
+      if (rr) {
+        state.settings.roomReserve = normalizeRoomReserve(Object.assign({}, rr, roomReserve(), {
+          seen: Object.assign({}, rr.seen || {}, roomReserve().seen)
+        }));
+      }
       // 1日の記録は、日ごとに新しいほうを採る
       var logs = state.settings.logs || (state.settings.logs = {});
       Object.keys(incoming.settings.logs || {}).forEach(function (d) {
@@ -2369,6 +2414,7 @@
     TIME_LABELS: TIME_LABELS, DAY_MIN: DAY_MIN, BLOCK_MAX: BLOCK_MAX,
     timeLabels: timeLabels, timeColor: timeColor,
     timeblocks: timeblocks, setTimeblocks: setTimeblocks,
+    roomReserve: roomReserve, updateRoomReserve: updateRoomReserve,
     putTimeblock: putTimeblock, removeTimeblock: removeTimeblock,
     getLog: getLog, setLog: setLog, logDates: logDates, MOODS: MOODS,
     ideas: ideas, addIdea: addIdea, updateIdea: updateIdea, removeIdea: removeIdea, allIdeas: allIdeas,

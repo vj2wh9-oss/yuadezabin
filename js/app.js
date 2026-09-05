@@ -99,6 +99,9 @@
       if (['home', 'settings', 'orders'].indexOf(route.name) >= 0) checkOrders();
     }
 
+    // ROOM RESERVE の取り込み。日常のカレンダーでだけ、更新ボタンの左に置く
+    if (onCal && life && DL.roomreserve.ready()) actionsEl.appendChild(roomBtn());
+
     // 同期ボタン（つないでいるときだけ）
     if (DL.sync.active()) actionsEl.appendChild(syncBtn());
 
@@ -153,6 +156,31 @@
   }
 
   /* ---------------- 同期ボタン ---------------- */
+
+  /**
+   * ROOM RESERVE の取り込み。押したときだけ取りに行き、
+   * いまの日常カレンダーに無いものだけを足す。
+   */
+  function roomBtn() {
+    var b = el('button', {
+      class: 'syncbtn roombtn', 'aria-label': 'ROOM RESERVE 同期', title: 'ROOM RESERVE 同期',
+      onclick: function () {
+        if (b.classList.contains('busy')) return;
+        b.classList.add('busy');
+        DL.roomreserve.pull().then(function (r) {
+          b.classList.remove('busy');
+          ui.toast(r.added.length
+            ? r.added.length + '件を取り込みました（' + r.plans + '件のうち）'
+            : r.plans ? '新しい予定はありませんでした' : '時間の登録がありませんでした');
+          render();
+        }).catch(function (e) {
+          b.classList.remove('busy');
+          ui.toast(e.message, 'danger');
+        });
+      }
+    }, DL.icons.icon('roomIn', 19));
+    return b;
+  }
 
   /**
    * 画面上部の同期ボタン。
@@ -397,7 +425,7 @@
     // 本体は IndexedDB。読み込みが終わってから描画する
     // 自動同期の最中もボタンを回す
     DL.sync.on(function (ev) {
-      var b = U.$('.syncbtn');
+      var b = U.$('.syncbtn:not(.roombtn)');
       if (!b) return;
       b.classList.toggle('busy', ev.phase === 'start');
     });
