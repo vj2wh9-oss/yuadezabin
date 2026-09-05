@@ -77,6 +77,8 @@ body {
   margin: 10px 0 0;
   font-size: 14px;
   color: var(--ink-soft);
+  /* form.json に入れた改行をそのまま出す（1行に潰さない） */
+  white-space: pre-line;
 }
 
 main { padding: 28px 20px 8px; }
@@ -170,7 +172,8 @@ input:focus, select:focus, textarea:focus {
 
 .turnstile:not(:empty) { margin: 0 0 24px; }
 
-.privacy {
+/* 発注ボタンの上に置く、この後の流れの案内 */
+.notice {
   margin: 0 0 20px;
   padding: 14px 16px;
   border-radius: var(--radius);
