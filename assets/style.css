@@ -1569,6 +1569,7 @@ a.alert-main { text-decoration: none; }
 .tp-now {
   position: absolute; top: -2px; bottom: -2px; width: 2px;
   background: var(--text); box-shadow: 0 0 0 1px var(--card);
+  animation: tp-pulse 2.6s ease-in-out infinite;
 }
 .tp-scale { position: relative; height: 13px; font-size: 10px; color: var(--muted); }
 .tp-scale span { position: absolute; top: 0; white-space: nowrap; transform: translateX(-50%); }
@@ -1628,6 +1629,17 @@ a.alert-main { text-decoration: none; }
 /* いまの時刻。円は針で、帯は縦線で示す */
 .tp-hand { stroke: var(--text); stroke-width: 1.6; stroke-linecap: butt; }
 .tp-hand-tip { fill: var(--text); }
+
+/* いまの時刻の印は、ゆっくり点滅させて見つけやすくする。
+   消えきらないので、動きが苦手なときも位置は分かる */
+.tp-hand, .tp-hand-tip { animation: tp-pulse 2.6s ease-in-out infinite; }
+@keyframes tp-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .28; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tp-now, .tp-hand, .tp-hand-tip { animation: none; opacity: 1; }
+}
 
 @media (max-width: 380px) {
   .tp-acts .btn { font-size: 11.5px; padding: 9px 2px; gap: 3px; }
