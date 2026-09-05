@@ -142,6 +142,9 @@
     // ホームの「今日やること」から外した予定 { '<予定ID>|YYYY-MM-DD': true }。
     // カレンダーからは消さないので、いつでも戻せる
     eventDone: {},
+    // 勤務実績を入れ終えた日 { 'YYYY-MM-DD': true }。
+    // 勤務のある日は、仕事が終わる頃にホームでうながす
+    dutyLogDone: {},
     calMode: 'work',       // カレンダーの表示（work=案件 / life=日常）。この端末だけのもの
     // 通知の決まりごと [{id,kind,active,when,time,days,minutes,importantOnly}]
     notify: { enabled: false, rules: [] },
@@ -291,6 +294,7 @@
       s.settings.stayHolidayInit = true;
     }
     s.settings.eventDone = normalizeEventDone(s.settings.eventDone);
+    s.settings.dutyLogDone = normalizeDutyLogDone(s.settings.dutyLogDone);
     s.settings.logs = normalizeLogs(s.settings.logs);
     s.settings.notify = normalizeNotify(s.settings.notify);
     s.settings.docSeq = migrateDocSeq(s.settings.docSeq);
@@ -1233,6 +1237,33 @@
     else delete map[doneKey(id, date)];
     save();
     return !!map[doneKey(id, date)];
+  }
+
+  /* ---------------- 勤務実績を入れ終えた印 ----------------
+
+     勤務のある日は、仕事が終わる頃にホームで「勤務実績入力」とうながす。
+     入れ終えたらここに印を付けて、うながすのをやめる。 */
+
+  function normalizeDutyLogDone(map) {
+    var out = {};
+    var limit = U.addDays(U.today(), -90);   // 昔のぶんは溜め込まない
+    Object.keys(map || {}).forEach(function (d) {
+      if (!U.isISO(d) || !map[d]) return;
+      if (U.cmp(d, limit) < 0) return;
+      out[d] = true;
+    });
+    return out;
+  }
+
+  function dutyLogDone(date) { return !!(state.settings.dutyLogDone || {})[date]; }
+
+  function setDutyLogDone(date, on) {
+    if (!U.isISO(date)) return false;
+    var map = state.settings.dutyLogDone || (state.settings.dutyLogDone = {});
+    if (on) map[date] = true;
+    else delete map[date];
+    save();
+    return !!map[date];
   }
 
   /* ---------------- 1日の記録（デイリーログ） ---------------- */
@@ -2206,6 +2237,10 @@
       var edone = state.settings.eventDone || (state.settings.eventDone = {});
       Object.keys(incoming.settings.eventDone || {}).forEach(function (k) { edone[k] = true; });
       state.settings.eventDone = normalizeEventDone(edone);
+      // 勤務実績を入れた印も、こちらに無いぶんだけ足す
+      var dld = state.settings.dutyLogDone || (state.settings.dutyLogDone = {});
+      Object.keys(incoming.settings.dutyLogDone || {}).forEach(function (k) { dld[k] = true; });
+      state.settings.dutyLogDone = normalizeDutyLogDone(dld);
       var have = {};
       state.projects.forEach(function (p) { have[p.id] = true; });
       incoming.projects.forEach(function (p) {
@@ -2411,6 +2446,7 @@
     events: events, getEvent: getEvent, addEvent: addEvent,
     updateEvent: updateEvent, removeEvent: removeEvent,
     duty: duty, setDuty: setDuty, dutyLabel: dutyLabel,
+    dutyLogDone: dutyLogDone, setDutyLogDone: setDutyLogDone,
     TIME_LABELS: TIME_LABELS, DAY_MIN: DAY_MIN, BLOCK_MAX: BLOCK_MAX,
     timeLabels: timeLabels, timeColor: timeColor,
     timeblocks: timeblocks, setTimeblocks: setTimeblocks,

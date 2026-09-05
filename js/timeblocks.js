@@ -182,8 +182,62 @@
     }).join('　');
   }
 
+  /* ---------------- 勤務実績を入れる頃合い ----------------
+
+     仕事が終わったころに、ホームで「勤務実績入力」とうながす。
+     時刻はひな型の「仕事」の終わりに合わせてある（0時からの分）。
+     泊まり勤務は 1950 分＝翌8:30 なので、そのまま翌日に出る。 */
+
+  var REMIND = {
+    remote: 990,     // 16:30（仕事の終わり）
+    office: 990,     // 16:30（仕事の終わり。このあと帰りの通勤）
+    stay: 1950       // 翌8:30（夜勤明け）
+  };
+
+  /** その勤務にうながす時刻（0時からの分）。無ければ null */
+  function remindMin(duty) {
+    return REMIND[duty] === undefined ? null : REMIND[duty];
+  }
+
+  /** その勤務日に、うながす時刻が来る瞬間。無ければ null */
+  function remindAt(date, duty) {
+    var m = remindMin(duty);
+    if (m === null || !U.isISO(date)) return null;
+    var p = date.split('-');
+    var d = new Date(+p[0], +p[1] - 1, +p[2], 0, 0, 0, 0);
+    d.setMinutes(d.getMinutes() + m);
+    return d;
+  }
+
+  /**
+   * いま出すべき「勤務実績入力」の一覧。新しい日が先。
+   * 勤務を選んである日のうち、うながす時刻を過ぎていて、
+   * まだ入れ終えた印が付いていないものを拾う。
+   * @param {object} [opts] {now:Date, backDays:さかのぼる日数}
+   */
+  function dueWorkLogs(opts) {
+    opts = opts || {};
+    var now = opts.now || new Date();
+    var back = opts.backDays === undefined ? 14 : opts.backDays;
+    var duties = S.settings.duties || {};
+    var from = U.addDays(U.today(), -back);
+    var out = [];
+
+    Object.keys(duties).forEach(function (date) {
+      if (!U.isISO(date) || U.cmp(date, from) < 0) return;
+      var duty = duties[date];
+      var at = remindAt(date, duty);
+      if (!at || at.getTime() > now.getTime()) return;      // まだその時刻になっていない
+      if (S.dutyLogDone(date)) return;                       // もう入れ終えている
+      out.push({ date: date, duty: duty, label: S.dutyLabel(duty), at: at });
+    });
+
+    return out.sort(function (a, b) { return U.cmp(b.date, a.date); });
+  }
+
   DL.timeblocks = {
     DAY: DAY,
+    REMIND: REMIND, remindMin: remindMin, remindAt: remindAt, dueWorkLogs: dueWorkLogs,
     labels: labels, colorOf: colorOf,
     fmt: fmt, fmtDay: fmtDay, parse: parse,
     ofDay: ofDay, has: has, sums: sums, filled: filled, gaps: gaps,

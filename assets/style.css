@@ -430,6 +430,8 @@ h1, h2, h3, p { margin: 0; }
   font-size: 13px; color: inherit; cursor: pointer;
 }
 .checkbtn.small { width: 28px; height: 28px; }
+/* 勤務実績の入力をうながす帯。押せる本体はリンクなので、下線は消す */
+a.alert-main { text-decoration: none; }
 
 .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
 .weekday {

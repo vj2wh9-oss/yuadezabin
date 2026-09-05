@@ -17,6 +17,9 @@
     // iCloud への書き出しは Cloudflare 同期の予備なので、ホームでは案内しない。
     // 使うときは 設定 →「iCloud への書き出し」から。
 
+    /* 勤務実績の入力。仕事が終わる頃に、いちばん上でうながす */
+    workLogAlerts(wrap);
+
     /* 今日が即売会なら、いちばん上に当日モードの入口を置く */
     var onsite = S.projects().filter(function (p) {
       return p.kind === 'event' && p.status !== 'archived' && p.eventDate === today;
@@ -387,6 +390,49 @@
    * 「重要」にした日常の予定を、締切の警告と同じ形でいちばん上に出す。
    * チェックは下の一覧と同じ印を使うので、どちらで押しても両方から消える。
    */
+  /* ---------------- 勤務実績の入力 ----------------
+
+     勤務を選んである日は、仕事が終わる頃にここでうながす。
+     リモート・出社はその日の16:30、泊まり勤務は翌日の8:30。
+     押すとその日の「1日の時間」へ。チェックで消える。 */
+
+  function workLogAlerts(wrap) {
+    var due = DL.timeblocks.dueWorkLogs();
+    if (!due.length) return;
+
+    var box = el('div', { class: 'alerts worklog-alerts' });
+    due.slice(0, 3).forEach(function (d) { box.appendChild(workLogAlert(d)); });
+    if (due.length > 3) {
+      box.appendChild(el('div', { class: 'muted small pad', text: 'ほか ' + (due.length - 3) + '日ぶん' }));
+    }
+    wrap.appendChild(box);
+  }
+
+  function workLogAlert(d) {
+    var today = U.today();
+    // 泊まり勤務は翌日に出るので、いつぶんなのかを必ず添える
+    var when = d.date === today ? '今日' : U.fmtMDW(d.date);
+    return el('div', { class: 'alert warn plan-alert worklog-alert' }, [
+      el('a', {
+        class: 'alert-main', href: '#/time/' + d.date,
+        'aria-label': when + ' の勤務実績を入力する'
+      }, [
+        el('span', { class: 'alert-icon' }, ui.icon('clock', 17)),
+        el('span', {}, [
+          el('b', { text: '勤務実績入力' }),
+          el('span', { text: '　' + when + '　' + d.label })
+        ])
+      ]),
+      el('button', {
+        class: 'checkbtn small', 'aria-label': when + ' の勤務実績を入力した',
+        onclick: function () {
+          S.setDutyLogDone(d.date, true);
+          ui.toast(when + 'の勤務実績を入れ終えました');
+        }
+      }, ui.icon('check', 15))
+    ]);
+  }
+
   function planAlert(o) {
     var ev = o.ev, E = DL.events;
     return el('div', { class: 'alert warn plan-alert' }, [
