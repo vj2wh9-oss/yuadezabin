@@ -474,11 +474,14 @@
     var leave = function () {
       if (gone) return;
       gone = true;
+      /* 幕の裏で描き終わってしまっているので、もう一度動かす。
+         空にするのは幕が下りているいまのうちに済ませ、動きだすのは
+         幕が開ききるころ。あとから空にすると、埋まった状態が
+         幕ごしに一瞬見えてしまう */
+      ui.introduce(view, 220);
       box.classList.add('out');
       setTimeout(function () {
         if (box.parentNode) box.parentNode.removeChild(box);
-        // 隠れているあいだに描き終わっているので、ここでもう一度動かす
-        ui.introduce(view);
       }, 320);
     };
 

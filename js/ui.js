@@ -214,7 +214,7 @@
 
      「動きを減らす」設定の端末では、いきなり最終形にする。 */
 
-  var INTRO_MS = 620;
+  var INTRO_MS = 900;
 
   function reduceMotion() {
     return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -228,7 +228,7 @@
    * 文字はそのまま使い、中の数字だけ差し替えるので
    * 「¥1,234」「-¥500」「4件」のどれでも動く。
    */
-  function countUp(node) {
+  function countUp(node, wait) {
     var full = node.textContent;
     var m = /^(\D*)(-?[\d,]+)(\D*)$/.exec(full);
     if (!m) return;                                  // 数字が無いものは触らない
@@ -241,20 +241,21 @@
       node.textContent = head + (comma ? v.toLocaleString('en-US') : String(v)) + tail;
     };
     write(0);
-    ramp(node, function (t) { write(Math.round(to * t)); }, function () { node.textContent = full; });
+    ramp(node, function (t) { write(Math.round(to * t)); },
+      function () { node.textContent = full; }, wait);
   }
 
   /** 横棒。幅0から今の幅まで伸ばす */
-  function growBar(node) {
+  function growBar(node, wait) {
     var w = node.style.width;
     if (!w) return;
     node.style.width = '0%';
     ramp(node, function (t) { node.style.width = 'calc(' + w + ' * ' + t.toFixed(4) + ')'; },
-      function () { node.style.width = w; });
+      function () { node.style.width = w; }, wait);
   }
 
   /** 折れ線。左から描き足す */
-  function drawLine(node) {
+  function drawLine(node, wait) {
     var len;
     try { len = node.getTotalLength(); } catch (e) { return; }
     if (!len) return;
@@ -263,7 +264,7 @@
     ramp(node, function (t) { node.style.strokeDashoffset = String(len * (1 - t)); }, function () {
       node.style.strokeDasharray = '';
       node.style.strokeDashoffset = '';
-    });
+    }, wait);
   }
 
   /**
@@ -271,20 +272,22 @@
    * どう描き足すかはグラフ側が知っているので、_sweep(0→1) を呼ぶだけ。
    * こうすると、まん中の字や目盛りは動かさずに中身だけ埋まっていく。
    */
-  function sweep(node) {
+  function sweep(node, wait) {
     if (typeof node._sweep !== 'function') return;
     node._sweep(0);
-    ramp(node, node._sweep, function () { node._sweep(1); });
+    ramp(node, node._sweep, function () { node._sweep(1); }, wait);
   }
 
   /* 毎フレーム step(0→1) を呼び、終わったら done()。
-     途中で画面が描き直されたら、その時点でやめる */
-  function ramp(node, step, done) {
+     途中で画面が描き直されたら、その時点でやめる。
+     wait を渡すと、そのぶん空のまま待ってから動きだす */
+  function ramp(node, step, done, wait) {
     var t0 = 0;
     var tick = function (now) {
       if (!node.isConnected) { done(); return; }     // 描き直された
-      if (!t0) t0 = now;
-      var t = Math.min(1, (now - t0) / INTRO_MS);
+      if (!t0) t0 = now + (wait || 0);
+      var t = (now - t0) / INTRO_MS;
+      if (t < 0) { requestAnimationFrame(tick); return; }   // まだ待っているところ
       if (t >= 1) { done(); return; }
       step(easeOut(t));
       requestAnimationFrame(tick);
@@ -295,13 +298,19 @@
   /**
    * 開いたばかりの画面に、ひととおりの見せ方をかける。
    * app.js が画面を組み立てたあとに一度だけ呼ぶ。
+   *
+   * 空にするのはここで済ませ、動きだすのは wait ミリ秒あと。
+   * 起動の幕が開くのに合わせたいときに使う。空にするのを遅らせると、
+   * 埋まった状態が一瞬見えてしまうので、そこは必ず先にやる。
+   * @param {number} [wait] 動きだすまでの間（ミリ秒）
    */
-  function introduce(root) {
+  function introduce(root, wait) {
     if (!root || reduceMotion()) return;
-    U.$$('.sum-box b', root).forEach(countUp);
-    U.$$('.cat-bar i, .ms-bar i, .bg-bar i', root).forEach(growBar);
-    U.$$('.lc-line', root).forEach(drawLine);
-    U.$$('.tp-pie, .tp-bar', root).forEach(sweep);
+    var go = function (fn) { return function (n) { fn(n, wait); }; };
+    U.$$('.sum-box b', root).forEach(go(countUp));
+    U.$$('.cat-bar i, .ms-bar i, .bg-bar i', root).forEach(go(growBar));
+    U.$$('.lc-line', root).forEach(go(drawLine));
+    U.$$('.tp-pie, .tp-bar', root).forEach(go(sweep));
   }
 
   function chip(text, cls, style) {

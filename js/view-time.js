@@ -82,17 +82,29 @@
     /* 開いたときの見せ方。0→1 を渡すと、0時のところから時計回りに出てくる。
        扇形そのものを描き直すので、まん中の字や目盛りは動かない。
        ui.introduce がこれを見つけて呼ぶ */
+    var last = sweepEnd(slices, now);
     svg._sweep = function (t) {
-      var upto = DAY * t;
+      var upto = last * t;
       slices.forEach(function (o) {
         var e = Math.max(o.start, Math.min(o.end, upto));
         o.node.setAttribute('d', ring(C, R, r, o.start, e));
         o.node.style.visibility = e > o.start ? '' : 'hidden';
       });
       // 針は、時計回りがそこを通り過ぎてから出す
-      hand.forEach(function (n) { n.style.visibility = upto >= now ? '' : 'hidden'; });
+      var at = Math.min(now, last);
+      hand.forEach(function (n) { n.style.visibility = upto >= at ? '' : 'hidden'; });
     };
     return svg;
+  }
+
+  /* 描き出しをどこまで進めればいいか。
+     いちばん遅い帯の終わりまで来れば、もう描くものはない。24時までを
+     一律に回すと、夕方で終わる日は途中から何も起きない間ができてしまう。
+     いまの時刻がその先にある日は、印を最後に出す（そこまで空回りしない）。 */
+  function sweepEnd(list, now) {
+    var end = 0;
+    list.forEach(function (o) { if (o.end > end) end = o.end; });
+    return end || (now === null ? DAY : now) || DAY;
   }
 
   /* 0時を上にした角度（ラジアン）。右回り */
@@ -154,14 +166,15 @@
 
     /* 円グラフと同じ見せ方。0→1 を渡すと、左から順に出てくる。
        ui.introduce がこれを見つけて呼ぶ */
+    var last = sweepEnd(segs, m);
     box._sweep = function (t) {
-      var upto = DAY * t;
+      var upto = last * t;
       segs.forEach(function (o) {
         var e = Math.max(o.start, Math.min(o.end, upto));
         o.node.style.width = ((e - o.start) / DAY * 100) + '%';
         o.node.style.visibility = e > o.start ? '' : 'hidden';
       });
-      if (mark) mark.style.visibility = upto >= m ? '' : 'hidden';
+      if (mark) mark.style.visibility = upto >= Math.min(m, last) ? '' : 'hidden';
     };
     var wrap = el('div', { class: 'tp-barwrap' }, [
       box,
