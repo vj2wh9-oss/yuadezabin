@@ -12,6 +12,7 @@
   var ideaBtn = U.$('#ideaBtn');
   var modeBtn = U.$('#modeBtn');
   var fab = U.$('#fab');
+  var fabOrders = U.$('#fabOrders');
 
   var route = { name: 'home', params: {} };
   var lastKey = '';
@@ -303,6 +304,7 @@
   }
 
   function updateFab() {
+    updateOrderFab();
     // カレンダーは画面いっぱいに出すので、重なるボタンは置かない
     if (['settings', 'calendar', 'docs', 'doc', 'sales', 'search', 'onsite', 'log', 'logs', 'ideas', 'time', 'orders'].indexOf(route.name) >= 0) { fab.hidden = true; return; }
     fab.hidden = false;
@@ -324,6 +326,21 @@
       }
       DL.forms.projectForm();
     };
+  }
+
+  /**
+   * 発注の入口。案件タブでだけ、＋の左に同じ大きさで出す。
+   * 押すと、設定の「発注の一覧を開く」と同じ画面へ行く。
+   */
+  function updateOrderFab() {
+    if (!fabOrders) return;
+    fabOrders.hidden = route.name !== 'projects';
+    if (fabOrders.hidden) return;
+    var n = DL.orders.unread();
+    fabOrders.classList.toggle('has-new', n > 0);
+    fabOrders.setAttribute('aria-label', n ? '発注の一覧を開く（未確認 ' + n + '件）' : '発注の一覧を開く');
+    fabOrders.setAttribute('data-count', n > 9 ? '9+' : String(n || ''));
+    fabOrders.onclick = function () { location.hash = '#/orders'; };
   }
 
   function addMenu(p) {

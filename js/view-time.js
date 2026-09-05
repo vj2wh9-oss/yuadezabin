@@ -34,7 +34,7 @@
 
     T.ofDay(date).forEach(function (b) {
       var p = svgEl('path', {
-        class: 'tp-slice', d: ring(C, R, r, b.start, b.end), fill: T.color(b.kind)
+        class: 'tp-slice', d: ring(C, R, r, b.start, b.end), fill: b.color
       });
       p.appendChild(svgEl('title', { text: slabel(b) }));
       if (opts.onPick && !b.carry) {
@@ -53,6 +53,21 @@
       }));
     });
 
+    // いまの時刻。今日を見ているときだけ、針を出す
+    var now = nowMin(date);
+    if (now !== null) {
+      var na = ang(now);
+      var sin = Math.sin(na), cos = Math.cos(na);
+      svg.appendChild(svgEl('line', {
+        class: 'tp-hand',
+        x1: C + sin * (r - 4), y1: C - cos * (r - 4),
+        x2: C + sin * (R + 4), y2: C - cos * (R + 4)
+      }));
+      svg.appendChild(svgEl('circle', {
+        class: 'tp-hand-tip', cx: C + sin * (R + 4), cy: C - cos * (R + 4), r: 2.4
+      }));
+    }
+
     // まん中に、いちばん長いものを出す
     var top = T.sums(date)[0];
     if (top) {
@@ -64,6 +79,13 @@
 
   /* 0時を上にした角度（ラジアン）。右回り */
   function ang(min) { return (min % DAY) / DAY * Math.PI * 2; }
+
+  /* その日が今日なら、いまが0時から何分か。ほかの日なら null */
+  function nowMin(date) {
+    if (date !== U.today()) return null;
+    var d = new Date();
+    return d.getHours() * 60 + d.getMinutes();
+  }
 
   /* ドーナツの一切れ */
   function ring(c, R, r, start, end) {
@@ -95,14 +117,16 @@
         style: {
           left: (b.start / DAY * 100) + '%',
           width: ((b.end - b.start) / DAY * 100) + '%',
-          background: T.color(b.kind)
+          background: b.color
         }
       }));
     });
-    if (opts.now) {
-      var d = new Date();
-      var m = d.getHours() * 60 + d.getMinutes();
-      box.appendChild(el('i', { class: 'tp-now', style: { left: (m / DAY * 100) + '%' } }));
+    // いまの時刻。今日を見ているときだけ
+    var m = nowMin(date);
+    if (m !== null) {
+      box.appendChild(el('i', {
+        class: 'tp-now', title: 'いま ' + T.fmt(m), style: { left: (m / DAY * 100) + '%' }
+      }));
     }
     var wrap = el('div', { class: 'tp-barwrap' }, [
       box,
@@ -164,21 +188,25 @@
       ]));
       card.appendChild(rows(date));
     }
-    card.appendChild(el('div', { class: 'row-wrap' }, [
-      ui.btn('時間を足す', 'ghost', function () { blockSheet(date, null); }, 'plus'),
-      presetBtn(date),
-      list.length ? ui.btn('全部消す', 'ghost tiny', function () { clearDay(date); }) : null
-    ]));
+    // iPhone の幅でも折り返さないよう、等分の1行に並べる
+    var acts = [ui.btn('時間を足す', 'ghost', function () { blockSheet(date, null); }, 'plus')];
+    var preset = presetBtn(date);
+    if (preset) acts.push(preset);
+    if (list.length) acts.push(ui.btn('全部消す', 'ghost', function () { clearDay(date); }, 'trash'));
+    card.appendChild(el('div', { class: 'tp-acts n' + acts.length }, acts));
     wrap.appendChild(card);
   }
 
-  /* 勤務のひな型を入れるボタン。勤務を選んでいる日だけ出す */
+  /* 勤務のひな型を入れるボタン。勤務を選んでいる日だけ出す。
+     3つ並べても1行に収めたいので、ボタンの字は「ひな型」だけにして、
+     どの勤務のものかは読み上げと長押しの説明に持たせる */
   function presetBtn(date) {
     var duty = S.duty(date);
     if (!T.hasPreset(duty)) return null;
-    return ui.btn(S.dutyLabel(duty) + 'のひな型', 'ghost', function () {
-      offerPreset(date, duty, true);
-    }, 'refresh');
+    var b = ui.btn('ひな型', 'ghost', function () { offerPreset(date, duty, true); }, 'refresh');
+    b.setAttribute('aria-label', S.dutyLabel(duty) + 'のひな型を入れる');
+    b.setAttribute('title', S.dutyLabel(duty) + 'のひな型を入れる');
+    return b;
   }
 
   /**
@@ -218,9 +246,9 @@
         class: 'tp-row' + (b.carry ? ' carry' : ''),
         onclick: function () { blockSheet(b.carry ? b.date : date, b); }
       }, [
-        el('i', { class: 'tp-dot', style: { background: T.color(b.kind) } }),
+        el('i', { class: 'tp-dot', style: { background: b.color } }),
         el('span', { class: 'tp-row-t', text: T.fmt(b.start) + '〜' + T.fmt(b.end) }),
-        el('span', { class: 'tp-row-k', text: T.label(b.kind) + (b.memo ? '　' + b.memo : '') }),
+        el('span', { class: 'tp-row-k', text: b.label + (b.memo ? '　' + b.memo : '') }),
         el('span', { class: 'tp-row-d', text: hm(b.end - b.start) + (b.carry ? '（前の日から）' : b.over ? '（翌日へ）' : '') })
       ]);
     }));
@@ -239,7 +267,6 @@
     var cur = src || b;
     var v = {
       id: cur ? cur.id : '',
-      kind: cur ? cur.kind : guessKind(date),
       start: cur ? cur.start : nextFree(date),
       end: cur ? cur.end : Math.min(DAY, nextFree(date) + 60),
       memo: cur ? (cur.memo || '') : ''
@@ -249,18 +276,36 @@
     var endIn = ui.input({ value: T.fmt(v.end), inputmode: 'numeric', placeholder: '16:30' });
     var memoIn = ui.input({ value: v.memo, maxlength: 40, placeholder: 'ひとこと（なくてよい）' });
 
-    var kindWrap = el('div', { class: 'tp-kinds' });
-    T.kinds().forEach(function (k) {
-      var btn = el('button', {
-        type: 'button', class: 'tp-kind' + (k.value === v.kind ? ' on' : ''),
-        onclick: function () {
-          v.kind = k.value;
-          U.$$('.tp-kind', kindWrap).forEach(function (x) { x.classList.remove('on'); });
-          btn.classList.add('on');
-        }
-      }, [el('i', { style: { background: k.color } }), el('span', { text: k.label })]);
-      kindWrap.appendChild(btn);
+    /* 何をしていたかは、その都度自由に書ける。
+       よく使う名前はボタンで並べておいて、押せば入るようにする */
+    var nameIn = ui.input({
+      value: cur ? cur.label : guessLabel(date), maxlength: 20,
+      placeholder: '例）打ち合わせ / 買いもの / 散歩'
     });
+    var swatch = el('i', { class: 'tp-swatch' });
+    var pickWrap = el('div', { class: 'tp-kinds' });
+
+    function markPick() {
+      var now = nameIn.value.trim();
+      swatch.style.background = now ? T.colorOf(now) : 'transparent';
+      U.$$('.tp-kind', pickWrap).forEach(function (x) {
+        x.classList.toggle('on', x.dataset.label === now);
+      });
+    }
+    T.labels().slice(0, 12).forEach(function (k) {
+      var btn = el('button', {
+        type: 'button', class: 'tp-kind', 'data-label': k.label,
+        onclick: function () { nameIn.value = k.label; markPick(); }
+      }, [el('i', { style: { background: k.color } }), el('span', { text: k.label })]);
+      pickWrap.appendChild(btn);
+    });
+    nameIn.addEventListener('input', markPick);
+    markPick();
+
+    var nameWrap = el('div', { class: 'tp-name' }, [
+      el('div', { class: 'tp-name-in' }, [swatch, nameIn]),
+      pickWrap
+    ]);
 
     var note = el('p', { class: 'muted small' });
     function showLen() {
@@ -277,7 +322,7 @@
     var close = ui.sheet({
       title: isNew ? '時間を足す' : '時間を直す',
       body: el('div', { class: 'form' }, [
-        ui.block('何をしていたか', kindWrap),
+        ui.block('何をしていたか', nameWrap, '好きな名前を書けます。押すと、よく使う名前が入ります'),
         el('div', { class: 'grid2' }, [
           ui.field('始まり', startIn),
           ui.field('終わり', endIn)
@@ -294,9 +339,11 @@
         ui.btn('キャンセル', 'ghost', function () { close(); }),
         ui.btn('保存', 'primary', function () {
           var s = T.parse(startIn.value), e = T.parse(endIn.value);
+          var name = nameIn.value.trim();
+          if (!name) { ui.toast('何をしていたかを書いてください', 'danger'); nameIn.focus(); return; }
           if (s === null || e === null) { ui.toast('時刻を読み取れませんでした', 'danger'); return; }
           if (e <= s) { ui.toast('終わりは始まりより後にしてください', 'danger'); return; }
-          S.putTimeblock(src ? b.date : date, { id: v.id, kind: v.kind, start: s, end: e, memo: memoIn.value });
+          S.putTimeblock(src ? b.date : date, { id: v.id, label: name, start: s, end: e, memo: memoIn.value });
           close();
           ui.toast(isNew ? '足しました' : '直しました');
         })
@@ -312,18 +359,18 @@
     return last ? Math.min(DAY - 60, last.end) : 480;
   }
 
-  /* 足すときの種類の当たり。朝晩は睡眠、日中は仕事にしておく */
-  function guessKind(date) {
+  /* 足すときの名前の当たり。朝晩は睡眠、日中は仕事にしておく */
+  function guessLabel(date) {
     var at = nextFree(date);
-    if (at < 360 || at >= 1380) return 'sleep';
-    if (at >= 540 && at < 1080) return 'work';
-    return 'free';
+    if (at < 360 || at >= 1380) return '睡眠';
+    if (at >= 540 && at < 1080) return '仕事';
+    return '自由時間';
   }
 
   /* ---------------- そのほか ---------------- */
 
   function slabel(b) {
-    return T.label(b.kind) + ' ' + T.fmt(b.start) + '〜' + T.fmt(b.end) + (b.memo ? '　' + b.memo : '');
+    return b.label + ' ' + T.fmt(b.start) + '〜' + T.fmt(b.end) + (b.memo ? '　' + b.memo : '');
   }
 
   /** 分 → '8時間30分' / '45分' */

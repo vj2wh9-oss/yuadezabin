@@ -71,16 +71,30 @@
     { value: 'stay', label: '泊まり勤務' }
   ];
 
-  /* 1日の時間の振り分けで使う種類。案件と日常は分けず、同じものを使う */
-  var TIME_KINDS = [
-    { value: 'sleep', label: '睡眠', color: '#5b6b8c' },
-    { value: 'work', label: '仕事', color: '#2563eb' },
-    { value: 'commute', label: '通勤', color: '#0ea5e9' },
-    { value: 'draw', label: '作業・制作', color: '#8b2fe8' },
-    { value: 'meal', label: '食事', color: '#f2b200' },
-    { value: 'chore', label: '家事', color: '#00a651' },
-    { value: 'free', label: '自由時間', color: '#ff6a00' },
-    { value: 'other', label: 'その他', color: '#94a3b8' }
+  /* 1日の時間の振り分け。案件と日常は分けず、同じものを使う。
+     名前はその都度自由に書けるが、よく使うものは最初から出しておく。
+     ここに無い名前を書いたときは、色を自動で振る */
+  var TIME_LABELS = [
+    { label: '睡眠', color: '#5b6b8c' },
+    { label: '仕事', color: '#2563eb' },
+    { label: '通勤', color: '#0ea5e9' },
+    { label: '作業・制作', color: '#8b2fe8' },
+    { label: '食事', color: '#f2b200' },
+    { label: '家事', color: '#00a651' },
+    { label: '自由時間', color: '#ff6a00' },
+    { label: 'その他', color: '#94a3b8' }
+  ];
+
+  /* 前の作りでは決まった種類しか選べなかった。その値を名前に読み替える */
+  var OLD_TIME_KIND = {
+    sleep: '睡眠', work: '仕事', commute: '通勤', draw: '作業・制作',
+    meal: '食事', chore: '家事', free: '自由時間', other: 'その他'
+  };
+
+  /* 名前を自由に書けるようにしたぶん、色はこちらで足りるだけ用意する */
+  var TIME_EXTRA_COLORS = [
+    '#e0457b', '#12a5b8', '#7a6a52', '#4c9a2a', '#c2410c', '#6d28d9',
+    '#0f766e', '#a16207', '#9d174d', '#1d4ed8'
   ];
 
   var DEFAULT_SETTINGS = {
@@ -1360,22 +1374,78 @@
   var DAY_MIN = 1440;
   var BLOCK_MAX = DAY_MIN * 2;   // 翌日の24時まで
 
-  function isTimeKind(v) {
-    for (var i = 0; i < TIME_KINDS.length; i++) if (TIME_KINDS[i].value === v) return true;
-    return false;
+  /* 決まった名前のときの色。無ければ null */
+  function defaultTimeColor(label) {
+    for (var i = 0; i < TIME_LABELS.length; i++) {
+      if (TIME_LABELS[i].label === label) return TIME_LABELS[i].color;
+    }
+    return null;
   }
+
+  /**
+   * その名前に使う色を決める。
+   * すでに同じ名前で書いてある帯があれば、その色をそのまま使う。
+   * 決まった名前ならその色。どちらでもなければ、まだ使っていない色を配る。
+   */
+  function timeColor(label) {
+    var fixed = defaultTimeColor(label);
+    if (fixed) return fixed;
+
+    var used = {}, hit = '';
+    Object.keys((state && state.settings.timeblocks) || {}).forEach(function (d) {
+      (state.settings.timeblocks[d] || []).forEach(function (b) {
+        if (!b.color) return;
+        if (b.label === label) hit = b.color;
+        used[b.color] = true;
+      });
+    });
+    if (hit) return hit;
+
+    for (var i = 0; i < TIME_EXTRA_COLORS.length; i++) {
+      if (!used[TIME_EXTRA_COLORS[i]]) return TIME_EXTRA_COLORS[i];
+    }
+    // 出し切ったら、名前から決める（同じ名前なら毎回同じ色になる）
+    var n = 0;
+    for (var j = 0; j < label.length; j++) n = (n * 31 + label.charCodeAt(j)) % 9973;
+    return TIME_EXTRA_COLORS[n % TIME_EXTRA_COLORS.length];
+  }
+
+  var HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
   function normalizeBlock(b) {
     b = b || {};
     var start = Math.max(0, Math.min(BLOCK_MAX, Math.round(U.num(b.start, 0))));
     var end = Math.max(0, Math.min(BLOCK_MAX, Math.round(U.num(b.end, 0))));
+    // 前の作りの kind は名前に読み替える
+    var label = String(b.label || OLD_TIME_KIND[b.kind] || '').trim().slice(0, 20) || 'その他';
     return {
       id: b.id || U.uid(),
-      kind: isTimeKind(b.kind) ? b.kind : 'other',
+      label: label,
+      color: HEX_COLOR.test(String(b.color)) ? b.color : timeColor(label),
       start: start,
       end: end,
       memo: String(b.memo || '').trim().slice(0, 40)
     };
+  }
+
+  /** これまでに使った名前を、よく使う順に。書くときの選び口に出す */
+  function timeLabels() {
+    var count = {}, color = {};
+    Object.keys((state && state.settings.timeblocks) || {}).forEach(function (d) {
+      (state.settings.timeblocks[d] || []).forEach(function (b) {
+        count[b.label] = (count[b.label] || 0) + 1;
+        if (b.color) color[b.label] = b.color;
+      });
+    });
+    var out = Object.keys(count).map(function (l) {
+      return { label: l, color: color[l] || timeColor(l), uses: count[l] };
+    }).sort(function (a, b) { return (b.uses - a.uses) || U.cmp(a.label, b.label); });
+
+    // 使ったことが無くても、決まった名前は後ろに並べておく
+    TIME_LABELS.forEach(function (k) {
+      if (!count[k.label]) out.push({ label: k.label, color: k.color, uses: 0 });
+    });
+    return out;
   }
 
   function normalizeBlocks(list) {
@@ -2296,7 +2366,8 @@
     events: events, getEvent: getEvent, addEvent: addEvent,
     updateEvent: updateEvent, removeEvent: removeEvent,
     duty: duty, setDuty: setDuty, dutyLabel: dutyLabel,
-    TIME_KINDS: TIME_KINDS, DAY_MIN: DAY_MIN, BLOCK_MAX: BLOCK_MAX,
+    TIME_LABELS: TIME_LABELS, DAY_MIN: DAY_MIN, BLOCK_MAX: BLOCK_MAX,
+    timeLabels: timeLabels, timeColor: timeColor,
     timeblocks: timeblocks, setTimeblocks: setTimeblocks,
     putTimeblock: putTimeblock, removeTimeblock: removeTimeblock,
     getLog: getLog, setLog: setLog, logDates: logDates, MOODS: MOODS,

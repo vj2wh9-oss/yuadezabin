@@ -6,12 +6,18 @@
   function render(root) {
     var s = S.settings;
     var age = S.backupAgeDays();       // ファイルへ書き出してからの日数
-    var wrap = el('div', { class: 'page' });
+    var wrap = el('div', { class: 'page settings-page' });
+    // 項目が増えて縦に長いので、ジャンルごとにたたんでおく。
+    // at は「いま書き込んでいるジャンルの中身」を指す
+    var at = wrap;
+    function genre(title, sub) { return openGroup(wrap, title, sub); }
+
+    at = genre('作業と表示', '締切の見かた・天気・タスクのひな型');
 
     /* ---- 稼働設定 ---- */
-    wrap.appendChild(ui.section('作業の設定'));
+    at.appendChild(ui.section('作業の設定'));
 
-    wrap.appendChild(el('div', { class: 'card' }, [
+    at.appendChild(el('div', { class: 'card' }, [
       ui.field('締切前の予備日', numInput(s.bufferDays, function (v) { S.updateSettings({ bufferDays: v }); }), '自動スケジュールの既定値'),
       ui.field('締切が近いと知らせる日数', numInput(s.warnDays, function (v) { S.updateSettings({ warnDays: v }); })),
       ui.field('1日の作業量の上限', numInput(s.dailyLimit, function (v) { S.updateSettings({ dailyLimit: v }); }),
@@ -25,20 +31,22 @@
     /* 休業日はカレンダーの日別画面から指定する（ここには置かない） */
 
     /* ---- 天気 ---- */
-    wrap.appendChild(ui.section('天気', DL.weather.place()
+    at.appendChild(ui.section('天気', DL.weather.place()
       ? el('span', { class: 'muted small', text: DL.weather.place().name || '登録済み' }) : null));
-    wrap.appendChild(weatherCard());
+    at.appendChild(weatherCard());
 
     /* ---- テンプレート ---- */
-    wrap.appendChild(ui.section('基本タスクのテンプレート'));
-    wrap.appendChild(el('div', { class: 'card' }, [
+    at.appendChild(ui.section('基本タスクのテンプレート'));
+    at.appendChild(el('div', { class: 'card' }, [
       tplSummary('manga', '漫画', 'manga'),
       tplSummary('illust', 'イラスト', 'illust'),
       tplSummary('design', 'デザイン', 'design')
     ]));
 
+    at = genre('名義とお金まわり', '書類の発行元・取引先・買ったものの分類');
+
     /* ---- 名義 ---- */
-    wrap.appendChild(ui.section('名義（見積書・請求書・領収書の発行元）',
+    at.appendChild(ui.section('名義（見積書・請求書・領収書の発行元）',
       el('a', { class: 'link', href: '#/sales', text: '売上' })));
     var issuerBox = el('div', { class: 'card' });
     var list = S.issuers();
@@ -66,10 +74,10 @@
       ]));
     });
     issuerBox.appendChild(ui.btn('名義を追加', 'ghost full', function () { DL.forms.issuerSheet(null); }, 'plus'));
-    wrap.appendChild(issuerBox);
+    at.appendChild(issuerBox);
 
     /* ---- 取引先 ---- */
-    wrap.appendChild(ui.section('取引先', el('span', { class: 'muted small', text: S.clients().length + '件' })));
+    at.appendChild(ui.section('取引先', el('span', { class: 'muted small', text: S.clients().length + '件' })));
     var clientBox = el('div', { class: 'card' });
     if (!S.clients().length) {
       clientBox.appendChild(el('p', { class: 'muted small', text: 'まだありません。' }));
@@ -91,15 +99,39 @@
       ]));
     });
     clientBox.appendChild(ui.btn('取引先を追加', 'ghost full', function () { DL.forms.clientSheet(null); }, 'plus'));
-    wrap.appendChild(clientBox);
+    at.appendChild(clientBox);
 
     /* ---- 分類（買ったものに付ける札） ---- */
-    wrap.appendChild(ui.section('買ったものの分類',
+    at.appendChild(ui.section('買ったものの分類',
       el('a', { class: 'link', href: '#/books', text: '経理' })));
-    wrap.appendChild(tagCard());
+    at.appendChild(tagCard());
+
+    at = genre('つなぐ・受け取る', '同期・通知・発注フォーム・FANBOX');
+
+    /* ---- 同期 ---- */
+    at.appendChild(ui.section('PC・iPhone の同期',
+      DL.sync.active() ? ui.chip('有効', 'ok') : ui.chip('未接続', 'ghosty')));
+    at.appendChild(syncCard(s));
+
+    /* ---- 通知 ---- */
+    at.appendChild(ui.section('通知',
+      DL.notify.settings().enabled ? ui.chip('この端末で受け取る', 'ok') : ui.chip('切', 'ghosty')));
+    at.appendChild(notifyCard());
+
+    /* ---- 発注フォーム ---- */
+    at.appendChild(ui.section('発注フォーム',
+      DL.orders.unread() ? ui.chip(DL.orders.unread() + '件の未確認', 'warn') : null));
+    at.appendChild(orderCard());
+
+    /* ---- FANBOX の取り込み ---- */
+    at.appendChild(ui.section('FANBOX の取り込み',
+      DL.fanbox.inbox() ? ui.chip('届いています', 'ok') : null));
+    at.appendChild(fanboxCard());
+
+    at = genre('控えとデータ', 'バックアップ・書き出し・読み込み');
 
     /* ---- 自動バックアップ ---- */
-    wrap.appendChild(ui.section('自動バックアップ'));
+    at.appendChild(ui.section('自動バックアップ'));
     var autoChk = el('input', { type: 'checkbox', class: 'check', checked: !!s.autoBackup });
     autoChk.addEventListener('change', function () { S.updateSettings({ autoBackup: autoChk.checked }); });
     var backupCard = el('div', { class: 'card' }, [
@@ -117,8 +149,8 @@
         el('span', { class: 'info-v', id: 'dbState', text: '確認中…' })
       ])
     ]);
-    wrap.appendChild(backupCard);
-    wrap.appendChild(el('div', { class: 'card actions' }, [
+    at.appendChild(backupCard);
+    at.appendChild(el('div', { class: 'card actions' }, [
       ui.btn('いますぐ控えを取る', 'ghost', function () {
         S.makeBackup('manual', '手動').then(function (r) {
           ui.toast(r ? '控えを取りました' : 'この環境では保存できませんでした', r ? '' : 'danger');
@@ -139,29 +171,9 @@
       });
     });
 
-    /* ---- 同期 ---- */
-    wrap.appendChild(ui.section('PC・iPhone の同期',
-      DL.sync.active() ? ui.chip('有効', 'ok') : ui.chip('未接続', 'ghosty')));
-    wrap.appendChild(syncCard(s));
-
-    /* ---- 通知 ---- */
-    wrap.appendChild(ui.section('通知',
-      DL.notify.settings().enabled ? ui.chip('この端末で受け取る', 'ok') : ui.chip('切', 'ghosty')));
-    wrap.appendChild(notifyCard());
-
-    /* ---- 発注フォーム ---- */
-    wrap.appendChild(ui.section('発注フォーム',
-      DL.orders.unread() ? ui.chip(DL.orders.unread() + '件の未確認', 'warn') : null));
-    wrap.appendChild(orderCard());
-
-    /* ---- FANBOX の取り込み ---- */
-    wrap.appendChild(ui.section('FANBOX の取り込み',
-      DL.fanbox.inbox() ? ui.chip('届いています', 'ok') : null));
-    wrap.appendChild(fanboxCard());
-
     /* ---- iCloud へ書き出す ---- */
-    wrap.appendChild(ui.section('iCloud への書き出し'));
-    wrap.appendChild(el('div', { class: 'card' }, [
+    at.appendChild(ui.section('iCloud への書き出し'));
+    at.appendChild(el('div', { class: 'card' }, [
       el('p', { class: 'muted small', text: 'Safari の設定 →「ダウンロード」で保存先を iCloud Drive にしておくと、ボタンひとつでそこに入ります。' }),
       ui.btn('iCloud に書き出す', 'primary full', function () { exportToFile(); }, 'cloud'),
       ui.btn('保存先を選んで書き出す', 'ghost full', function () { shareToFile(); }, 'arrowUp'),
@@ -173,7 +185,7 @@
     ]));
 
     /* ---- データ ---- */
-    wrap.appendChild(ui.section('データ'));
+    at.appendChild(ui.section('データ'));
     var file = el('input', { type: 'file', accept: '.json,application/json', style: { display: 'none' } });
     file.addEventListener('change', function () {
       var f = file.files[0];
@@ -184,7 +196,7 @@
       file.value = '';
     });
 
-    wrap.appendChild(el('div', { class: 'card actions' }, [
+    at.appendChild(el('div', { class: 'card actions' }, [
       ui.btn('バックアップを書き出す（JSON）', 'ghost', function () { exportToFile(); }, 'arrowDown'),
       ui.btn('バックアップを読み込む', 'ghost', function () { file.click(); }, 'arrowUp'),
       ui.btn('カレンダー用ファイル（.ics）', 'ghost', function () { icsSheet(); }, 'calendar'),
@@ -201,7 +213,7 @@
     ]));
 
     /* ---- 保存領域 ---- */
-    wrap.appendChild(el('div', { class: 'card info' }, [
+    at.appendChild(el('div', { class: 'card info' }, [
       el('div', { class: 'info-row' }, [
         el('span', { class: 'info-k', text: '保存領域' }),
         el('span', { class: 'info-v', id: 'persistState', text: '確認中…' })
@@ -215,9 +227,11 @@
         : 'この環境では確認できません。こまめにバックアップしてください';
     });
 
+    at = genre('このアプリについて', '');
+
     /* ---- 情報 ---- */
-    wrap.appendChild(ui.section('このアプリについて'));
-    wrap.appendChild(el('div', { class: 'card info' }, [
+    at.appendChild(ui.section('このアプリについて'));
+    at.appendChild(el('div', { class: 'card info' }, [
       el('p', { class: 'muted small', text: 'データはこの端末の中にあります。履歴の削除や機種変更で消えるので、ときどき書き出してください。' }),
       el('p', { class: 'muted small', text: '案件数：' + S.projects().length + '　取引先：' + S.clients().length + '件　バージョン：0.2' })
     ]));
@@ -230,6 +244,53 @@
 
   /* FANBOX のページから送るための、ブックマークレットの作り方 */
   /* ---------------- 天気の地点 ---------------- */
+
+  /* ---------------- ジャンルごとの見出し ----------------
+
+     設定が増えて縦に長くなったので、ジャンルごとにたたんでおく。
+     開いた／閉じたはこの端末だけで覚える（同期には乗せない）。 */
+
+  var OPEN_KEY = 'meteo365.settingsOpen';
+
+  function openState() {
+    try { return JSON.parse(localStorage.getItem(OPEN_KEY) || '{}') || {}; }
+    catch (e) { return {}; }
+  }
+
+  function setOpen(title, on) {
+    var m = openState();
+    m[title] = !!on;
+    try { localStorage.setItem(OPEN_KEY, JSON.stringify(m)); } catch (e) { /* 使えなくても困らない */ }
+  }
+
+  /**
+   * ジャンルの箱を作って wrap に置き、中身を入れる先を返す。
+   * @returns {HTMLElement} この中に、そのジャンルの設定を並べる
+   */
+  function openGroup(wrap, title, sub) {
+    var on = !!openState()[title];
+    var body = el('div', { class: 'sg-body', hidden: !on });
+    var chev = el('span', { class: 'sg-chev' }, ui.icon('chevronDown', 18));
+    var head = el('button', {
+      class: 'sg-head', type: 'button', 'aria-expanded': on ? 'true' : 'false',
+      onclick: function () {
+        var next = body.hidden;
+        body.hidden = !next;
+        box.classList.toggle('on', next);
+        head.setAttribute('aria-expanded', next ? 'true' : 'false');
+        setOpen(title, next);
+      }
+    }, [
+      el('div', {}, [
+        el('strong', { text: title }),
+        sub ? el('div', { class: 'muted small', text: sub }) : null
+      ]),
+      chev
+    ]);
+    var box = el('div', { class: 'sgroup' + (on ? ' on' : '') }, [head, body]);
+    wrap.appendChild(box);
+    return body;
+  }
 
   /* ---------------- 分類 ----------------
 

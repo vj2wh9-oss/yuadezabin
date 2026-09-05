@@ -104,6 +104,24 @@
    * 発注を案件として起こす。すでに作ってあれば何もしない。
    * @returns {object|null} 作った案件（作らなかったときは null）
    */
+  /* 発注で受けた仕事の名義。決まって「ユアデザ便」なので、名前で探す。
+     まだ名義を作っていないときだけ、既定の名義に落とす */
+  var ORDER_ISSUER = 'ユアデザ便';
+
+  function orderIssuer() {
+    var want = norm(ORDER_ISSUER);
+    return DL.store.issuers().filter(function (i) {
+      return norm(i.name) === want;
+    })[0] || null;
+  }
+
+  function orderIssuerId() {
+    var i = orderIssuer();
+    if (i) return i.id;
+    var S = DL.store;
+    return S.settings.defaultIssuerId || S.scopeId() || '';
+  }
+
   function makeProject(o) {
     if (!o || !DL.util.isISO(o.deadline)) return null;
     // すでに作ってあり、その案件がまだ残っているなら、二度は作らない
@@ -129,7 +147,8 @@
       startDate: DL.util.cmp(DL.util.today(), o.deadline) <= 0 ? DL.util.today() : o.deadline,
       qty: 1,
       fee: 0,
-      issuerId: S.settings.defaultIssuerId || S.scopeId() || '',
+      // 発注フォームから受けた仕事は、すべて「ユアデザ便」名義
+      issuerId: orderIssuerId(),
       memo: [
         '発注フォームから',
         '受付番号 ' + o.id,
@@ -251,6 +270,7 @@
     ready: ready, check: check, list: list, get: get, unread: unread,
     setStatus: setStatus, remove: remove, makeProject: makeProject,
     statusOf: statusOf, STATUS: STATUS,
+    ORDER_ISSUER: ORDER_ISSUER, orderIssuer: orderIssuer, orderIssuerId: orderIssuerId,
     candidates: candidates, norm: norm,
     replyMail: replyMail, mailtoUrl: mailtoUrl
   };

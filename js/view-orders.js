@@ -255,7 +255,12 @@
 
     DL.orders.setStatus(o.id, status, pj ? { projectId: pj.id } : null).then(function () {
       close();
-      ui.toast(pj ? '案件にしました（締切 ' + U.fmtMD(pj.deadline) + '）' : '控えました');
+      var msg = pj ? '案件にしました（締切 ' + U.fmtMD(pj.deadline) + '）' : '控えました';
+      // 名義は決まって「ユアデザ便」。まだ作っていないときは、そう伝える
+      if (pj && !DL.orders.orderIssuer()) {
+        msg += '\n「' + DL.orders.ORDER_ISSUER + '」の名義がまだ無いので、既定の名義で入れました';
+      }
+      ui.toast(msg);
       DL.app.render();
     }).catch(function (e) {
       if (pj) S.removeProject(pj.id);

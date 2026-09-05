@@ -12,18 +12,16 @@
 
   var DAY = 1440;
 
-  /* ---------------- 種類 ---------------- */
+  /* ---------------- 名前と色 ----------------
 
-  function kinds() { return S.TIME_KINDS; }
+     何をしていたかは、その都度自由に書ける。
+     よく使う名前は選び口に並べ、色は名前ごとに決めて使い回す。 */
 
-  function kind(v) {
-    var list = S.TIME_KINDS;
-    for (var i = 0; i < list.length; i++) if (list[i].value === v) return list[i];
-    return list[list.length - 1];      // 分からないものは「その他」に寄せる
-  }
+  /** 選び口に出す名前。よく使う順、そのあとに決まった名前 */
+  function labels() { return S.timeLabels(); }
 
-  function label(v) { return kind(v).label; }
-  function color(v) { return kind(v).color; }
+  /** その名前に使う色 */
+  function colorOf(label) { return S.timeColor(label); }
 
   /* ---------------- 時刻の読み書き ---------------- */
 
@@ -68,7 +66,7 @@
   /**
    * その日の画面に出す帯。0〜24時に収まる形にそろえる。
    * 前の日から続いているものは、0時から始まる帯として足す。
-   * @returns {Array<{id,kind,memo,start,end,date,carry,over}>}
+   * @returns {Array<{id,label,color,memo,start,end,date,carry,over}>}
    *   date … その帯が保存されている日／carry … 前の日から続いているか
    */
   function ofDay(date) {
@@ -77,7 +75,7 @@
     S.timeblocks(prev).forEach(function (b) {
       if (b.end <= DAY) return;
       out.push({
-        id: b.id, kind: b.kind, memo: b.memo,
+        id: b.id, label: b.label, color: b.color, memo: b.memo,
         start: Math.max(0, b.start - DAY), end: Math.min(DAY, b.end - DAY),
         date: prev, carry: true, over: false
       });
@@ -85,7 +83,7 @@
     S.timeblocks(date).forEach(function (b) {
       if (b.start >= DAY) return;      // 翌日ぶんだけの帯は、翌日の画面で出す
       out.push({
-        id: b.id, kind: b.kind, memo: b.memo,
+        id: b.id, label: b.label, color: b.color, memo: b.memo,
         start: b.start, end: Math.min(DAY, b.end),
         date: date, carry: false, over: b.end > DAY
       });
@@ -97,17 +95,18 @@
   function has(date) { return ofDay(date).length > 0; }
 
   /**
-   * 種類ごとの合計（分）。その日の画面に出ているぶんで数える。
-   * @returns {Array<{kind,label,color,min,pct}>} 多い順
+   * 名前ごとの合計（分）。その日の画面に出ているぶんで数える。
+   * @returns {Array<{label,color,min,pct}>} 多い順
    */
   function sums(date) {
-    var map = {};
+    var map = {}, color = {};
     ofDay(date).forEach(function (b) {
-      map[b.kind] = (map[b.kind] || 0) + (b.end - b.start);
+      map[b.label] = (map[b.label] || 0) + (b.end - b.start);
+      color[b.label] = b.color;
     });
     return Object.keys(map).map(function (k) {
       return {
-        kind: k, label: label(k), color: color(k),
+        label: k, color: color[k] || colorOf(k),
         min: map[k], pct: Math.round(map[k] / DAY * 100)
       };
     }).sort(function (a, b) { return b.min - a.min; });
@@ -135,27 +134,27 @@
      泊まり勤務は翌朝までまたぐので、24時を超える値のまま持つ */
   var PRESETS = {
     remote: [
-      { kind: 'sleep', start: 0, end: 450 },              // 〜7:30 起床
-      { kind: 'work', start: 480, end: 990 }              // 8:00〜16:30
+      { label: '睡眠', start: 0, end: 450 },              // 〜7:30 起床
+      { label: '仕事', start: 480, end: 990 }             // 8:00〜16:30
     ],
     office: [
-      { kind: 'sleep', start: 0, end: 355 },              // 〜5:55 起床
-      { kind: 'commute', start: 390, end: 480 },          // 6:30〜8:00
-      { kind: 'work', start: 480, end: 990 },             // 8:00〜16:30
-      { kind: 'commute', start: 990, end: 1065 }          // 16:30〜17:45
+      { label: '睡眠', start: 0, end: 355 },              // 〜5:55 起床
+      { label: '通勤', start: 390, end: 480 },            // 6:30〜8:00
+      { label: '仕事', start: 480, end: 990 },            // 8:00〜16:30
+      { label: '通勤', start: 990, end: 1065 }            // 16:30〜17:45
     ],
     stay: [
-      { kind: 'sleep', start: 0, end: 840 },              // 〜14:00 起床
-      { kind: 'commute', start: 870, end: 960 },          // 14:30〜16:00
-      { kind: 'work', start: 960, end: 1950 },            // 16:00〜翌8:30
-      { kind: 'commute', start: 1950, end: 2025 }         // 翌8:30〜翌9:45
+      { label: '睡眠', start: 0, end: 840 },              // 〜14:00 起床
+      { label: '通勤', start: 870, end: 960 },            // 14:30〜16:00
+      { label: '仕事', start: 960, end: 1950 },           // 16:00〜翌8:30
+      { label: '通勤', start: 1950, end: 2025 }           // 翌8:30〜翌9:45
     ]
   };
 
   /** その出勤形態のひな型。無ければ null */
   function presetFor(duty) {
     var list = PRESETS[duty];
-    return list ? list.map(function (b) { return { kind: b.kind, start: b.start, end: b.end }; }) : null;
+    return list ? list.map(function (b) { return { label: b.label, start: b.start, end: b.end }; }) : null;
   }
 
   /** ひな型があるか（勤務を選んだときに聞くかどうかの判断に使う） */
@@ -179,13 +178,13 @@
     var list = presetFor(duty);
     if (!list) return '';
     return list.map(function (b) {
-      return label(b.kind) + ' ' + fmtDay(b.start) + '〜' + fmtDay(b.end);
+      return b.label + ' ' + fmtDay(b.start) + '〜' + fmtDay(b.end);
     }).join('　');
   }
 
   DL.timeblocks = {
     DAY: DAY,
-    kinds: kinds, kind: kind, label: label, color: color,
+    labels: labels, colorOf: colorOf,
     fmt: fmt, fmtDay: fmtDay, parse: parse,
     ofDay: ofDay, has: has, sums: sums, filled: filled, gaps: gaps,
     presetFor: presetFor, hasPreset: hasPreset, applyPreset: applyPreset, presetText: presetText
