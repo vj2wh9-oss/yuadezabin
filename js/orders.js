@@ -197,54 +197,84 @@
      サーバーからお客様へ勝手に送らないのは、
      文面を必ず目で見てから出したいため。 */
 
-  function replyMail(o, kind) {
-    var subject = '【' + (kind === 'ok' ? 'ご発注承りました' : 'ご発注内容の確認のお願い') + '】'
-      + o.company + ' 様（受付番号 ' + o.id + '）';
+  // 差出人の名乗り。変えるときはここだけ直す
+  var SIGN = 'ユアデザ便の山田でございます。';
 
-    var head = [
-      o.company + ' 様',
-      o.person ? o.person + ' 様' : '',
-      '',
-      'お世話になっております。',
-      'このたびはご発注をいただき、ありがとうございます。',
-      ''
-    ].filter(function (s) { return s !== ''; });
-
-    var detail = [
-      '　受付番号　　' + o.id,
-      '　サービス　　' + (o.serviceLabel || o.service),
-      '　ご希望納期　' + (o.deadline || '—'),
-      '　納品形式　　' + (o.formatLabel || o.format),
-      ''
-    ];
-
-    var body = kind === 'ok'
-      ? [
-        '下記の内容で承りました。',
-        ''
-      ].concat(detail, [
-        '着手いたしますので、進捗は追ってご連絡いたします。',
-        'ご不明な点がございましたら、このメールにご返信ください。',
-        ''
-      ])
-      : [
-        '下記の内容でご発注を承りましたが、',
-        'いただいた発注社名とご契約の記録が一致しませんでした。',
-        ''
-      ].concat(detail, [
-        'お手数ですが、ご契約時のお名前（正式名称）をご返信いただけますでしょうか。',
-        '確認が取れ次第、あらためて着手のご連絡をいたします。',
-        ''
-      ]);
-
-    return { to: o.email, subject: subject, body: head.concat(body).join('\n') };
+  /**
+   * 宛名。会社と担当者は1行にまとめ、「様」は最後に一度だけ付ける。
+   *   株式会社大喜利　横山様
+   *   株式会社大喜利　ご担当者様   （担当者名が無いとき）
+   */
+  function addressee(o) {
+    return o.company + '　' + (o.person ? o.person : 'ご担当者') + '様';
   }
 
-  /** メールアプリを開くための宛先。iPhone でも PC でも同じように開く */
+  /**
+   * 返事の下書きを作る。
+   * @param {object} o 発注
+   * @param {'ok'|'ng'} kind ok＝受領、ng＝発注社名の確認
+   * @returns {{to:string, subject:string, body:string}}
+   */
+  function replyMail(o, kind) {
+    var subject = '【' + (kind === 'ok' ? 'ご発注承りました' : 'ご発注内容の確認のお願い') + '】'
+      + o.company + '　（受付番号 ' + o.id + '）';
+
+    // 見出し付きで並べる。空文字の行は「空行」なので、間引かないこと
+    var detail = [
+      '■受付番号　　' + o.id,
+      '■サービス　　' + (o.serviceLabel || o.service || '—'),
+      '■ご希望納期　' + (o.deadline || '—'),
+      '■納品形式　　' + (o.formatLabel || o.format || '—')
+    ];
+
+    var lines = [
+      addressee(o),
+      '',
+      'お世話になっております。',
+      SIGN,
+      '',
+      'このたびはご発注をいただき、ありがとうございます。'
+    ];
+
+    if (kind === 'ok') {
+      lines = lines.concat([
+        '下記の内容で承りました。',
+        ''
+      ], detail, [
+        '',
+        '進捗は追ってご連絡いたします。',
+        'ご要望の欄を確認し、必要に応じてご連絡いたします。',
+        '',
+        'ご不明な点がございましたら、このメールにご返信ください。'
+      ]);
+    } else {
+      lines = lines.concat([
+        '下記の内容でご発注を承りました。',
+        ''
+      ], detail, [
+        '',
+        '恐れ入りますが、いただいた発注社名とご契約の記録が一致しませんでした。',
+        'お手数ですが、ご契約時のお名前（正式名称）をご返信いただけますでしょうか。',
+        '',
+        '確認が取れ次第、あらためて着手のご連絡をいたします。',
+        '',
+        'ご不明な点がございましたら、このメールにご返信ください。'
+      ]);
+    }
+
+    return { to: o.email, subject: subject, body: lines.join('\n') };
+  }
+
+  /**
+   * メールアプリを開くための宛先。iPhone でも PC でも同じように開く。
+   *
+   * 本文の改行は CRLF にしてから包む。LF だけだと、
+   * メールアプリによっては改行として扱われず、全部が1行に潰れてしまう。
+   */
   function mailtoUrl(m) {
     return 'mailto:' + encodeURIComponent(m.to)
       + '?subject=' + encodeURIComponent(m.subject)
-      + '&body=' + encodeURIComponent(m.body);
+      + '&body=' + encodeURIComponent(String(m.body).replace(/\r?\n/g, '\r\n'));
   }
 
   DL.orders = {
