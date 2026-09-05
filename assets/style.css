@@ -192,6 +192,10 @@ h1, h2, h3, p { margin: 0; }
 @media (max-width: 379px) {
   .tab { font-size: 9.5px; letter-spacing: -.02em; }
 }
+/* キーボードが出ているあいだは、下タブと＋ボタンをしまう。
+   iPhone では画面の途中まで押し上げられて浮いてしまうため */
+body.kb-open .tabbar, body.kb-open .fab { display: none; }
+
 .tab.on { color: var(--accent); }
 .tab.on::before {
   content: ''; position: absolute; top: 0; left: 18%; right: 18%; height: 2px; background: var(--accent);

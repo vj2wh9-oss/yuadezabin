@@ -431,8 +431,35 @@
     });
   }
 
+  /* 文字を打っているあいだ、下のタブが浮き上がるのを止める。
+
+     iPhone では、キーボードが出ると見えている高さだけが縮み、
+     ページの高さは変わらない。下タブは position:fixed で
+     「ページのいちばん下」に貼り付いているので、キーボードに
+     押し上げられて画面の途中に浮いて見えてしまう。
+
+     キーボードが出ているあいだは、下タブと＋ボタンをしまう。
+     打ち終われば元に戻る。 */
+  function watchKeyboard() {
+    var vv = window.visualViewport;
+    if (!vv) return;                       // 古い端末では何もしない
+    var open = false;
+    var check = function () {
+      // 下がどれだけ隠れているか。アドレスバーの出入りでは、ここまで動かない
+      var hidden = window.innerHeight - vv.height - vv.offsetTop;
+      var next = hidden > 120;
+      if (next === open) return;
+      open = next;
+      document.body.classList.toggle('kb-open', open);
+    };
+    vv.addEventListener('resize', check);
+    vv.addEventListener('scroll', check);
+    check();
+  }
+
   function init() {
     mountIcons();
+    watchKeyboard();
     if (!location.hash) location.hash = '#/home';
 
     // 本体は IndexedDB。読み込みが終わってから描画する

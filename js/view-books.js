@@ -542,7 +542,7 @@
   /* レシートを撮って読み取る入口。ここが今のいちばん早い入れ方 */
   function scanCard() {
     return el('div', { class: 'row-wrap scan-row' }, [
-      ui.btn('レシートを撮って読み取る', 'primary', function () {
+      ui.btn('レシートを撮る', 'primary', function () {
         DL.views.receipt.scan({ book: book });
       }, 'receipt'),
       ui.btn('写真から', 'ghost', function () {
