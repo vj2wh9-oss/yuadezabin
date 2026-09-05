@@ -100,10 +100,6 @@
 
      同じ発注から二度作らないよう、作った案件の id を発注のほうに控える。 */
 
-  /**
-   * 発注を案件として起こす。すでに作ってあれば何もしない。
-   * @returns {object|null} 作った案件（作らなかったときは null）
-   */
   /* 発注で受けた仕事の名義。決まって「ユアデザ便」なので、名前で探す。
      まだ名義を作っていないときだけ、既定の名義に落とす */
   var ORDER_ISSUER = 'ユアデザ便';
@@ -122,6 +118,10 @@
     return S.settings.defaultIssuerId || S.scopeId() || '';
   }
 
+  /**
+   * 発注を案件として起こす。すでに作ってあれば何もしない。
+   * @returns {object|null} 作った案件（作らなかったときは null）
+   */
   function makeProject(o) {
     if (!o || !DL.util.isISO(o.deadline)) return null;
     // すでに作ってあり、その案件がまだ残っているなら、二度は作らない
