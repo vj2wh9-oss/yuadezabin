@@ -32,6 +32,7 @@
     // まだ書いていないところ
     svg.appendChild(svgEl('circle', { cx: C, cy: C, r: (R + r) / 2, class: 'tp-rest', 'stroke-width': R - r }));
 
+    var slices = [];
     T.ofDay(date).forEach(function (b) {
       var p = svgEl('path', {
         class: 'tp-slice', d: ring(C, R, r, b.start, b.end), fill: b.color
@@ -42,6 +43,7 @@
         p.addEventListener('click', function () { opts.onPick(b); });
       }
       svg.appendChild(p);
+      slices.push({ node: p, start: b.start, end: b.end });
     });
 
     // 時刻の目盛り。0/6/12/18 だけ置く
@@ -55,17 +57,19 @@
 
     // いまの時刻。今日を見ているときだけ、針を出す
     var now = nowMin(date);
+    var hand = [];
     if (now !== null) {
       var na = ang(now);
       var sin = Math.sin(na), cos = Math.cos(na);
-      svg.appendChild(svgEl('line', {
+      hand.push(svgEl('line', {
         class: 'tp-hand',
         x1: C + sin * (r - 4), y1: C - cos * (r - 4),
         x2: C + sin * (R + 4), y2: C - cos * (R + 4)
       }));
-      svg.appendChild(svgEl('circle', {
+      hand.push(svgEl('circle', {
         class: 'tp-hand-tip', cx: C + sin * (R + 4), cy: C - cos * (R + 4), r: 2.4
       }));
+      hand.forEach(function (n) { svg.appendChild(n); });
     }
 
     // まん中に、いちばん長いものを出す
@@ -74,6 +78,20 @@
       svg.appendChild(svgEl('text', { class: 'tp-mid-v', x: C, y: C + 1, 'text-anchor': 'middle', text: hm(top.min) }));
       svg.appendChild(svgEl('text', { class: 'tp-mid-l', x: C, y: C + 12, 'text-anchor': 'middle', text: top.label }));
     }
+
+    /* 開いたときの見せ方。0→1 を渡すと、0時のところから時計回りに出てくる。
+       扇形そのものを描き直すので、まん中の字や目盛りは動かない。
+       ui.introduce がこれを見つけて呼ぶ */
+    svg._sweep = function (t) {
+      var upto = DAY * t;
+      slices.forEach(function (o) {
+        var e = Math.max(o.start, Math.min(o.end, upto));
+        o.node.setAttribute('d', ring(C, R, r, o.start, e));
+        o.node.style.visibility = e > o.start ? '' : 'hidden';
+      });
+      // 針は、時計回りがそこを通り過ぎてから出す
+      hand.forEach(function (n) { n.style.visibility = upto >= now ? '' : 'hidden'; });
+    };
     return svg;
   }
 
@@ -111,23 +129,40 @@
   function bar(date, opts) {
     opts = opts || {};
     var box = el('div', { class: 'tp-bar' });
+    var segs = [];
     T.ofDay(date).forEach(function (b) {
-      box.appendChild(el('i', {
+      var i = el('i', {
         class: 'tp-seg', title: slabel(b),
         style: {
           left: (b.start / DAY * 100) + '%',
           width: ((b.end - b.start) / DAY * 100) + '%',
           background: b.color
         }
-      }));
+      });
+      box.appendChild(i);
+      segs.push({ node: i, start: b.start, end: b.end });
     });
     // いまの時刻。今日を見ているときだけ
     var m = nowMin(date);
+    var mark = null;
     if (m !== null) {
-      box.appendChild(el('i', {
+      mark = el('i', {
         class: 'tp-now', title: 'いま ' + T.fmt(m), style: { left: (m / DAY * 100) + '%' }
-      }));
+      });
+      box.appendChild(mark);
     }
+
+    /* 円グラフと同じ見せ方。0→1 を渡すと、左から順に出てくる。
+       ui.introduce がこれを見つけて呼ぶ */
+    box._sweep = function (t) {
+      var upto = DAY * t;
+      segs.forEach(function (o) {
+        var e = Math.max(o.start, Math.min(o.end, upto));
+        o.node.style.width = ((e - o.start) / DAY * 100) + '%';
+        o.node.style.visibility = e > o.start ? '' : 'hidden';
+      });
+      if (mark) mark.style.visibility = upto >= m ? '' : 'hidden';
+    };
     var wrap = el('div', { class: 'tp-barwrap' }, [
       box,
       // 目盛りは帯の位置とそろえたいので、左からの割合で置く

@@ -134,11 +134,16 @@
     }
 
     // 同じ画面の再描画ではスクロール位置を保つ
-    if (key === lastKey) window.scrollTo(0, scroll);
-    else window.scrollTo(0, 0);
+    var entered = key !== lastKey;      // 画面を開いたところ（保存による描き直しではない）
+    if (entered) window.scrollTo(0, 0);
+    else window.scrollTo(0, scroll);
     lastKey = key;
 
     updateFab();
+
+    // 金額の数え上げや、グラフの描き出し。開いたときだけで、
+    // 保存のたびの描き直しでは動かさない
+    if (entered) ui.introduce(view);
   }
 
   /* アプリの名前のところだけロゴの組みにする。ほかの画面は画面名の文字のまま */
@@ -394,9 +399,17 @@
      同じ hash への移動では hashchange が起きないので、ここで拾う。 */
   U.$$('.tab').forEach(function (t) {
     t.addEventListener('click', function (e) {
-      if (t.dataset.tab !== 'files' || route.name !== 'files') return;
-      e.preventDefault();
-      DL.views.files.up();
+      if (t.dataset.tab === 'files' && route.name === 'files') {
+        e.preventDefault();
+        DL.views.files.up();
+        return;
+      }
+      // ホームを見ているときにホームを押したら、いちばん上まで戻す
+      if (t.dataset.tab === 'home' && route.name === 'home') {
+        e.preventDefault();
+        var soft = !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+        window.scrollTo({ top: 0, behavior: soft ? 'smooth' : 'auto' });
+      }
     });
   });
 

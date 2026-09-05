@@ -206,6 +206,104 @@
 
   function icon(name, size, cls) { return DL.icons.icon(name, size, cls); }
 
+  /* ---------------- 画面に入ったときの見せ方 ----------------
+
+     金額は0から数え上げ、グラフはまっさらな状態から描き足す。
+     画面を開いたときだけで、保存のたびの描き直しでは動かさない
+     （動かすと、打つたびに数字が跳ねてうるさい）。
+
+     「動きを減らす」設定の端末では、いきなり最終形にする。 */
+
+  var INTRO_MS = 620;
+
+  function reduceMotion() {
+    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+
+  /* だんだん減速する。最後がぴたっと止まって見える */
+  function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+
+  /**
+   * 0 から今の値まで数え上げる。
+   * 文字はそのまま使い、中の数字だけ差し替えるので
+   * 「¥1,234」「-¥500」「4件」のどれでも動く。
+   */
+  function countUp(node) {
+    var full = node.textContent;
+    var m = /^(\D*)(-?[\d,]+)(\D*)$/.exec(full);
+    if (!m) return;                                  // 数字が無いものは触らない
+    var to = parseInt(m[2].replace(/,/g, ''), 10);
+    if (!isFinite(to) || to === 0) return;
+    var head = m[1], tail = m[3];
+    var comma = m[2].indexOf(',') >= 0;
+
+    var write = function (v) {
+      node.textContent = head + (comma ? v.toLocaleString('en-US') : String(v)) + tail;
+    };
+    write(0);
+    ramp(node, function (t) { write(Math.round(to * t)); }, function () { node.textContent = full; });
+  }
+
+  /** 横棒。幅0から今の幅まで伸ばす */
+  function growBar(node) {
+    var w = node.style.width;
+    if (!w) return;
+    node.style.width = '0%';
+    ramp(node, function (t) { node.style.width = 'calc(' + w + ' * ' + t.toFixed(4) + ')'; },
+      function () { node.style.width = w; });
+  }
+
+  /** 折れ線。左から描き足す */
+  function drawLine(node) {
+    var len;
+    try { len = node.getTotalLength(); } catch (e) { return; }
+    if (!len) return;
+    node.style.strokeDasharray = len;
+    node.style.strokeDashoffset = len;
+    ramp(node, function (t) { node.style.strokeDashoffset = String(len * (1 - t)); }, function () {
+      node.style.strokeDasharray = '';
+      node.style.strokeDashoffset = '';
+    });
+  }
+
+  /**
+   * 1日の時間のグラフ。0時のところから、円なら時計回り、長方形なら左から出す。
+   * どう描き足すかはグラフ側が知っているので、_sweep(0→1) を呼ぶだけ。
+   * こうすると、まん中の字や目盛りは動かさずに中身だけ埋まっていく。
+   */
+  function sweep(node) {
+    if (typeof node._sweep !== 'function') return;
+    node._sweep(0);
+    ramp(node, node._sweep, function () { node._sweep(1); });
+  }
+
+  /* 毎フレーム step(0→1) を呼び、終わったら done()。
+     途中で画面が描き直されたら、その時点でやめる */
+  function ramp(node, step, done) {
+    var t0 = 0;
+    var tick = function (now) {
+      if (!node.isConnected) { done(); return; }     // 描き直された
+      if (!t0) t0 = now;
+      var t = Math.min(1, (now - t0) / INTRO_MS);
+      if (t >= 1) { done(); return; }
+      step(easeOut(t));
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  /**
+   * 開いたばかりの画面に、ひととおりの見せ方をかける。
+   * app.js が画面を組み立てたあとに一度だけ呼ぶ。
+   */
+  function introduce(root) {
+    if (!root || reduceMotion()) return;
+    U.$$('.sum-box b', root).forEach(countUp);
+    U.$$('.cat-bar i, .ms-bar i, .bg-bar i', root).forEach(growBar);
+    U.$$('.lc-line', root).forEach(drawLine);
+    U.$$('.tp-pie, .tp-bar', root).forEach(sweep);
+  }
+
   function chip(text, cls, style) {
     return el('span', { class: 'chip ' + (cls || ''), text: text, style: style || null });
   }
@@ -301,6 +399,7 @@
 
   DL.ui = {
     toast: toast, sheet: sheet, closeAllSheets: closeAllSheets, confirm: confirmSheet,
+    introduce: introduce,
     field: field, block: block, input: input, textarea: textarea, select: select, tagSelect: tagSelect, segmented: segmented,
     stepper: stepper, progress: progress, chip: chip, iconChip: iconChip, icon: icon,
     section: section, card: card, dateHead: dateHead,
