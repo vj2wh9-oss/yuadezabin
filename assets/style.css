@@ -1670,8 +1670,28 @@ a.alert-main { text-decoration: none; }
 }
 .tp-dot { width: 9px; height: 9px; border-radius: 2px; flex: none; }
 .tp-row-t { flex: none; font-variant-numeric: tabular-nums; color: var(--muted); width: 88px; font-size: 12px; }
-.tp-row-k { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tp-row-k {
+  flex: 1; min-width: 0; overflow: hidden;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+}
+.tp-row-k > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* どの案件に使ったか。名前の下に小さく */
+.tp-row-p { font-size: 10.5px; color: var(--accent); }
 .tp-row-d { flex: none; color: var(--muted); font-size: 11px; }
+
+/* 案件ごとの合計。帯の一覧の下に付ける */
+.tp-projs {
+  display: flex; flex-direction: column; gap: 5px;
+  margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line);
+}
+.tp-proj {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 12.5px; color: var(--text); text-decoration: none;
+}
+.tp-proj i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.tp-proj-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tp-proj b { flex: none; font-variant-numeric: tabular-nums; }
+a.tp-proj:active { color: var(--accent); }
 
 /* 何をしていたか。自由に書けて、よく使う名前は押せば入る */
 .tp-name { display: flex; flex-direction: column; gap: 7px; }

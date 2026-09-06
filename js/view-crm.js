@@ -150,8 +150,108 @@
     }
     draw();
 
-    wrap.appendChild(ui.btn('会社・営業先を追加', 'primary full', function () { form(null); }, 'plus'));
+    wrap.appendChild(el('div', { class: 'row-wrap scan-row' }, [
+      ui.btn('名刺を撮る', 'primary', function () { cardScan(); }, 'person'),
+      ui.btn('写真から', 'ghost', function () { cardScan({ camera: false }); }, 'illust')
+    ]));
+    wrap.appendChild(ui.btn('手で入れる', 'ghost full', function () { form(null); }, 'plus'));
     root.appendChild(wrap);
+  }
+
+  /* ---------------- 名刺を読む ----------------
+
+     レシートと同じ道を通す（切り出し → R2 → Worker → OpenAI）。
+     鍵はアプリ側に持たない。読んだ名刺の写真はファイルの「名刺」に残る。 */
+
+  function cardScan(opts) {
+    opts = opts || {};
+    if (!DL.receipt.ready()) {
+      ui.toast('先に「PC・iPhone の同期」を設定してください', 'danger');
+      location.hash = '#/settings';
+      return;
+    }
+    pickImage(opts.camera !== false, function (file) { runCard(file, opts); });
+  }
+
+  function pickImage(useCamera, cb) {
+    var input = el('input', { type: 'file', accept: 'image/*', style: { display: 'none' } });
+    if (useCamera) input.setAttribute('capture', 'environment');
+    document.body.appendChild(input);
+    input.addEventListener('change', function () {
+      var f = input.files[0];
+      input.remove();
+      if (f) cb(f);
+    });
+    input.click();
+  }
+
+  function runCard(file, opts) {
+    var STEP = { crop: '名刺を切り出しています…', upload: '送っています…', read: '読み取っています…' };
+    var note = el('p', { class: 'muted small', text: STEP.crop });
+    var shot = el('div', { class: 'rc-shot' });
+    var body = el('div', { class: 'form rc-wait' }, [shot, note, ui.progress(30, null)]);
+    var close = ui.sheet({ title: '名刺を読む', body: body });
+
+    // 切り出したものが見えれば、待つあいだに向きが合っているか分かる
+    var url = URL.createObjectURL(file);
+    shot.appendChild(el('img', { class: 'rc-img', src: url, alt: '' }));
+
+    DL.receipt.readCard(file, {
+      onStep: function (s) {
+        note.textContent = STEP[s] || '';
+        var bar = body.querySelector('.progress i');
+        if (bar) bar.style.width = (s === 'crop' ? 30 : s === 'upload' ? 60 : 85) + '%';
+      }
+    }).then(function (r) {
+      URL.revokeObjectURL(url);
+      close();
+      afterCard(r, opts);
+    }).catch(function (e) {
+      URL.revokeObjectURL(url);
+      close();
+      ui.confirm(e.message + '\n\n手で入れますか？',
+        { title: '読み取れませんでした', okText: '手で入れる' }).then(function (yes) {
+          if (yes) form(null);
+        });
+    });
+  }
+
+  /* 読めたら、まず同じ会社がもう名簿にいないか見る */
+  function afterCard(r, opts) {
+    opts = opts || {};
+    var d = r.data || {};
+    if (d.empty) {
+      ui.confirm('名刺から読み取れませんでした。手で入れますか？',
+        { title: '読み取れませんでした', okText: '手で入れる' }).then(function (yes) {
+          if (yes) form(opts.into || null);
+        });
+      return;
+    }
+
+    // 入力の途中から撮ったときは、その画面に戻す
+    if (opts.into) { form(opts.into, d); return; }
+
+    var hit = d.company ? C.pick(d.company, d.email) : null;
+    if (hit) {
+      ui.confirm(hit.name + ' はもう名簿にあります。この会社に足しますか？\n'
+        + '空いている欄にだけ入り、書いてあるものはそのままです。',
+        { title: '同じ会社がありました', okText: 'この会社に足す', cancelText: '新しく入れる' })
+        .then(function (yes) { form(yes ? hit : null, d); });
+      return;
+    }
+    form(null, d);
+  }
+
+  /* 読み取った名刺を、入力欄の言葉に置きかえる */
+  function fromCard(d) {
+    var lines = [d.title, d.fax ? 'FAX ' + d.fax : '', d.url, d.note]
+      .filter(function (s) { return s; });
+    return {
+      name: d.company || '', contact: d.contact || '', email: d.email || '',
+      tel: d.tel || '', zip: d.zip || '', address: d.address || '',
+      // 部署・役職やFAXは決まった欄が無いので、特記事項にまとめて置く
+      note: lines.join('\n')
+    };
   }
 
   function row(c) {
@@ -278,9 +378,25 @@
 
   /* ---------------- 入れる・直す ---------------- */
 
-  function form(c) {
-    var isNew = !c;
-    c = c || {};
+  /**
+   * @param {object} [c] 直すとき
+   * @param {object} [card] 名刺から読み取った値（空でないところだけ入れる）
+   */
+  function form(c, card) {
+    // ID があれば名簿にいるもの。名刺を読み直して開き直しても、ここで見分けが付く
+    var isNew = !(c && c.id);
+    // 名簿の実物ではなく写しをいじる。名刺を重ねても、保存するまでは変えない
+    c = c ? U.clone(c) : {};
+    // 名刺から来たぶんを重ねる。空いている欄にだけ入れ、書いてあるものは消さない。
+    // 読み違いで、せっかく入れた連絡先が消えるほうが困るため
+    if (card) {
+      var got = fromCard(card);
+      Object.keys(got).forEach(function (k) {
+        if (!got[k]) return;
+        if (k === 'note') c.note = c.note ? c.note + '\n' + got[k] : got[k];
+        else if (!c[k]) c[k] = got[k];
+      });
+    }
     var f = {
       name: ui.input({ value: c.name || '', placeholder: '株式会社◯◯' }),
       status: null,
@@ -310,9 +426,33 @@
       pick.appendChild(b);
     });
 
+    /* いま打ってあるぶんを、そのまま持ち回せる形にする。
+       名刺を読み直すときは一度この画面を閉じるので、打った内容を連れて行く */
+    function typed() {
+      return {
+        id: c.id || '', createdAt: c.createdAt, visits: c.visits, status: status,
+        name: f.name.value.trim(), contact: f.contact.value.trim(),
+        email: f.email.value.trim(), tel: f.tel.value.trim(),
+        zip: f.zip.value.trim(), address: f.address.value.trim(),
+        plan: f.plan.value.trim(),
+        aliases: f.aliases.value.split(/[、,／/\n]/).map(function (s) { return s.trim(); })
+          .filter(function (s) { return s; }),
+        about: f.about.value.trim(), article: f.article.value.trim(),
+        note: f.note.value.trim()
+      };
+    }
+
     var close = ui.sheet({
       title: isNew ? '会社・営業先を入れる' : '直す',
       body: el('div', { class: 'form' }, [
+        card ? el('div', { class: 'alert info' },
+          el('span', { text: '名刺から入れました。中身は直せます。' })) : null,
+        // この画面からも撮れるようにしておく。空いている欄にだけ入る
+        DL.receipt.ready() ? ui.btn('名刺を読み取る', 'ghost full', function () {
+          var keep = typed();
+          close();
+          cardScan({ into: keep });
+        }, 'person') : null,
         ui.field('会社名', f.name),
         ui.block('状態', pick),
         ui.field('担当者名', f.contact),

@@ -50,6 +50,7 @@
  * レシートの読み取り（OpenAI）
  *   GET    /v1/ocr/status  → { key, r2, model, strongModel, reasoning, maxTokens }（鍵は返さない）
  *   POST   /v1/ocr/receipt → 本文 {fileId} → { data:{store,date,total,items,…}, model, retried, usage }
+ *   POST   /v1/ocr/card    → 本文 {fileId} → { data:{company,contact,email,tel,address,…}, model, retried, usage }
  *                             R2 に置いた写真を読み、JSON だけ受け取る。
  *                             鍵は Worker の secret にだけ置き、アプリには渡さない
  *
@@ -528,6 +529,46 @@ const RECEIPT_PROMPT =
   '読み取れない項目は null にし、推測で埋めないでください。' +
   '字が潰れて自信が持てないときは unclear を true にしてください。';
 
+/* 名刺から拾いたいところ。顧客管理の欄にそのまま入る形にしておく */
+const CARD_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['company', 'contact', 'title', 'email', 'tel', 'fax', 'zip', 'address', 'url', 'note', 'confidence', 'unclear'],
+  properties: {
+    company: { type: ['string', 'null'], description: '会社名・団体名。読めなければ null' },
+    contact: { type: ['string', 'null'], description: '担当者の氏名。読めなければ null' },
+    title: { type: ['string', 'null'], description: '部署・役職。読めなければ null' },
+    email: { type: ['string', 'null'], description: 'メールアドレス。読めなければ null' },
+    tel: { type: ['string', 'null'], description: '電話番号。携帯と代表があれば代表を優先' },
+    fax: { type: ['string', 'null'], description: 'FAX番号。読めなければ null' },
+    zip: { type: ['string', 'null'], description: '郵便番号。ハイフンあり（100-0001）' },
+    address: { type: ['string', 'null'], description: '住所。郵便番号は含めない' },
+    url: { type: ['string', 'null'], description: 'ウェブサイト。読めなければ null' },
+    note: { type: ['string', 'null'], description: 'そのほか名刺に書いてあること。無ければ null' },
+    confidence: { type: 'number', description: '0〜1。読み取りの確からしさ' },
+    unclear: { type: 'boolean', description: '字が潰れている・影で読めない箇所があるか' }
+  }
+};
+
+const CARD_PROMPT =
+  '名刺の写真から次の項目だけを取り出し、指定の JSON で返してください。' +
+  '全文の書き起こしや説明は不要です。' +
+  '会社名は法人格（株式会社・有限会社など）も書いてあるとおりに含めてください。' +
+  '氏名は姓と名のあいだを全角空白ひとつにそろえ、ふりがなやローマ字表記は含めないでください。' +
+  '部署と役職が別々に書いてあるときは「部署 役職」の順につなげて title に入れてください。' +
+  '電話番号は書いてあるとおりの区切りで返し、携帯（090・080・070）と代表番号が' +
+  '両方あるときは代表番号を tel にしてください。' +
+  '郵便番号は 100-0001 の形にし、address には含めないでください。' +
+  '両面が写っているときは、日本語の面を優先して拾ってください。' +
+  '読み取れない項目は null にし、推測で埋めないでください。' +
+  '字が潰れて自信が持てないときは unclear を true にしてください。';
+
+/* 読み取りの種類。増やすときはここに足す */
+const OCR_KINDS = {
+  receipt: { name: 'receipt', prompt: RECEIPT_PROMPT, schema: RECEIPT_SCHEMA, retry: needsRetry },
+  card: { name: 'card', prompt: CARD_PROMPT, schema: CARD_SCHEMA, retry: cardNeedsRetry }
+};
+
 async function ocr(request, env, cors, url, id) {
   const rest = url.pathname.slice('/v1/ocr/'.length);
 
@@ -540,11 +581,13 @@ async function ocr(request, env, cors, url, id) {
       model: env.OPENAI_MODEL || OCR_DEFAULTS.model,
       strongModel: env.OPENAI_MODEL_STRONG || OCR_DEFAULTS.strong,
       reasoning: env.OPENAI_REASONING === undefined ? OCR_DEFAULTS.reasoning : env.OPENAI_REASONING,
-      maxTokens: Number(env.OPENAI_MAX_TOKENS || OCR_DEFAULTS.maxTokens)
+      maxTokens: Number(env.OPENAI_MAX_TOKENS || OCR_DEFAULTS.maxTokens),
+      kinds: Object.keys(OCR_KINDS)
     }, 200, cors);
   }
 
-  if (rest !== 'receipt' || request.method !== 'POST') return json({ error: 'not_found' }, 404, cors);
+  const spec = OCR_KINDS[rest];
+  if (!spec || request.method !== 'POST') return json({ error: 'not_found' }, 404, cors);
   if (!env.OPENAI_API_KEY) return json({ error: 'no_api_key' }, 503, cors);
   if (!env.FILES) return json({ error: 'r2_not_bound' }, 500, cors);
 
@@ -566,14 +609,14 @@ async function ocr(request, env, cors, url, id) {
   const strong = String(body.strongModel || env.OPENAI_MODEL_STRONG || OCR_DEFAULTS.strong);
 
   // 1回目は軽いほうで、画像も控えめに
-  let pass = await askOpenAI(env, light, dataUrl, 'auto');
+  let pass = await askOpenAI(env, light, dataUrl, 'auto', spec);
   if (!pass.ok) return json(pass.body, pass.status, cors);
 
-  let why = needsRetry(pass.data);
+  let why = spec.retry(pass.data);
   let retried = false;
   // 2回目は強いほうで、画像も細かく見てもらう
   if (why && strong && !body.noRetry) {
-    const again = await askOpenAI(env, strong, dataUrl, 'high');
+    const again = await askOpenAI(env, strong, dataUrl, 'high', spec);
     if (again.ok) {
       retried = true;
       pass = again;
@@ -607,11 +650,25 @@ function needsRetry(d) {
   return '';
 }
 
+/* 名刺を読み直したほうがよいか。
+   会社名か担当者名のどちらかは必ず載っているので、両方空なら読めていない */
+function cardNeedsRetry(d) {
+  if (!d) return 'no_data';
+  if (d.unclear) return 'unclear';
+  if (typeof d.confidence === 'number' && d.confidence < 0.6) return 'low_confidence';
+  if (!String(d.company || '').trim() && !String(d.contact || '').trim()) return 'no_name';
+  // 名刺に連絡先が1つも無いことはまずない
+  if (!String(d.email || '').trim() && !String(d.tel || '').trim()
+    && !String(d.address || '').trim()) return 'no_contact';
+  return '';
+}
+
 /**
  * OpenAI に1回だけ聞く。
  * @param {string} detail 画像の見かた 'auto' | 'high'
+ * @param {object} spec 読み取りの種類 {name, prompt, schema}
  */
-async function askOpenAI(env, model, dataUrl, detail) {
+async function askOpenAI(env, model, dataUrl, detail, spec) {
   const base = String(env.OPENAI_BASE || OCR_DEFAULTS.base).replace(/\/+$/, '');
   const maxTokens = Number(env.OPENAI_MAX_TOKENS || OCR_DEFAULTS.maxTokens);
   const effort = env.OPENAI_REASONING === undefined ? OCR_DEFAULTS.reasoning : String(env.OPENAI_REASONING);
@@ -621,16 +678,16 @@ async function askOpenAI(env, model, dataUrl, detail) {
     input: [{
       role: 'user',
       content: [
-        { type: 'input_text', text: RECEIPT_PROMPT },
+        { type: 'input_text', text: spec.prompt },
         { type: 'input_image', image_url: dataUrl, detail }
       ]
     }],
     text: {
       format: {
         type: 'json_schema',
-        name: 'receipt',
+        name: spec.name,
         strict: true,
-        schema: RECEIPT_SCHEMA
+        schema: spec.schema
       }
     },
     max_output_tokens: maxTokens,

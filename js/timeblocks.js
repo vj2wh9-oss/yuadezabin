@@ -75,7 +75,7 @@
     S.timeblocks(prev).forEach(function (b) {
       if (b.end <= DAY) return;
       out.push({
-        id: b.id, label: b.label, color: b.color, memo: b.memo,
+        id: b.id, label: b.label, color: b.color, memo: b.memo, projectId: b.projectId || '',
         start: Math.max(0, b.start - DAY), end: Math.min(DAY, b.end - DAY),
         date: prev, carry: true, over: false
       });
@@ -83,7 +83,7 @@
     S.timeblocks(date).forEach(function (b) {
       if (b.start >= DAY) return;      // 翌日ぶんだけの帯は、翌日の画面で出す
       out.push({
-        id: b.id, label: b.label, color: b.color, memo: b.memo,
+        id: b.id, label: b.label, color: b.color, memo: b.memo, projectId: b.projectId || '',
         start: b.start, end: Math.min(DAY, b.end),
         date: date, carry: false, over: b.end > DAY
       });
@@ -110,6 +110,92 @@
         min: map[k], pct: Math.round(map[k] / DAY * 100)
       };
     }).sort(function (a, b) { return b.min - a.min; });
+  }
+
+  /* ---------------- 案件ごとの時間 ----------------
+
+     帯に案件を結びつけておくと、その案件に実際どれだけ使ったかが分かる。
+     見積もりが合っていたか、次に同じ仕事を受けるかの手がかりになる。
+
+     帯は「始まった日」に置いてあるので、日をまたぐぶんも
+     その日の持ちものとして数える（ofDay のように切り分けない）。 */
+
+  /**
+   * その案件に使った時間（分）。
+   * @param {string} projectId
+   * @param {object} [opts] {from, to} 'YYYY-MM-DD'（どちらも含む）
+   * @returns {number}
+   */
+  function projectMinutes(projectId, opts) {
+    if (!projectId) return 0;
+    var sum = 0;
+    eachBlock(opts, function (b) {
+      if (b.projectId === projectId) sum += Math.max(0, b.end - b.start);
+    });
+    return sum;
+  }
+
+  /**
+   * 案件ごとの合計。多い順。
+   * @param {object} [opts] {from, to}
+   * @returns {Array<{projectId,project,title,min,days}>}
+   */
+  function byProject(opts) {
+    var map = {};
+    eachBlock(opts, function (b, date) {
+      if (!b.projectId) return;
+      var g = map[b.projectId] || (map[b.projectId] = { projectId: b.projectId, min: 0, days: {} });
+      g.min += Math.max(0, b.end - b.start);
+      g.days[date] = true;
+    });
+    return Object.keys(map).map(function (id) {
+      var g = map[id];
+      var p = S.getProject(id);
+      return {
+        projectId: id, project: p || null,
+        title: p ? p.title : '（消された案件）',
+        min: g.min, days: Object.keys(g.days).length
+      };
+    }).sort(function (a, b) { return b.min - a.min; });
+  }
+
+  /**
+   * その日の帯のうち、案件に結びついているぶん。
+   * @returns {Array<{projectId,project,title,color,min}>} 多い順
+   */
+  function projectsOfDay(date) {
+    var map = {};
+    ofDay(date).forEach(function (b) {
+      if (!b.projectId) return;
+      var g = map[b.projectId] || (map[b.projectId] = { min: 0, color: b.color });
+      g.min += b.end - b.start;
+    });
+    return Object.keys(map).map(function (id) {
+      var p = S.getProject(id);
+      return {
+        projectId: id, project: p || null, title: p ? p.title : '（消された案件）',
+        color: (p && p.color) || map[id].color, min: map[id].min
+      };
+    }).sort(function (a, b) { return b.min - a.min; });
+  }
+
+  /* 期間のあいだの帯を順に見る。始まった日で数える */
+  function eachBlock(opts, fn) {
+    opts = opts || {};
+    var map = S.settings.timeblocks || {};
+    Object.keys(map).forEach(function (date) {
+      if (opts.from && U.cmp(date, opts.from) < 0) return;
+      if (opts.to && U.cmp(date, opts.to) > 0) return;
+      (map[date] || []).forEach(function (b) { fn(b, date); });
+    });
+  }
+
+  /** 分 → '3時間20分' のように読める形に */
+  function hours(min) {
+    var m = Math.max(0, Math.round(U.num(min, 0)));
+    var h = Math.floor(m / 60), r = m % 60;
+    if (!h) return r + '分';
+    return h + '時間' + (r ? r + '分' : '');
   }
 
   /** 埋まっている分の合計。24時間のうち、どれだけ書いたか */
@@ -241,6 +327,8 @@
     labels: labels, colorOf: colorOf,
     fmt: fmt, fmtDay: fmtDay, parse: parse,
     ofDay: ofDay, has: has, sums: sums, filled: filled, gaps: gaps,
+    projectMinutes: projectMinutes, byProject: byProject, projectsOfDay: projectsOfDay,
+    hours: hours,
     presetFor: presetFor, hasPreset: hasPreset, applyPreset: applyPreset, presetText: presetText
   };
 })(window.DL);

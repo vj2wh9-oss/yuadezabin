@@ -1586,7 +1586,9 @@
       color: HEX_COLOR.test(String(b.color)) ? b.color : timeColor(label),
       start: start,
       end: end,
-      memo: String(b.memo || '').trim().slice(0, 40)
+      memo: String(b.memo || '').trim().slice(0, 40),
+      // どの案件に使った時間か。空なら案件と結びついていない（睡眠・家事など）
+      projectId: String(b.projectId || '')
     };
   }
 

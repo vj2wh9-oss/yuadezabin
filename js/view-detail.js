@@ -174,6 +174,13 @@
       wrap.appendChild(gantt(p, scheduled, today));
     }
 
+    /* ---- かかった時間 ---- */
+    var spent = timeCard(p);
+    if (spent) {
+      wrap.appendChild(ui.section('かかった時間'));
+      wrap.appendChild(spent);
+    }
+
     /* ---- タスク ---- */
     wrap.appendChild(ui.section('タスク', el('span', { class: 'muted small', text: prog.doneTasks + ' / ' + prog.total + ' 完了' })));
     if (!(p.tasks || []).length) {
@@ -325,6 +332,49 @@
       msg += '（実績平均は ' + real.perActiveDay + '/日）';
     }
     ui.toast(msg);
+  }
+
+  /* ---------------- かかった時間 ----------------
+
+     「1日の時間」で案件に結びつけた帯を集める。
+     見積もりが合っていたか、次に同じ仕事を受けるかの手がかりになる。
+     報酬が入っていれば、時間あたりいくらになったかも出す。 */
+
+  function timeCard(p) {
+    var T = DL.timeblocks;
+    var min = T.projectMinutes(p.id);
+    if (!min) return null;
+
+    var days = {};
+    Object.keys(S.settings.timeblocks || {}).forEach(function (d) {
+      (S.settings.timeblocks[d] || []).forEach(function (b) {
+        if (b.projectId === p.id) days[d] = true;
+      });
+    });
+    var nDays = Object.keys(days).length;
+
+    var box = el('div', { class: 'card sum-grid' }, [
+      el('div', { class: 'sum-box' }, [
+        el('span', { text: '合計' }), el('b', { text: T.hours(min) })
+      ]),
+      el('div', { class: 'sum-box' }, [
+        el('span', { text: '書いた日数' }), el('b', { text: nDays + '日' })
+      ]),
+      el('div', { class: 'sum-box' }, [
+        el('span', { text: '1日あたり' }),
+        el('b', { text: nDays ? T.hours(Math.round(min / nDays)) : '—' })
+      ])
+    ]);
+
+    // 報酬が分かっているなら、時間あたりいくらになったか
+    var fee = U.num(p.fee, 0);
+    if (fee > 0) {
+      box.appendChild(el('div', { class: 'sum-box' }, [
+        el('span', { text: '時間あたり' }),
+        el('b', { text: DL.docs.yen(Math.round(fee / (min / 60))) })
+      ]));
+    }
+    return box;
   }
 
   /* ---------------- ガントチャート ---------------- */

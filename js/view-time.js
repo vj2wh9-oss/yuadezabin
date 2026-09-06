@@ -235,6 +235,8 @@
         legend(date)
       ]));
       card.appendChild(rows(date));
+      var pr = projRows(date);
+      if (pr) card.appendChild(pr);
     }
     // iPhone の幅でも折り返さないよう、等分の1行に並べる
     var acts = [ui.btn('時間を足す', 'ghost', function () { blockSheet(date, null); }, 'plus')];
@@ -289,6 +291,28 @@
 
   /* 帯を上から順に並べた一覧。押すと直せる。
      いま進行中のものは青く光らせて、どれが「今」か目で追えるようにする */
+  function projTitle(id) {
+    var p = S.getProject(id);
+    return p ? p.title : '（消された案件）';
+  }
+
+  /* 案件ごとの合計。結びつけた帯があるときだけ出す */
+  function projRows(date) {
+    var list = T.projectsOfDay(date);
+    if (!list.length) return null;
+    return el('div', { class: 'tp-projs' }, [
+      el('span', { class: 'muted small', text: '案件ごと' })
+    ].concat(list.map(function (x) {
+      return el(x.project ? 'a' : 'span', {
+        class: 'tp-proj', href: x.project ? '#/project/' + x.projectId : null
+      }, [
+        el('i', { style: { background: x.color } }),
+        el('span', { class: 'tp-proj-t', text: x.title }),
+        el('b', { text: hm(x.min) })
+      ]);
+    })));
+  }
+
   function rows(date) {
     var box = el('div', { class: 'tp-rows' }, T.ofDay(date).map(function (b) {
       var row = el('button', {
@@ -297,7 +321,11 @@
       }, [
         el('i', { class: 'tp-dot', style: { background: b.color } }),
         el('span', { class: 'tp-row-t', text: T.fmt(b.start) + '〜' + T.fmt(b.end) }),
-        el('span', { class: 'tp-row-k', text: b.label + (b.memo ? '　' + b.memo : '') }),
+        el('span', { class: 'tp-row-k' }, [
+          el('span', { text: b.label + (b.memo ? '　' + b.memo : '') }),
+          // どの案件に使ったかは、名前の下に小さく添える
+          b.projectId ? el('span', { class: 'tp-row-p', text: projTitle(b.projectId) }) : null
+        ]),
         el('span', { class: 'tp-row-d', text: hm(b.end - b.start) + (b.carry ? '（前の日から）' : b.over ? '（翌日へ）' : '') })
       ]);
       row._span = b;
@@ -344,8 +372,23 @@
       id: cur ? cur.id : '',
       start: cur ? cur.start : nextFree(date),
       end: cur ? cur.end : Math.min(DAY, nextFree(date) + 60),
-      memo: cur ? (cur.memo || '') : ''
+      memo: cur ? (cur.memo || '') : '',
+      projectId: cur ? (cur.projectId || '') : ''
     };
+
+    /* どの案件に使った時間か。
+       結びつけておくと、案件の画面で「実際にどれだけかかったか」が出る。
+       睡眠や家事のように案件と関係ない時間は、空のままでよい。
+       消した案件が入っていても選び口から消えないよう、その1つは残す */
+    var projOpts = [{ value: '', label: '（案件と結びつけない）' }].concat(
+      S.projects().filter(function (p) {
+        return p.status !== 'archived' || p.id === v.projectId;
+      }).map(function (p) { return { value: p.id, label: p.title }; })
+    );
+    if (v.projectId && !projOpts.some(function (o) { return o.value === v.projectId; })) {
+      projOpts.push({ value: v.projectId, label: '（消された案件）' });
+    }
+    var projSel = ui.select(projOpts, v.projectId);
 
     var startIn = ui.input({ value: T.fmt(v.start), inputmode: 'numeric', placeholder: '8:00' });
     var endIn = ui.input({ value: T.fmt(v.end), inputmode: 'numeric', placeholder: '16:30' });
@@ -403,6 +446,7 @@
           ui.field('終わり', endIn)
         ]),
         note,
+        ui.field('案件', projSel, '結びつけると、その案件に使った時間が集まります'),
         ui.field('メモ', memoIn),
         !isNew ? ui.btn('この時間を消す', 'danger full mt', function () {
           S.removeTimeblock(cur && src ? b.date : date, v.id);
@@ -418,7 +462,10 @@
           if (!name) { ui.toast('何をしていたかを書いてください', 'danger'); nameIn.focus(); return; }
           if (s === null || e === null) { ui.toast('時刻を読み取れませんでした', 'danger'); return; }
           if (e <= s) { ui.toast('終わりは始まりより後にしてください', 'danger'); return; }
-          S.putTimeblock(src ? b.date : date, { id: v.id, label: name, start: s, end: e, memo: memoIn.value });
+          S.putTimeblock(src ? b.date : date, {
+            id: v.id, label: name, start: s, end: e,
+            memo: memoIn.value, projectId: projSel.value
+          });
           close();
           ui.toast(isNew ? '足しました' : '直しました');
         })

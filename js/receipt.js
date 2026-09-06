@@ -53,10 +53,19 @@
 
   /* ---------------- 読み取り ---------------- */
 
+  /* 読み取りの種類ごとの違い。ここだけ差し替えれば増やせる */
+  var KINDS = {
+    receipt: { path: 'receipt', folder: null, normalize: normalize },
+    card: { path: 'card', folder: '名刺', normalize: normalizeCard }
+  };
+
+  function kindOf(opts) { return KINDS[(opts && opts.kind) || 'receipt'] || KINDS.receipt; }
+
   /**
    * 写真1枚を読み取る。
    * @param {File|Blob} file 撮ったままの写真
-   * @param {object} [opts] {onStep:fn(step), book:'work'|'life'（写真の置き場所）,
+   * @param {object} [opts] {kind:'receipt'|'card', onStep:fn(step),
+   *                         book:'work'|'life'（写真の置き場所）,
    *                         projectId, folder, noRetry}
    * @returns {Promise<{data:object, fileId:string, file:File, crop:object, model:string, retried:boolean, usage:object}>}
    */
@@ -69,7 +78,10 @@
     return DL.crop.receipt(file, { max: opts.max })
       .then(function (c) {
         step('upload');
-        var folder = opts.folder === undefined ? DL.expenses.receiptFolder(opts.book) : opts.folder;
+        var k = kindOf(opts);
+        var folder = opts.folder !== undefined ? opts.folder
+          : k.folder !== null ? k.folder
+            : DL.expenses.receiptFolder(opts.book);
         return F.upload(c.file, { folder: folder, projectId: opts.projectId || '' })
           .then(function (up) {
             // アプリ側にも置き場所を覚えさせる。これをしないと
@@ -82,7 +94,7 @@
         step('read');
         return ask(o.up.id, opts).then(function (r) {
           return {
-            data: normalize(r.data),
+            data: kindOf(opts).normalize(r.data),
             raw: r.data,
             fileId: o.up.id,
             file: o.crop.file,
@@ -112,7 +124,7 @@
     if (!fileId) return Promise.reject(err('読み取る写真がありません'));
     return ask(fileId, opts).then(function (r) {
       return {
-        data: normalize(r.data),
+        data: kindOf(opts).normalize(r.data),
         raw: r.data,
         fileId: fileId,
         model: r.model,
@@ -129,7 +141,7 @@
     if (opts && opts.noRetry) body.noRetry = true;
     if (opts && opts.model) body.model = opts.model;
 
-    return fetch(base() + '/v1/ocr/receipt', {
+    return fetch(base() + '/v1/ocr/' + kindOf(opts).path, {
       method: 'POST',
       headers: { authorization: 'Bearer ' + conf().token, 'content-type': 'application/json' },
       body: JSON.stringify(body)
@@ -167,6 +179,53 @@
     // 合計と品目が合っているか。ここは画面で「確かめてください」を出すために使う
     out.mismatch = !!(out.total && out.itemsTotal && out.itemsTotal > out.total * 1.05 + 1);
     return out;
+  }
+
+  /**
+   * 名刺の読み取り結果を、顧客管理の欄に入れられる形にそろえる。
+   * 向こうの言うことは鵜呑みにせず、こちらでも形を整える。
+   */
+  function normalizeCard(d) {
+    d = d || {};
+    var zip = String(d.zip == null ? '' : d.zip).replace(/[〒\s　]/g, '')
+      .replace(/[０-９－]/g, function (c) {
+        return c === '－' ? '-' : String.fromCharCode(c.charCodeAt(0) - 0xFEE0);
+      });
+    // 7桁だけで来ることがあるので、区切りを入れておく
+    if (/^\d{7}$/.test(zip)) zip = zip.slice(0, 3) + '-' + zip.slice(3);
+    if (!/^\d{3}-\d{4}$/.test(zip)) zip = '';
+
+    var out = {
+      company: txt(d.company, 80),
+      contact: txt(d.contact, 40),
+      title: txt(d.title, 60),
+      email: txt(d.email, 120).toLowerCase(),
+      tel: tel(d.tel),
+      fax: tel(d.fax),
+      zip: zip,
+      address: txt(d.address, 160).replace(/^〒?\s*\d{3}-?\d{4}\s*/, ''),
+      url: txt(d.url, 160),
+      note: txt(d.note, 300),
+      confidence: clamp01(d.confidence),
+      unclear: !!d.unclear
+    };
+    // 形になっていないアドレスは入れない。あとで照合に使うので、汚したくない
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(out.email)) out.email = '';
+    // 何ひとつ拾えていなければ、読めなかったものとして扱う
+    out.empty = !(out.company || out.contact || out.email || out.tel || out.address);
+    return out;
+  }
+
+  function txt(v, max) {
+    return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, max || 80);
+  }
+
+  /* 電話番号。全角を半角にして、区切りは書いてあるとおりに残す */
+  function tel(v) {
+    return txt(v, 32).replace(/[０-９－（）]/g, function (c) {
+      return c === '－' ? '-' : c === '（' ? '(' : c === '）' ? ')'
+        : String.fromCharCode(c.charCodeAt(0) - 0xFEE0);
+    }).replace(/[^\d+\-()\s]/g, '').trim();
   }
 
   function money(v) {
@@ -213,6 +272,10 @@
 
   DL.receipt = {
     read: read, reread: reread, status: status, ready: ready, ask: ask,
-    normalize: normalize, fixDate: fixDate
+    normalize: normalize, normalizeCard: normalizeCard, fixDate: fixDate,
+    /** 名刺を読む。read の名刺版 */
+    readCard: function (file, opts) {
+      return read(file, Object.assign({}, opts, { kind: 'card' }));
+    }
   };
 })(window.DL);
