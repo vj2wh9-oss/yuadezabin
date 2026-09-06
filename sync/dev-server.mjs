@@ -35,7 +35,15 @@ const KV = {
     return type === 'json' ? JSON.parse(v) : v;
   },
   async put(key, value) { store.set(key, String(value)); persist(); },
-  async delete(key) { store.delete(key); persist(); }
+  async delete(key) { store.delete(key); persist(); },
+  /* 本物の KV と同じく、頭が同じキーを並べる（夜のバックアップが使う） */
+  async list({ prefix } = {}) {
+    const keys = [...store.keys()]
+      .filter((k) => !prefix || k.startsWith(prefix))
+      .sort()
+      .map((name) => ({ name }));
+    return { keys, list_complete: true };
+  }
 };
 
 /* R2 の代わり。worker.js が使う put / get / delete / list だけを真似る */
@@ -90,7 +98,8 @@ async function readStream(stream) {
 const env = { SYNC: KV, FILES: R2, ALLOW_ORIGIN: process.env.ALLOW_ORIGIN || '*' };
 // OPENAI_* は手元の環境変数から通す（レシート読み取りの動きを確かめるため）
 for (const k of Object.keys(process.env)) {
-  if (k.startsWith('OPENAI_') || k.startsWith('VAPID_')) env[k] = process.env[k];
+  if (k.startsWith('OPENAI_') || k.startsWith('VAPID_')
+    || k.startsWith('DISCORD_') || k.startsWith('BACKUP_')) env[k] = process.env[k];
 }
 
 createServer(async (req, res) => {
@@ -103,6 +112,22 @@ createServer(async (req, res) => {
     headers: req.headers,
     body: ['GET', 'HEAD'].includes(req.method) ? undefined : body
   });
+
+  // Cron を手元で起こす（wrangler dev の /cdn-cgi/local/scheduled と同じ役目）
+  if (req.url.split('?')[0] === '/__scheduled') {
+    const waits = [];
+    try {
+      await worker.scheduled({ cron: '* * * * *', scheduledTime: Date.now() }, env,
+        { waitUntil: (p) => waits.push(p) });
+      await Promise.all(waits);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+    } catch (e) {
+      res.writeHead(500, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, message: String((e && e.message) || e) }));
+    }
+    return;
+  }
 
   let out;
   try {

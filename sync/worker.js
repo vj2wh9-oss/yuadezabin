@@ -40,6 +40,13 @@
  *   受け取った発注をここへ預ける。アプリは「発注」の画面でこれを読む。
  *   1件入るたびに、登録してある端末へ通知を送る（届いたことに気付けるように）。
  *
+ * Discord への夜のバックアップ
+ *   GET    /v1/backup/status → { webhook, encrypted, last, hour }（webhook の URL は返さない）
+ *   POST   /v1/backup/run    → いますぐ1回送る（試すため）
+ *   毎日 0時（日本時間）に、KV のデータを gzip して Discord のチャンネルへ送る。
+ *   secret DISCORD_WEBHOOK を入れたときだけ動く。
+ *   secret BACKUP_KEY を入れると、送る前に暗号にする（合言葉から鍵を作る）。
+ *
  * レシートの読み取り（OpenAI）
  *   GET    /v1/ocr/status  → { key, r2, model, strongModel, reasoning, maxTokens }（鍵は返さない）
  *   POST   /v1/ocr/receipt → 本文 {fileId} → { data:{store,date,total,items,…}, model, retried, usage }
@@ -67,6 +74,8 @@ const MAX_FILE_BYTES = 100 * 1024 * 1024;
 const MAX_INBOX_BYTES = 256 * 1024;
 const INBOX_KEEP_DAYS = 14;
 const MAX_INBOX_ROWS = 400;          // 月ごとの金額。30年ぶんあれば足りる
+const BACKUP_HOUR_UTC = 15;          // 15:00 UTC ＝ 日本時間の 0時
+const DISCORD_MAX = 20 * 1024 * 1024;   // Discord の添付の上限（既定 20MiB）
 
 export default {
   async fetch(request, env, ctx) {
@@ -184,6 +193,10 @@ export default {
         return ocr(request, env, cors, url, id);
       }
 
+      if (url.pathname.startsWith('/v1/backup/')) {
+        return backupApi(request, env, cors, url, id);
+      }
+
       if (url.pathname === '/v1/roomreserve') {
         return roomReserve(request, env, cors, url);
       }
@@ -197,8 +210,201 @@ export default {
   /* 毎分の Cron。時刻が来た通知を送る */
   async scheduled(event, env, ctx) {
     ctx.waitUntil(sendDue(env));
+    ctx.waitUntil(dailyBackup(env));
   }
 };
+
+/* ---------------- Discord への夜のバックアップ ----------------
+
+   毎日 0時（日本時間）に、KV に入っているアプリのデータを丸ごと
+   Discord のチャンネルへ送る。iPhone は寝ているので、送るのはここの役目。
+
+   Cron は通知用の「毎分」に相乗りしている。毎分呼ばれても、
+   その日ぶんを送ったかどうかを KV に控えて、1日1回だけにする。
+   （通知を使わず毎分の Cron が無いときは、wrangler.jsonc の
+     triggers.crons に "0 15 * * *" を足す）
+
+   置き場が Discord である以上、送るものはそのまま人に読める。
+   顧客管理の中身も入るので、secret BACKUP_KEY を入れて
+   暗号にしておくことをすすめる。 */
+
+const BK_MAGIC = 'M365BK1';          // 暗号にしたファイルの頭に置く目印
+
+/** 日本時間での 'YYYY-MM-DD'（UTC+9） */
+function jstDate(ms) {
+  return new Date(ms + 9 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+/** 何時（UTC）以降に送るか。var BACKUP_HOUR で変えられる（既定は日本の0時） */
+function backupHour(env) {
+  const n = Number(env.BACKUP_HOUR);
+  return Number.isInteger(n) && n >= 0 && n <= 23 ? n : BACKUP_HOUR_UTC;
+}
+
+async function dailyBackup(env) {
+  if (!env.SYNC || !env.DISCORD_WEBHOOK) return;
+  const now = Date.now();
+  // その時刻を過ぎるまでは何もしない（既定は 15:00 UTC ＝ 日本の 0時）
+  if (new Date(now).getUTCHours() < backupHour(env)) return;
+
+  const today = jstDate(now);
+  const list = await env.SYNC.list({ prefix: 'state:' });
+  for (const k of list.keys) {
+    const id = k.name.slice('state:'.length);
+    const doneKey = 'backup:' + id + ':day';
+    if ((await env.SYNC.get(doneKey, 'text')) === today) continue;   // もう送った
+    // 先に印を付ける。送信中にもう一度呼ばれても二度送らない
+    await env.SYNC.put(doneKey, today, { expirationTtl: 60 * 60 * 24 * 40 });
+    try {
+      await sendBackup(env, id, 'auto');
+    } catch (e) {
+      // 失敗したら印を外して、次の回でやり直す
+      await env.SYNC.delete(doneKey);
+      await env.SYNC.put('backup:' + id + ':last', JSON.stringify({
+        at: new Date(now).toISOString(), ok: false, why: String((e && e.message) || e).slice(0, 300)
+      }), { expirationTtl: 60 * 60 * 24 * 90 });
+    }
+  }
+}
+
+/**
+ * 1人ぶんを送る。
+ * @param {'auto'|'manual'} how
+ * @returns {Promise<object>} 送った結果（画面に出すため）
+ */
+async function sendBackup(env, id, how) {
+  if (!env.DISCORD_WEBHOOK) throw new Error('DISCORD_WEBHOOK が入っていません');
+
+  const raw = await env.SYNC.get('state:' + id, 'text');
+  if (!raw) throw new Error('まだデータがありません');
+  const meta = (await env.SYNC.get('meta:' + id, 'json')) || {};
+
+  const state = JSON.parse(raw);
+  const counts = countOf(state);
+  // 合言葉の潰した形は持ち出さない。4桁ならその場で総当たりされる。
+  // 戻したあとは、顧客管理の合言葉を決め直してもらう
+  if (state.settings) delete state.settings.crmPass;
+
+  const body = new TextEncoder().encode(JSON.stringify(state));
+  const gz = await gzip(body);
+
+  let file = gz, name = 'meteo365-' + jstDate(Date.now()) + '.json.gz';
+  let locked = false;
+  if (env.BACKUP_KEY) {
+    file = await encrypt(gz, env.BACKUP_KEY);
+    name += '.enc';
+    locked = true;
+  }
+  if (file.byteLength > DISCORD_MAX) {
+    throw new Error('大きすぎて送れません（' + mb(file.byteLength) + '）');
+  }
+
+  const lines = [
+    '**METEO365 バックアップ** ' + jstDate(Date.now()) + (how === 'manual' ? '（手動）' : ''),
+    '案件 ' + counts.projects + '件／顧客 ' + counts.clients + '件／書類 ' + counts.docs
+      + '件／レシート ' + counts.expenses + '件',
+    'もとの大きさ ' + mb(body.byteLength) + ' → 送った大きさ ' + mb(file.byteLength)
+      + (locked ? '（暗号あり）' : '（暗号なし）'),
+    meta.savedAt ? '最後の保存 ' + meta.savedAt : ''
+  ].filter(Boolean);
+
+  const form = new FormData();
+  form.append('payload_json', JSON.stringify({
+    content: lines.join('\n'),
+    allowed_mentions: { parse: [] }        // 文中の @ で人を呼ばない
+  }));
+  form.append('files[0]', new Blob([file], { type: 'application/octet-stream' }), name);
+
+  const res = await fetch(env.DISCORD_WEBHOOK, { method: 'POST', body: form });
+  if (!res.ok) {
+    const text = (await res.text().catch(() => '')).slice(0, 300);
+    throw new Error('Discord が受け取りませんでした（' + res.status + '）' + text);
+  }
+
+  const done = {
+    at: new Date().toISOString(), ok: true, how: how,
+    name: name, size: file.byteLength, raw: body.byteLength, locked: locked, counts: counts
+  };
+  await env.SYNC.put('backup:' + id + ':last', JSON.stringify(done),
+    { expirationTtl: 60 * 60 * 24 * 90 });
+  return done;
+}
+
+function countOf(state) {
+  const s = (state && state.settings) || {};
+  let docs = 0;
+  (state.projects || []).forEach(function (p) { docs += ((p.docs || []).length); });
+  return {
+    projects: (state.projects || []).length,
+    clients: (s.clients || []).length,
+    expenses: (s.expenses || []).length,
+    docs: docs
+  };
+}
+
+function mb(n) {
+  if (n >= 1024 * 1024) return (n / 1024 / 1024).toFixed(2) + 'MB';
+  if (n >= 1024) return (n / 1024).toFixed(1) + 'KB';
+  return n + 'B';
+}
+
+async function gzip(bytes) {
+  const cs = new CompressionStream('gzip');
+  const stream = new Blob([bytes]).stream().pipeThrough(cs);
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+/* 合言葉から鍵を作って、AES-GCM で包む。
+   出来上がりは  目印(7) | 塩(16) | iv(12) | 中身  の並び。
+   アプリ側（js/backup.js）が同じ形で開ける。 */
+async function encrypt(bytes, pass) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveKey(pass, salt);
+  const sealed = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, key, bytes));
+
+  const magic = new TextEncoder().encode(BK_MAGIC);
+  const out = new Uint8Array(magic.length + salt.length + iv.length + sealed.length);
+  out.set(magic, 0);
+  out.set(salt, magic.length);
+  out.set(iv, magic.length + salt.length);
+  out.set(sealed, magic.length + salt.length + iv.length);
+  return out;
+}
+
+async function deriveKey(pass, salt) {
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass),
+    'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: salt, iterations: 200000, hash: 'SHA-256' },
+    base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+
+/* ---------------- 様子を見る・いま送る ---------------- */
+
+async function backupApi(request, env, cors, url, id) {
+  if (url.pathname === '/v1/backup/status' && request.method === 'GET') {
+    const last = await env.SYNC.get('backup:' + id + ':last', 'json');
+    return json({
+      webhook: !!env.DISCORD_WEBHOOK,      // URL そのものは返さない
+      encrypted: !!env.BACKUP_KEY,
+      hour: backupHour(env),               // 既定は 15（日本時間の 0時）
+      today: (await env.SYNC.get('backup:' + id + ':day', 'text')) || '',
+      last: last || null
+    }, 200, cors);
+  }
+
+  if (url.pathname === '/v1/backup/run' && request.method === 'POST') {
+    try {
+      const done = await sendBackup(env, id, 'manual');
+      return json({ ok: true, ...done }, 200, cors);
+    } catch (e) {
+      return json({ ok: false, error: 'backup_failed', message: String((e && e.message) || e) }, 502, cors);
+    }
+  }
+
+  return json({ error: 'not_found' }, 404, cors);
+}
 
 /* ---------------- ROOM RESERVE の予定を取り次ぐ ----------------
 

@@ -198,19 +198,26 @@
 
     /* ---- データ ---- */
     at.appendChild(ui.section('データ'));
-    var file = el('input', { type: 'file', accept: '.json,application/json', style: { display: 'none' } });
+    var file = el('input', {
+      type: 'file', accept: '.json,.gz,.enc,application/json,application/gzip',
+      style: { display: 'none' }
+    });
     file.addEventListener('change', function () {
       var f = file.files[0];
       if (!f) return;
-      var r = new FileReader();
-      r.onload = function () { importSheet(String(r.result)); };
-      r.readAsText(f);
       file.value = '';
+      // Discord に送っているものは gzip や暗号のことがあるので、そこも開ける
+      DL.backup.readFile(f, askBackupPass).then(function (text) {
+        importSheet(text);
+      }).catch(function (e) {
+        if (String(e.message) !== 'やめました') ui.toast(e.message, 'danger');
+      });
     });
 
     at.appendChild(el('div', { class: 'card actions' }, [
       ui.btn('バックアップを書き出す（JSON）', 'ghost', function () { exportToFile(); }, 'arrowDown'),
       ui.btn('バックアップを読み込む', 'ghost', function () { file.click(); }, 'arrowUp'),
+      ui.btn('Discord への夜のバックアップ', 'ghost', function () { discordSheet(); }, 'cloud'),
       ui.btn('カレンダー用ファイル（.ics）', 'ghost', function () { icsSheet(); }, 'calendar'),
       ui.btn('サンプルデータを追加', 'ghost', function () {
         S.seedSample(); ui.toast('サンプルを追加しました');
@@ -309,6 +316,103 @@
      科目（印刷費・食費…）は帳簿ごとに決まっているが、
      こちらは自分で足せて、レシートの品目ひとつずつに付ける。
      「画材」「資料の本」「差し入れ」のように、あとで種別ごとに見返すためのもの。 */
+
+  /* ---------------- Discord への夜のバックアップ ----------------
+
+     送るのは Worker（毎日0時）。ここは様子を見るのと、
+     いま1回送してみるところだけ。webhook の URL と合言葉は
+     Worker の secret に置くので、アプリは持たない。 */
+
+  function askBackupPass() {
+    return new Promise(function (resolve) {
+      var input = ui.input({ type: 'password', autocomplete: 'off', placeholder: 'バックアップの合言葉' });
+      var done = false;
+      var close = ui.sheet({
+        title: '暗号を開く',
+        body: el('div', { class: 'form' }, [
+          el('p', { class: 'muted small',
+            text: 'Worker の BACKUP_KEY に入れた合言葉です。' }),
+          ui.field('合言葉', input)
+        ]),
+        actions: [
+          ui.btn('キャンセル', 'ghost', function () { close(); }),
+          ui.btn('開く', 'primary', function () { done = true; resolve(input.value); close(); })
+        ],
+        onClose: function () { if (!done) resolve(''); }
+      });
+      setTimeout(function () { if (input.isConnected) input.focus(); }, 120);
+    });
+  }
+
+  function discordSheet() {
+    var box = el('div', { class: 'form' });
+    box.appendChild(el('p', { class: 'muted small',
+      text: '毎日0時（日本時間）に、同期サーバーが持っているデータを丸ごと Discord のチャンネルへ送ります。'
+        + 'iPhone を開いていなくても送られます。' }));
+
+    var state = el('div', { class: 'card' }, [el('p', { class: 'muted small', text: '確認中…' })]);
+    box.appendChild(state);
+
+    var close = ui.sheet({
+      title: 'Discord への夜のバックアップ',
+      body: box,
+      actions: [ui.btn('閉じる', 'ghost', function () { close(); })]
+    });
+
+    var draw = function (st) {
+      U.clear(state);
+      if (!st.webhook) {
+        state.appendChild(el('div', { class: 'alert warn' }, [
+          el('span', { class: 'alert-icon' }, ui.icon('alert', 17)),
+          el('span', { text: 'まだ設定されていません。Discord のチャンネルで webhook を作り、'
+            + 'その URL を Worker の secret（DISCORD_WEBHOOK）に入れてください。' })
+        ]));
+        return;
+      }
+      [
+        ['送る時刻', '毎日 0:00（日本時間）'],
+        ['暗号', st.encrypted ? 'あり（BACKUP_KEY で包んでいます）' : 'なし（そのまま置かれます）'],
+        ['今日のぶん', st.today ? '送信済み（' + st.today + '）' : 'まだ']
+      ].forEach(function (r) {
+        state.appendChild(el('div', { class: 'info-row' }, [
+          el('span', { class: 'info-k', text: r[0] }),
+          el('span', { class: 'info-v', text: r[1] })
+        ]));
+      });
+      var last = st.last;
+      state.appendChild(el('div', { class: 'info-row' }, [
+        el('span', { class: 'info-k', text: '最後の送信' }),
+        el('span', { class: 'info-v', text: !last ? 'まだありません'
+          : last.ok ? U.fmtYMD(last.at.slice(0, 10)) + '　' + last.name
+          : '失敗（' + (last.why || '') + '）' })
+      ]));
+      if (!st.encrypted) {
+        state.appendChild(el('p', { class: 'muted small',
+          text: '暗号なしのままだと、顧客管理の連絡先もそのまま読める形でチャンネルに残ります。'
+            + 'Worker の secret に BACKUP_KEY を入れると、包んでから送るようになります。' }));
+      }
+      var go = ui.btn('いますぐ1回送る', 'ghost full', function () {
+        go.disabled = true;
+        DL.backup.run().then(function (r) {
+          go.disabled = false;
+          if (r.ok) { ui.toast('送りました（' + r.name + '）'); load(); }
+          else ui.toast(r.message || '送れませんでした', 'danger');
+        }).catch(function (e) { go.disabled = false; ui.toast(e.message, 'danger'); });
+      }, 'cloud');
+      state.appendChild(go);
+    };
+
+    var load = function () {
+      DL.backup.status().then(draw).catch(function (e) {
+        U.clear(state);
+        state.appendChild(el('p', { class: 'muted small',
+          text: DL.backup.ready() ? '様子を見られませんでした：' + e.message
+            + '（Worker がまだ新しくなっていないかもしれません）'
+            : '先に「PC・iPhone の同期」をつないでください。' }));
+      });
+    };
+    load();
+  }
 
   /* ---------------- 顧客管理の鍵 ----------------
 
