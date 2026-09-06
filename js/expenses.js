@@ -86,24 +86,29 @@
 
   /** 月ごとの合計。1〜12月ぶんを必ず返す */
   /**
-   * その月に出ていく固定費（日常のぶん）。
+   * その月に出ていく固定費。事業と日常の両方をまとめて数える。
+   * 予算は事業と日常を合わせた1本なので、固定費も合わせて見る。
    *
    * まだその日が来ていなくても、その月のうちに必ず出ていく。
    * だから月のはじめから取りのけておく。
    *
    * @param {string} ym 'YYYY-MM'
+   * @param {string} [book] 'work'|'life' を渡すと、その帳簿のぶんだけ
    * @returns {number}
    */
-  function fixedOfMonth(ym) {
+  function fixedOfMonth(ym, book) {
     var U = DL.util;
     return (DL.store.settings.recurring || []).filter(function (r) {
-      return r.book === 'life' && r.active !== false
+      return (!book || r.book === book) && r.active !== false
         && String(r.startYm || '') <= ym;      // 始まる前の月には出ていかない
     }).reduce(function (n, r) { return n + Math.max(0, U.num(r.amount, 0)); }, 0);
   }
 
   /**
    * 1日ぶんの予算と、今日の使いぐあい。
+   *
+   * 予算は事業と日常を合わせた1本なので、出ていくほうも両方を足して見る。
+   * 帳簿を分けているのは中身を整理するためで、財布は1つだから。
    *
    * 家賃や通信費のような固定費は、日割りにしても意味がない。
    * 27日に家賃が出た日だけ予算が吹き飛んで見えても、何の役にも立たない。
@@ -112,7 +117,7 @@
    * （先に引いてあるので、数えると二重になる）。
    *
    * 基準は「（月の予算 − 固定費）÷ その月の日数」。ただし月の途中で
-   * 使いすぎていると、この基準を守っても収まらない。そこで、昨日までに
+   * 使いすぎていると、この基準を守っても収まらない。そこで、いま時点で
    * 使った額を引いて、今日を含む残りの日数で割り直した「立て直しの
    * 1日予算」も出す。こちらを守れば、月の終わりにちょうど収まる。
    *
@@ -130,16 +135,22 @@
     // その月の日数（翌月の0日＝今月の末日）
     var days = new Date(U.num(ym.slice(0, 4), 2000), U.num(ym.slice(5, 7), 1), 0).getDate();
 
-    var fixed = fixedOfMonth(ym);
+    var fixed = fixedOfMonth(ym);                     // 事業＋日常
     var budget = Math.max(0, month - fixed);          // 日割りにできる額
 
     var rows = (S.settings.expenses || []).filter(function (x) {
-      return x.book === 'life' && String(x.date).slice(0, 7) === ym
+      return String(x.date).slice(0, 7) === ym        // 事業も日常も、まとめて数える
         && !x.recurringId;                            // 固定費ぶんは先に引いてある
     });
     var spent = total(rows);
     var today = total(rows.filter(function (x) { return x.date === date; }));
     var before = spent - today;                       // 昨日までに使った額
+
+    // 帳簿ごとの内訳。どちらで使っているかが見えるように
+    var byBook = { work: 0, life: 0 };
+    rows.forEach(function (x) {
+      byBook[x.book === 'life' ? 'life' : 'work'] += U.num(x.amount, 0);
+    });
 
     var perDay = budget / days;                       // ふだんの1日予算
     var rest = Math.max(1, days - day + 1);           // 今日を含む、残りの日数
@@ -148,6 +159,8 @@
 
     return {
       month: month, fixed: fixed,
+      fixedWork: fixedOfMonth(ym, 'work'), fixedLife: fixedOfMonth(ym, 'life'),
+      spentWork: byBook.work, spentLife: byBook.life,
       budget: budget, days: days, day: day, rest: rest,
       perDay: Math.round(perDay),
       restPerDay: Math.round(restPerDay),

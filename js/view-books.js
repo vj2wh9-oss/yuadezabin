@@ -47,7 +47,10 @@
     wrap.appendChild(el('div', { class: 'card sum-grid' }, isLife
       ? lifeBoxes(all, spent, y) : workBoxes(spent, all, y)));
 
-    if (isLife) wrap.appendChild(budgetCard(all, y));
+    /* ---- 1ヶ月の予算。事業と日常を合わせた1本なので、どちらの帳簿でも出す ---- */
+    wrap.appendChild(ui.section('1ヶ月の予算',
+      el('span', { class: 'muted small', text: '事業＋日常' })));
+    wrap.appendChild(budgetCard());
 
     /* ---- 固定費 ---- */
     var fixed = S.recurring(book);
@@ -144,35 +147,43 @@
     ];
   }
 
-  /* 1ヶ月の予算と、今月の残り */
-  function budgetCard(all, y) {
-    var t = U.today();
-    var budget = U.num(S.settings.lifeBudget, 0);
-    var thisMonth = E.total(all.filter(function (x) { return x.date.slice(0, 7) === t.slice(0, 7); }));
+  /* 1ヶ月の予算と、今月の残り。
+     予算は事業と日常を合わせた1本。中身も、ホームの「今日の予算」と
+     同じ数えかたにそろえる（固定費は月ぶんを丸ごと、そのほかは使った額）。 */
+  function budgetCard() {
     var box = el('div', { class: 'card' });
-
-    if (!budget) {
+    var b = E.dailyBudget();
+    if (!b) {
       box.appendChild(ui.btn('予算を決める', 'ghost full', function () { budgetSheet(); }, 'plus'));
       return box;
     }
-    var left = budget - thisMonth;
-    var pct = Math.min(100, Math.round(thisMonth / budget * 100));
+
+    var used = b.fixed + b.spent;                 // 固定費（月ぶん）＋ そのほか
+    var left = b.month - used;
+    var pct = Math.min(100, Math.round(used / b.month * 100));
+
     box.appendChild(el('div', { class: 'bg-head' }, [
-      el('span', { text: U.num(t.slice(5, 7), 0) + '月の予算' }),
+      el('span', { text: U.num(U.today().slice(5, 7), 0) + '月の予算' }),
       el('b', { class: left < 0 ? 'over' : '', text: left < 0 ? D.yen(-left) + ' 超過' : '残り ' + D.yen(left) })
     ]));
     box.appendChild(el('div', { class: 'bg-bar' + (left < 0 ? ' over' : '') }, el('i', { style: { width: pct + '%' } })));
     box.appendChild(el('div', { class: 'bg-foot' }, [
-      el('span', { class: 'muted small', text: D.yen(thisMonth) + ' / ' + D.yen(budget) + '（' + pct + '%）' }),
+      el('span', { class: 'muted small', text: D.yen(used) + ' / ' + D.yen(b.month) + '（' + pct + '%）' }),
       ui.btn('予算を変える', 'ghost tiny', function () { budgetSheet(); })
     ]));
 
-    // 固定費は先に取りのけてある。ホームの「今日の予算」と話が合うように出す
-    var fx = E.fixedOfMonth(t.slice(0, 7));
-    if (fx > 0) {
-      box.appendChild(el('p', { class: 'muted small bg-fixed',
-        text: 'うち固定費 ' + D.yen(fx) + '。自由に使えるのは '
-          + D.yen(Math.max(0, budget - fx)) + ' です' }));
+    var lines = [];
+    if (b.fixed > 0) {
+      lines.push('うち固定費 ' + D.yen(b.fixed) + '。自由に使えるのは ' + D.yen(b.budget) + ' です');
+    }
+    if (b.spent > 0) {
+      lines.push('そのほかに使ったぶん　事業 ' + D.yen(b.spentWork)
+        + '／日常 ' + D.yen(b.spentLife));
+    }
+    if (lines.length) {
+      box.appendChild(el('div', { class: 'bg-fixed' }, lines.map(function (t) {
+        return el('p', { class: 'muted small', text: t });
+      })));
     }
     return box;
   }
@@ -182,8 +193,12 @@
       value: U.num(S.settings.lifeBudget, 0) || '' });
     var close = ui.sheet({
       title: '1ヶ月の予算',
-      body: el('div', { class: 'form' },
-        ui.field('予算（円）', input)),
+      body: el('div', { class: 'form' }, [
+        ui.field('予算（円）', input),
+        el('p', { class: 'muted small',
+          text: '事業と日常を合わせた、1ヶ月に使えるお金です。'
+            + 'ここから固定費を引いた残りを日数で割ったものが、ホームの「今日の予算」になります。' })
+      ]),
       actions: [
         ui.btn('キャンセル', 'ghost', function () { close(); }),
         ui.btn('保存', 'primary', function () {

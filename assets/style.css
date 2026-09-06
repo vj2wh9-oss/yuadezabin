@@ -1811,6 +1811,9 @@ a.alert-main { text-decoration: none; }
 .bg-day-note.danger { color: var(--danger); }
 /* 内訳のひとこと。数字の下にそっと置く */
 .bg-fixed { margin: -2px 0 0; padding-top: 8px; border-top: 1px dashed var(--line); line-height: 1.5; }
+/* 「日常」が「日／常」に割れないように、語の途中では折らない */
+.bg-fixed p { margin: 0; word-break: keep-all; overflow-wrap: break-word; }
+.bg-fixed p + p { margin-top: 4px; }
 
 /* ---------------- 割増予約メール ---------------- */
 .mail-peek summary { font-size: 12.5px; color: var(--accent); cursor: pointer; padding: 6px 0; }

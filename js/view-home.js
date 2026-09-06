@@ -530,12 +530,21 @@
       el('a', { class: 'link small', href: '#/books', text: '経理' })
     ]));
 
-    // どこから出た額なのかが分かるように、内訳を1行だけ出す。
+    // どこから出た額なのかが分かるように、内訳を出す。
     // 固定費だけで超えているときは、上の注意で言い切っているので出さない
+    var lines = [];
     if (b.fixed > 0 && !b.noRoom) {
-      card.appendChild(el('p', { class: 'muted small bg-fixed',
-        text: '予算 ' + yen(b.month) + ' から固定費 ' + yen(b.fixed) + ' を引いた '
-          + yen(b.budget) + ' を、' + b.days + '日で割っています' }));
+      lines.push('予算 ' + yen(b.month) + ' から固定費 ' + yen(b.fixed) + ' を引いた '
+        + yen(b.budget) + ' を、' + b.days + '日で割っています');
+    }
+    // 予算は事業と日常でひとつ。どちらでいくら使ったかを添える
+    if (b.spentWork > 0 || b.spentLife > 0) {
+      lines.push('今月の内訳　事業 ' + yen(b.spentWork) + '／日常 ' + yen(b.spentLife));
+    }
+    if (lines.length) {
+      card.appendChild(el('div', { class: 'bg-fixed' }, lines.map(function (t) {
+        return el('p', { class: 'muted small', text: t });
+      })));
     }
     return card;
   }
