@@ -1646,6 +1646,24 @@ a.alert-main { text-decoration: none; }
   background: none; color: var(--text); font-size: 13px;
 }
 .tp-row.carry { opacity: .6; }
+/* いま進行中の行。青くゆっくり明滅させて、どれが「今」か分かるようにする */
+.tp-row.now {
+  color: var(--accent); border-radius: var(--radius-s);
+  animation: tp-row-now 2.6s ease-in-out infinite;
+}
+.tp-row.now .tp-row-t, .tp-row.now .tp-row-d { color: var(--accent); }
+.tp-row.now .tp-row-k { font-weight: 700; }
+@keyframes tp-row-now {
+  /* color-mix が使えない端末では、下の一段目（薄い青）で出る */
+  0%, 100% { background: var(--accent-soft); background: color-mix(in srgb, var(--accent) 26%, transparent); }
+  50% { background: transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tp-row.now {
+    animation: none;
+    background: var(--accent-soft); background: color-mix(in srgb, var(--accent) 26%, transparent);
+  }
+}
 .tp-dot { width: 9px; height: 9px; border-radius: 2px; flex: none; }
 .tp-row-t { flex: none; font-variant-numeric: tabular-nums; color: var(--muted); width: 88px; font-size: 12px; }
 .tp-row-k { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -287,10 +287,11 @@
       });
   }
 
-  /* 帯を上から順に並べた一覧。押すと直せる */
+  /* 帯を上から順に並べた一覧。押すと直せる。
+     いま進行中のものは青く光らせて、どれが「今」か目で追えるようにする */
   function rows(date) {
-    return el('div', { class: 'tp-rows' }, T.ofDay(date).map(function (b) {
-      return el('button', {
+    var box = el('div', { class: 'tp-rows' }, T.ofDay(date).map(function (b) {
+      var row = el('button', {
         class: 'tp-row' + (b.carry ? ' carry' : ''),
         onclick: function () { blockSheet(b.carry ? b.date : date, b); }
       }, [
@@ -299,7 +300,33 @@
         el('span', { class: 'tp-row-k', text: b.label + (b.memo ? '　' + b.memo : '') }),
         el('span', { class: 'tp-row-d', text: hm(b.end - b.start) + (b.carry ? '（前の日から）' : b.over ? '（翌日へ）' : '') })
       ]);
+      row._span = b;
+      return row;
     }));
+    markNow(box, date);
+    return box;
+  }
+
+  /* いまの時刻が入っている行に印をつける。
+     時計は進むので、しばらく開きっぱなしでも付け替わるように見張る。
+     画面が描き直されて消えたら、そこで見張るのをやめる */
+  function markNow(box, date) {
+    var paint = function () {
+      var now = nowMin(date);
+      U.$$('.tp-row', box).forEach(function (row) {
+        var b = row._span;
+        var on = now !== null && b && now >= b.start && now < b.end;
+        row.classList.toggle('now', on);
+        if (on) row.setAttribute('aria-current', 'time');
+        else row.removeAttribute('aria-current');
+      });
+    };
+    paint();
+    if (nowMin(date) === null) return;      // 今日でなければ、見張るまでもない
+    var iv = setInterval(function () {
+      if (!box.isConnected) { clearInterval(iv); return; }
+      paint();
+    }, 20000);
   }
 
   /* ---------------- 帯を1本入れる・直す ---------------- */
