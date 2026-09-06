@@ -376,11 +376,16 @@ async function encrypt(bytes, pass) {
   return out;
 }
 
+/* 鍵の作り直し回数。Workers は10万回までしか受け付けないので、そこが上限。
+   回数を増やせないぶんは、合言葉を長くして補う（README に書いてある）。
+   ここを変えると前に送ったファイルが開かなくなるので、動かさないこと。 */
+const BK_ITER = 100000;
+
 async function deriveKey(pass, salt) {
   const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass),
     'PBKDF2', false, ['deriveKey']);
   return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt: salt, iterations: 200000, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt: salt, iterations: BK_ITER, hash: 'SHA-256' },
     base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
 }
 

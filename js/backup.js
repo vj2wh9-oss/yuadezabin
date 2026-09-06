@@ -71,11 +71,15 @@
       .catch(function () { throw new Error('gzip を開けませんでした（壊れているかもしれません）'); });
   }
 
-  function deriveKey(pass, salt) {
+  /* 鍵の作り直し回数。Worker と同じ 10万回（Workers の上限）。
+     昔の形で包んだものがもし残っていても開けるよう、だめなら 20万回も試す */
+  var ITERS = [100000, 200000];
+
+  function deriveKey(pass, salt, iterations) {
     return crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey'])
       .then(function (k) {
         return crypto.subtle.deriveKey(
-          { name: 'PBKDF2', salt: salt, iterations: 200000, hash: 'SHA-256' },
+          { name: 'PBKDF2', salt: salt, iterations: iterations, hash: 'SHA-256' },
           k, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
       });
   }
@@ -85,10 +89,15 @@
       return Promise.reject(new Error('この端末では暗号を開けません'));
     }
     var salt = bytes.slice(7, 23), iv = bytes.slice(23, 35), body = bytes.slice(35);
-    return deriveKey(pass, salt).then(function (key) {
-      return crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv }, key, body);
-    }).then(function (b) { return new Uint8Array(b); })
-      .catch(function () { throw new Error('合言葉が違うか、ファイルが壊れています'); });
+
+    var tryAt = function (i) {
+      if (i >= ITERS.length) throw new Error('合言葉が違うか、ファイルが壊れています');
+      return deriveKey(pass, salt, ITERS[i]).then(function (key) {
+        return crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv }, key, body);
+      }).then(function (b) { return new Uint8Array(b); })
+        .catch(function () { return tryAt(i + 1); });
+    };
+    return Promise.resolve().then(function () { return tryAt(0); });
   }
 
   /**

@@ -95,6 +95,19 @@ async function readStream(stream) {
   return Buffer.concat(parts);
 }
 
+/* Workers の WebCrypto は PBKDF2 の繰り返しを10万回までしか受け付けない。
+   Node はもっと通してしまうので、ここで同じ上限を敷いておく。
+   （これが無いと、手元では通るのに本番で落ちる） */
+const realDeriveKey = globalThis.crypto.subtle.deriveKey.bind(globalThis.crypto.subtle);
+globalThis.crypto.subtle.deriveKey = function (algo, ...rest) {
+  if (algo && algo.name === 'PBKDF2' && algo.iterations > 100000) {
+    return Promise.reject(new Error(
+      'Pbkdf2 failed: iteration counts above 100000 are not supported (requested '
+      + algo.iterations + ').'));
+  }
+  return realDeriveKey(algo, ...rest);
+};
+
 const env = { SYNC: KV, FILES: R2, ALLOW_ORIGIN: process.env.ALLOW_ORIGIN || '*' };
 // OPENAI_* は手元の環境変数から通す（レシート読み取りの動きを確かめるため）
 for (const k of Object.keys(process.env)) {

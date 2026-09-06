@@ -118,6 +118,11 @@ wrangler secret put DISCORD_WEBHOOK      # コピーした URL を貼る
 wrangler secret put BACKUP_KEY           # 長めの合言葉。忘れると戻せません
 ```
 
+鍵は合言葉から PBKDF2（SHA-256・10万回）で作ります。10万回は
+Cloudflare Workers が受け付ける上限なので、**回数では稼げません**。
+そのぶん、**合言葉は20文字以上**を目安に長くしてください。
+（`wrangler.jsonc` の隣で回数を変えると、前に送ったファイルが開かなくなります）
+
 包んだファイルは `.json.gz.enc` という名前になります。戻すときは
 アプリの 設定 →「バックアップを読み込む」でそのファイルを選ぶと、
 合言葉を聞かれます。
