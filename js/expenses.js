@@ -234,6 +234,73 @@
   /* ---------------- 固定費 ---------------- */
 
   /**
+   * すでに登録してある支出から、固定費になりそうなものを挙げる。
+   *
+   * 毎月きまって出るものは、同じ支払先・同じ科目で、月をまたいで
+   * 何度も出てくる。そこをまとめて「これでは？」と並べる。
+   * 決めるのは人なので、ここは候補を出すだけ。
+   *
+   * @param {Array} rows その帳簿の経費
+   * @param {Array} [already] すでに登録してある固定費（重なりに印を付ける）
+   * @returns {Array} 月をまたいで出た数が多い順
+   *   [{key,name,vendor,category,amount,day,count,months,last,rows,registered}]
+   */
+  function fixedCandidates(rows, already) {
+    var U = DL.util;
+    var map = {};
+
+    (rows || []).forEach(function (x) {
+      // 固定費から起こしたものは、もう登録済みなので挙げない
+      if (x.recurringId) return;
+      if (!U.num(x.amount, 0)) return;
+      var name = String(x.vendor || '').trim();
+      var key = norm(name) + '/' + x.category;
+      var g = map[key] || (map[key] = {
+        key: key, name: name || x.category, vendor: name, category: x.category,
+        rows: [], months: {}
+      });
+      g.rows.push(x);
+      g.months[String(x.date).slice(0, 7)] = true;
+    });
+
+    var regs = {};
+    (already || []).forEach(function (r) {
+      regs[norm(r.vendor || r.name) + '/' + r.category] = true;
+    });
+
+    return Object.keys(map).map(function (k) {
+      var g = map[k];
+      // 新しい順にそろえてから、直近の金額と、よく出る日を拾う
+      g.rows.sort(function (a, b) { return U.cmp(b.date, a.date); });
+      return {
+        key: g.key, name: g.name, vendor: g.vendor, category: g.category,
+        amount: U.num(g.rows[0].amount, 0),          // 直近の金額
+        day: U.num(String(g.rows[0].date).slice(8, 10), 1),
+        count: g.rows.length,
+        months: Object.keys(g.months).length,
+        last: g.rows[0].date,
+        memo: g.rows[0].memo || '',
+        projectId: g.rows[0].projectId || '',
+        issuerId: g.rows[0].issuerId || '',
+        rows: g.rows,
+        registered: !!regs[g.key]
+      };
+    }).sort(function (a, b) {
+      // 月をまたいで出ているものほど固定費らしい。同じなら件数、それも同じなら新しい順
+      if (b.months !== a.months) return b.months - a.months;
+      if (b.count !== a.count) return b.count - a.count;
+      return U.cmp(b.last, a.last);
+    });
+  }
+
+  /* 支払先を比べるための形（空白と記号を落とす） */
+  function norm(name) {
+    return String(name || '').replace(/[\s　]/g, '')
+      .replace(/[Ａ-Ｚａ-ｚ０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); })
+      .toLowerCase();
+  }
+
+  /**
    * まだ記録していない月を洗い出す。
    * 始めた月（または最後に記録した月の翌月）から今月までを順に見る。
    * @param {Array} list 固定費
@@ -260,6 +327,6 @@
     RECEIPT_FOLDER: RECEIPT_FOLDER, receiptFolder: receiptFolder,
     BOOKS: BOOKS, categories: categories, baseCategories: baseCategories, bookLabel: bookLabel,
     total: total, dailyBudget: dailyBudget, byCategory: byCategory, byTag: byTag, byMonth: byMonth, shrink: shrink,
-    toCSV: toCSV, dueRecurring: dueRecurring
+    toCSV: toCSV, dueRecurring: dueRecurring, fixedCandidates: fixedCandidates
   };
 })(window.DL);

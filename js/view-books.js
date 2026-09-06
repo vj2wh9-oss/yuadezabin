@@ -266,34 +266,140 @@
       });
       box.appendChild(rows);
     }
-    box.appendChild(ui.btn('固定費を登録', 'ghost full', function () { recurringSheet(null); }, 'plus'));
+    box.appendChild(el('div', { class: 'row-wrap' }, [
+      ui.btn('固定費を登録', 'ghost', function () { recurringSheet(null); }, 'plus'),
+      ui.btn('登録済みの支出から', 'ghost', function () { fromExpenseSheet(); }, 'receipt')
+    ]));
     return box;
   }
 
-  function recurringSheet(r) {
+  /* ---------------- すでに登録した支出から固定費にする ----------------
+
+     毎月きまって出るものは、同じ支払先・同じ科目で何度も出てくる。
+     それをまとめて並べ、押したらその中身で登録の画面を開く。
+     決めるのは人なので、ここは候補を出すだけ。 */
+
+  /* 経費1件を、固定費の当たり（fixedCandidates と同じ形）にする */
+  function fixedFrom(x) {
+    var same = S.expenses({ book: x.book }).filter(function (o) {
+      return !o.recurringId && o.category === x.category
+        && String(o.vendor || '').trim() === String(x.vendor || '').trim();
+    });
+    var months = {};
+    same.forEach(function (o) { months[String(o.date).slice(0, 7)] = true; });
+    return {
+      name: String(x.vendor || '').trim() || x.category,
+      vendor: String(x.vendor || '').trim(),
+      category: x.category,
+      amount: U.num(x.amount, 0),
+      day: U.num(String(x.date).slice(8, 10), 1),
+      count: same.length || 1,
+      months: Object.keys(months).length || 1,
+      last: x.date,
+      memo: x.memo || '',
+      projectId: x.projectId || '',
+      issuerId: x.issuerId || ''
+    };
+  }
+
+  function fromExpenseSheet() {
+    // 直近2年ぶんから探す。それより前のものは固定費の当たりにしない
+    var from = U.addYm(U.today().slice(0, 7), -23);
+    var rows = S.expenses({ book: book }).filter(function (x) {
+      return U.cmp(String(x.date).slice(0, 7), from) >= 0;
+    });
+    var cands = E.fixedCandidates(rows, S.recurring(book));
+    var body = el('div', { class: 'form' });
+
+    if (!cands.length) {
+      body.appendChild(el('p', { class: 'muted small',
+        text: E.bookLabel(book) + 'の支出がまだありません。レシートを入れてから使えます。' }));
+    } else {
+      body.appendChild(el('p', { class: 'muted small',
+        text: '同じ支払先・同じ科目でまとめています。月をまたいで何度も出ているものほど上に並びます。' }));
+
+      var list = el('div', { class: 'fx-list' });
+      cands.slice(0, 40).forEach(function (c) {
+        list.appendChild(el('button', {
+          class: 'fx-row' + (c.registered ? ' off' : ''),
+          onclick: function () {
+            if (c.registered) {
+              ui.toast('これはもう固定費に登録されています', 'warn');
+              return;
+            }
+            close();
+            recurringSheet(null, c);
+          }
+        }, [
+          el('div', { class: 'fx-main' }, [
+            el('div', { class: 'row-title' }, [
+              el('span', { text: c.name }),
+              c.registered ? ui.chip('登録済み', 'ghosty') : null,
+              c.months >= 2 ? ui.chip(c.months + 'ヶ月に出ている', 'ok') : null
+            ]),
+            el('div', { class: 'row-sub' }, [
+              ui.chip(c.category, 'ghosty'),
+              ui.chip('毎月' + c.day + '日ごろ', 'soft')
+            ]),
+            // 件数はいつも行を分ける。印の数で高さが変わって見えないように
+            el('div', { class: 'muted small',
+              text: c.count + '件・最後 ' + U.fmtMD(c.last) })
+          ]),
+          el('b', { class: 'fx-v', text: D.yen(c.amount) }),
+          el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+        ]));
+      });
+      body.appendChild(list);
+    }
+
+    var close = ui.sheet({
+      title: '支出から固定費にする（' + E.bookLabel(book) + '）',
+      body: body,
+      actions: [ui.btn('閉じる', 'ghost', function () { close(); })]
+    });
+  }
+
+  /**
+   * @param {object} [r] 直すとき
+   * @param {object} [from] 登録済みの支出から起こすときの当たり（E.fixedCandidates の1件）
+   */
+  function recurringSheet(r, from) {
     var isNew = !r;
     var bk = r ? r.book : book;
     var cats = E.categories(bk);
-    var nameIn = ui.input({ value: r ? r.name : '', maxlength: 40,
+    var v = r || from || {};
+    var nameIn = ui.input({ value: v.name || '', maxlength: 40,
       placeholder: bk === 'life' ? '例）家賃 / スマホ代' : '例）サーバー代 / 事務所家賃' });
-    var amountIn = ui.input({ type: 'number', inputmode: 'numeric', min: 0, value: r ? r.amount : '' });
-    var dayIn = ui.input({ type: 'number', inputmode: 'numeric', min: 1, max: 31, value: r ? r.day : 1 });
-    var startIn = ui.input({ type: 'month', value: r ? r.startYm : U.today().slice(0, 7) });
+    var amountIn = ui.input({ type: 'number', inputmode: 'numeric', min: 0, value: v.amount || '' });
+    var dayIn = ui.input({ type: 'number', inputmode: 'numeric', min: 1, max: 31, value: v.day || 1 });
+    var vendorIn = ui.input({ value: v.vendor || '', maxlength: 40, placeholder: '空なら名前を使います' });
+    // 起こしはじめる月。支出から作るときは、最後に出た月の翌月から
+    var firstYm = r ? r.startYm
+      : (from && from.last ? U.addYm(String(from.last).slice(0, 7), 1) : U.today().slice(0, 7));
+    var startIn = ui.input({ type: 'month', value: firstYm });
     var catOpts = cats.slice();
-    if (r && catOpts.indexOf(r.category) < 0) catOpts.unshift(r.category);
-    var catSel = ui.select(catOpts.map(function (c) { return { value: c, label: c }; }), r ? r.category : cats[0]);
+    if (v.category && catOpts.indexOf(v.category) < 0) catOpts.unshift(v.category);
+    var catSel = ui.select(catOpts.map(function (c) { return { value: c, label: c }; }),
+      v.category || cats[0]);
     var activeChk = el('input', { type: 'checkbox', class: 'check', checked: r ? r.active : true });
 
     var close = ui.sheet({
       title: (isNew ? '固定費を登録' : '固定費を編集') + '（' + E.bookLabel(bk) + '）',
       body: el('div', { class: 'form' }, [
+        from ? el('div', { class: 'alert info' }, [
+          el('span', { class: 'alert-icon' }, ui.icon('info', 17)),
+          el('span', { text: '登録済みの支出（' + from.count + '件・'
+            + from.months + 'ヶ月ぶん）から入れました。中身は直せます。' })
+        ]) : null,
         ui.field('名前', nameIn),
         el('div', { class: 'grid2' }, [
           ui.field('金額（円）', amountIn),
           ui.field('毎月何日', dayIn, '無い日は月末に寄せます')
         ]),
         ui.field('科目', catSel),
-        ui.field('いつから', startIn),
+        ui.field('支払先', vendorIn),
+        ui.field('いつから', startIn,
+          from ? '最後に出た月の翌月にしてあります。さかのぼるとその月ぶんも起こします' : ''),
         el('label', { class: 'row-check' }, [activeChk, el('span', { text: '記録の対象にする' })]),
         !isNew ? ui.btn('この固定費を削除', 'danger full mt', function () {
           ui.confirm('「' + r.name + '」を削除します。記録済みの経費はそのまま残ります。',
@@ -312,8 +418,15 @@
           var data = {
             book: bk, name: name, amount: U.num(amountIn.value, 0),
             category: catSel.value, day: U.num(dayIn.value, 1),
+            vendor: vendorIn.value.trim(),
             startYm: startIn.value, active: activeChk.checked
           };
+          // 支出から起こしたときは、案件と名義も引き継ぐ
+          if (from) {
+            data.memo = from.memo || '';
+            data.projectId = from.projectId || '';
+            data.issuerId = from.issuerId || '';
+          }
           if (isNew) S.addRecurring(data); else S.updateRecurring(r.id, data);
           close(); ui.toast(isNew ? '登録しました' : '保存しました');
         })
@@ -845,6 +958,13 @@
         issuerSel ? ui.field('名義', issuerSel) : null,
         ui.block('レシート', shotBox),
         itemsWrap,
+        // 毎月きまって出るものなら、この記録をもとに固定費にできる
+        (!isNew && !x.recurringId) ? ui.btn('これを固定費にする', 'ghost full mt', function () {
+          close();
+          recurringSheet(null, fixedFrom(x));
+        }, 'refresh') : null,
+        (!isNew && x.recurringId) ? el('p', { class: 'muted small',
+          text: 'これは固定費から起こした記録です。' }) : null,
         !isNew ? ui.btn('この経費を削除', 'danger full mt', function () { removeThis(); }, 'trash') : null
       ]),
       actions: [
