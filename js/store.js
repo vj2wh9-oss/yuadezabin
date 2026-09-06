@@ -1426,12 +1426,25 @@
   /* ひらめきメモ。ふと思いついたものを、その日にぶら下げる */
   function normalizeIdeas(list) {
     return (list || []).map(function (x) {
+      var text = String(x.text || '').slice(0, 2000);
       return {
         id: x.id || U.uid(),
-        text: String(x.text || '').slice(0, 2000),
-        at: x.at || new Date().toISOString()
+        // 一覧はタイトルだけを並べる。付けていなければ本文の頭から作る
+        title: String(x.title || '').trim().slice(0, 60) || ideaTitleOf(text),
+        text: text,
+        at: x.at || new Date().toISOString(),
+        sentAt: x.sentAt || ''            // Discord に送った時刻
       };
     }).filter(function (x) { return !!x.text; }).slice(0, 200);
+  }
+
+  /* 本文からタイトルを作る。1行目を、長ければ切って使う */
+  function ideaTitleOf(text) {
+    var line = String(text || '').split(/\r?\n/).filter(function (s) {
+      return s.trim();
+    })[0] || '';
+    line = line.trim();
+    return line.length > 30 ? line.slice(0, 30) + '…' : line;
   }
 
   function deg(v) {
@@ -1483,20 +1496,47 @@
 
   function ideas(date) { return ((getLog(date) || {}).ideas || []).slice(); }
 
-  function addIdea(date, text) {
+  /**
+   * @param {string} text 中身
+   * @param {string} [title] 付けなければ本文の頭から作る
+   */
+  function addIdea(date, text, title) {
     text = String(text || '').trim();
     if (!U.isISO(date) || !text) return null;
-    var list = ideas(date).concat([{ id: U.uid(), text: text, at: new Date().toISOString() }]);
+    var list = ideas(date).concat([{
+      id: U.uid(), title: String(title || '').trim(), text: text,
+      at: new Date().toISOString()
+    }]);
     setLog(date, { ideas: list });
-    return list[list.length - 1];
+    return (getLog(date).ideas || []).slice(-1)[0];
   }
 
-  function updateIdea(date, id, text) {
+  /**
+   * @param {string|object} patch 文字なら中身だけ、object なら {text,title,sentAt}
+   */
+  function updateIdea(date, id, patch) {
+    if (typeof patch === 'string') patch = { text: patch };
+    patch = patch || {};
     var list = ideas(date).map(function (x) {
-      return x.id === id ? { id: x.id, text: String(text || '').trim(), at: x.at } : x;
+      if (x.id !== id) return x;
+      var next = Object.assign({}, x);
+      if (patch.text !== undefined) next.text = String(patch.text || '').trim();
+      // タイトルを空にしたら、また本文から作り直す
+      if (patch.title !== undefined) next.title = String(patch.title || '').trim();
+      if (patch.sentAt !== undefined) next.sentAt = patch.sentAt;
+      return next;
     });
     setLog(date, { ideas: list });
     return getLog(date);
+  }
+
+  /** Discord に送った印を付ける */
+  function markIdeaSent(date, id) {
+    return updateIdea(date, id, { sentAt: new Date().toISOString() });
+  }
+
+  function getIdea(date, id) {
+    return ideas(date).filter(function (x) { return x.id === id; })[0] || null;
   }
 
   function removeIdea(date, id) {
@@ -2590,7 +2630,9 @@
     roomReserve: roomReserve, updateRoomReserve: updateRoomReserve,
     putTimeblock: putTimeblock, removeTimeblock: removeTimeblock,
     getLog: getLog, setLog: setLog, logDates: logDates, MOODS: MOODS,
-    ideas: ideas, addIdea: addIdea, updateIdea: updateIdea, removeIdea: removeIdea, allIdeas: allIdeas,
+    ideas: ideas, getIdea: getIdea, addIdea: addIdea, updateIdea: updateIdea,
+    markIdeaSent: markIdeaSent, ideaTitleOf: ideaTitleOf,
+    removeIdea: removeIdea, allIdeas: allIdeas,
     setHoliday: setHoliday, isStayHoliday: isStayHoliday,
     isEventDone: isEventDone, setEventDone: setEventDone,
     calMode: calMode, setCalMode: setCalMode,

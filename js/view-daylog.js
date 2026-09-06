@@ -236,12 +236,15 @@
     var input = ui.textarea({ placeholder: '思いついたことを書く', maxlength: IDEA_MAX });
     input.rows = 2;
     input.classList.add('idea-in');
+    // タイトルは無くてもよい。空なら本文の1行目から作る
+    var titleIn = ui.input({ placeholder: 'タイトル（なくてよい）', maxlength: 60 });
+    titleIn.classList.add('idea-title-in');
 
     function add() {
       var t = input.value.trim();
       if (!t) { input.focus(); return; }
       refocus = true;
-      S.addIdea(date, t);      // ここで画面が描き直される
+      S.addIdea(date, t, titleIn.value);      // ここで画面が描き直される
     }
     // 改行に使うので Enter では送らない。指を離さず送りたいとき用に ⌘/Ctrl+Enter
     input.addEventListener('keydown', function (e) {
@@ -251,6 +254,7 @@
     input.addEventListener('input', function () { grow(input); });
 
     return el('div', { class: 'idea-add' }, [
+      titleIn,
       input,
       ui.btn('足す', 'primary', add, 'plus')
     ]);
@@ -268,14 +272,63 @@
         class: 'idea-text', text: x.text, title: '押すと直せます',
         onclick: function () { editIdea(date, x); }
       }),
-      el('button', {
-        class: 'iconbtn small', 'aria-label': 'このひらめきを消す',
-        onclick: function () {
-          ui.confirm(x.text, { title: 'このひらめきを消しますか', okText: '消す', danger: true })
-            .then(function (yes) { if (yes) S.removeIdea(date, x.id); });
-        }
-      }, ui.icon('trash', 16))
+      sendBtn(date, x),
+      delBtn(date, x)
     ]);
+  }
+
+  /* タイトルだけの行。一覧はこちらを並べて、押すと開く */
+  function ideaTitleRow(date, x) {
+    return el('div', { class: 'idea idea-slim' }, [
+      el('button', {
+        class: 'idea-title', title: '押すと開きます',
+        onclick: function () { editIdea(date, x); }
+      }, [
+        el('span', { class: 'idea-title-t', text: x.title || S.ideaTitleOf(x.text) || '（無題）' }),
+        // 送ったものには印を付ける。同じものを何度も送らずに済む
+        x.sentAt ? el('span', { class: 'idea-sent', title: '送信済み' }, ui.icon('check', 13)) : null
+      ]),
+      sendBtn(date, x),
+      delBtn(date, x)
+    ]);
+  }
+
+  function delBtn(date, x) {
+    return el('button', {
+      class: 'iconbtn small', 'aria-label': 'このひらめきを消す',
+      onclick: function () {
+        ui.confirm(x.text, { title: 'このひらめきを消しますか', okText: '消す', danger: true })
+          .then(function (yes) { if (yes) S.removeIdea(date, x.id); });
+      }
+    }, ui.icon('trash', 16));
+  }
+
+  /* Discord の決まったチャンネルへ送る。送り先は Worker が持っている */
+  function sendBtn(date, x) {
+    if (!DL.memosend.ready()) return null;
+    return el('button', {
+      class: 'iconbtn small' + (x.sentAt ? ' done' : ''),
+      'aria-label': 'このひらめきを送る', title: x.sentAt ? '送信済み（もう一度送れます）' : 'Discord に送る',
+      onclick: function (e) { sendIdea(date, x, e.currentTarget); }
+    }, ui.icon('send', 16));
+  }
+
+  function sendIdea(date, x, btn) {
+    var title = x.title || S.ideaTitleOf(x.text) || '（無題）';
+    ui.confirm(title + '\n\nDiscord に送ります。'
+      + (x.sentAt ? '\n（このメモは一度送ってあります）' : ''),
+      { title: 'ひらめきを送る', okText: '送る' }).then(function (yes) {
+        if (!yes) return;
+        if (btn) btn.disabled = true;
+        ui.toast('送っています…');
+        DL.memosend.send({ title: title, text: x.text }, date).then(function () {
+          S.markIdeaSent(date, x.id);       // ここで画面が描き直される
+          ui.toast('送りました');
+        }).catch(function (err) {
+          if (btn) btn.disabled = false;
+          ui.toast(err.message, 'danger');
+        });
+      });
   }
 
   function ideaCard(d) {
@@ -295,17 +348,33 @@
 
   function editIdea(date, x) {
     var input = ui.textarea({ value: x.text, maxlength: IDEA_MAX });
-    input.rows = 5;
+    input.rows = 8;
+    var titleIn = ui.input({
+      value: x.title || '', maxlength: 60, placeholder: '（空にすると本文の1行目から作ります）'
+    });
+
     var close = ui.sheet({
-      title: 'ひらめきを直す',
-      body: el('div', { class: 'form' }, ui.field('内容', input)),
+      title: 'ひらめき',
+      body: el('div', { class: 'form' }, [
+        ui.field('タイトル', titleIn),
+        ui.field('内容', input),
+        x.sentAt ? el('p', { class: 'muted small',
+          text: U.fmtYMDW(String(x.sentAt).slice(0, 10)) + ' に Discord へ送りました' }) : null,
+        DL.memosend.ready() ? ui.btn('Discord に送る', 'ghost full mt', function () {
+          close();
+          // 開いている中身をそのまま送れるよう、先に書いたものを残す
+          S.updateIdea(date, x.id, { text: input.value.trim() || x.text, title: titleIn.value });
+          var now = S.getIdea(date, x.id) || x;
+          sendIdea(date, now, null);
+        }, 'send') : null
+      ]),
       actions: [
         ui.btn('やめる', 'ghost', function () { close(); }),
         ui.btn('保存', 'primary', function () {
           var t = input.value.trim();
           if (!t) { ui.toast('中身を書いてください', 'danger'); return; }
           close();
-          S.updateIdea(date, x.id, t);
+          S.updateIdea(date, x.id, { text: t, title: titleIn.value });
           ui.toast('直しました');
         }, 'check')
       ]
@@ -382,7 +451,8 @@
         group = el('div', { class: 'idea-list' });
         wrap.appendChild(group);
       }
-      group.appendChild(ideaRow(x.date, x.idea));
+      // 一覧はタイトルだけ。押すと開く（数が増えても見渡せるように）
+      group.appendChild(ideaTitleRow(x.date, x.idea));
     });
 
     root.appendChild(wrap);

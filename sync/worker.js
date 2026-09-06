@@ -94,9 +94,11 @@ export default {
         bindings: {
           kv: !!env.SYNC, r2: !!env.FILES, openai: !!env.OPENAI_API_KEY,
           // 夜のバックアップの支度ができているか（値そのものは出さない）
-          discord: !!env.DISCORD_WEBHOOK, backupKey: !!env.BACKUP_KEY
+          discord: !!env.DISCORD_WEBHOOK, backupKey: !!env.BACKUP_KEY,
+          // ひらめきメモの送り先（URL そのものは出さない）
+          memoWebhook: !!env.DISCORD_MEMO_WEBHOOK
         },
-        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/ocr', '/v1/roomreserve', '/v1/backup'],
+        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send'],
         note: '各 /v1/... は Authorization: Bearer <合鍵> が必要です'
       }, 200, cors);
     }
@@ -200,6 +202,10 @@ export default {
 
       if (url.pathname.startsWith('/v1/backup/')) {
         return backupApi(request, env, cors, url, id);
+      }
+
+      if (url.pathname === '/v1/memo/send') {
+        return memoSend(request, env, cors);
       }
 
       if (url.pathname === '/v1/roomreserve') {
@@ -414,6 +420,68 @@ async function backupApi(request, env, cors, url, id) {
   }
 
   return json({ error: 'not_found' }, 404, cors);
+}
+
+/* ---------------- ひらめきメモを Discord へ ----------------
+
+   送り先の Webhook URL は secret（DISCORD_MEMO_WEBHOOK）にだけ置く。
+   アプリ側には持たせない。持たせると、公開しているコードや端末、
+   バックアップのファイルにまで URL が乗ってしまう。
+   URL を知っていれば誰でもそのチャンネルに書き込めるため。
+
+   ファイルではなく、そのまま読める文として送る。 */
+
+const DISCORD_LIMIT = 2000;      // 1通に入れられる字数
+
+async function memoSend(request, env, cors) {
+  if (request.method !== 'POST') return json({ error: 'not_found' }, 404, cors);
+  if (!env.DISCORD_MEMO_WEBHOOK) return json({ error: 'no_memo_webhook' }, 503, cors);
+
+  let body;
+  try { body = await request.json(); } catch (e) { return json({ error: 'bad_json' }, 400, cors); }
+
+  const title = String((body && body.title) || '').trim().slice(0, 120);
+  const text = String((body && body.text) || '').trim().slice(0, 4000);
+  const date = String((body && body.date) || '').trim().slice(0, 10);
+  if (!text && !title) return json({ error: 'empty' }, 400, cors);
+
+  const head = (title ? '**' + escapeMd(title) + '**' : '**ひらめきメモ**')
+    + (date ? '　' + date : '');
+  const parts = chunk(head + '\n' + text, DISCORD_LIMIT);
+
+  // 長いものは何通かに分ける。順番が入れ替わらないよう、1通ずつ送る
+  for (let i = 0; i < parts.length; i++) {
+    const res = await fetch(env.DISCORD_MEMO_WEBHOOK + '?wait=true', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        content: parts[i],
+        allowed_mentions: { parse: [] }        // 文中の @ で人を呼ばない
+      })
+    });
+    if (!res.ok) {
+      const msg = (await res.text()).slice(0, 300);
+      return json({ error: 'discord_error', status: res.status, message: msg }, 502, cors);
+    }
+  }
+  return json({ ok: true, parts: parts.length }, 200, cors);
+}
+
+/* 見出しに使う記号だけ逃がす。本文はそのままの見た目で送りたいので触らない */
+function escapeMd(s) { return s.replace(/([*_`~|\\])/g, '\\$1'); }
+
+/* 字数で切る。切れ目はなるべく行の変わり目にする */
+function chunk(s, max) {
+  const out = [];
+  let rest = String(s);
+  while (rest.length > max) {
+    let at = rest.lastIndexOf('\n', max);
+    if (at < max * 0.5) at = max;         // 行が長すぎるときは、そこで切る
+    out.push(rest.slice(0, at));
+    rest = rest.slice(at).replace(/^\n/, '');
+  }
+  if (rest) out.push(rest);
+  return out.length ? out : [''];
 }
 
 /* ---------------- ROOM RESERVE の予定を取り次ぐ ----------------

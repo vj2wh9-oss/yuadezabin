@@ -1505,6 +1505,25 @@ a.alert-main { text-decoration: none; }
 }
 .idea-text:active { color: var(--accent); }
 .idea .iconbtn { flex: none; color: var(--muted); margin-top: 3px; }
+/* 送ったものは、送るボタンの色でそれと分かるようにする */
+.idea .iconbtn.done { color: var(--ok, var(--accent)); }
+
+/* 書き足すところのタイトル。本文の上に細く置く */
+.idea-add { flex-wrap: wrap; }
+.idea-add .idea-title-in { flex: 1 0 100%; font-size: 13px; }
+
+/* タイトルだけの行。一覧はこれを並べる */
+.idea-slim { align-items: center; padding: 0 2px 0 0; }
+.idea-title {
+  flex: 1; min-width: 0; text-align: left; padding: 10px 4px 10px 10px;
+  background: none; border: 0; cursor: pointer;
+  font-size: 13.5px; line-height: 1.4; color: var(--fg);
+  display: flex; align-items: center; gap: 6px;
+}
+.idea-title-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.idea-title:active .idea-title-t { color: var(--accent); }
+.idea-sent { flex: none; display: inline-flex; color: var(--ok, var(--accent)); }
+.idea-slim .iconbtn { margin-top: 0; }
 
 /* ひらめきメモの一覧（上のバーの電球から） */
 .ideas-page { display: flex; flex-direction: column; gap: 10px; }
