@@ -204,8 +204,12 @@
       if (p.deadline === date) {
         marks.push({ type: 'deadline', project: p, label: deadlineShort(p) + '：' + p.title });
       }
+      // カレンダーに出すのはメインに指定した締切だけ。
+      // 早割から割増まで5本並べると、その週が締切で埋まって見えなくなる。
+      // ほかのプランは案件の画面で見る。
       (p.printings || []).forEach(function (pr) {
-        if (pr.due === date && !(pr.primary && p.deadline === date)) {
+        if (!pr.primary) return;
+        if (pr.due === date && p.deadline !== date) {
           marks.push({ type: 'printing', project: p, label: (pr.label || '入稿') + '：' + p.title });
         }
       });

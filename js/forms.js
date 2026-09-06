@@ -153,28 +153,11 @@
         f.space = ui.input({ value: p.space, placeholder: 'スペース番号' });
         f.deadline = ui.input({ type: 'date', value: p.deadline || '' });
 
-        var presets = el('div', { class: 'presets' },
-          S.PRINT_PRESETS.map(function (pr) {
-            return el('button', {
-              type: 'button', class: 'preset', text: pr.label + '(' + pr.days + '日前)',
-              onclick: function () {
-                if (!U.isISO(f.eventDate.value)) { ui.toast('先に開催日を入れてください', 'warn'); return; }
-                f.deadline.value = U.addDays(f.eventDate.value, -pr.days);
-                updateStartNote();
-                ui.toast(pr.label + '＝' + U.fmtMDW(f.deadline.value) + ' に設定');
-              }
-            });
-          })
-        );
-
         dynamic.appendChild(ui.field('イベント名', f.eventName));
         dynamic.appendChild(ui.field('開催日', f.eventDate));
         dynamic.appendChild(ui.field('会場', f.venue));
         dynamic.appendChild(ui.field('スペース', f.space));
-        dynamic.appendChild(ui.field('入稿締切（メイン）', f.deadline, '印刷所の締切。ここがタスクのゴールになります'));
-        dynamic.appendChild(el('div', { class: 'field' }, [
-          el('span', { class: 'field-label', text: '開催日から逆算' }), presets
-        ]));
+        dynamic.appendChild(ui.field('入稿締切（メイン）', f.deadline));
         dynamic.appendChild(printingsEditor(p, f));
       } else if (p.kind === 'support') {
         f.site = ui.input({ value: p.site, placeholder: '例）FANBOX / Fantia / Ci-en' });
@@ -337,9 +320,6 @@
 
     function render() {
       U.clear(list);
-      if (!p.printings.length) {
-        list.appendChild(el('p', { class: 'muted small', text: 'まだありません。' }));
-      }
       p.printings.forEach(function (pr, i) {
         var labelI = ui.input({ value: pr.label || '', placeholder: 'プラン名（早割など）' });
         var printerI = ui.input({ value: pr.printer || '', placeholder: '印刷所名' });
@@ -422,7 +402,7 @@
       list.appendChild(add);
     }
     render();
-    return el('div', { class: 'field' }, [el('span', { class: 'field-label', text: '印刷所の締切' }), list]);
+    return el('div', { class: 'field' }, list);
   }
 
   /* =============== タスク =============== */

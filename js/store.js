@@ -1783,6 +1783,9 @@
     (jobs || []).forEach(function (j) {
       var r = getRecurring(j.recurringId);
       if (!r || !/^\d{4}-\d{2}$/.test(String(j.ym))) return;
+      // 画面を開いたまま別の場所で記録されていることがある。
+      // 起こす直前にもう一度確かめて、同じ月を二重に作らない
+      if (DL.expenses.recurringRecorded(r, j.ym, state.settings.expenses || [])) return;
       addExpense({
         book: r.book, date: U.clampDay(j.ym, r.day), amount: r.amount,
         category: r.category, vendor: r.vendor || r.name, memo: r.memo,

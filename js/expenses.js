@@ -344,15 +344,42 @@
       .toLowerCase();
   }
 
+  /** 名前として同じものか（空どうしは同じ扱いにしない） */
+  function sameName(a, b) {
+    var x = norm(a), y = norm(b);
+    return !!x && x === y;
+  }
+
+  /**
+   * その固定費が、その月にもう記録されているか。
+   *
+   * 「最後に記録した月」の覚え書きだけを頼りにすると取りこぼす。
+   * 登録済みの支出から固定費を作ったときは、元の記録がすでにあるし、
+   * 手で入れることもある。実際の経費を見て確かめる。
+   */
+  function recurringRecorded(r, ym, rows) {
+    return (rows || []).some(function (x) {
+      if (String(x.date).slice(0, 7) !== ym) return false;
+      if (x.recurringId === r.id) return true;           // この固定費から起こしたもの
+      if (x.recurringId) return false;                   // ほかの固定費のぶん
+      if (x.book !== r.book || x.category !== r.category) return false;
+      // 手で入れた同じ支払先・同じ科目。これも「もう記録してある」とみなす
+      return sameName(x.vendor, r.vendor || r.name);
+    });
+  }
+
   /**
    * まだ記録していない月を洗い出す。
-   * 始めた月（または最後に記録した月の翌月）から今月までを順に見る。
+   * 始めた月（または最後に記録した月の翌月）から今月までを順に見て、
+   * 実際に経費が無い月だけを挙げる。
+   *
    * @param {Array} list 固定費
    * @param {string} [nowYm] 'YYYY-MM'（既定は今月）
    * @returns {Array} [{recurringId, ym, name, amount, book}]
    */
   function dueRecurring(list, nowYm) {
     var now = nowYm || U.today().slice(0, 7);
+    var rows = DL.store.settings.expenses || [];
     var out = [];
     (list || []).forEach(function (r) {
       if (!r.active || !r.amount) return;
@@ -360,7 +387,9 @@
       if (U.cmp(ym, r.startYm) < 0) ym = r.startYm;
       // 何年もさかのぼって大量に作らないよう、24ヶ月ぶんで打ち切る
       for (var i = 0; i < 24 && U.cmp(ym, now) <= 0; i++) {
-        out.push({ recurringId: r.id, ym: ym, name: r.name, amount: r.amount, book: r.book });
+        if (!recurringRecorded(r, ym, rows)) {
+          out.push({ recurringId: r.id, ym: ym, name: r.name, amount: r.amount, book: r.book });
+        }
         ym = U.addYm(ym, 1);
       }
     });
@@ -371,6 +400,7 @@
     RECEIPT_FOLDER: RECEIPT_FOLDER, receiptFolder: receiptFolder,
     BOOKS: BOOKS, categories: categories, baseCategories: baseCategories, bookLabel: bookLabel,
     total: total, dailyBudget: dailyBudget, fixedOfMonth: fixedOfMonth, byCategory: byCategory, byTag: byTag, byMonth: byMonth, shrink: shrink,
-    toCSV: toCSV, dueRecurring: dueRecurring, fixedCandidates: fixedCandidates
+    toCSV: toCSV, dueRecurring: dueRecurring, recurringRecorded: recurringRecorded,
+    fixedCandidates: fixedCandidates
   };
 })(window.DL);
