@@ -503,7 +503,14 @@
     var card = el('div', { class: 'card bg-day' });
     card.appendChild(bgLine('今日の予算', b.perDay, b.today, b.todayPct, false));
 
-    if (b.overspent) {
+    if (b.noRoom) {
+      // 使いすぎではなく、そもそも固定費で予算が埋まっている
+      card.appendChild(el('div', { class: 'bg-day-note danger' }, [
+        ui.icon('alert', 15),
+        el('span', { text: '固定費 ' + yen(b.fixed) + ' だけで、今月の予算 '
+          + yen(b.month) + ' を使い切っています' })
+      ]));
+    } else if (b.overspent) {
       card.appendChild(el('div', { class: 'bg-day-note danger' }, [
         ui.icon('alert', 15),
         el('span', { text: '今月の予算はもう使い切っています（残り' + b.rest + '日）' })
@@ -522,13 +529,22 @@
           + (b.left < 0 ? '（' + yen(-b.left) + ' 超過）' : '（残り ' + yen(b.left) + '）') }),
       el('a', { class: 'link small', href: '#/books', text: '経理' })
     ]));
+
+    // どこから出た額なのかが分かるように、内訳を1行だけ出す。
+    // 固定費だけで超えているときは、上の注意で言い切っているので出さない
+    if (b.fixed > 0 && !b.noRoom) {
+      card.appendChild(el('p', { class: 'muted small bg-fixed',
+        text: '予算 ' + yen(b.month) + ' から固定費 ' + yen(b.fixed) + ' を引いた '
+          + yen(b.budget) + ' を、' + b.days + '日で割っています' }));
+    }
     return card;
   }
 
   /* 1行ぶん。予算・使った額・％・棒 */
   function bgLine(label, limit, used, pct, sub) {
     var yen = DL.docs.yen;
-    var over = pct > 100;
+    // 予算が0なのに使っていれば、100%ちょうどでも超えている
+    var over = pct > 100 || (limit <= 0 && used > 0);
     return el('div', { class: 'bg-day-line' + (sub ? ' sub' : '') }, [
       el('div', { class: 'bg-head' }, [
         el('span', { text: label }),

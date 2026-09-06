@@ -86,20 +86,43 @@
 
   /** 月ごとの合計。1〜12月ぶんを必ず返す */
   /**
+   * その月に出ていく固定費（日常のぶん）。
+   *
+   * まだその日が来ていなくても、その月のうちに必ず出ていく。
+   * だから月のはじめから取りのけておく。
+   *
+   * @param {string} ym 'YYYY-MM'
+   * @returns {number}
+   */
+  function fixedOfMonth(ym) {
+    var U = DL.util;
+    return (DL.store.settings.recurring || []).filter(function (r) {
+      return r.book === 'life' && r.active !== false
+        && String(r.startYm || '') <= ym;      // 始まる前の月には出ていかない
+    }).reduce(function (n, r) { return n + Math.max(0, U.num(r.amount, 0)); }, 0);
+  }
+
+  /**
    * 1日ぶんの予算と、今日の使いぐあい。
    *
-   * 基準は「月の予算 ÷ その月の日数」。ただし月の途中で使いすぎていると、
-   * この基準を守っても月の予算には収まらない。そこで、昨日までに使った額を
-   * 引いて、今日を含む残りの日数で割り直した「立て直しの1日予算」も出す。
-   * こちらを守れば、月の終わりにちょうど収まる。
+   * 家賃や通信費のような固定費は、日割りにしても意味がない。
+   * 27日に家賃が出た日だけ予算が吹き飛んで見えても、何の役にも立たない。
+   * そこで月の予算からは固定費を先に取りのけ、残った「自由に使える額」を
+   * 日割りにする。使った額のほうも、固定費から起こした記録は数えない
+   * （先に引いてあるので、数えると二重になる）。
+   *
+   * 基準は「（月の予算 − 固定費）÷ その月の日数」。ただし月の途中で
+   * 使いすぎていると、この基準を守っても収まらない。そこで、昨日までに
+   * 使った額を引いて、今日を含む残りの日数で割り直した「立て直しの
+   * 1日予算」も出す。こちらを守れば、月の終わりにちょうど収まる。
    *
    * @param {string} [date] 見たい日。既定は今日
    * @returns {object|null} 予算を決めていなければ null
    */
   function dailyBudget(date) {
     var S = DL.store, U = DL.util;
-    var budget = Math.max(0, Math.round(U.num(S.settings.lifeBudget, 0)));
-    if (!budget) return null;
+    var month = Math.max(0, Math.round(U.num(S.settings.lifeBudget, 0)));
+    if (!month) return null;
     date = U.isISO(date) ? date : U.today();
 
     var ym = date.slice(0, 7);
@@ -107,8 +130,12 @@
     // その月の日数（翌月の0日＝今月の末日）
     var days = new Date(U.num(ym.slice(0, 4), 2000), U.num(ym.slice(5, 7), 1), 0).getDate();
 
+    var fixed = fixedOfMonth(ym);
+    var budget = Math.max(0, month - fixed);          // 日割りにできる額
+
     var rows = (S.settings.expenses || []).filter(function (x) {
-      return x.book === 'life' && String(x.date).slice(0, 7) === ym;
+      return x.book === 'life' && String(x.date).slice(0, 7) === ym
+        && !x.recurringId;                            // 固定費ぶんは先に引いてある
     });
     var spent = total(rows);
     var today = total(rows.filter(function (x) { return x.date === date; }));
@@ -120,14 +147,18 @@
     var restPerDay = Math.max(0, room / rest);        // 立て直しの1日予算
 
     return {
+      month: month, fixed: fixed,
       budget: budget, days: days, day: day, rest: rest,
       perDay: Math.round(perDay),
       restPerDay: Math.round(restPerDay),
       today: today,
-      todayPct: pct(today, perDay),
+      // 予算が0のときに使っていたら、0%ではなく振り切った扱いにする
+      todayPct: perDay > 0 ? pct(today, perDay) : (today > 0 ? 100 : 0),
       restPct: restPerDay > 0 ? pct(today, restPerDay) : (today > 0 ? 100 : 0),
       spent: spent, before: before, left: budget - spent,
-      // 月の予算をもう使い切っている
+      // 固定費だけで予算を使い切っている。使いすぎとは別の話
+      noRoom: fixed >= month,
+      // 自由に使えるぶんをもう使い切っている
       overspent: room <= 0,
       // 立て直しの予算がふだんより目に見えて少ない＝ペースがよくない
       behind: restPerDay < perDay - 1
@@ -326,7 +357,7 @@
   DL.expenses = {
     RECEIPT_FOLDER: RECEIPT_FOLDER, receiptFolder: receiptFolder,
     BOOKS: BOOKS, categories: categories, baseCategories: baseCategories, bookLabel: bookLabel,
-    total: total, dailyBudget: dailyBudget, byCategory: byCategory, byTag: byTag, byMonth: byMonth, shrink: shrink,
+    total: total, dailyBudget: dailyBudget, fixedOfMonth: fixedOfMonth, byCategory: byCategory, byTag: byTag, byMonth: byMonth, shrink: shrink,
     toCSV: toCSV, dueRecurring: dueRecurring, fixedCandidates: fixedCandidates
   };
 })(window.DL);

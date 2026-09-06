@@ -166,6 +166,14 @@
       el('span', { class: 'muted small', text: D.yen(thisMonth) + ' / ' + D.yen(budget) + '（' + pct + '%）' }),
       ui.btn('予算を変える', 'ghost tiny', function () { budgetSheet(); })
     ]));
+
+    // 固定費は先に取りのけてある。ホームの「今日の予算」と話が合うように出す
+    var fx = E.fixedOfMonth(t.slice(0, 7));
+    if (fx > 0) {
+      box.appendChild(el('p', { class: 'muted small bg-fixed',
+        text: 'うち固定費 ' + D.yen(fx) + '。自由に使えるのは '
+          + D.yen(Math.max(0, budget - fx)) + ' です' }));
+    }
     return box;
   }
 
