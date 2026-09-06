@@ -25,7 +25,21 @@
   var RECEIPT_FOLDER = { work: '経費レシート', life: '日常レシート' };
   function receiptFolder(book) { return RECEIPT_FOLDER[book] || RECEIPT_FOLDER.work; }
 
-  function categories(book) { return CATEGORIES[book] || CATEGORIES.work; }
+  /** もとから入っている科目だけ */
+  function baseCategories(book) { return CATEGORIES[book] || CATEGORIES.work; }
+
+  /**
+   * 選び口に出す科目。もとからのもの＋設定で足したもの。
+   * 「その他」は受け皿なので、足したぶんはその手前に入れる。
+   */
+  function categories(book) {
+    var base = baseCategories(book).slice();
+    var mine = (DL.store.myCategories ? DL.store.myCategories(book) : []);
+    if (!mine.length) return base;
+    var at = base.indexOf('その他');
+    if (at < 0) return base.concat(mine);
+    return base.slice(0, at).concat(mine, base.slice(at));
+  }
   function bookLabel(book) { return book === 'life' ? '日常' : '事業'; }
 
   function total(rows) {
@@ -71,6 +85,57 @@
   }
 
   /** 月ごとの合計。1〜12月ぶんを必ず返す */
+  /**
+   * 1日ぶんの予算と、今日の使いぐあい。
+   *
+   * 基準は「月の予算 ÷ その月の日数」。ただし月の途中で使いすぎていると、
+   * この基準を守っても月の予算には収まらない。そこで、昨日までに使った額を
+   * 引いて、今日を含む残りの日数で割り直した「立て直しの1日予算」も出す。
+   * こちらを守れば、月の終わりにちょうど収まる。
+   *
+   * @param {string} [date] 見たい日。既定は今日
+   * @returns {object|null} 予算を決めていなければ null
+   */
+  function dailyBudget(date) {
+    var S = DL.store, U = DL.util;
+    var budget = Math.max(0, Math.round(U.num(S.settings.lifeBudget, 0)));
+    if (!budget) return null;
+    date = U.isISO(date) ? date : U.today();
+
+    var ym = date.slice(0, 7);
+    var day = U.num(date.slice(8, 10), 1);
+    // その月の日数（翌月の0日＝今月の末日）
+    var days = new Date(U.num(ym.slice(0, 4), 2000), U.num(ym.slice(5, 7), 1), 0).getDate();
+
+    var rows = (S.settings.expenses || []).filter(function (x) {
+      return x.book === 'life' && String(x.date).slice(0, 7) === ym;
+    });
+    var spent = total(rows);
+    var today = total(rows.filter(function (x) { return x.date === date; }));
+    var before = spent - today;                       // 昨日までに使った額
+
+    var perDay = budget / days;                       // ふだんの1日予算
+    var rest = Math.max(1, days - day + 1);           // 今日を含む、残りの日数
+    var room = budget - before;                       // 今日以降に使える額
+    var restPerDay = Math.max(0, room / rest);        // 立て直しの1日予算
+
+    return {
+      budget: budget, days: days, day: day, rest: rest,
+      perDay: Math.round(perDay),
+      restPerDay: Math.round(restPerDay),
+      today: today,
+      todayPct: pct(today, perDay),
+      restPct: restPerDay > 0 ? pct(today, restPerDay) : (today > 0 ? 100 : 0),
+      spent: spent, before: before, left: budget - spent,
+      // 月の予算をもう使い切っている
+      overspent: room <= 0,
+      // 立て直しの予算がふだんより目に見えて少ない＝ペースがよくない
+      behind: restPerDay < perDay - 1
+    };
+  }
+
+  function pct(a, b) { return b > 0 ? Math.round(a / b * 100) : 0; }
+
   function byMonth(rows, year) {
     var out = [];
     for (var m = 1; m <= 12; m++) {
@@ -193,8 +258,8 @@
 
   DL.expenses = {
     RECEIPT_FOLDER: RECEIPT_FOLDER, receiptFolder: receiptFolder,
-    BOOKS: BOOKS, categories: categories, bookLabel: bookLabel,
-    total: total, byCategory: byCategory, byTag: byTag, byMonth: byMonth, shrink: shrink,
+    BOOKS: BOOKS, categories: categories, baseCategories: baseCategories, bookLabel: bookLabel,
+    total: total, dailyBudget: dailyBudget, byCategory: byCategory, byTag: byTag, byMonth: byMonth, shrink: shrink,
     toCSV: toCSV, dueRecurring: dueRecurring
   };
 })(window.DL);

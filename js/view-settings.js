@@ -109,6 +109,11 @@
     at.appendChild(crmCard());
 
     /* ---- 分類（買ったものに付ける札） ---- */
+    /* ---- 経理の科目 ---- */
+    at.appendChild(ui.section('経理の科目',
+      el('a', { class: 'link', href: '#/books', text: '経理' })));
+    at.appendChild(catCard());
+
     at.appendChild(ui.section('買ったものの分類',
       el('a', { class: 'link', href: '#/books', text: '経理' })));
     at.appendChild(tagCard());
@@ -477,6 +482,69 @@
     card.appendChild(el('p', { class: 'muted small',
       text: 'これは人目に触れないようにする蓋です。中身の暗号化ではないので、端末そのもののロックもかけておいてください。' }));
     return card;
+  }
+
+  /* ---------------- 経理の科目 ----------------
+
+     もとから入っている科目は動かさず、そのうしろに自分のぶんを足す。
+     消せるのは自分で足したものだけ。消しても、その科目を使っている
+     レシートの中身は書き換えない（あとで見返せなくなるので）。 */
+
+  function catCard() {
+    var box = el('div', { class: 'card' });
+    DL.expenses.BOOKS.forEach(function (b) {
+      box.appendChild(catBook(b.value, b.label));
+    });
+    box.appendChild(el('p', { class: 'muted small',
+      text: 'もとから入っている科目は消せません。自分で足したものだけ消せます。'
+        + '消しても、その科目で登録したレシートはそのまま残ります。' }));
+    return box;
+  }
+
+  function catBook(book, label) {
+    var wrap = el('div', { class: 'cat-book' });
+    wrap.appendChild(el('div', { class: 'field-label', text: label }));
+
+    var chips = el('div', { class: 'cat-chips' });
+    DL.expenses.baseCategories(book).forEach(function (name) {
+      chips.appendChild(el('span', { class: 'chip ghosty', text: name }));
+    });
+    S.myCategories(book).forEach(function (name) {
+      var used = S.categoryUseCount(book, name);
+      chips.appendChild(el('button', {
+        class: 'chip soft cat-mine', title: '押すと消せます',
+        'aria-label': name + ' を消す' + (used ? '（' + used + '件で使用中）' : ''),
+        onclick: function () {
+          var msg = used
+            ? '「' + name + '」を科目の一覧から消します。この科目で登録した ' + used
+              + '件のレシートは、そのまま残ります（あとから科目を選び直せます）。'
+            : '「' + name + '」を科目の一覧から消します。';
+          ui.confirm(msg, { danger: true, okText: '消す' }).then(function (ok) {
+            if (!ok) return;
+            S.removeCategory(book, name);
+            ui.toast('消しました');
+          });
+        }
+      }, [el('span', { text: name }), used ? el('i', { text: String(used) }) : null, ui.icon('close', 12)]));
+    });
+    wrap.appendChild(chips);
+
+    var input = ui.input({ placeholder: label + 'の科目を足す', maxlength: 20 });
+    var add = function () {
+      var name = input.value.trim();
+      if (!name) return;
+      if (!S.addCategory(book, name)) {
+        ui.toast('その科目はすでにあります', 'danger');
+        return;
+      }
+      input.value = '';
+      ui.toast('足しました');
+    };
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); add(); } });
+    wrap.appendChild(el('div', { class: 'row-wrap' }, [
+      input, ui.btn('足す', 'ghost', add, 'plus')
+    ]));
+    return wrap;
   }
 
   function tagCard() {

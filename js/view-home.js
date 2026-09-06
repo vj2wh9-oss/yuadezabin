@@ -99,9 +99,15 @@
       wrap.appendChild(list);
     }
 
-    /* 今週のノルマ */
-    wrap.appendChild(ui.section('これから7日間'));
-    wrap.appendChild(weekStrip(today));
+    /* 今日の予算（日常の予算を決めているときだけ） */
+    var bg = budgetCard(today);
+    if (bg) {
+      wrap.appendChild(ui.section('今日の予算'));
+      wrap.appendChild(bg);
+    }
+
+    /* いまの様子。7日ぶんの棒は、カレンダーと重なるので出さない */
+    wrap.appendChild(ui.section('いまの様子'));
     wrap.appendChild(stats(today, load));
 
     /* 売上（書類があるときだけ） */
@@ -483,29 +489,58 @@
   }
 
   /* 7日間のノルマ */
-  function weekStrip(today) {
-    var days = [];
-    for (var i = 0; i < 7; i++) {
-      var d = U.addDays(today, i);
-      var l = sc.loadOfDay(d);
-      days.push({ date: d, qty: l.qty, count: l.entries.length, marks: sc.dayMarks(d) });
-    }
-    var maxQ = Math.max(1, Math.max.apply(null, days.map(function (d) { return d.qty; })));
-    var strip = el('div', { class: 'week' });
-    days.forEach(function (d) {
-      var h = Math.round(d.qty / maxQ * 46) + 4;
-      strip.appendChild(el('a', {
-        class: 'weekday' + (d.date === today ? ' today' : '') + (U.dow(d.date) === 0 ? ' sun' : U.dow(d.date) === 6 ? ' sat' : ''),
-        href: '#/day/' + d.date
-      }, [
-        el('span', { class: 'wd', text: U.wdName(U.dow(d.date)) }),
-        el('span', { class: 'wn', text: String(+d.date.slice(8)) }),
-        el('span', { class: 'wbar', style: { height: h + 'px', opacity: d.qty ? 1 : .25 } }),
-        el('span', { class: 'wq', text: d.qty ? String(d.qty) : (d.count ? '・' : '') }),
-        d.marks.length ? el('span', { class: 'wmark' }) : null
+  /* ---------------- 今日の予算 ----------------
+
+     月の予算を日数で割ったものが「今日の予算」。
+     使いすぎていると、それを守っても月末には収まらないので、
+     残り日数で割り直した「立て直しの予算」を下に添える。 */
+
+  function budgetCard(today) {
+    var b = DL.expenses.dailyBudget(today);
+    if (!b) return null;
+    var yen = DL.docs.yen;
+
+    var card = el('div', { class: 'card bg-day' });
+    card.appendChild(bgLine('今日の予算', b.perDay, b.today, b.todayPct, false));
+
+    if (b.overspent) {
+      card.appendChild(el('div', { class: 'bg-day-note danger' }, [
+        ui.icon('alert', 15),
+        el('span', { text: '今月の予算はもう使い切っています（残り' + b.rest + '日）' })
       ]));
-    });
-    return strip;
+    } else if (b.behind) {
+      card.appendChild(el('div', { class: 'bg-day-note warn' }, [
+        ui.icon('alert', 15),
+        el('span', { text: 'このペースだと足りません。残り' + b.rest + '日は、1日 ' + yen(b.restPerDay) + ' までに' })
+      ]));
+      card.appendChild(bgLine('立て直すなら', b.restPerDay, b.today, b.restPct, true));
+    }
+
+    card.appendChild(el('div', { class: 'bg-foot' }, [
+      el('span', { class: 'muted small',
+        text: '今月 ' + yen(b.spent) + ' / ' + yen(b.budget)
+          + (b.left < 0 ? '（' + yen(-b.left) + ' 超過）' : '（残り ' + yen(b.left) + '）') }),
+      el('a', { class: 'link small', href: '#/books', text: '経理' })
+    ]));
+    return card;
+  }
+
+  /* 1行ぶん。予算・使った額・％・棒 */
+  function bgLine(label, limit, used, pct, sub) {
+    var yen = DL.docs.yen;
+    var over = pct > 100;
+    return el('div', { class: 'bg-day-line' + (sub ? ' sub' : '') }, [
+      el('div', { class: 'bg-head' }, [
+        el('span', { text: label }),
+        el('b', { class: over ? 'over' : '', text: yen(limit) })
+      ]),
+      el('div', { class: 'bg-bar' + (over ? ' over' : '') },
+        el('i', { style: { width: Math.min(100, pct) + '%' } })),
+      el('div', { class: 'bg-day-used' }, [
+        el('span', { class: 'muted small', text: '使った ' + yen(used) }),
+        el('b', { class: over ? 'over' : '', text: pct + '%' })
+      ])
+    ]);
   }
 
   /* ひと目でわかる集計 */

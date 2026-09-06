@@ -124,6 +124,8 @@
     fanbox: [],
     expenses: [],          // 経費 [{id,book,date,amount,category,vendor,memo,projectId,issuerId,fileId}]
     lifeBudget: 0,         // 日常（家計簿）の1ヶ月の予算。0で無効
+    // 自分で足した科目。もとから入っている科目のうしろに並ぶ
+    expenseCategories: { work: [], life: [] },
     recurring: [],         // 固定費 [{id,book,name,amount,category,day,startYm,lastYm,active}]
     // 自分で決める分類。科目とは別に、種別ごとに見返すための札
     tags: [],              // [{id,name,color,order}]
@@ -274,6 +276,7 @@
     s.settings.expenses = (s.settings.expenses || []).map(normalizeExpense);
     s.settings.recurring = (s.settings.recurring || []).map(normalizeRecurring);
     s.settings.tags = (s.settings.tags || []).map(normalizeTag);
+    s.settings.expenseCategories = normalizeExpenseCategories(s.settings.expenseCategories);
     s.settings.items = (s.settings.items || []).map(normalizeItem);
     s.settings.stock = (s.settings.stock || []).map(normalizeMove);
     s.settings.events = (s.settings.events || []).map(normalizeEvent);
@@ -973,6 +976,55 @@
 
      科目は「そのレシート全体」に付くが、こちらは品目ひとつずつに付ける。
      「画材」「本」「食べもの」のように、あとで種別ごとに見返すために使う。 */
+
+  /* 自分で足した科目。帳簿ごとに、名前の並びをそのまま持つ */
+  function normalizeExpenseCategories(v) {
+    var out = { work: [], life: [] };
+    ['work', 'life'].forEach(function (book) {
+      var seen = {};
+      ((v || {})[book] || []).forEach(function (name) {
+        var n = String(name || '').trim().slice(0, 20);
+        if (!n || seen[n]) return;
+        seen[n] = true;
+        out[book].push(n);
+      });
+    });
+    return out;
+  }
+
+  /** 自分で足した科目（帳簿ごと） */
+  function myCategories(book) {
+    return (state.settings.expenseCategories || {})[book === 'life' ? 'life' : 'work'] || [];
+  }
+
+  /**
+   * 科目を足す。もとから入っているものと同じ名前なら足さない。
+   * @returns {boolean} 足せたか
+   */
+  function addCategory(book, name) {
+    var b = book === 'life' ? 'life' : 'work';
+    var n = String(name || '').trim().slice(0, 20);
+    if (!n) return false;
+    if (DL.expenses.baseCategories(b).indexOf(n) >= 0) return false;
+    if (myCategories(b).indexOf(n) >= 0) return false;
+    state.settings.expenseCategories[b] = myCategories(b).concat([n]);
+    save();
+    return true;
+  }
+
+  /** 自分で足した科目を消す。使っているレシートの科目はそのまま残す */
+  function removeCategory(book, name) {
+    var b = book === 'life' ? 'life' : 'work';
+    state.settings.expenseCategories[b] = myCategories(b).filter(function (x) { return x !== name; });
+    save();
+  }
+
+  /** その科目を使っているレシートの数 */
+  function categoryUseCount(book, name) {
+    return (state.settings.expenses || []).filter(function (x) {
+      return x.book === book && x.category === name;
+    }).length;
+  }
 
   function normalizeTag(t) {
     t = t || {};
@@ -2514,6 +2566,8 @@
     expensesWithFile: expensesWithFile, retargetExpenseFiles: retargetExpenseFiles,
     expenseItems: expenseItems,
     forgetFiles: forgetFiles,
+    myCategories: myCategories, addCategory: addCategory,
+    removeCategory: removeCategory, categoryUseCount: categoryUseCount,
     tags: tags, getTag: getTag, addTag: addTag, updateTag: updateTag,
     removeTag: removeTag, reorderTags: reorderTags, tagUseCount: tagUseCount,
     recurring: recurring, getRecurring: getRecurring, addRecurring: addRecurring,

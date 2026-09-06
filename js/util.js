@@ -46,6 +46,34 @@ window.DL = window.DL || {};
 
   function dow(iso) { return parse(iso).getDay(); }
 
+  /**
+   * 文字を写す。使えない端末では、いったん置いた入力欄ごしに写す。
+   * @returns {Promise<boolean>} 写せたか
+   */
+  function copy(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text)
+        .then(function () { return true; })
+        .catch(function () { return legacyCopy(text); });
+    }
+    return Promise.resolve(legacyCopy(text));
+  }
+
+  function legacyCopy(text) {
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch (e) { return false; }
+  }
+
   function cmp(a, b) { return a < b ? -1 : a > b ? 1 : 0; }
   function min(a, b) { return cmp(a, b) <= 0 ? a : b; }
   function max(a, b) { return cmp(a, b) >= 0 ? a : b; }
@@ -203,6 +231,7 @@ window.DL = window.DL || {};
     addDays: addDays, addMonths: addMonths, diffDays: diffDays, dow: dow,
     cmp: cmp, minDate: min, maxDate: max, clampDate: clampDate, rangeDays: rangeDays,
     monthStart: monthStart, monthEnd: monthEnd, clampDay: clampDay, addYm: addYm,
+    copy: copy,
     fmtMD: fmtMD, fmtMDW: fmtMDW, fmtYMD: fmtYMD, fmtYMDW: fmtYMDW,
     wdName: wdName, untilLabel: untilLabel,
     el: el, append: append, clear: clear, $: $, $$: $$,

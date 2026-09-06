@@ -375,6 +375,35 @@
         ]));
       });
 
+      // ラック出版の決まり（営業日で数えた早割・割増）を、まとめて入れる
+      var fill = el('button', {
+        type: 'button', class: 'btn ghost full', text: '締切をイベント日から入れる',
+        onclick: function () {
+          var ev = f.eventDate ? f.eventDate.value : '';
+          if (!U.isISO(ev)) { ui.toast('先に開催日を入れてください', 'danger'); return; }
+          var rows = DL.printing.schedule(ev);
+          var keepPrinter = (p.printings[0] || {}).printer || 'ラック出版';
+          var keepCopies = (p.printings[0] || {}).copies || 0;
+          p.printings = rows.map(function (r, i) {
+            return {
+              id: U.uid(), label: r.label + ' ' + String(r.at).replace(/^0/, ''),
+              printer: keepPrinter, due: r.due, copies: keepCopies,
+              primary: r.id === 'normal'
+            };
+          });
+          if (f.deadline) {
+            var main = rows.filter(function (r) { return r.id === 'normal'; })[0];
+            if (main) {
+              f.deadline.value = main.due;
+              if (f.onDeadlineChange) f.onDeadlineChange();
+            }
+          }
+          render();
+          ui.toast('営業日で数えて入れました（土日祝は数えません）');
+        }
+      });
+      list.appendChild(fill);
+
       var add = el('button', {
         type: 'button', class: 'btn ghost full', text: '印刷プランを追加',
         onclick: function () {

@@ -1785,3 +1785,34 @@ a.alert-main { text-decoration: none; }
 .crm-hist-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .crm-visit-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .crm-visit-main span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------------- 経理の科目（設定） ---------------- */
+.cat-book { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.cat-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+/* 自分で足したぶん。押すと消せるので、それと分かる形にする */
+.cat-mine { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; border: 0; }
+.cat-mine i { font-style: normal; opacity: .6; font-variant-numeric: tabular-nums; }
+.cat-mine .icon { opacity: .55; }
+.cat-mine:active { background: var(--accent-soft); color: var(--accent); }
+
+/* ---------------- 今日の予算（ホーム） ---------------- */
+.bg-day { display: flex; flex-direction: column; gap: 10px; }
+.bg-day-line { display: flex; flex-direction: column; gap: 5px; }
+/* 立て直しのほうは、ふだんの予算より控えめに置く */
+.bg-day-line.sub { padding-left: 10px; border-left: 2px solid var(--warn); }
+.bg-day-line.sub .bg-head span { color: var(--warn); }
+.bg-day-used { display: flex; align-items: baseline; justify-content: space-between; }
+.bg-day-used b { font-size: 13px; font-variant-numeric: tabular-nums; }
+.bg-day-used b.over, .bg-head b.over { color: var(--danger); }
+.bg-day-note { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.bg-day-note.warn { color: var(--warn); }
+.bg-day-note.danger { color: var(--danger); }
+
+/* ---------------- 割増予約メール ---------------- */
+.mail-peek summary { font-size: 12.5px; color: var(--accent); cursor: pointer; padding: 6px 0; }
+.mail-body {
+  white-space: pre-wrap; word-break: break-word; margin: 0;
+  font-size: 12px; line-height: 1.6; font-family: inherit;
+  background: var(--card2); border: 1px solid var(--line); padding: 10px;
+  max-height: 40vh; overflow: auto;
+}

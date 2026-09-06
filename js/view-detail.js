@@ -127,6 +127,13 @@
       ]));
     }
 
+    /* ---- 割増予約メール（即売会のみ） ---- */
+    if (p.kind === 'event') {
+      wrap.appendChild(ui.btn('割増予約メール作成', 'ghost full', function () {
+        bookingSheet(p);
+      }, 'mail'));
+    }
+
     /* ---- 印刷所プラン ---- */
     if (p.kind === 'event' && (p.printings || []).length) {
       wrap.appendChild(ui.section('印刷所の締切'));
@@ -365,4 +372,118 @@
 
   DL.views = DL.views || {};
   DL.views.detail = { render: render };
+  /* ---------------- 割増の予約メール ----------------
+
+     10%・20%割増は、通常締切の午前9時までにメールで予約しておく必要がある。
+     ここで中身を聞いて、文面を組み立てて、メールアプリの下書きを開く。
+     送るのは自分の手（このアプリからは送らない）。 */
+
+  function bookingSheet(p) {
+    var P = DL.printing;
+    var ev = p.eventDate;
+    if (!U.isISO(ev)) {
+      ui.toast('先に開催日を入れてください', 'danger');
+      return;
+    }
+
+    var planId = 'late10';
+    var size = P.SIZES[0];
+    var copies = 100;
+
+    var planPick = pickRow(['late10', 'late20'].map(function (id) {
+      return { v: id, label: P.get(id).label };
+    }), planId, function (v) { planId = v; draw(); });
+
+    var sizePick = pickRow(P.SIZES.map(function (s) { return { v: s, label: s }; }),
+      size, function (v) { size = v; draw(); });
+
+    var copySel = ui.select(P.copyChoices().map(function (n) {
+      return { value: String(n), label: n + '冊' };
+    }), String(copies), function (e) { copies = U.num(e.target.value, 100); draw(); });
+
+    var info = el('div', { class: 'card' });
+
+    var close = ui.sheet({
+      title: '割増予約メール',
+      body: el('div', { class: 'form' }, [
+        ui.block('割増種別', planPick),
+        ui.block('本のサイズ', sizePick),
+        ui.field('冊数', copySel),
+        info
+      ]),
+      actions: [
+        ui.btn('キャンセル', 'ghost', function () { close(); }),
+        ui.btn('メールを作る', 'primary', function () {
+          var m = mailOf();
+          location.href = P.mailtoUrl(m);
+          close();
+          ui.toast('メールアプリに下書きを渡しました');
+        }, 'mail')
+      ]
+    });
+
+    function mailOf() {
+      return P.bookingMail({
+        eventDate: ev, planId: planId, size: size, copies: copies,
+        // ページ数は「合計ページ数（案件の数量）」に表紙まわりの4ページを足す
+        pages: U.num(p.qty, 0) + 4
+      });
+    }
+
+    function draw() {
+      U.clear(info);
+      var m = mailOf();
+      var late = P.passed(m.normal);
+
+      [
+        ['差出人', P.MAIL.from],
+        ['宛先', m.to],
+        ['件名', m.subject],
+        ['本文入稿予定日', P.label(m.plan)],
+        ['予約の締切', P.label(m.normal) + 'まで'],
+        ['ページ数', (U.num(p.qty, 0) + 4) + 'P（本文 ' + U.num(p.qty, 0) + 'P ＋ 4）']
+      ].forEach(function (r) {
+        info.appendChild(el('div', { class: 'info-row' }, [
+          el('span', { class: 'info-k', text: r[0] }),
+          el('span', { class: 'info-v', text: r[1] })
+        ]));
+      });
+
+      if (late) {
+        info.appendChild(el('div', { class: 'alert overdue' }, [
+          el('span', { class: 'alert-icon' }, ui.icon('alert', 17)),
+          el('span', { text: '通常締切（' + P.label(m.normal) + '）を過ぎています。'
+            + '予約を受けてもらえるか、先に印刷所へ確かめてください。' })
+        ]));
+      }
+
+      info.appendChild(el('details', { class: 'mail-peek' }, [
+        el('summary', { text: '本文を確かめる' }),
+        el('pre', { class: 'mail-body', text: m.body })
+      ]));
+      info.appendChild(ui.btn('本文をコピー', 'ghost full', function () {
+        U.copy(m.body).then(function () { ui.toast('コピーしました'); });
+      }, 'edit'));
+      info.appendChild(el('p', { class: 'muted small',
+        text: 'メールアプリでは、差出人が ' + P.MAIL.from + ' になっているか確かめてから送ってください'
+          + '（下書きを開くだけで、このアプリからは送りません）。' }));
+    }
+    draw();
+  }
+
+  /* 押して選ぶ横並び。選んだものに印が付く */
+  function pickRow(items, current, onPick) {
+    var row = el('div', { class: 'crm-pick' });
+    items.forEach(function (o) {
+      row.appendChild(ui.btn(o.label, 'ghost' + (o.v === current ? ' on' : ''), function () {
+        current = o.v;
+        U.$$('.btn', row).forEach(function (n, i) {
+          n.classList.toggle('on', items[i].v === current);
+        });
+        onPick(o.v);
+      }));
+    });
+    return row;
+  }
+
 })(window.DL);

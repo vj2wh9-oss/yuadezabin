@@ -26,9 +26,7 @@
       }
     }
 
-    wrap.appendChild(el('div', { class: 'pad' },
-      ui.btn('予定を追加', 'ghost full', function () { form(null, { date: date }); }, 'plus')
-    ));
+    // 「予定を追加」は置かない。右下の＋が同じ入り口なので、二重になる
 
     dutyBox(wrap, date);
   }
