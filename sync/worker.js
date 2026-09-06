@@ -90,8 +90,12 @@ export default {
       return json({
         ok: true,
         service: '案件ポータルの同期API',
-        bindings: { kv: !!env.SYNC, r2: !!env.FILES, openai: !!env.OPENAI_API_KEY },
-        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/ocr', '/v1/roomreserve'],
+        bindings: {
+          kv: !!env.SYNC, r2: !!env.FILES, openai: !!env.OPENAI_API_KEY,
+          // 夜のバックアップの支度ができているか（値そのものは出さない）
+          discord: !!env.DISCORD_WEBHOOK, backupKey: !!env.BACKUP_KEY
+        },
+        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/ocr', '/v1/roomreserve', '/v1/backup'],
         note: '各 /v1/... は Authorization: Bearer <合鍵> が必要です'
       }, 200, cors);
     }
