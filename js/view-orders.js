@@ -184,46 +184,66 @@
     ));
   }
 
-  /* 発注社名に近い取引先を並べる。決めるのは人なので、押しても選ばせるだけ */
+  /* 発注社名を顧客管理の名簿に当てて、近いものを並べる。
+     決めるのは人なので、押しても選ばせるだけ */
+  var HOW = {
+    same: { label: '一致', cls: 'ok' },
+    alias: { label: '別名で一致', cls: 'ok' },
+    mail: { label: 'メールのドメインが同じ', cls: 'ok' },
+    part: { label: '一部一致', cls: 'warn' }
+  };
+
   function matchCard(o) {
     var card = el('div', { class: 'card' });
-    var hits = DL.orders.candidates(o.company);
-
-    if (!S.clients().length) {
-      card.appendChild(el('div', { class: 'alert warn' }, [
-        el('span', { class: 'alert-icon' }, ui.icon('alert', 17)),
-        el('span', { text: '取引先がまだ登録されていません。設定 →「取引先」から入れておくと、ここに候補が出ます。' })
-      ]));
-      return card;
-    }
+    var hits = DL.orders.candidates(o.company, o.email);
 
     card.appendChild(el('div', { class: 'info-row' }, [
       el('span', { class: 'info-k', text: '発注社名' }),
       el('span', { class: 'info-v', text: o.company })
     ]));
 
-    if (!hits.length) {
+    if (!S.clients().length) {
       card.appendChild(el('div', { class: 'alert warn' }, [
         el('span', { class: 'alert-icon' }, ui.icon('alert', 17)),
-        el('span', { text: '同じ名前の取引先は見つかりませんでした（' + S.clients().length + '件を照らしました）。'
-          + '表記ゆれの可能性もあるので、下の一覧も確かめてください。' })
+        el('span', { text: '顧客管理にまだ1件も入っていません。案件タブの人のボタンから入れておくと、ここに候補が出ます。' })
+      ]));
+    } else if (!hits.length) {
+      card.appendChild(el('div', { class: 'alert warn' }, [
+        el('span', { class: 'alert-icon' }, ui.icon('alert', 17)),
+        el('span', { text: '顧客管理には見当たりませんでした（' + S.clients().length + '件を照らしました）。'
+          + '書きかたが違うだけのこともあるので、顧客管理も確かめてください。' })
       ]));
     } else {
       hits.forEach(function (h) {
-        card.appendChild(el('div', { class: 'info-row' }, [
-          el('span', { class: 'info-k' }, ui.icon('client', 15)),
+        var st = DL.crm.statusOf(h.client);
+        var how = HOW[h.how] || HOW.part;
+        card.appendChild(el('a', { class: 'info-row tap', href: '#/crm/' + h.client.id }, [
+          el('span', { class: 'info-k' }, ui.icon('person', 15)),
           el('span', { class: 'info-v' }, [
             el('span', { text: h.client.name }),
-            ui.chip(h.how === 'same' ? '一致' : '一部一致', h.how === 'same' ? 'ok' : 'warn')
+            ui.chip(how.label, how.cls),
+            ui.chip(st.label, st.cls)
           ])
         ]));
       });
     }
 
-    card.appendChild(ui.btn('取引先の一覧を開いて確かめる', 'ghost full', function () {
-      location.hash = '#/settings';
-      ui.toast('設定の「取引先」で確かめられます');
-    }, 'client'));
+    card.appendChild(ui.btn('顧客管理を開いて確かめる', 'ghost full', function () {
+      if (!DL.crm.hasPass()) { DL.views.crm.passSheet(function () { location.hash = '#/crm'; }); return; }
+      location.hash = '#/crm';
+    }, 'person'));
+
+    // まだ名簿に無い相手なら、その場で見込みとして入れておける
+    if (!hits.length) {
+      card.appendChild(ui.btn('この会社を顧客管理に入れる', 'ghost full', function () {
+        var made = DL.views.crm.addFrom({
+          name: o.company, contact: o.person || '', email: o.email || '', status: 'client'
+        });
+        ui.toast('顧客管理に入れました');
+        if (!DL.crm.hasPass()) { DL.views.crm.passSheet(function () { location.hash = '#/crm/' + made.id; }); return; }
+        location.hash = '#/crm/' + made.id;
+      }, 'plus'));
+    }
     return card;
   }
 

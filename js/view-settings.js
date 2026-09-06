@@ -99,7 +99,14 @@
       ]));
     });
     clientBox.appendChild(ui.btn('取引先を追加', 'ghost full', function () { DL.forms.clientSheet(null); }, 'plus'));
+    clientBox.appendChild(el('p', { class: 'muted small',
+      text: '会社概要や営業の記録、まだ契約していない営業先は、案件タブの人のボタン（顧客管理）から入れられます。同じ名簿です。' }));
     at.appendChild(clientBox);
+
+    /* ---- 顧客管理の鍵 ---- */
+    at.appendChild(ui.section('顧客管理', el('span', { class: 'muted small',
+      text: DL.crm.hasPass() ? '合言葉あり' : '合言葉なし' })));
+    at.appendChild(crmCard());
 
     /* ---- 分類（買ったものに付ける札） ---- */
     at.appendChild(ui.section('買ったものの分類',
@@ -302,6 +309,71 @@
      科目（印刷費・食費…）は帳簿ごとに決まっているが、
      こちらは自分で足せて、レシートの品目ひとつずつに付ける。
      「画材」「資料の本」「差し入れ」のように、あとで種別ごとに見返すためのもの。 */
+
+  /* ---------------- 顧客管理の鍵 ----------------
+
+     合言葉はどの端末でも同じものを使う。顔で開く鍵はその端末の中にあるので、
+     端末ごとに用意する。ここは人目に触れないようにする蓋であって、
+     中身を暗号で守るものではない（crm.js の頭書き）。 */
+
+  function crmCard() {
+    var C = DL.crm;
+    var card = el('div', { class: 'card' });
+
+    if (!C.hasPass()) {
+      card.appendChild(el('p', { class: 'muted small',
+        text: '合言葉を決めると、顧客管理を開くときに聞くようになります。いまは誰でも開けます。' }));
+      card.appendChild(ui.btn('合言葉を決める', 'ghost full', function () {
+        DL.views.crm.passSheet();
+      }, 'lock'));
+      return card;
+    }
+
+    card.appendChild(ui.btn('合言葉を変える', 'ghost full', function () {
+      DL.views.crm.passSheet();
+    }, 'lock'));
+
+    // 顔で開く（その端末に用意があるときだけ出す）
+    var faceRow = el('div');
+    card.appendChild(faceRow);
+    C.faceAvailable().then(function (can) {
+      if (!faceRow.isConnected) return;
+      if (!can) {
+        faceRow.appendChild(el('p', { class: 'muted small',
+          text: 'この端末では Face ID / Touch ID が使えません（合言葉だけになります）。' }));
+        return;
+      }
+      if (C.faceOn()) {
+        faceRow.appendChild(el('p', { class: 'muted small', text: 'この端末では顔でも開けます。' }));
+        faceRow.appendChild(ui.btn('顔で開くのをやめる', 'ghost full', function () {
+          C.forgetFace();
+          ui.toast('この端末の顔の鍵を外しました');
+          DL.app.render();
+        }, 'close'));
+      } else {
+        faceRow.appendChild(ui.btn('この端末で Face ID を使う', 'ghost full', function () {
+          C.enrollFace().then(function (ok) {
+            ui.toast(ok ? '顔でも開けるようにしました' : '登録できませんでした', ok ? '' : 'danger');
+            if (ok) DL.app.render();
+          }).catch(function () { ui.toast('登録できませんでした', 'danger'); });
+        }, 'faceid'));
+      }
+    });
+
+    card.appendChild(ui.btn('合言葉をやめる（誰でも開ける）', 'ghost full danger', function () {
+      ui.confirm('顧客管理の合言葉をやめます。以後、誰でも開けるようになります。',
+        { danger: true, okText: 'やめる' }).then(function (ok) {
+          if (!ok) return;
+          DL.crm.clearPass();
+          ui.toast('合言葉をやめました');
+          DL.app.render();
+        });
+    }, 'trash'));
+
+    card.appendChild(el('p', { class: 'muted small',
+      text: 'これは人目に触れないようにする蓋です。中身の暗号化ではないので、端末そのもののロックもかけておいてください。' }));
+    return card;
+  }
 
   function tagCard() {
     var box = el('div', { class: 'card tag-list' });

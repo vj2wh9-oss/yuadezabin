@@ -168,7 +168,8 @@
 
   /* 端末ごとの設定。同期・読み込み・復元で持ち込まず、この端末のものを守る */
   var LOCAL_SETTING_KEYS = ['sync', 'scopeIssuerId', 'calMode', 'notifyDevice', 'lastBackupAt', 'lastAutoBackupAt',
-    'weatherCache'];   // 取ってきた予報は端末ごと。地点（weather）のほうは同期する
+    'weatherCache',    // 取ってきた予報は端末ごと。地点（weather）のほうは同期する
+    'crmFace'];        // 顔での解錠は、その端末に入っている鍵なので持ち出さない
 
   var state = null;
   var listeners = [];
@@ -404,9 +405,37 @@
     c.paymentTermDays = U.num(c.paymentTermDays, 0);   // 支払サイト（0＝翌月末）
     c.taxMode = ['exclusive', 'inclusive', 'none'].indexOf(c.taxMode) >= 0 ? c.taxMode : 'exclusive';
     c.withholding = !!c.withholding;    // いつも源泉徴収される取引先か
-    c.note = c.note || '';
+    c.note = c.note || '';              // 特記事項
     c.createdAt = c.createdAt || new Date().toISOString();
+
+    /* 顧客管理でだけ使うところ。
+       まだ契約していない営業先も、同じ入れ物に「見込み」として置く */
+    c.status = CLIENT_STATUS.indexOf(c.status) >= 0 ? c.status : 'client';
+    c.plan = c.plan || '';              // 契約プラン
+    c.about = c.about || '';            // 会社概要
+    c.article = c.article || '';        // 記事欄
+    // メールで来る社名の書きかたのゆれ。照らし合わせに使う
+    c.aliases = (Array.isArray(c.aliases) ? c.aliases : [])
+      .map(function (s) { return String(s || '').trim(); })
+      .filter(function (s) { return s; }).slice(0, 20);
+    // 営業に行った記録。新しい日が先
+    c.visits = (Array.isArray(c.visits) ? c.visits : []).map(normalizeVisit)
+      .sort(function (a, b) { return U.cmp(b.date, a.date); });
     return c;
+  }
+
+  var CLIENT_STATUS = ['client', 'prospect'];    // 取引中 / 見込み（営業済み・未契約）
+  var VISIT_RESULT = ['visited', 'talking', 'won', 'lost'];
+
+  function normalizeVisit(v) {
+    v = v || {};
+    v.id = v.id || U.uid();
+    v.date = U.isISO(v.date) ? v.date : U.today();
+    v.place = v.place || '';            // どこへ行ったか（支店名など）
+    v.person = v.person || '';          // 会った人
+    v.result = VISIT_RESULT.indexOf(v.result) >= 0 ? v.result : 'visited';
+    v.memo = v.memo || '';
+    return v;
   }
 
   function normalizeFolder(f) {
@@ -571,6 +600,52 @@
       p.clientId = '';
       (p.docs || []).forEach(function (d) { if (d.clientId === id) d.clientId = ''; });
     });
+    save();
+  }
+
+  /* ---------------- 顧客管理の鍵 ----------------
+
+     合言葉は、そのままではなく塩と混ぜて潰した形だけを持つ。
+     どの端末でも同じ合言葉で開けたいので、これは同期する。
+     顔での解錠に使う鍵は端末の中にあるので、その控えは持ち出さない
+     （LOCAL_SETTING_KEYS の crmFace）。 */
+
+  function crmPass() { return state.settings.crmPass || null; }
+
+  /** @param {{salt:string, hash:string}|null} v null で合言葉を外す */
+  function setCrmPass(v) {
+    if (v && v.salt && v.hash) state.settings.crmPass = { salt: String(v.salt), hash: String(v.hash) };
+    else delete state.settings.crmPass;
+    save();
+    return crmPass();
+  }
+
+  function crmFace() { return state.settings.crmFace || null; }
+
+  /** @param {{id:string}|null} v その端末に作った鍵の名札 */
+  function setCrmFace(v) {
+    if (v && v.id) state.settings.crmFace = { id: String(v.id) };
+    else delete state.settings.crmFace;
+    save({ quiet: true });        // 端末ごとの設定。同期の「変更あり」にしない
+    return crmFace();
+  }
+
+  /* 営業に行った記録。取引先の中に持たせる（新しい日が先） */
+  function putClientVisit(clientId, visit) {
+    var c = getClient(clientId);
+    if (!c) return null;
+    var v = normalizeVisit(visit);
+    var i = c.visits.map(function (o) { return o.id; }).indexOf(v.id);
+    if (i >= 0) c.visits[i] = v; else c.visits.push(v);
+    c.visits.sort(function (a, b) { return U.cmp(b.date, a.date); });
+    save();
+    return v;
+  }
+
+  function removeClientVisit(clientId, visitId) {
+    var c = getClient(clientId);
+    if (!c) return;
+    c.visits = c.visits.filter(function (v) { return v.id !== visitId; });
     save();
   }
 
@@ -2424,6 +2499,9 @@
     inScope: inScope, scopedProjects: scopedProjects, unassignedCount: unassignedCount,
     clients: clients, getClient: getClient, addClient: addClient,
     updateClient: updateClient, removeClient: removeClient,
+    putClientVisit: putClientVisit, removeClientVisit: removeClientVisit,
+    CLIENT_STATUS: CLIENT_STATUS, VISIT_RESULT: VISIT_RESULT,
+    crmPass: crmPass, setCrmPass: setCrmPass, crmFace: crmFace, setCrmFace: setCrmFace,
     clientProjects: clientProjects, clientDocs: clientDocs,
     folders: folders, getFolder: getFolder, addFolder: addFolder,
     folderChildren: folderChildren, folderPath: folderPath, setFolderColor: setFolderColor,

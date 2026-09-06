@@ -130,10 +130,10 @@
     var S = DL.store;
     var service = o.serviceLabel || o.service || '制作';
 
-    // 発注社名がぴたりと合う取引先が1つだけなら、それを紐付ける。
+    // 顧客管理でぴたりと1件に決まるなら、それを紐付ける。
     // 迷うとき（候補が複数・一部一致だけ）は紐付けず、名前だけ残す
-    var same = candidates(o.company).filter(function (h) { return h.how === 'same'; });
-    var clientId = same.length === 1 ? same[0].client.id : '';
+    var hit = DL.crm.pick(o.company, o.email);
+    var clientId = hit ? hit.id : '';
 
     return S.createProject({
       kind: 'work',
@@ -170,45 +170,21 @@
     return STATUS[o && o.status] || STATUS['new'];
   }
 
-  /* ---------------- 取引先との照らし合わせ ----------------
+  /* ---------------- 顧客管理との照らし合わせ ----------------
 
-     決めるのは人。ここは「これではないか」を挙げるだけにする。
-     法人格（株式会社など）や空白の入れかたは書く人によって違うので、
-     そこを落としてから比べる。 */
+     名簿は顧客管理が持っている。ここはそこに聞くだけにして、
+     判じかた（法人格の落としかた、別名、メールのドメイン）は
+     crm.js の一箇所にまとめてある。決めるのは人。 */
 
-  // 前株・後株、かっこ書き、法人格の略号
-  var CORP = /(株式会社|有限会社|合同会社|合資会社|合名会社|一般社団法人|一般財団法人|公益社団法人|公益財団法人|特定非営利活動法人|医療法人|学校法人|宗教法人|独立行政法人|\(株\)|（株）|\(有\)|（有）|\(同\)|（同）|㈱|㈲|Co\.|Ltd\.|Inc\.|K\.K\.|LLC)/gi;
-
-  /** 比べるための形にそろえる（法人格・空白・記号・大文字小文字・全角半角を落とす） */
-  function norm(name) {
-    return String(name || '')
-      .replace(CORP, '')
-      // 全角の英数字と空白を半角に寄せる
-      .replace(/[Ａ-Ｚａ-ｚ０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); })
-      .replace(/[\s　]/g, '')
-      .replace(/[・．。，、,.\-ー―‐_/／\\「」『』()（）]/g, '')
-      .toLowerCase();
-  }
+  function norm(name) { return DL.crm.norm(name); }
 
   /**
-   * 発注社名に近い取引先を挙げる。
+   * 発注社名に近い顧客を挙げる。
    * @param {string} company 発注社名
-   * @returns {Array} [{ client, how:'same'|'part' }] 近いものから順に
+   * @param {string} [email] 差出人。会社のドメインなら手がかりにする
+   * @returns {Array} [{ client, how:'same'|'alias'|'mail'|'part' }] 近いものから順に
    */
-  function candidates(company) {
-    var target = norm(company);
-    if (!target) return [];
-
-    var out = [];
-    DL.store.clients().forEach(function (c) {
-      var n = norm(c.name);
-      if (!n) return;
-      if (n === target) out.push({ client: c, how: 'same' });
-      else if (n.indexOf(target) >= 0 || target.indexOf(n) >= 0) out.push({ client: c, how: 'part' });
-    });
-
-    return out.sort(function (a, b) { return (a.how === 'same' ? 0 : 1) - (b.how === 'same' ? 0 : 1); });
-  }
+  function candidates(company, email) { return DL.crm.match(company, email); }
 
   /* ---------------- お客様への返事 ----------------
 

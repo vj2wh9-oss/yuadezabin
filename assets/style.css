@@ -260,6 +260,8 @@ body.kb-open .tabbar, body.kb-open .fab { display: none; }
   right: calc(14px + 50px + 10px);
   background: var(--card); color: var(--text); border-color: var(--line2);
 }
+/* 3つめ（顧客管理）。＋と発注のさらに左 */
+.fab-sub2 { right: calc(14px + (50px + 10px) * 2); }
 .fab-sub:active { background: var(--card2); color: var(--accent); }
 /* 未確認の発注があるときの印 */
 .fab-sub.has-new { border-color: var(--warn); color: var(--warn); }
@@ -1744,3 +1746,42 @@ a.alert-main { text-decoration: none; }
 .sg-body .section { margin-top: 4px; }
 .sg-body > .card { background: var(--card2); }
 @media (prefers-reduced-motion: reduce) { .sg-chev { transition: none; } }
+
+/* ---------------- 顧客管理 ---------------- */
+
+/* 鍵の画面。合言葉（できれば顔）を通すまで、中は出さない */
+.crm-lock { align-items: center; text-align: center; max-width: 340px; margin: 0 auto; padding-top: 32px; }
+.crm-lock-icon { color: var(--muted); margin-bottom: 4px; }
+.crm-lock-title { font-size: 18px; font-weight: 800; letter-spacing: .04em; }
+.crm-lock-form { width: 100%; }
+.crm-lock-form .input { text-align: center; letter-spacing: .3em; font-size: 18px; }
+.crm-lock-msg { min-height: 18px; margin: 0; }
+.crm-lock-msg.danger { color: var(--danger); }
+.crm-note { margin-top: 10px; }
+
+/* 一覧 */
+.crm-count { padding: 2px 2px 0; }
+.crm-row { display: flex; align-items: center; gap: 10px; }
+.crm-row-icon { flex: none; color: var(--muted); display: flex; }
+.crm-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.crm-row-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 「取引中 / 見込み」や「どうなったか」を選ぶところ */
+.crm-pick { display: flex; flex-wrap: wrap; gap: 6px; }
+.crm-pick .btn { flex: 1 1 auto; }
+.crm-pick .btn.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+
+/* 1社の中身 */
+.crm-head-top { display: flex; align-items: center; gap: 8px; }
+.crm-name { font-size: 17px; font-weight: 800; flex: 1; min-width: 0; word-break: break-word; }
+.crm-text { white-space: pre-line; font-size: 13.5px; margin: 0; }
+.crm-hist, .crm-visit {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  padding: 7px 0; border: 0; border-top: 1px solid var(--line);
+  background: none; color: var(--text); font-size: 13px;
+}
+.crm-hist:first-child, .crm-visit:first-child { border-top: 0; }
+.crm-hist-d { flex: none; width: 84px; font-variant-numeric: tabular-nums; }
+.crm-hist-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crm-visit-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.crm-visit-main span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
