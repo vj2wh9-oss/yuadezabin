@@ -1199,9 +1199,15 @@
         el('li', { text: '下の「iPhone用をコピー」を押す' }),
         el('li', { text: 'ショートカットアプリで新規作成 →「Webページで JavaScript を実行」を追加し、中身を貼り付ける' }),
         el('li', { text: 'そのショートカットの設定で「共有シートに表示」を入にする' }),
-        el('li', { text: 'Safari で自分の FANBOX（◯◯.fanbox.cc）を開き、共有ボタンからそのショートカットを選ぶ' })
+        el('li', { text: 'Safari で自分の FANBOX（◯◯.fanbox.cc）の、支援者の管理・振込の画面を開く' }),
+        el('li', { text: '共有ボタン → そのショートカットを選ぶ' })
       ]));
       box.appendChild(copyRow('iPhone用をコピー', plain));
+      box.appendChild(el('div', { class: 'alert info' },
+        el('span', { text: 'うまくいかないときは、ショートカットが返す文をそのまま見てください。'
+          + '「ログインしていないようです」「◯秒たっても返りませんでした」など、'
+          + '何で止まったかが出ます。Safari のプライベートブラウズや、'
+          + '別のブラウザ（Chrome など）だと FANBOX のログインが渡らないことがあります。' })));
 
       box.appendChild(el('p', { class: 'muted small', text:
         '送ると、アプリの「売上」で取り込めます。' }));

@@ -15,17 +15,54 @@
   'use strict';
 
   var LIMIT = 200000;   // 送る文字の上限（Worker 側は 256KB まで受け取る）
+  var WAIT = 12000;     // 1回の通信を待つ上限（ミリ秒）
 
   // ショートカットから呼ばれたときは completion() が用意されている。
   // その場では画面を出さずに送り、結果を返す（確認の画面を出すと先に進めないため）
   var inShortcut = (typeof completion === 'function');
+  var done = false;
   function finish(msg) {
+    if (done) return;
+    done = true;
     if (inShortcut) { try { completion(msg); } catch (e) { /* 返せなくても送信は済んでいる */ } }
+  }
+
+  /* iPhone のショートカットは completion() が呼ばれるまで先に進めない。
+     通信が返ってこないまま黙って終わるのがいちばん困るので、
+     何があっても最後には必ず何か返す。 */
+  if (inShortcut) {
+    setTimeout(function () {
+      finish('時間内に終わりませんでした。電波の良いところで、'
+        + 'FANBOX を開き直してからもう一度お試しください');
+    }, WAIT * 2 + 3000);
+  }
+
+  /**
+   * 待ちすぎたら諦める。iPhone の回線では返ってこないことがあり、
+   * そのまま待つとショートカットごと黙って終わってしまう。
+   */
+  function within(p, ms, what) {
+    return new Promise(function (resolve, reject) {
+      var t = setTimeout(function () {
+        reject(new Error(what + 'が' + Math.round(ms / 1000) + '秒たっても返りませんでした'));
+      }, ms);
+      p.then(function (v) { clearTimeout(t); resolve(v); },
+        function (e) { clearTimeout(t); reject(e); });
+    });
   }
 
   if (location.hostname.indexOf('fanbox.cc') < 0) {
     if (!inShortcut) alert('pixivFANBOX のページを開いてから使ってください。');
-    finish('pixivFANBOX のページではありません');
+    finish('pixivFANBOX のページではありません（いま開いているのは '
+      + location.hostname + '）');
+    return;
+  }
+
+  // 貼り付けが途中で切れていると、ここが抜ける
+  if (typeof API !== 'string' || !API || typeof TOKEN !== 'string' || !TOKEN) {
+    if (!inShortcut) alert('送り先が入っていません。設定からコピーし直してください。');
+    finish('送り先が入っていません。アプリの 設定 →「FANBOX から送るボタン」で'
+      + 'コピーし直してください');
     return;
   }
 
@@ -34,11 +71,14 @@
   text = text.replace(/\u00a0/g, ' ');   // 空白に見える NBSP は普通の空白に直す
   if (text.length > LIMIT) text = text.slice(0, LIMIT);
 
-  /* 文字から読むときの当たり。ここでは読み取らず、「それらしいか」だけ数える */
-  var months = (text.match(/(?:^|\n)\s*(?:1[0-2]|0?[1-9])\s*月/g) || []).length;
+  /* 文字から読むときの当たり。ここでは読み取らず、「それらしいか」だけ数える。
+     iPhone の画面は横がせまく、月と金額が同じ行に並ぶことがある。
+     行の頭に限ると拾えないので、どこにあっても数える */
+  var months = (text.match(/(?:1[0-2]|0?[1-9])\s*月/g) || []).length;
   var yen = (text.match(/[¥￥]\s*[\d,]+/g) || []).length;
 
   var rows = null;   // API から取れた月ごとの金額
+  var apiWhy = '';   // API から取れなかった理由（画面と返事に出す）
 
   /**
    * FANBOX 自身の窓口から、月ごとの支援金をまとめて取る。
@@ -54,11 +94,14 @@
    *   }, …]
    */
   function fromApi() {
-    return fetch('https://api.fanbox.cc/legacy/payout_request', {
+    return within(fetch('https://api.fanbox.cc/legacy/payout_request', {
       credentials: 'include',
       headers: { accept: 'application/json' }
-    }).then(function (r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
+    }), WAIT, 'FANBOX').then(function (r) {
+      if (r.status === 401 || r.status === 403) {
+        throw new Error('FANBOX にログインしていないようです（' + r.status + '）');
+      }
+      if (!r.ok) throw new Error('FANBOX が ' + r.status + ' を返しました');
       return r.json();
     }).then(function (d) {
       var hist = d && d.body && d.body.monthlyMaxPayoutRequestAmountHistory;
@@ -84,11 +127,11 @@
     var payload = rows
       ? { rows: rows, from: 'FANBOX', source: 'api' }
       : { text: text, from: 'FANBOX', source: 'page' };
-    return fetch(API.replace(/\/+$/, '') + '/v1/inbox/fanbox', {
+    return within(fetch(API.replace(/\/+$/, '') + '/v1/inbox/fanbox', {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: 'Bearer ' + TOKEN },
       body: JSON.stringify(payload)
-    }).then(function (r) {
+    }), WAIT, '送り先').then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (b) {
         if (r.status === 404) {
           throw new Error('送り先に受け口がありません（worker.js を貼り直してください）');
@@ -96,9 +139,11 @@
         if (!r.ok) throw new Error(b.error || ('HTTP ' + r.status));
         return b;
       });
-    }, function () {
-      // fetch 自体が失敗したときは中身が分からない。よくある原因を書いておく
-      throw new Error('送り先に届きませんでした。'
+    }, function (e) {
+      // 時間切れなら、そう分かる言い方を残す。それ以外は中身が分からないので、
+      // よくある原因を書いておく
+      var why = (e && e.message) || '';
+      throw new Error((/返りませんでした/.test(why) ? why + '。' : '送り先に届きませんでした。')
         + 'アプリの 設定 →「FANBOX の取り込み」→「送り先を確かめる」で、'
         + 'worker.js が新しいかどうかを見てください');
     });
@@ -116,16 +161,32 @@
     return months + 'ヶ月ぶんの見出しと、' + yen + '件の金額が見つかりました。';
   }
 
-  /* ---- ショートカットから：確認を出さずに送って、結果を返す ---- */
+  /* ---- ショートカットから：確認を出さずに送って、結果を返す ----
+
+     ここで throw が外に出ると completion() が呼ばれず、ショートカットは
+     何も言わずに失敗する。どの道を通っても必ず finish() まで来るようにする。 */
   if (inShortcut) {
-    fromApi().then(function (r) { rows = r; }).catch(function () { /* 文字から拾う */ })
-      .then(function () {
-        if (!rows && (!months || !yen)) { finish('支援金の表が見当たりませんでした'); return null; }
-        return post().then(function () {
-          finish('送りました：' + summary());
-        });
-      })
-      .catch(function (e) { finish('送れませんでした：' + e.message); });
+    try {
+      fromApi()
+        .then(function (r) { rows = r; }, function (e) { apiWhy = e.message; })
+        .then(function () {
+          if (rows) return post().then(function () { finish('送りました：' + summary()); });
+          // 金額が読めなくても、月の見出しか金額のどちらかが見えていれば
+          // ページの文字を送る。読み解くのはアプリ側の仕事
+          if (months || yen) {
+            return post().then(function () {
+              finish('送りました（ページの文字から）：' + summary()
+                + (apiWhy ? '／FANBOX からは取れず：' + apiWhy : ''));
+            });
+          }
+          finish('支援金の表が見当たりませんでした'
+            + (apiWhy ? '（FANBOX からも取れず：' + apiWhy + '）' : '')
+            + '。支援者の管理・振込の画面を開いてから、もう一度お試しください');
+        })
+        .catch(function (e) { finish('送れませんでした：' + (e && e.message || e)); });
+    } catch (e) {
+      finish('送れませんでした：' + (e && e.message || e));
+    }
     return;
   }
 
@@ -195,14 +256,17 @@
     status.textContent = summary();
     line('この内容を送ります。取り込みはアプリの「売上」で確かめてからできます。');
     send.disabled = false;
-  }).catch(function () {
-    if (!months || !yen) {
+  }).catch(function (e) {
+    apiWhy = (e && e.message) || String(e);
+    if (!months && !yen) {
       status.textContent = 'このページからは支援金を読み取れませんでした。';
+      line('FANBOX からも取れませんでした：' + apiWhy);
       line('支援金の管理・振込の画面（月ごとの金額が並ぶ画面）を開いてから、もう一度押してください。');
       return;
     }
     status.textContent = summary();
-    line('このページの文字を送ります。金額の確認と取り込みは、アプリの「売上」でできます。');
+    line('FANBOX からは取れませんでした（' + apiWhy + '）。このページの文字を送ります。');
+    line('金額の確認と取り込みは、アプリの「売上」でできます。');
     send.disabled = false;
   });
 })();

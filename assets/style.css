@@ -1642,9 +1642,12 @@ a.alert-main { text-decoration: none; }
   background: var(--card2); border: 1px solid var(--line);
 }
 .tp-seg { position: absolute; top: 0; bottom: 0; display: block; }
+/* いまの時刻。カレンダーと同じ「赤い線」にそろえる。
+   帯の色は名前ごとにさまざまなので、どれとも当たらない色で、太めに引く。
+   帯は角を丸めるために overflow:hidden なので、はみ出す飾りは付けられない */
 .tp-now {
-  position: absolute; top: -2px; bottom: -2px; width: 2px;
-  background: var(--text); box-shadow: 0 0 0 1px var(--card);
+  position: absolute; top: 0; bottom: 0; width: 3px; z-index: 2;
+  background: var(--danger); box-shadow: 0 0 0 1.5px var(--card);
   animation: tp-pulse 2.6s ease-in-out infinite;
 }
 .tp-scale { position: relative; height: 13px; font-size: 10px; color: var(--muted); }
@@ -1740,20 +1743,50 @@ a.tp-proj:active { color: var(--accent); }
 .tp-acts.n3 { grid-template-columns: repeat(3, 1fr); }
 .tp-acts .btn { padding: 9px 4px; font-size: 13px; gap: 4px; min-width: 0; white-space: nowrap; }
 
-/* いまの時刻。円は針で、帯は縦線で示す */
-.tp-hand { stroke: var(--text); stroke-width: 1.6; stroke-linecap: butt; }
-.tp-hand-tip { fill: var(--text); }
+/* いまの時刻。円は針で、帯は縦線で示す。
+   カレンダーの「いま」と同じ赤にそろえ、下敷きを1本かませて
+   どの色の帯の上でも沈まないようにする */
+.tp-hand-bg { stroke: var(--card); stroke-width: 5; stroke-linecap: round; }
+.tp-hand { stroke: var(--danger); stroke-width: 2.4; stroke-linecap: round; }
+.tp-hand-tip { fill: var(--danger); stroke: var(--card); stroke-width: 1.2; }
+
+/* 円のまん中。今日は、いまの時刻をここに大きく出す */
+.tp-mid-now { fill: var(--muted); font-size: 9px; }
+.tp-mid-v.now { fill: var(--danger); font-size: 17px; font-weight: 800; }
 
 /* いまの時刻の印は、ゆっくり点滅させて見つけやすくする。
    消えきらないので、動きが苦手なときも位置は分かる */
 .tp-hand, .tp-hand-tip { animation: tp-pulse 2.6s ease-in-out infinite; }
 @keyframes tp-pulse {
   0%, 100% { opacity: 1; }
-  50% { opacity: .28; }
+  50% { opacity: .4; }
 }
 @media (prefers-reduced-motion: reduce) {
   .tp-now, .tp-hand, .tp-hand-tip { animation: none; opacity: 1; }
 }
+
+/* いまが何時で、何をしていることになっているか。まず文字で言い切る一行 */
+.tp-nowbar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 9px 11px; border-radius: var(--radius-s);
+  background: var(--card2); border: 1px solid var(--line);
+  border-left: 3px solid var(--danger);
+}
+.tp-nowdot {
+  width: 10px; height: 10px; border-radius: 3px; flex: none;
+  background: var(--danger);
+}
+.tp-nowlabel { font-size: 11.5px; color: var(--muted); flex: none; }
+.tp-nowtime {
+  font-size: 19px; font-weight: 800; font-variant-numeric: tabular-nums;
+  color: var(--danger); flex: none; line-height: 1.1;
+}
+.tp-nowwhat {
+  display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1;
+  font-size: 13px;
+}
+.tp-nowwhat > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tp-nowbar .btn { flex: none; }
 
 @media (max-width: 380px) {
   .tp-acts .btn { font-size: 11.5px; padding: 9px 2px; gap: 3px; }

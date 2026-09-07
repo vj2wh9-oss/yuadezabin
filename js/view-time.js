@@ -61,22 +61,47 @@
     if (now !== null) {
       var na = ang(now);
       var sin = Math.sin(na), cos = Math.cos(na);
+      // 下敷きを1本かませる。どの色の帯の上でも、針が沈まないように
+      hand.push(svgEl('line', {
+        class: 'tp-hand-bg',
+        x1: C + sin * (r - 5), y1: C - cos * (r - 5),
+        x2: C + sin * (R + 7), y2: C - cos * (R + 7)
+      }));
       hand.push(svgEl('line', {
         class: 'tp-hand',
-        x1: C + sin * (r - 4), y1: C - cos * (r - 4),
-        x2: C + sin * (R + 4), y2: C - cos * (R + 4)
+        x1: C + sin * (r - 5), y1: C - cos * (r - 5),
+        x2: C + sin * (R + 7), y2: C - cos * (R + 7)
       }));
       hand.push(svgEl('circle', {
-        class: 'tp-hand-tip', cx: C + sin * (R + 4), cy: C - cos * (R + 4), r: 2.4
+        class: 'tp-hand-tip', cx: C + sin * (R + 7), cy: C - cos * (R + 7), r: 3.4
       }));
       hand.forEach(function (n) { svg.appendChild(n); });
     }
 
-    // まん中に、いちばん長いものを出す
-    var top = T.sums(date)[0];
-    if (top) {
-      svg.appendChild(svgEl('text', { class: 'tp-mid-v', x: C, y: C + 1, 'text-anchor': 'middle', text: hm(top.min) }));
-      svg.appendChild(svgEl('text', { class: 'tp-mid-l', x: C, y: C + 12, 'text-anchor': 'middle', text: top.label }));
+    /* まん中。今日を見ているときは、いまの時刻といましていることを出す。
+       ほかの日は、いちばん長いもの（いまが無いので） */
+    var atNow = now === null ? null : T.ofDay(date).filter(function (b) {
+      return now >= b.start && now < b.end;
+    })[0];
+    if (now !== null) {
+      // 3行は、まん中の穴（半径29）に収まる高さに置く。
+      // 下に行くほど横幅が狭くなるので、名前は短く切る
+      svg.appendChild(svgEl('text', {
+        class: 'tp-mid-now', x: C, y: C - 8, 'text-anchor': 'middle', text: 'いま'
+      }));
+      svg.appendChild(svgEl('text', {
+        class: 'tp-mid-v now', x: C, y: C + 6, 'text-anchor': 'middle', text: T.fmt(now)
+      }));
+      svg.appendChild(svgEl('text', {
+        class: 'tp-mid-l', x: C, y: C + 17, 'text-anchor': 'middle',
+        text: atNow ? cut(atNow.label, 5) : '未記入'
+      }));
+    } else {
+      var top = T.sums(date)[0];
+      if (top) {
+        svg.appendChild(svgEl('text', { class: 'tp-mid-v', x: C, y: C + 1, 'text-anchor': 'middle', text: hm(top.min) }));
+        svg.appendChild(svgEl('text', { class: 'tp-mid-l', x: C, y: C + 12, 'text-anchor': 'middle', text: top.label }));
+      }
     }
 
     /* 開いたときの見せ方。0→1 を渡すと、0時のところから時計回りに出てくる。
@@ -227,6 +252,11 @@
       list.length ? ui.chip(hm(T.filled(date)) + ' ぶん', 'soft') : null));
 
     var card = el('div', { class: 'card tp-card' });
+
+    // いまが何時で、何をしていることになっているか。まずここで言い切る
+    var nb = nowBanner(date);
+    if (nb) card.appendChild(nb);
+
     if (!list.length) {
       card.appendChild(el('p', { class: 'muted small', text: 'まだ書いていません。時間を足すか、勤務のひな型から入れられます。' }));
     } else {
@@ -291,6 +321,44 @@
 
   /* 帯を上から順に並べた一覧。押すと直せる。
      いま進行中のものは青く光らせて、どれが「今」か目で追えるようにする */
+  /* いまの時刻と、いましていること。今日を見ているときだけ出す。
+     円や帯の印は小さいので、まず文字で言い切っておく */
+  function nowBanner(date) {
+    var m = nowMin(date);
+    if (m === null) return null;
+    var b = T.ofDay(date).filter(function (x) { return m >= x.start && m < x.end; })[0];
+
+    var box = el('div', { class: 'tp-nowbar' + (b ? '' : ' empty') }, [
+      el('i', { class: 'tp-nowdot', style: b ? { background: b.color } : null }),
+      el('span', { class: 'tp-nowlabel', text: 'いま' }),
+      el('b', { class: 'tp-nowtime', text: T.fmt(m) }),
+      b ? el('span', { class: 'tp-nowwhat' }, [
+        el('span', { text: b.label }),
+        el('span', { class: 'muted small', text: T.fmt(b.start) + '〜' + T.fmt(b.end) })
+      ]) : el('span', { class: 'tp-nowwhat muted small', text: 'まだ書いていません' }),
+      b ? null : ui.btn('ここを書く', 'ghost tiny', function () {
+        blockSheet(date, null);
+      }, 'plus')
+    ]);
+
+    /* 時計は進む。開きっぱなしでも合うように書き替える。
+       ふだんは時刻の字だけ差し替え、帯をまたいだときだけ描き直す
+       （毎分まるごと描き直すと、開いている画面がその都度ちらつく）。
+       画面が描き直されて消えたら、そこで見張るのをやめる */
+    var wasId = b ? b.id : '';
+    var tick = setInterval(function () {
+      if (!box.isConnected) { clearInterval(tick); return; }
+      var now = nowMin(date);
+      if (now === null) { clearInterval(tick); return; }
+      var nb = T.ofDay(date).filter(function (x) { return now >= x.start && now < x.end; })[0];
+      if ((nb ? nb.id : '') !== wasId) { clearInterval(tick); DL.app.render(); return; }
+      var t = box.querySelector('.tp-nowtime');
+      if (t) t.textContent = T.fmt(now);
+    }, 20000);
+
+    return box;
+  }
+
   function projTitle(id) {
     var p = S.getProject(id);
     return p ? p.title : '（消された案件）';
@@ -493,6 +561,12 @@
 
   function slabel(b) {
     return b.label + ' ' + T.fmt(b.start) + '〜' + T.fmt(b.end) + (b.memo ? '　' + b.memo : '');
+  }
+
+  /* 円のまん中は狭いので、長い名前は切る */
+  function cut(s, n) {
+    s = String(s || '');
+    return s.length > n ? s.slice(0, n) + '…' : s;
   }
 
   /** 分 → '8時間30分' / '45分' */
