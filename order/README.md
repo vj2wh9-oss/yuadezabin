@@ -186,7 +186,7 @@ wrangler deploy
 Cloudflare の **Turnstile**（無料）を使うと、自動で送られてくる発注を減らせます。
 
 1. ダッシュボードの **Turnstile → Add widget**、ドメインに `order.yuadezabin.com` を入れる
-2. 出てきた **Site Key** を `public/form.json` の `turnstileSiteKey` に貼る
+2. 出てきた **Site Key** を `public/form.default.json` の `turnstileSiteKey` に貼る
 3. **Secret Key** を Worker に渡す
 
 ```sh
@@ -205,20 +205,51 @@ wrangler deploy
 
 ## 発注ページの中身を変える
 
-`public/form.json` **だけ**を直します。ページも受け口も同じこのファイルを見ているので、
-片方だけ古くなることがありません。
+**アプリから直せます。deploy は要りません。**
 
-```jsonc
-"services": [ { "id": "banner", "label": "バナー・Web用画像" }, … ],
-"formats":  [ { "id": "png",    "label": "PNG" }, … ],
-"deadline": { "minLeadDays": 7, "maxAheadDays": 365 }
+METEO365 の 設定 →「**発注フォーム**」→「**選択肢を編集**」
+
+| 直せるもの | |
+| --- | --- |
+| サービス種目 | 追加・名前の変更・並べ替え・削除 |
+| 納品形式 | 同上 |
+| ページの題名 | |
+| 題名の下の文 | 改行するとそのまま2行で出ます |
+| 納期の決まり | 何日先から／何日先まで、添える文 |
+
+「保存して発注ページに反映」を押すと、**次にお客様がページを開いた時点から新しい内容**になります。
+
+### 仕組み
+
+保存したものは発注ページ側の KV に入り、`GET /form.json` がそれを返します。
+発注を受け取る側も同じものを見るので、**消した種目は以後受け付けなくなります**
+（すでに届いている発注の控えは、そのまま残ります）。
+
+一度も保存していないときだけ、同梱の `public/form.default.json` が使われます。
+つまりこのファイルは「工場出荷時の値」で、ふだん触る必要はありません。
+
+保存できるのはアプリだけです。同期の合鍵を持っている人以外は書き替えられません
+（発注ページの Worker が、自分の持つ `SYNC_TOKEN` と突き合わせて確かめます）。
+
+### 気をつけること
+
+- **並べ替えと名前の変更はいつでも安全**です
+- 種目を**消す**と、以後その種目は選べなくなります
+- 選択肢は**それぞれ1つ以上**必要です（空にはできません）
+
+### 最初からやり直したいとき
+
+```sh
+cd order
+npx wrangler kv key delete --binding ORDERS "form:config" --remote
 ```
 
-- `id` は控えとメールに残るので、**一度公開したら変えない**でください（`label` は変えて構いません）
-- 直したら `wrangler deploy` で反映します
+保存が消え、`public/form.default.json` の内容に戻ります。
 
-欄そのもの（発注社名・種目・納期・納品形式…）を増やし減らしするときは、
-`public/index.html`・`public/form.js`・`worker.js` の3つを合わせて直します。
+### 欄そのものを増やしたいとき
+
+欄（発注社名・納期・納品形式…）の増減は、アプリからはできません。
+`public/index.html`・`public/form.js`・`worker.js` の3つを合わせて直し、deploy します。
 
 ---
 
