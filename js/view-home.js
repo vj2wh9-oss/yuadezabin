@@ -507,17 +507,22 @@
 
     var card = el('div', { class: 'card bg-day' });
 
-    /* いちばん知りたいのは「今日あといくら使えるか」なので、頭に大きく出す。
+    /* いちばん知りたいのは「今日いくら使えるか」なので、頭に大きく出す。
        ペースが崩れているときは、立て直しの予算から引いた額を出す
        （ふだんの1日予算から引くと、守っても月末に足りなくなる） */
     card.appendChild(el('div', { class: 'bg-rest' + (b.todayOver ? ' over' : '') }, [
-      el('span', { class: 'bg-rest-l', text: b.todayOver ? '今日は使いすぎ' : '今日あと使える' }),
-      el('b', { text: yen(b.todayOver || b.todayLeft) }),
-      b.todayOver ? el('span', { class: 'bg-rest-s', text: 'オーバー' })
-        : b.behind ? el('span', { class: 'bg-rest-s', text: '立て直しの予算から' }) : null
+      el('span', { class: 'bg-rest-l', text: '本日使える金額' }),
+      el('b', { text: yen(b.todayLeft) }),
+      b.todayOver ? el('span', { class: 'bg-rest-s', text: yen(b.todayOver) + ' 使いすぎ' }) : null
     ]));
 
-    card.appendChild(bgLine('今日の予算', b.perDay, b.today, b.todayPct, false));
+    /* 棒は1本だけ。ペースが崩れている月は、割り直したほうだけを出す。
+       ふだんの予算と立て直しの予算を並べても、どちらを守ればよいのか迷うだけ */
+    if (b.behind) {
+      card.appendChild(bgLine('今日の予算', b.restPerDay, b.today, b.restPct, false, '予算調整済み'));
+    } else {
+      card.appendChild(bgLine('今日の予算', b.perDay, b.today, b.todayPct, false));
+    }
 
     if (b.noRoom) {
       // 使いすぎではなく、そもそも固定費で予算が埋まっている
@@ -534,9 +539,8 @@
     } else if (b.behind) {
       card.appendChild(el('div', { class: 'bg-day-note warn' }, [
         ui.icon('alert', 15),
-        el('span', { text: 'このペースだと足りません。残り' + b.rest + '日は、1日 ' + yen(b.restPerDay) + ' までに' })
+        el('span', { text: '使いすぎているので、残り' + b.rest + '日で割り直しています' })
       ]));
-      card.appendChild(bgLine('立て直すなら', b.restPerDay, b.today, b.restPct, true));
     }
 
     card.appendChild(el('div', { class: 'bg-foot' }, [
@@ -549,14 +553,20 @@
     return card;
   }
 
-  /* 1行ぶん。予算・使った額・％・棒 */
-  function bgLine(label, limit, used, pct, sub) {
+  /**
+   * 1行ぶん。予算・使った額・％・棒
+   * @param {string} [tag] 見出しの横に付ける小さな印（「予算調整済み」など）
+   */
+  function bgLine(label, limit, used, pct, sub, tag) {
     var yen = DL.docs.yen;
     // 予算が0なのに使っていれば、100%ちょうどでも超えている
     var over = pct > 100 || (limit <= 0 && used > 0);
     return el('div', { class: 'bg-day-line' + (sub ? ' sub' : '') }, [
       el('div', { class: 'bg-head' }, [
-        el('span', { text: label }),
+        el('span', { class: 'bg-head-l' }, [
+          el('span', { text: label }),
+          tag ? ui.chip(tag, 'warn') : null
+        ]),
         el('b', { class: over ? 'over' : '', text: yen(limit) })
       ]),
       el('div', { class: 'bg-bar' + (over ? ' over' : '') },
