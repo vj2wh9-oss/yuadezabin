@@ -490,6 +490,9 @@
       ? ['draft', 'issued', 'accepted', 'declined']
       : ['draft', 'issued', 'paid'];
     d.status = states.indexOf(d.status) >= 0 ? d.status : 'draft';
+    // 書き出した PDF（共有ファイルの ID）。端末には置かず、Cloudflare にある
+    d.pdfFileId = d.pdfFileId || '';
+    d.pdfName = d.pdfName || '';
     d.createdAt = d.createdAt || new Date().toISOString();
     return d;
   }

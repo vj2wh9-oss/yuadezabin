@@ -298,25 +298,79 @@
     };
   }
 
+  /* ---------------- 降り止みの隙間をならす ----------------
+
+     weather_code は「その1時間に実際に降ったか」で決まる。
+     降水確率が9割を超えている雨の夜でも、たまたま降っていない1時間は
+     2（晴れときどきくもり）になる。
+
+     実測（2026-09-07 東京）：
+       22時 code 51 pop 96 ／ 23時 code 2 pop 93 ／ 0時 code 51 pop 88
+       その日の代表 code は 65（雨）、降水確率は最大 100%
+
+     この23時をそのまま出すと、外は降っているのにホームだけ晴れの記号になる。
+     前後を見て、降っている最中なら降っているほうの記号を採る。 */
+
+  var WET = 51;          // これ以上の記号は、何かしら降っている
+  var WET_POP = 50;      // 降水確率がこれ以上なら「降り止みの隙間」とみなす
+  var WET_SPAN = 2;      // 何時間前後まで見るか
+
+  /** その記号は降っているか */
+  function isWet(code) { return U.num(code, -1) >= WET; }
+
+  /**
+   * 降り止みの隙間をならした記号。
+   * すでに降っている記号か、降水確率が低ければ、そのまま返す。
+   * @param {number} code いまの記号
+   * @param {number} [at] ミリ秒（省略すると今）
+   */
+  function wetAround(code, at) {
+    if (isWet(code)) return code;
+    var t = at || Date.now();
+    var near = nearHour(t);
+    // いまの降水確率が低ければ、ほんとうに降っていない
+    if (!near || U.num(near.pop, 0) < WET_POP) return code;
+
+    var c = cache();
+    var best = null, bestD = Infinity;
+    ((c && c.hours) || []).forEach(function (h) {
+      if (!isWet(h.code)) return;
+      var ms = stamp(h.time);
+      if (isNaN(ms)) return;
+      var d = Math.abs(ms - t);
+      if (d > WET_SPAN * 3600000) return;
+      if (d < bestD) { bestD = d; best = h; }
+    });
+    return best ? best.code : code;
+  }
+
   /**
    * 「いまの天気」として出すもの。
    * 取ってきた時点の現況が新しければそれを、古くなっていたら
    * 持っている予報のうち、いまの時刻にいちばん近いものを使う。
    * どちらも無ければその日の代表値。
+   *
+   * どの道を通っても、降り止みの隙間はならしてから返す。
+   * @returns {{code,temp,night,pop,from}|null} pop はいまの時間の降水確率
    */
   function current() {
     var c = cache();
     if (!c) return null;
+    var near = nearHour();
+    var pop = near ? U.num(near.pop, 0) : 0;
+
     var n = c.now || {};
     var freshNow = U.num(n.code, -1) >= 0 && (Date.now() - new Date(c.at).getTime()) / 60000 < FRESH_MIN;
-    if (freshNow) return { code: n.code, temp: n.temp, night: !!n.night, from: 'now' };
-
-    var near = nearHour();
-    if (near) return { code: near.code, temp: near.temp, night: near.night, from: 'hour' };
+    if (freshNow) {
+      return { code: wetAround(n.code), temp: n.temp, night: !!n.night, pop: pop, from: 'now' };
+    }
+    if (near) {
+      return { code: wetAround(near.code), temp: near.temp, night: near.night, pop: pop, from: 'hour' };
+    }
 
     var d = dayOf(U.today());
     if (!d) return null;
-    return { code: d.code, temp: d.max, night: false, from: 'day' };
+    return { code: d.code, temp: d.max, night: false, pop: U.num(d.pop, 0), from: 'day' };
   }
 
   /**
@@ -350,6 +404,7 @@
     place: place, setPlace: setPlace, search: search, nameOf: nameOf, locate: locate,
     load: load, cache: cache, dayOf: dayOf, noonOf: noonOf, codeInfo: codeInfo,
     nearHour: nearHour, hoursOf: hoursOf, isNight: isNight, stamp: stamp, current: current,
+    isWet: isWet, wetAround: wetAround, WET_POP: WET_POP,
     windDir: windDir, FRESH_MIN: FRESH_MIN
   };
 })(window.DL);

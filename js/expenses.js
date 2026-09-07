@@ -165,6 +165,10 @@
       perDay: Math.round(perDay),
       restPerDay: Math.round(restPerDay),
       today: today,
+      // 今日あと使える額。ペースが崩れているときは、立て直しのほうを基準にする
+      // （ふだんの1日予算を残りとして出すと、月末に足りなくなる）
+      todayLeft: Math.max(0, Math.round((restPerDay < perDay ? restPerDay : perDay) - today)),
+      todayOver: Math.max(0, Math.round(today - (restPerDay < perDay ? restPerDay : perDay))),
       // 予算が0のときに使っていたら、0%ではなく振り切った扱いにする
       todayPct: perDay > 0 ? pct(today, perDay) : (today > 0 ? 100 : 0),
       restPct: restPerDay > 0 ? pct(today, restPerDay) : (today > 0 ? 100 : 0),

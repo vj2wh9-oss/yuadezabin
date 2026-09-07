@@ -93,7 +93,7 @@
 
     /* 操作 */
     wrap.appendChild(el('div', { class: 'doc-actions row-wrap' }, [
-      ui.btn('印刷 / PDF', 'primary', function () { printDoc(d); }, 'printer'),
+      ui.btn('PDFにする', 'primary', function () { makePdf(p, d); }, 'invoice'),
       ui.btn('内容を編集', 'ghost', function () { DL.forms.docSheet(p.id, d.id); }, 'edit'),
       d.type === 'invoice'
         ? ui.btn('この請求書から領収書', 'ghost', function () {
@@ -177,14 +177,98 @@
     return sel;
   }
 
-  /* 印刷（iPhone では共有シートから「PDFとして保存」できる） */
-  function printDoc(d) {
-    if (!d.number) ui.toast('下書きのままです。番号は「発行済み」にすると振られます');
-    document.body.classList.add('printing');
-    setTimeout(function () {
-      window.print();
-      setTimeout(function () { document.body.classList.remove('printing'); }, 500);
-    }, 60);
+  /* ---------------- PDF にする ----------------
+
+     端末には落とさない。Cloudflare（R2）の「書類」に置いて、
+     そのまま種類ごとの Discord のチャンネルへ送る。 */
+
+  var STEP = {
+    lib: 'PDF の部品を読み込んでいます…',
+    draw: '書面を写しています…',
+    pdf: 'PDF にしています…',
+    upload: 'Cloudflare に置いています…',
+    send: 'Discord に送っています…'
+  };
+
+  function makePdf(p, d) {
+    if (!DL.files.ready()) {
+      ui.toast('先に「PC・iPhone の同期」を設定してください', 'danger');
+      location.hash = '#/settings';
+      return;
+    }
+    if (!d.number) {
+      ui.toast('下書きのままです。番号は「発行済み」にすると振られます', 'warn');
+    }
+
+    var note = el('p', { class: 'muted small', text: STEP.lib });
+    var bar = ui.progress(10, null);
+    var close = ui.sheet({
+      title: D.TYPE_LABEL[d.type] + 'を PDF にする',
+      body: el('div', { class: 'form' }, [note, bar])
+    });
+    var pct = { lib: 10, draw: 35, pdf: 60, upload: 80, send: 92 };
+
+    DL.docpdf.save(d, p, {
+      onStep: function (s) {
+        note.textContent = STEP[s] || '';
+        var i = bar.querySelector('i');
+        if (i) i.style.width = (pct[s] || 10) + '%';
+      }
+    }).then(function (out) {
+      // 作った PDF は書類にも覚えさせる（あとから同じものを開けるように）
+      S.updateDoc(p.id, d.id, { pdfFileId: out.fileId, pdfName: out.name });
+
+      note.textContent = STEP.send;
+      var i = bar.querySelector('i');
+      if (i) i.style.width = '92%';
+
+      return sendToDiscord(p, d, out).then(function (sent) {
+        close();
+        done(p, d, out, sent);
+      });
+    }).catch(function (e) {
+      close();
+      var bad = ui.sheet({
+        title: 'PDF にできませんでした',
+        body: el('p', { class: 'sheet-msg', text: e.message }),
+        actions: [ui.btn('閉じる', 'primary', function () { bad(); })]
+      });
+    });
+  }
+
+  /* 種類ごとのチャンネルへ。送れなくても PDF は残っているので、そこは分けて伝える */
+  function sendToDiscord(p, d, out) {
+    var c = D.calc(d);
+    return DL.memosend.sendDoc({
+      type: d.type, fileId: out.fileId, name: out.name,
+      number: d.number || '', client: d.clientName || '',
+      total: D.yen(c.total), issueDate: U.fmtYMD(d.issueDate),
+      project: p.title || ''
+    }).then(function () { return { ok: true }; },
+      function (e) { return { ok: false, message: e.message }; });
+  }
+
+  function done(p, d, out, sent) {
+    var kb = Math.max(1, Math.round(out.size / 1024));
+    var body = el('div', { class: 'form' }, [
+      el('p', { class: 'muted small',
+        text: out.name + '（' + kb + 'KB・' + out.pages + 'ページ）' }),
+      el('div', { class: 'alert ' + (sent.ok ? 'info' : 'warn') },
+        el('span', { text: sent.ok
+          ? 'Cloudflare の「' + out.folder + '」に置いて、' + D.TYPE_LABEL[d.type]
+            + 'のチャンネルへ送りました。'
+          : 'Cloudflare の「' + out.folder + '」に置きました。'
+            + 'Discord へは送れませんでした：' + sent.message })),
+      ui.btn('ファイルで見る', 'ghost full', function () {
+        close();
+        location.hash = '#/files';
+      }, 'folder')
+    ]);
+    var close = ui.sheet({
+      title: 'PDF にしました',
+      body: body,
+      actions: [ui.btn('閉じる', 'primary', function () { close(); })]
+    });
   }
 
   DL.views = DL.views || {};

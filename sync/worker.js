@@ -95,10 +95,13 @@ export default {
           kv: !!env.SYNC, r2: !!env.FILES, openai: !!env.OPENAI_API_KEY,
           // 夜のバックアップの支度ができているか（値そのものは出さない）
           discord: !!env.DISCORD_WEBHOOK, backupKey: !!env.BACKUP_KEY,
-          // ひらめきメモの送り先（URL そのものは出さない）
-          memoWebhook: !!env.DISCORD_MEMO_WEBHOOK
+          // ひらめきメモ・書類の送り先（URL そのものは出さない）
+          memoWebhook: !!env.DISCORD_MEMO_WEBHOOK,
+          estimateWebhook: !!env.DISCORD_ESTIMATE_WEBHOOK,
+          invoiceWebhook: !!env.DISCORD_INVOICE_WEBHOOK,
+          receiptWebhook: !!env.DISCORD_RECEIPT_WEBHOOK
         },
-        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send'],
+        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send'],
         note: '各 /v1/... は Authorization: Bearer <合鍵> が必要です'
       }, 200, cors);
     }
@@ -206,6 +209,10 @@ export default {
 
       if (url.pathname === '/v1/memo/send') {
         return memoSend(request, env, cors);
+      }
+
+      if (url.pathname === '/v1/doc/send') {
+        return docSend(request, env, cors, id);
       }
 
       if (url.pathname === '/v1/roomreserve') {
@@ -482,6 +489,64 @@ function chunk(s, max) {
   }
   if (rest) out.push(rest);
   return out.length ? out : [''];
+}
+
+/* ---------------- 書類を Discord へ ----------------
+
+   見積書・請求書・領収書は、それぞれ別のチャンネルへ送る。
+   送り先はどれも secret にだけ置く（アプリ側には持たせない）。
+
+   置いてある PDF を R2 から出して、そのまま添える。 */
+
+const DOC_HOOKS = {
+  estimate: { env: 'DISCORD_ESTIMATE_WEBHOOK', label: '見積書' },
+  invoice: { env: 'DISCORD_INVOICE_WEBHOOK', label: '請求書' },
+  receipt: { env: 'DISCORD_RECEIPT_WEBHOOK', label: '領収書' }
+};
+
+async function docSend(request, env, cors, id) {
+  if (request.method !== 'POST') return json({ error: 'not_found' }, 404, cors);
+  if (!env.FILES) return json({ error: 'r2_not_bound' }, 500, cors);
+
+  let body;
+  try { body = await request.json(); } catch (e) { return json({ error: 'bad_json' }, 400, cors); }
+
+  const kind = DOC_HOOKS[String(body && body.type || '')];
+  if (!kind) return json({ error: 'bad_type' }, 400, cors);
+  const hook = env[kind.env];
+  if (!hook) return json({ error: 'no_doc_webhook', which: kind.env, label: kind.label }, 503, cors);
+
+  const fileId = String(body.fileId || '');
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(fileId)) return json({ error: 'bad_id' }, 400, cors);
+
+  const obj = await env.FILES.get('files/' + id + '/' + fileId);
+  if (!obj) return json({ error: 'not_found' }, 404, cors);
+  if (obj.size > DISCORD_MAX) {
+    return json({ error: 'too_large', size: obj.size, max: DISCORD_MAX }, 413, cors);
+  }
+
+  const name = String(body.name || (kind.label + '.pdf')).slice(0, 120);
+  const lines = [
+    '**' + kind.label + '**' + (body.number ? '　No. ' + escapeMd(String(body.number)) : ''),
+    body.client ? '宛先　' + escapeMd(String(body.client).slice(0, 80)) : '',
+    body.total ? '金額　' + escapeMd(String(body.total)) : '',
+    body.issueDate ? '発行日　' + escapeMd(String(body.issueDate)) : '',
+    body.project ? '案件　' + escapeMd(String(body.project).slice(0, 80)) : ''
+  ].filter(Boolean);
+
+  const form = new FormData();
+  form.append('payload_json', JSON.stringify({
+    content: lines.join('\n'),
+    allowed_mentions: { parse: [] }
+  }));
+  form.append('files[0]', new Blob([await obj.arrayBuffer()], { type: 'application/pdf' }), name);
+
+  const res = await fetch(hook + '?wait=true', { method: 'POST', body: form });
+  if (!res.ok) {
+    const msg = (await res.text()).slice(0, 300);
+    return json({ error: 'discord_error', status: res.status, message: msg }, 502, cors);
+  }
+  return json({ ok: true, label: kind.label, size: obj.size }, 200, cors);
 }
 
 /* ---------------- ROOM RESERVE の予定を取り次ぐ ----------------
