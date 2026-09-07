@@ -61,47 +61,22 @@
     if (now !== null) {
       var na = ang(now);
       var sin = Math.sin(na), cos = Math.cos(na);
-      // 下敷きを1本かませる。どの色の帯の上でも、針が沈まないように
-      hand.push(svgEl('line', {
-        class: 'tp-hand-bg',
-        x1: C + sin * (r - 5), y1: C - cos * (r - 5),
-        x2: C + sin * (R + 7), y2: C - cos * (R + 7)
-      }));
       hand.push(svgEl('line', {
         class: 'tp-hand',
-        x1: C + sin * (r - 5), y1: C - cos * (r - 5),
-        x2: C + sin * (R + 7), y2: C - cos * (R + 7)
+        x1: C + sin * (r - 4), y1: C - cos * (r - 4),
+        x2: C + sin * (R + 4), y2: C - cos * (R + 4)
       }));
       hand.push(svgEl('circle', {
-        class: 'tp-hand-tip', cx: C + sin * (R + 7), cy: C - cos * (R + 7), r: 3.4
+        class: 'tp-hand-tip', cx: C + sin * (R + 4), cy: C - cos * (R + 4), r: 2.4
       }));
       hand.forEach(function (n) { svg.appendChild(n); });
     }
 
-    /* まん中。今日を見ているときは、いまの時刻といましていることを出す。
-       ほかの日は、いちばん長いもの（いまが無いので） */
-    var atNow = now === null ? null : T.ofDay(date).filter(function (b) {
-      return now >= b.start && now < b.end;
-    })[0];
-    if (now !== null) {
-      // 3行は、まん中の穴（半径29）に収まる高さに置く。
-      // 下に行くほど横幅が狭くなるので、名前は短く切る
-      svg.appendChild(svgEl('text', {
-        class: 'tp-mid-now', x: C, y: C - 8, 'text-anchor': 'middle', text: 'いま'
-      }));
-      svg.appendChild(svgEl('text', {
-        class: 'tp-mid-v now', x: C, y: C + 6, 'text-anchor': 'middle', text: T.fmt(now)
-      }));
-      svg.appendChild(svgEl('text', {
-        class: 'tp-mid-l', x: C, y: C + 17, 'text-anchor': 'middle',
-        text: atNow ? cut(atNow.label, 5) : '未記入'
-      }));
-    } else {
-      var top = T.sums(date)[0];
-      if (top) {
-        svg.appendChild(svgEl('text', { class: 'tp-mid-v', x: C, y: C + 1, 'text-anchor': 'middle', text: hm(top.min) }));
-        svg.appendChild(svgEl('text', { class: 'tp-mid-l', x: C, y: C + 12, 'text-anchor': 'middle', text: top.label }));
-      }
+    // まん中に、いちばん長いものを出す
+    var top = T.sums(date)[0];
+    if (top) {
+      svg.appendChild(svgEl('text', { class: 'tp-mid-v', x: C, y: C + 1, 'text-anchor': 'middle', text: hm(top.min) }));
+      svg.appendChild(svgEl('text', { class: 'tp-mid-l', x: C, y: C + 12, 'text-anchor': 'middle', text: top.label }));
     }
 
     /* 開いたときの見せ方。0→1 を渡すと、0時のところから時計回りに出てくる。
@@ -561,12 +536,6 @@
 
   function slabel(b) {
     return b.label + ' ' + T.fmt(b.start) + '〜' + T.fmt(b.end) + (b.memo ? '　' + b.memo : '');
-  }
-
-  /* 円のまん中は狭いので、長い名前は切る */
-  function cut(s, n) {
-    s = String(s || '');
-    return s.length > n ? s.slice(0, n) + '…' : s;
   }
 
   /** 分 → '8時間30分' / '45分' */

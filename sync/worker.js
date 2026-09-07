@@ -50,6 +50,7 @@
  * レシートの読み取り（OpenAI）
  *   GET    /v1/ocr/status  → { key, r2, model, strongModel, reasoning, maxTokens }（鍵は返さない）
  *   POST   /v1/ocr/receipt → 本文 {fileId} → { data:{store,date,total,items,…}, model, retried, usage }
+ *   POST   /v1/menu        → 本文 {budget,slots,servings,avoid} → { data:{meals,shopping,total,note} }
  *   POST   /v1/ocr/card    → 本文 {fileId} → { data:{company,contact,email,tel,address,…}, model, retried, usage }
  *                             R2 に置いた写真を読み、JSON だけ受け取る。
  *                             鍵は Worker の secret にだけ置き、アプリには渡さない
@@ -101,7 +102,7 @@ export default {
           invoiceWebhook: !!env.DISCORD_INVOICE_WEBHOOK,
           receiptWebhook: !!env.DISCORD_RECEIPT_WEBHOOK
         },
-        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send'],
+        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu'],
         note: '各 /v1/... は Authorization: Bearer <合鍵> が必要です'
       }, 200, cors);
     }
@@ -213,6 +214,10 @@ export default {
 
       if (url.pathname === '/v1/doc/send') {
         return docSend(request, env, cors, id);
+      }
+
+      if (url.pathname === '/v1/menu') {
+        return menu(request, env, cors);
       }
 
       if (url.pathname === '/v1/roomreserve') {
@@ -489,6 +494,170 @@ function chunk(s, max) {
   }
   if (rest) out.push(rest);
   return out.length ? out : [''];
+}
+
+/* ---------------- 今日の献立を考える ----------------
+
+   今日あと使える金額から、自炊の献立と買い物の一覧を出す。
+   写真は関わらないので、読み取り（/v1/ocr）とは別の入口にする。
+
+   決まりごと（頼みかたに入れてある）：
+     ・お米はいつも家にあるものとして、買い物に入れない
+     ・冷凍食品は使ってよいが、頼りすぎない
+     ・値段はスーパーの並の売値。買う単位（1袋・1パック）で数える
+     ・予算に収める。余らせるのは構わないが、超えない */
+
+const MENU_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['meals', 'shopping', 'total', 'note'],
+  properties: {
+    meals: {
+      type: 'array',
+      description: '献立。頼まれた食事のぶんだけ',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['slot', 'name', 'dishes', 'steps', 'minutes'],
+        properties: {
+          slot: { type: 'string', enum: ['lunch', 'dinner'], description: 'lunch=昼 dinner=夕' },
+          name: { type: 'string', description: '献立の呼び名。例）鶏の照り焼き定食' },
+          dishes: {
+            type: 'array', description: '一品ずつ。主菜・副菜・汁物など',
+            items: { type: 'string' }
+          },
+          steps: { type: 'array', description: '作る手順。3〜6行', items: { type: 'string' } },
+          minutes: { type: 'number', description: '作るのにかかるおよその分' }
+        }
+      }
+    },
+    shopping: {
+      type: 'array',
+      description: '買うもの。お米は入れない。家にある調味料も入れない',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['name', 'qty', 'price'],
+        properties: {
+          name: { type: 'string', description: '品名' },
+          qty: { type: 'string', description: '買う単位。例）1パック / 1袋 / 200g' },
+          price: { type: 'number', description: 'スーパーの並の売値（円・税込）' }
+        }
+      }
+    },
+    total: { type: 'number', description: '買い物の合計（円）' },
+    note: { type: 'string', description: 'ひとこと。使い切りかたや作り置きの助言など' }
+  }
+};
+
+const SLOT_JA = { lunch: '昼ごはん', dinner: '晩ごはん' };
+
+function menuPrompt(o) {
+  const slots = (o.slots || []).map((s) => SLOT_JA[s] || s).join('と');
+  const people = o.servings === 2 ? '成人男性2人分' : '成人男性1人分';
+  const lines = [
+    '日本のスーパーで買える材料で、自炊の献立を考えてください。',
+    '予算は買い物の合計で ' + o.budget + ' 円まで。これを超えないでください。',
+    '作るのは ' + slots + '。量は' + people + 'です。',
+    'お米はいつも家にあるので、買い物には入れないでください（ごはんは献立に入れて構いません）。',
+    '塩・こしょう・しょうゆ・みそ・砂糖・みりん・酒・油などの基本の調味料も、'
+      + '家にあるものとして買い物には入れないでください。',
+    '冷凍食品は使ってもよいですが、頼りすぎないでください（使うなら1品まで）。',
+    '値段はスーパーの並の売値（税込）で、買う単位（1パック・1袋など）で数えてください。',
+    '買ったものは使い切るか、余りの使い道を note に書いてください。',
+    '手順は家庭の台所でできる範囲で、3〜6行にまとめてください。'
+  ];
+  if (o.avoid && o.avoid.length) {
+    lines.push('次の献立は最近出したので、それとは別のものにしてください：'
+      + o.avoid.slice(0, 12).join('、'));
+  }
+  if (o.season) lines.push('いまの季節は' + o.season + 'です。旬のものがあれば使ってください。');
+  return lines.join('\n');
+}
+
+async function menu(request, env, cors) {
+  if (request.method !== 'POST') return json({ error: 'not_found' }, 404, cors);
+  if (!env.OPENAI_API_KEY) return json({ error: 'no_api_key' }, 503, cors);
+
+  let body;
+  try { body = await request.json(); } catch (e) { return json({ error: 'bad_json' }, 400, cors); }
+
+  const budget = Math.round(Number(body && body.budget) || 0);
+  if (!(budget > 0)) return json({ error: 'no_budget' }, 400, cors);
+
+  // 1日の順（昼→晩）にそろえる。押した順のままだと言い回しが逆になる
+  const asked = Array.isArray(body.slots) ? body.slots : [];
+  const slots = ['lunch', 'dinner'].filter((s) => asked.indexOf(s) >= 0);
+  if (!slots.length) return json({ error: 'no_slots' }, 400, cors);
+
+  const o = {
+    budget: Math.min(budget, 100000),
+    slots,
+    servings: Number(body.servings) === 2 ? 2 : 1,
+    avoid: (Array.isArray(body.avoid) ? body.avoid : [])
+      .map((s) => String(s || '').slice(0, 40)).filter(Boolean),
+    season: String(body.season || '').slice(0, 10)
+  };
+
+  const model = String(body.model || env.OPENAI_MENU_MODEL || env.OPENAI_MODEL || OCR_DEFAULTS.model);
+  const pass = await askMenu(env, model, o);
+  if (!pass.ok) return json(pass.body, pass.status, cors);
+
+  return json({ ok: true, data: pass.data, model: pass.model, usage: pass.usage }, 200, cors);
+}
+
+async function askMenu(env, model, o) {
+  const base = String(env.OPENAI_BASE || OCR_DEFAULTS.base).replace(/\/+$/, '');
+  const effort = env.OPENAI_REASONING === undefined ? OCR_DEFAULTS.reasoning : String(env.OPENAI_REASONING);
+
+  const payload = {
+    model,
+    input: [{ role: 'user', content: [{ type: 'input_text', text: menuPrompt(o) }] }],
+    text: {
+      format: { type: 'json_schema', name: 'menu', strict: true, schema: MENU_SCHEMA }
+    },
+    max_output_tokens: Number(env.OPENAI_MENU_MAX_TOKENS || 2500),
+    tools: [],
+    store: false
+  };
+  if (effort) payload.reasoning = { effort };
+
+  let res;
+  try {
+    res = await fetch(base + '/responses', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer ' + env.OPENAI_API_KEY,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+  } catch (e) {
+    return { ok: false, status: 502, body: { error: 'openai_unreachable', message: String(e && e.message || e) } };
+  }
+
+  const text = await res.text();
+  if (!res.ok) {
+    let detailMsg = text.slice(0, 600);
+    try { detailMsg = JSON.parse(text).error?.message || detailMsg; } catch (e) { /* そのまま出す */ }
+    return { ok: false, status: res.status === 401 ? 502 : res.status,
+      body: { error: 'openai_error', status: res.status, model, message: detailMsg } };
+  }
+
+  let out;
+  try { out = JSON.parse(text); } catch (e) {
+    return { ok: false, status: 502, body: { error: 'openai_bad_json' } };
+  }
+  const content = pickText(out);
+  if (!content) {
+    return { ok: false, status: 502,
+      body: { error: 'openai_empty', model, incomplete: out.incomplete_details || null } };
+  }
+  let data;
+  try { data = JSON.parse(content); } catch (e) {
+    return { ok: false, status: 502, body: { error: 'not_json', sample: content.slice(0, 200) } };
+  }
+  return { ok: true, data, model, usage: out.usage || null };
 }
 
 /* ---------------- 書類を Discord へ ----------------

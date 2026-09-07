@@ -103,6 +103,13 @@
     if (bg) {
       wrap.appendChild(ui.section('今日の予算'));
       wrap.appendChild(bg);
+
+      /* その予算で作れる献立。予算のすぐ下に置く */
+      var mn = menuCard(today);
+      if (mn) {
+        wrap.appendChild(ui.section('今日の献立'));
+        wrap.appendChild(mn);
+      }
     }
 
     /* いまの様子。7日ぶんの棒は、カレンダーと重なるので出さない */
@@ -553,6 +560,165 @@
     return card;
   }
 
+  /* ---------------- 今日の献立 ----------------
+
+     今日あと使える金額から、自炊の献立を考えてもらう。
+     考えるのは向こう（OpenAI）で、鍵は Worker が持っている。
+     採用したものはその日にぶら下がり、日別画面にも出る。 */
+
+  var mSlots = ['dinner'];   // 選んだ食事。画面を描き直しても覚えておく
+  var mServ = 1;             // 何人分
+  var mDraft = null;         // まだ採用していない献立
+  var mBusy = false;
+
+  function menuCard(today) {
+    var M = DL.menu;
+    var b = DL.expenses.dailyBudget(today);
+    if (!b) return null;
+    var yen = DL.docs.yen;
+    var saved = S.getMenu(today);
+
+    var card = el('div', { class: 'card mn-card' });
+
+    // すでに採用してあるなら、それを出す
+    if (saved) {
+      card.appendChild(menuBody(saved, today));
+      card.appendChild(el('div', { class: 'row-wrap' }, [
+        ui.btn('別のを出す', 'ghost', function () {
+          mDraft = null;
+          run(today, b, M.namesOf(saved));
+        }, 'refresh'),
+        ui.btn('外す', 'ghost', function () {
+          ui.confirm('今日の献立を外します。', { okText: '外す' }).then(function (ok) {
+            if (!ok) return;
+            S.removeMenu(today);
+            ui.toast('外しました');
+          });
+        }, 'trash')
+      ]));
+      return card;
+    }
+
+    if (!M.ready()) {
+      card.appendChild(el('p', { class: 'muted small',
+        text: '「PC・iPhone の同期」を設定すると、今日の予算に合わせた献立を出せます。' }));
+      return card;
+    }
+
+    /* 選ぶところ。どの食事を、何人分で */
+    card.appendChild(ui.block('どの食事', el('div', { class: 'mn-pick' },
+      M.SLOTS.map(function (s) {
+        var on = mSlots.indexOf(s.value) >= 0;
+        return ui.btn(s.label, 'ghost' + (on ? ' on' : ''), function () {
+          var i = mSlots.indexOf(s.value);
+          if (i >= 0) mSlots.splice(i, 1);
+          else mSlots.push(s.value);
+          if (!mSlots.length) mSlots.push(s.value);      // 全部外すことはできない
+          DL.app.render();
+        });
+      })), '両方を選ぶこともできます'));
+
+    card.appendChild(ui.block('何人分', ui.segmented(
+      [{ value: 1, label: '1人分' }, { value: 2, label: '2人分' }],
+      mServ, function (v) { mServ = U.num(v, 1); DL.app.render(); })));
+
+    // まだ出していないとき
+    if (!mDraft) {
+      card.appendChild(el('p', { class: 'muted small',
+        text: '今日あと使える ' + yen(b.todayLeft) + ' で作れる献立を考えます。'
+          + 'お米は家にあるものとして、買い物には入れません。' }));
+      card.appendChild(ui.btn(mBusy ? '考えています…' : '献立を出す',
+        'primary full', function () { run(today, b, []); }, 'idea'));
+      return card;
+    }
+
+    card.appendChild(menuBody(mDraft, today));
+    card.appendChild(el('div', { class: 'row-wrap' }, [
+      ui.btn('これにする', 'primary', function () {
+        S.setMenu(today, mDraft);
+        mDraft = null;
+        ui.toast('今日の献立にしました');
+      }, 'check'),
+      ui.btn(mBusy ? '考えています…' : '別のを出す', 'ghost', function () {
+        run(today, b, DL.menu.namesOf(mDraft));
+      }, 'refresh')
+    ]));
+    return card;
+
+    function run(date, bd, avoid) {
+      if (mBusy) return;
+      mBusy = true;
+      DL.app.render();
+      DL.menu.suggest({
+        budget: bd.todayLeft, slots: mSlots.slice(), servings: mServ,
+        avoid: avoid, date: date
+      }).then(function (m) {
+        mBusy = false;
+        mDraft = m;
+        DL.app.render();
+      }).catch(function (e) {
+        mBusy = false;
+        DL.app.render();
+        ui.toast(e.message, 'danger');
+      });
+    }
+  }
+
+  /* 献立の中身。ホームでも日別画面でも同じものを出す */
+  function menuBody(m, date) {
+    var yen = DL.docs.yen;
+    var box = el('div', { class: 'mn-body' });
+
+    (m.meals || []).forEach(function (x) {
+      var open = el('details', { class: 'mn-meal' });
+      open.appendChild(el('summary', {}, [
+        ui.chip(DL.menu.SLOT_LABEL[x.slot] || '', 'soft'),
+        el('b', { class: 'mn-name', text: x.name }),
+        x.minutes ? el('span', { class: 'muted small', text: x.minutes + '分' }) : null
+      ]));
+      if (x.dishes.length) {
+        open.appendChild(el('ul', { class: 'mn-dishes' }, x.dishes.map(function (d) {
+          return el('li', { text: d });
+        })));
+      }
+      if (x.steps.length) {
+        open.appendChild(el('ol', { class: 'mn-steps' }, x.steps.map(function (s) {
+          return el('li', { text: s });
+        })));
+      }
+      box.appendChild(open);
+    });
+
+    if ((m.shopping || []).length) {
+      var sh = el('details', { class: 'mn-shop' });
+      sh.appendChild(el('summary', {}, [
+        el('b', { text: '買うもの' }),
+        ui.chip(m.shopping.length + '点', 'ghosty'),
+        el('span', { class: 'mn-total', text: yen(m.total) })
+      ]));
+      var ul = el('div', { class: 'mn-list' });
+      m.shopping.forEach(function (s) {
+        ul.appendChild(el('div', { class: 'mn-item' }, [
+          el('span', { class: 'mn-item-n', text: s.name }),
+          el('span', { class: 'muted small', text: s.qty }),
+          el('b', { text: yen(s.price) })
+        ]));
+      });
+      sh.appendChild(ul);
+      box.appendChild(sh);
+    }
+
+    // 予算に対してどうか。超えていれば、そこは分かるようにする
+    var over = m.budget && m.total > m.budget;
+    box.appendChild(el('p', { class: 'muted small mn-foot' + (over ? ' over' : ''), text:
+      (m.servings === 2 ? '2人分' : '1人分')
+      + '　買い物 ' + yen(m.total)
+      + (m.budget ? '（予算 ' + yen(m.budget) + (over ? '・超えています' : '・残り '
+        + yen(m.budget - m.total) + '）') : '') }));
+    if (m.note) box.appendChild(el('p', { class: 'muted small', text: m.note }));
+    return box;
+  }
+
   /**
    * 1行ぶん。予算・使った額・％・棒
    * @param {string} [tag] 見出しの横に付ける小さな印（「予算調整済み」など）
@@ -629,5 +795,8 @@
   }
 
   DL.views = DL.views || {};
-  DL.views.home = { render: render, quotaRow: quotaRow, deadlineRow: deadlineRow };
+  DL.views.home = {
+    render: render, quotaRow: quotaRow, deadlineRow: deadlineRow,
+    menuBody: menuBody      // 日別画面でも同じ中身を出す
+  };
 })(window.DL);

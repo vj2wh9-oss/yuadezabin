@@ -162,6 +162,8 @@
     },
     // 1日の記録（デイリーログ）{ 'YYYY-MM-DD': {text, mood, weather, updatedAt} }
     logs: {},
+    // 採用した献立 { 'YYYY-MM-DD': {meals, shopping, total, servings, note, at} }
+    menus: {},
     // 天気を出す地点（Open-Meteo）。予報そのものは端末ごとに持つ
     weather: { name: '', lat: null, lon: null },
     weatherCache: null,    // { at, key, name, days:[{date,code,max,min,pop}], now }
@@ -303,6 +305,7 @@
     s.settings.eventDone = normalizeEventDone(s.settings.eventDone);
     s.settings.dutyLogDone = normalizeDutyLogDone(s.settings.dutyLogDone);
     s.settings.logs = normalizeLogs(s.settings.logs);
+    s.settings.menus = normalizeMenus(s.settings.menus);
     s.settings.notify = normalizeNotify(s.settings.notify);
     s.settings.docSeq = migrateDocSeq(s.settings.docSeq);
     s.projects = (s.projects || []).map(normalizeProject);
@@ -1498,6 +1501,87 @@
     return Object.keys(state.settings.logs || {}).sort(function (a, b) { return U.cmp(b, a); });
   }
 
+  /* ---- 献立 ----
+
+     予算から起こして、採用したものをその日にぶら下げる。
+     中身は向こう（OpenAI）から来るので、形はこちらでそろえる */
+
+  var MENU_SLOTS = ['lunch', 'dinner'];
+
+  function normalizeMenu(m) {
+    m = m || {};
+    var meals = (Array.isArray(m.meals) ? m.meals : []).slice(0, 4).map(function (x) {
+      x = x || {};
+      return {
+        slot: MENU_SLOTS.indexOf(x.slot) >= 0 ? x.slot : 'dinner',
+        name: String(x.name || '').trim().slice(0, 60),
+        dishes: (Array.isArray(x.dishes) ? x.dishes : []).slice(0, 8)
+          .map(function (s) { return String(s || '').trim().slice(0, 60); })
+          .filter(function (s) { return s; }),
+        steps: (Array.isArray(x.steps) ? x.steps : []).slice(0, 10)
+          .map(function (s) { return String(s || '').trim().slice(0, 200); })
+          .filter(function (s) { return s; }),
+        minutes: Math.max(0, Math.round(U.num(x.minutes, 0)))
+      };
+    }).filter(function (x) { return x.name || x.dishes.length; });
+
+    var shopping = (Array.isArray(m.shopping) ? m.shopping : []).slice(0, 40).map(function (x) {
+      x = x || {};
+      return {
+        name: String(x.name || '').trim().slice(0, 60),
+        qty: String(x.qty || '').trim().slice(0, 24),
+        price: Math.max(0, Math.round(U.num(x.price, 0)))
+      };
+    }).filter(function (x) { return x.name; });
+
+    // 合計は自分で数え直す。向こうの足し算を当てにしない
+    var sum = shopping.reduce(function (a, x) { return a + x.price; }, 0);
+    return {
+      meals: meals, shopping: shopping,
+      total: sum || Math.max(0, Math.round(U.num(m.total, 0))),
+      servings: U.num(m.servings, 1) === 2 ? 2 : 1,
+      budget: Math.max(0, Math.round(U.num(m.budget, 0))),
+      note: String(m.note || '').trim().slice(0, 300),
+      at: m.at || new Date().toISOString()
+    };
+  }
+
+  function normalizeMenus(map) {
+    var out = {};
+    Object.keys(map || {}).forEach(function (d) {
+      if (!U.isISO(d)) return;
+      var m = normalizeMenu(map[d]);
+      if (m.meals.length) out[d] = m;
+    });
+    return out;
+  }
+
+  function getMenu(date) { return (state.settings.menus || {})[date] || null; }
+
+  function setMenu(date, m) {
+    if (!U.isISO(date)) return null;
+    var map = state.settings.menus || (state.settings.menus = {});
+    if (!m) delete map[date];
+    else map[date] = normalizeMenu(m);
+    save();
+    return map[date] || null;
+  }
+
+  function removeMenu(date) { return setMenu(date, null); }
+
+  /** 最近出した献立の呼び名。同じものばかり出ないよう、次に渡す */
+  function recentMenuNames(days) {
+    var out = [];
+    var from = U.addDays(U.today(), -(days || 14));
+    Object.keys(state.settings.menus || {}).sort().reverse().forEach(function (d) {
+      if (U.cmp(d, from) < 0) return;
+      (state.settings.menus[d].meals || []).forEach(function (x) {
+        if (x.name && out.indexOf(x.name) < 0) out.push(x.name);
+      });
+    });
+    return out.slice(0, 12);
+  }
+
   /* ---- ひらめきメモ ---- */
 
   function ideas(date) { return ((getLog(date) || {}).ideas || []).slice(); }
@@ -2636,6 +2720,8 @@
     roomReserve: roomReserve, updateRoomReserve: updateRoomReserve,
     putTimeblock: putTimeblock, removeTimeblock: removeTimeblock,
     getLog: getLog, setLog: setLog, logDates: logDates, MOODS: MOODS,
+    getMenu: getMenu, setMenu: setMenu, removeMenu: removeMenu,
+    recentMenuNames: recentMenuNames, normalizeMenu: normalizeMenu,
     ideas: ideas, getIdea: getIdea, addIdea: addIdea, updateIdea: updateIdea,
     markIdeaSent: markIdeaSent, ideaTitleOf: ideaTitleOf,
     removeIdea: removeIdea, allIdeas: allIdeas,

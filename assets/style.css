@@ -1743,23 +1743,16 @@ a.tp-proj:active { color: var(--accent); }
 .tp-acts.n3 { grid-template-columns: repeat(3, 1fr); }
 .tp-acts .btn { padding: 9px 4px; font-size: 13px; gap: 4px; min-width: 0; white-space: nowrap; }
 
-/* いまの時刻。円は針で、帯は縦線で示す。
-   カレンダーの「いま」と同じ赤にそろえ、下敷きを1本かませて
-   どの色の帯の上でも沈まないようにする */
-.tp-hand-bg { stroke: var(--card); stroke-width: 5; stroke-linecap: round; }
-.tp-hand { stroke: var(--danger); stroke-width: 2.4; stroke-linecap: round; }
-.tp-hand-tip { fill: var(--danger); stroke: var(--card); stroke-width: 1.2; }
-
-/* 円のまん中。今日は、いまの時刻をここに大きく出す */
-.tp-mid-now { fill: var(--muted); font-size: 9px; }
-.tp-mid-v.now { fill: var(--danger); font-size: 17px; font-weight: 800; }
+/* いまの時刻。円は針で、帯は縦線で示す */
+.tp-hand { stroke: var(--text); stroke-width: 1.6; stroke-linecap: butt; }
+.tp-hand-tip { fill: var(--text); }
 
 /* いまの時刻の印は、ゆっくり点滅させて見つけやすくする。
    消えきらないので、動きが苦手なときも位置は分かる */
 .tp-hand, .tp-hand-tip { animation: tp-pulse 2.6s ease-in-out infinite; }
 @keyframes tp-pulse {
   0%, 100% { opacity: 1; }
-  50% { opacity: .4; }
+  50% { opacity: .28; }
 }
 @media (prefers-reduced-motion: reduce) {
   .tp-now, .tp-hand, .tp-hand-tip { animation: none; opacity: 1; }
@@ -1892,6 +1885,39 @@ a.tp-proj:active { color: var(--accent); }
 .bg-rest b { font-size: 26px; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .bg-rest-s { font-size: 11px; color: var(--muted); }
 .bg-rest.over b, .bg-rest.over .bg-rest-l, .bg-rest.over .bg-rest-s { color: var(--danger); }
+
+/* ---------------- 今日の献立 ---------------- */
+.mn-card { display: flex; flex-direction: column; gap: 10px; }
+/* 昼／晩の選び口。押すと入る・外れる */
+.mn-pick { display: flex; gap: 6px; }
+.mn-pick .btn { flex: 1; }
+.mn-pick .btn.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+
+.mn-body { display: flex; flex-direction: column; gap: 8px; }
+.mn-meal, .mn-shop {
+  border: 1px solid var(--line); border-radius: var(--radius-s);
+  background: var(--card2); padding: 8px 10px;
+}
+.mn-meal > summary, .mn-shop > summary {
+  display: flex; align-items: center; gap: 7px; cursor: pointer;
+  list-style: none; font-size: 13.5px;
+}
+.mn-meal > summary::-webkit-details-marker,
+.mn-shop > summary::-webkit-details-marker { display: none; }
+.mn-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mn-total { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--accent); }
+
+.mn-dishes { margin: 8px 0 0; padding-left: 18px; font-size: 12.5px; line-height: 1.7; }
+.mn-steps {
+  margin: 8px 0 0; padding-left: 18px;
+  font-size: 12.5px; line-height: 1.7; color: var(--muted);
+}
+.mn-list { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.mn-item { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; }
+.mn-item-n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mn-item b { flex: none; font-variant-numeric: tabular-nums; }
+.mn-foot { margin: 0; }
+.mn-foot.over { color: var(--danger); }
 
 .bg-day-note { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
 .bg-day-note.warn { color: var(--warn); }

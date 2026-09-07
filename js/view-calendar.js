@@ -329,6 +329,7 @@
     // 1日の記録への入り口は、どちらもいちばん下に置く
     if (life) {
       DL.views.events.dayView(wrap, date);
+      menuCard(wrap, date);
       DL.views.time.dayCard(wrap, date);
       wrap.appendChild(logLink(date));
       root.appendChild(wrap);
@@ -397,6 +398,24 @@
     wrap.appendChild(logLink(date));
 
     root.appendChild(wrap);
+  }
+
+  /* その日に採用した献立。ホームで出したものが、ここに残る */
+  function menuCard(wrap, date) {
+    var m = S.getMenu(date);
+    if (!m) return;
+    wrap.appendChild(ui.section('献立',
+      el('span', { class: 'muted small', text: DL.menu.slotsLabel(m) })));
+    var card = el('div', { class: 'card mn-card' });
+    card.appendChild(DL.views.home.menuBody(m, date));
+    card.appendChild(ui.btn('この献立を外す', 'ghost full', function () {
+      ui.confirm(U.fmtYMDW(date) + ' の献立を外します。', { okText: '外す' }).then(function (ok) {
+        if (!ok) return;
+        S.removeMenu(date);
+        ui.toast('外しました');
+      });
+    }, 'trash'));
+    wrap.appendChild(card);
   }
 
   /* その日の記録への入り口。書いてあれば、頭のところを見せる */
