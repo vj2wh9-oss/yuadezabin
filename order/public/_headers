@@ -25,5 +25,7 @@
 /style.css
   Cache-Control: public, max-age=0, must-revalidate
 
-/form.json
+# /form.json は Worker が返す（保存された選択肢を出すため）。
+# こちらは、まだ一度も保存していないときの既定値
+/form.default.json
   Cache-Control: public, max-age=0, must-revalidate

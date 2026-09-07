@@ -868,8 +868,180 @@
         DL.app.render();
       });
     }, 'refresh'));
+    card.appendChild(ui.btn('選択肢を編集', 'ghost full', function () { orderFormSheet(); }, 'edit'));
+    card.appendChild(el('span', { class: 'field-hint',
+      text: 'サービス種目・納品形式・見出しなどを直せます。保存すると発注ページにすぐ出ます。' }));
     card.appendChild(ui.btn('受け口があるか確かめる', 'ghost full', function () { checkOrderServer(); }, 'cloud'));
     return card;
+  }
+
+  /**
+   * 発注ページの選択肢を直す。
+   *
+   * 中身は発注ページ側（Cloudflare）に置いてあるので、ここで保存すれば
+   * 発注ページにすぐ出る。ファイルを直して deploy し直す必要は無い。
+   */
+  function orderFormSheet() {
+    var box = el('div', { class: 'form' });
+    var close = ui.sheet({
+      title: '発注ページの選択肢',
+      body: box,
+      wide: true,
+      actions: [ui.btn('閉じる', 'ghost', function () { close(); })]
+    });
+
+    box.appendChild(el('p', { class: 'muted small', text: '読み込んでいます…' }));
+
+    DL.orders.getForm().then(function (form) {
+      U.clear(box);
+      draw(form);
+    }).catch(function (e) {
+      U.clear(box);
+      box.appendChild(el('div', { class: 'alert warn' }, [
+        el('span', { class: 'alert-icon' }, ui.icon('alert', 17)),
+        el('span', { text: '読めませんでした：' + e.message })
+      ]));
+      box.appendChild(el('p', { class: 'muted small', text:
+        '発注ページ（' + DL.orders.site() + '）につながらないか、'
+        + 'まだ新しい受け口を deploy していない可能性があります。' }));
+    });
+
+    function draw(form) {
+      var f = form || {};
+      var services = (f.services || []).map(function (o) { return { id: o.id, label: o.label }; });
+      var formats = (f.formats || []).map(function (o) { return { id: o.id, label: o.label }; });
+      var dl = f.deadline || {};
+
+      box.appendChild(el('div', { class: 'alert info' }, [
+        el('span', { class: 'alert-icon' }, ui.icon('info', 17)),
+        el('span', { text: '保存すると、発注ページの表示がすぐ入れ替わります。'
+          + '名前を直すのはいつでも安全です。' })
+      ]));
+
+      /* ---- 見出しまわり ---- */
+      box.appendChild(ui.section('ページの見出し'));
+      var titleI = ui.input({ value: f.title || '', maxlength: 60 });
+      box.appendChild(ui.field('題名', titleI));
+      var leadI = ui.textarea({ value: f.lead || '', rows: 3, maxlength: 300 });
+      box.appendChild(ui.field('題名の下の文', leadI, '改行するとそのまま2行で出ます'));
+
+      /* ---- サービス種目・納品形式 ---- */
+      var svcList = choiceList('サービス種目', services);
+      var fmtList = choiceList('納品形式', formats);
+      box.appendChild(svcList.node);
+      box.appendChild(fmtList.node);
+
+      /* ---- 納期の決まり ---- */
+      box.appendChild(ui.section('納期の決まり'));
+      var minI = ui.input({ type: 'number', value: U.num(dl.minLeadDays, 7), min: 0, max: 365 });
+      var maxI = ui.input({ type: 'number', value: U.num(dl.maxAheadDays, 365), min: 1, max: 1095 });
+      box.appendChild(ui.field('何日先から選べるか', minI, '本日から数えた日数。7 なら1週間後から'));
+      box.appendChild(ui.field('何日先まで選べるか', maxI));
+      var hintI = ui.textarea({ value: dl.hint || '', rows: 2, maxlength: 200 });
+      box.appendChild(ui.field('納期の欄に添える文', hintI));
+
+      /* ---- 保存 ---- */
+      var msg = el('p', { class: 'err', hidden: true });
+      box.appendChild(msg);
+
+      var saveBtn = ui.btn('保存して発注ページに反映', 'primary full', function () {
+        var next = {
+          title: titleI.value.trim(),
+          lead: leadI.value,
+          turnstileSiteKey: f.turnstileSiteKey || '',
+          services: svcList.value(),
+          formats: fmtList.value(),
+          deadline: {
+            minLeadDays: U.num(minI.value, 7),
+            maxAheadDays: U.num(maxI.value, 365),
+            hint: hintI.value
+          },
+          limits: f.limits || {}
+        };
+
+        if (!next.services.length || !next.formats.length) {
+          msg.textContent = 'サービス種目と納品形式は、それぞれ1つ以上必要です。';
+          msg.hidden = false;
+          return;
+        }
+        msg.hidden = true;
+
+        saveBtn.disabled = true;
+        DL.orders.saveForm(next).then(function () {
+          close();
+          ui.toast('発注ページに反映しました');
+        }).catch(function (e) {
+          saveBtn.disabled = false;
+          msg.textContent = e.message;
+          msg.hidden = false;
+        });
+      }, 'check');
+      box.appendChild(saveBtn);
+
+      box.appendChild(el('p', { class: 'muted small', text:
+        '※ 名前を直しても、すでに届いている発注の控えは変わりません。'
+        + '選択肢を減らすと、その種目は今後選べなくなります（過去の発注はそのまま残ります）。' }));
+    }
+
+    /** 並べ替え・追加・削除ができる選択肢の一覧 */
+    function choiceList(title, items) {
+      var listBox = el('div', { class: 'list' });
+      var wrap = el('div', {}, [
+        ui.section(title),
+        listBox,
+        el('div', { class: 'pad' }, ui.btn(title + 'を1つ足す', 'ghost full', function () {
+          items.push({ id: newId(), label: '' });
+          render();
+        }, 'plus'))
+      ]);
+
+      function render() {
+        U.clear(listBox);
+        if (!items.length) {
+          listBox.appendChild(ui.empty('まだありません。下のボタンで足してください。'));
+          return;
+        }
+        items.forEach(function (o, i) {
+          var inp = ui.input({ value: o.label, maxlength: 80, placeholder: '表示する名前' });
+          inp.addEventListener('input', function () { o.label = inp.value; });
+          listBox.appendChild(el('div', { class: 'row-end' }, [
+            inp,
+            el('button', {
+              class: 'iconbtn small', 'aria-label': '上へ', disabled: i === 0,
+              onclick: function () { swap(i, i - 1); }
+            }, ui.icon('arrowUp', 18)),
+            el('button', {
+              class: 'iconbtn small', 'aria-label': '下へ', disabled: i === items.length - 1,
+              onclick: function () { swap(i, i + 1); }
+            }, ui.icon('arrowDown', 18)),
+            el('button', {
+              class: 'iconbtn small', 'aria-label': '外す',
+              onclick: function () { items.splice(i, 1); render(); }
+            }, ui.icon('trash', 18))
+          ]));
+        });
+      }
+
+      function swap(a, b) {
+        if (b < 0 || b >= items.length) return;
+        var t = items[a]; items[a] = items[b]; items[b] = t;
+        render();
+      }
+
+      render();
+      return {
+        node: wrap,
+        value: function () {
+          return items.filter(function (o) { return String(o.label || '').trim(); })
+            .map(function (o) { return { id: o.id, label: String(o.label).trim() }; });
+        }
+      };
+    }
+
+    /* 新しく足したものの id。控えに残るので、あとから変えない */
+    function newId() {
+      return 'x' + Date.now().toString(36).slice(-5) + Math.random().toString(36).slice(2, 5);
+    }
   }
 
   /**

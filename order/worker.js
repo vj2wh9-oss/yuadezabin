@@ -2,8 +2,11 @@
  * 発注ページの受け口（Cloudflare Workers）
  *
  *   GET  /（ほか静的なファイル）→ order/public のページをそのまま返す
+ *   GET  /form.json            → 発注ページの選択肢（保存があればそれ、無ければ既定）
  *   POST /api/order            → 発注を1件受け取る
  *   GET  /api/health           → 動いているかどうかだけを返す（中身は返さない）
+ *   GET  /api/form             → 選択肢を返す（アプリの編集画面が読む）
+ *   PUT  /api/form             → 選択肢を保存する（合鍵が要る。アプリだけが触れる）
  *
  * 受け取った1件でやること
  *   1. 形を確かめる（選択肢は public/form.json と照らす。ここに写しは持たない）
@@ -19,6 +22,12 @@
  *   - IP アドレスはそのまま持たない（連投よけのため、塩を混ぜた指紋だけを短時間置く）。
  *   - 控えは30日で消える。長く持つのはアプリ側（手元の端末）。
  *
+ * 選択肢（サービス種目・納品形式など）
+ *   ふだんはアプリの 設定 →「発注フォーム」→「選択肢を編集」から直す。
+ *   直したものは KV に入り、発注ページも受け口もそれを見る。
+ *   一度も保存していないときだけ、同梱の public/form.default.json を使う。
+ *   つまり、選択肢を変えるのに deploy は要らない。
+ *
  * 設定（wrangler.jsonc と secret）
  *   KV 名前空間 ORDERS
  *   var  MAIL_TO      送り先（keisuke@yuadezabin.com）
@@ -27,6 +36,7 @@
  *   secret SYNC_TOKEN 同期の合鍵。ここだけが持ち、ブラウザには一切出さない
  *   secret TURNSTILE_SECRET  人かどうかの確認（入れたときだけ働く）
  *   secret RESEND_API_KEY    Cloudflare のメール送信が使えないときの代わり（任意）
+ *   var  APP_ORIGIN   アプリの URL。選択肢の編集をここからだけ通す
  *   send_email MAIL   Cloudflare の Email Routing で送るときの結び付け
  */
 
@@ -43,12 +53,21 @@ const RATE = [
 // 受付番号に使う文字。読み違えやすい I O 0 1 は外す
 const CODE_CHARS = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 
+// 保存した選択肢の置き場
+const FORM_KEY = 'form:config';
+const MAX_CHOICES = 40;        // サービス種目・納品形式それぞれの上限
+const APP_ORIGIN = 'https://vj2wh9-oss.github.io';   // アプリの置き場（既定）
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
+    // 選択肢。静的なファイルではなく Worker が返す（保存があればそちらを出すため）
+    if (url.pathname === '/form.json') return serveForm(env, url);
+
     if (url.pathname === '/api/order') return receive(request, env, ctx, url);
     if (url.pathname === '/api/health') return health(env);
+    if (url.pathname === '/api/form') return formApi(request, env, url);
     if (url.pathname.startsWith('/api/')) return json({ error: 'not_found' }, 404);
 
     // 静的なファイル。ふつうはここへ来る前に Cloudflare が返している
@@ -84,6 +103,152 @@ async function health(env) {
     pending,
     endpoints: ['/api/order']
   });
+}
+
+/* ---------------- 選択肢（サービス種目・納品形式など） ----------------
+
+   ふだんはアプリから直す。直したものは KV に入り、ここが返す。
+   一度も保存していないときだけ、同梱の form.default.json を使う。 */
+
+/** いま使う選択肢。保存が優先、無ければ既定 */
+async function formConfig(env, url) {
+  if (env.ORDERS) {
+    const saved = await env.ORDERS.get(FORM_KEY, 'json').catch(() => null);
+    if (saved && Array.isArray(saved.services) && Array.isArray(saved.formats)) return saved;
+  }
+  try {
+    const res = await env.ASSETS.fetch(new URL('/form.default.json', url.origin).toString());
+    if (res.ok) return await res.json();
+  } catch (e) { /* 既定も読めないときは null */ }
+  return null;
+}
+
+/* 発注ページが読む。保存を直したら次の読み込みから変わる */
+async function serveForm(env, url) {
+  const conf = await formConfig(env, url);
+  if (!conf) return json({ error: 'not_ready' }, 503);
+  return new Response(JSON.stringify(conf), {
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      // 直したものがすぐ出るように、貯めさせない
+      'cache-control': 'no-store',
+      'x-content-type-options': 'nosniff'
+    }
+  });
+}
+
+/* アプリ（別の置き場にある）から触るので、その口だけ通す */
+function appCors(env) {
+  return {
+    'access-control-allow-origin': env.APP_ORIGIN || APP_ORIGIN,
+    'access-control-allow-methods': 'GET, PUT, OPTIONS',
+    'access-control-allow-headers': 'authorization, content-type',
+    'access-control-max-age': '86400',
+    'cache-control': 'no-store'
+  };
+}
+
+/** 合鍵くらべ。長さと中身を、途中で切り上げずに見る */
+function sameSecret(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  if (a.length !== b.length || !a.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/**
+ * 選択肢の読み書き。
+ *   GET  … アプリの編集画面が、いまの中身を読む
+ *   PUT  … 直したものを保存する（合鍵が要る）
+ *
+ * 合鍵は同期の合鍵と同じもの。アプリはもともと持っているので、
+ * 新しく覚えるものは増えない。
+ */
+async function formApi(request, env, url) {
+  const cors = appCors(env);
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
+
+  if (request.method === 'GET') {
+    const conf = await formConfig(env, url);
+    if (!conf) return json({ error: 'not_ready' }, 503, cors);
+    return json({ ok: true, form: conf }, 200, cors);
+  }
+
+  if (request.method === 'PUT') {
+    if (!env.SYNC_TOKEN) return json({ error: 'not_ready' }, 503, cors);
+    if (!sameSecret(bearer(request), env.SYNC_TOKEN)) return json({ error: 'unauthorized' }, 401, cors);
+    if (!env.ORDERS) return json({ error: 'not_ready' }, 503, cors);
+
+    const text = await readCapped(request, MAX_BODY);
+    if (text === null) return json({ error: 'too_large' }, 413, cors);
+
+    let body;
+    try { body = JSON.parse(text); } catch (e) { return json({ error: 'bad_json' }, 400, cors); }
+
+    const clean = cleanForm(body && body.form ? body.form : body);
+    if (!clean) return json({ error: 'invalid' }, 400, cors);
+
+    await env.ORDERS.put(FORM_KEY, JSON.stringify(clean));
+    catalogCache = clean;              // 受け口もすぐ新しいほうを見る
+    catalogAt = Date.now();
+    return json({ ok: true, form: clean }, 200, cors);
+  }
+
+  return json({ error: 'not_found' }, 404, cors);
+}
+
+/**
+ * 送られてきた選択肢を、こちらの決まりに当てて整える。
+ * 中身は信用せず、形と長さだけを見る。だめなら null。
+ */
+function cleanForm(f) {
+  if (!f || typeof f !== 'object') return null;
+
+  // id は控えとメールに残るので、記号を混ぜさせない。同じ id は1つだけ
+  const choices = (arr) => {
+    if (!Array.isArray(arr)) return null;
+    const seen = Object.create(null);
+    const out = [];
+    for (const o of arr.slice(0, MAX_CHOICES)) {
+      const id = str(o && o.id, 40).replace(/[^A-Za-z0-9_-]/g, '');
+      const label = str(o && o.label, 80);
+      if (!id || !label || seen[id]) continue;
+      seen[id] = true;
+      out.push({ id, label });
+    }
+    return out.length ? out : null;
+  };
+
+  const services = choices(f.services);
+  const formats = choices(f.formats);
+  if (!services || !formats) return null;   // 空にはできない（選べなくなるため）
+
+  const dl = f.deadline || {};
+  const minLead = Math.min(365, Math.max(0, num(dl.minLeadDays, 7)));
+  const maxAhead = Math.min(1095, Math.max(minLead + 1, num(dl.maxAheadDays, 365)));
+
+  const lim = f.limits || {};
+  return {
+    _note: 'アプリの 設定 →「発注フォーム」→「選択肢を編集」から保存されたものです。',
+    title: str(f.title, 60) || 'デザイン制作のご発注',
+    lead: str(f.lead, 300),
+    turnstileSiteKey: str(f.turnstileSiteKey, 100).replace(/[^A-Za-z0-9_-]/g, ''),
+    services: services,
+    formats: formats,
+    deadline: {
+      minLeadDays: minLead,
+      maxAheadDays: maxAhead,
+      hint: str(dl.hint, 200)
+    },
+    limits: {
+      company: Math.min(200, Math.max(20, num(lim.company, 100))),
+      person: Math.min(120, Math.max(10, num(lim.person, 60))),
+      email: 254,
+      note: Math.min(4000, Math.max(100, num(lim.note, 1000)))
+    },
+    savedAt: new Date().toISOString()
+  };
 }
 
 /* ---------------- 発注を受け取る ---------------- */
@@ -200,9 +365,7 @@ let catalogAt = 0;
 async function catalog(env, url) {
   if (catalogCache && Date.now() - catalogAt < 60000) return catalogCache;
   try {
-    const res = await env.ASSETS.fetch(new URL('/form.json', url.origin).toString());
-    if (!res.ok) return catalogCache;
-    const conf = await res.json();
+    const conf = await formConfig(env, url);
     if (!conf || !Array.isArray(conf.services) || !Array.isArray(conf.formats)) return catalogCache;
     catalogCache = conf;
     catalogAt = Date.now();
@@ -510,15 +673,22 @@ async function readCapped(request, max) {
   return new TextDecoder().decode(buf);
 }
 
+/* Authorization: Bearer <合鍵> から合鍵だけを取り出す */
+function bearer(request) {
+  const h = request.headers.get('authorization') || '';
+  return h.startsWith('Bearer ') ? h.slice(7).trim() : '';
+}
+
 async function sha256(text) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
   return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-function json(obj, status) {
+function json(obj, status, extra) {
   return new Response(JSON.stringify(obj), {
     status: status || 200,
     headers: {
+      ...(extra || {}),
       'content-type': 'application/json; charset=utf-8',
       'cache-control': 'no-store',
       'referrer-policy': 'no-referrer',

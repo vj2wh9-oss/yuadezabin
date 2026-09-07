@@ -103,6 +103,9 @@
     stayHolidays: [],
     stayHolidayInit: false,   // 前からある泊まり勤務の日に、一度だけ休みを当てたか
     bufferDays: 1,         // 締切の何日前までに終わらせるか
+    // 発注ページ（yuadezabin.com）の置き場。選択肢の編集はここへ送る。
+    // 空なら既定（https://order.yuadezabin.com）を使う
+    orderSite: '',
     warnDays: 14,          // 締切が近いと警告する日数
     weekStart: 0,          // 0=日曜はじまり 1=月曜はじまり
     dailyLimit: 0,         // 1日の作業量の上限（0で無効）

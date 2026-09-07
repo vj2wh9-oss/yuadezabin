@@ -92,6 +92,58 @@
     });
   }
 
+  /* ---------------- 発注ページの選択肢 ----------------
+
+     サービス種目・納品形式などは、発注ページ側（Cloudflare）に置いてある。
+     ここから読み書きすることで、アプリで直せば発注ページにすぐ出る
+     （ファイルを直して deploy し直す必要は無い）。
+
+     合鍵は同期のものと同じ。発注ページの受け口が、自分の持つ合鍵と
+     突き合わせて確かめる。アプリが新しく覚えるものは増えない。 */
+
+  var ORDER_SITE = 'https://order.yuadezabin.com';
+
+  /** 発注ページの置き場。設定が空なら既定を使う */
+  function site() {
+    var v = String((DL.store.settings && DL.store.settings.orderSite) || '').trim();
+    return (v || ORDER_SITE).replace(/\/+$/, '');
+  }
+
+  function formApi(method, body) {
+    var c = conf();
+    if (!c || !c.token) return Promise.reject(new Error('同期の合鍵が未設定です'));
+
+    var opts = {
+      method: method,
+      headers: { authorization: 'Bearer ' + c.token },
+      cache: 'no-store'
+    };
+    if (body) {
+      opts.headers['content-type'] = 'application/json';
+      opts.body = JSON.stringify(body);
+    }
+    return fetch(site() + '/api/form', opts).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (b) {
+        if (r.ok) return b;
+        throw new Error(
+          b.error === 'unauthorized' ? '合鍵が合いません（発注ページ側の SYNC_TOKEN をご確認ください）'
+          : b.error === 'invalid' ? '入れた内容では保存できません（空の欄がないかご確認ください）'
+          : b.error === 'not_ready' ? '発注ページ側の準備ができていません'
+          : ('保存できませんでした（' + (b.error || r.status) + '）'));
+      });
+    });
+  }
+
+  /** いまの選択肢を読む */
+  function getForm() {
+    return formApi('GET').then(function (r) { return r.form; });
+  }
+
+  /** 直した選択肢を保存する。返るのは、あちらで整えたあとの中身 */
+  function saveForm(form) {
+    return formApi('PUT', { form: form }).then(function (r) { return r.form; });
+  }
+
   /* ---------------- 案件にする ----------------
 
      対応済みにしたときに、その発注を「仕事」の案件として起こす。
@@ -275,6 +327,7 @@
   DL.orders = {
     ready: ready, check: check, list: list, get: get, unread: unread,
     setStatus: setStatus, remove: remove, makeProject: makeProject,
+    site: site, getForm: getForm, saveForm: saveForm,
     statusOf: statusOf, STATUS: STATUS,
     ORDER_ISSUER: ORDER_ISSUER, orderIssuer: orderIssuer, orderIssuerId: orderIssuerId,
     candidates: candidates, norm: norm,
