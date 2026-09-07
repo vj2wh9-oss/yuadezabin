@@ -62,5 +62,41 @@
     });
   }
 
-  DL.memosend = { send: send, ready: ready };
+  /**
+   * 書類（見積書・請求書・領収書）を、種類ごとのチャンネルへ送る。
+   * PDF そのものは R2 に置いてあるので、その ID だけ渡す。
+   * @param {object} o {type, fileId, name, number, client, total, issueDate, project}
+   */
+  function sendDoc(o) {
+    if (!ready()) {
+      return Promise.reject(new Error('同期の接続先が未設定です。設定から先につないでください'));
+    }
+    return fetch(base() + '/v1/doc/send', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer ' + conf().token,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify(o || {})
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (b) {
+        if (!res.ok) throw new Error(docReason(res.status, b));
+        return b;
+      });
+    }, function () {
+      throw new Error('通信できませんでした');
+    });
+  }
+
+  function docReason(status, body) {
+    var k = body && body.error;
+    if (k === 'no_doc_webhook') {
+      return (body.label || '書類') + 'の送り先がサーバー側にありません。'
+        + 'Worker に ' + (body.which || '') + ' を secret として入れてください';
+    }
+    if (k === 'too_large') return 'PDF が大きすぎて送れません';
+    return reason(status, body);
+  }
+
+  DL.memosend = { send: send, sendDoc: sendDoc, ready: ready };
 })(window.DL);

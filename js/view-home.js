@@ -219,13 +219,19 @@
     var cur = W.current() || { code: d.code, temp: d.max, night: false };
     var info = W.codeInfo(cur.code, cur.night);
     var temp = (cur.temp === null || cur.temp === undefined) ? d.max : cur.temp;
+    // 降りそうなときは確率も出す。記号だけだと「降るのか」が読み取れない
+    var pop = U.num(cur.pop, 0);
     return el('button', {
-      class: 'wx', 'aria-label': (c.name || '天気') + '　' + info.label, onclick: function () { sheet(); }
+      class: 'wx', 'aria-label': (c.name || '天気') + '　' + info.label
+        + (pop >= W.WET_POP ? '　降水確率' + pop + '%' : ''),
+      onclick: function () { sheet(); }
     }, [
       ui.icon(info.icon, 36),
       el('span', { class: 'wx-t' }, [
         el('b', { text: temp === null ? '—' : temp + '°' }),
-        el('span', { class: 'wx-hl', text: (d.max === null ? '—' : d.max) + '/' + (d.min === null ? '—' : d.min) })
+        pop >= W.WET_POP
+          ? el('span', { class: 'wx-pop', text: pop + '%' })
+          : el('span', { class: 'wx-hl', text: (d.max === null ? '—' : d.max) + '/' + (d.min === null ? '—' : d.min) })
       ])
     ]);
   }
@@ -500,6 +506,17 @@
     var yen = DL.docs.yen;
 
     var card = el('div', { class: 'card bg-day' });
+
+    /* いちばん知りたいのは「今日あといくら使えるか」なので、頭に大きく出す。
+       ペースが崩れているときは、立て直しの予算から引いた額を出す
+       （ふだんの1日予算から引くと、守っても月末に足りなくなる） */
+    card.appendChild(el('div', { class: 'bg-rest' + (b.todayOver ? ' over' : '') }, [
+      el('span', { class: 'bg-rest-l', text: b.todayOver ? '今日は使いすぎ' : '今日あと使える' }),
+      el('b', { text: yen(b.todayOver || b.todayLeft) }),
+      b.todayOver ? el('span', { class: 'bg-rest-s', text: 'オーバー' })
+        : b.behind ? el('span', { class: 'bg-rest-s', text: '立て直しの予算から' }) : null
+    ]));
+
     card.appendChild(bgLine('今日の予算', b.perDay, b.today, b.todayPct, false));
 
     if (b.noRoom) {
