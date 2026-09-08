@@ -1125,6 +1125,9 @@
     r.startYm = /^\d{4}-\d{2}$/.test(String(r.startYm)) ? r.startYm : U.today().slice(0, 7);
     r.lastYm = /^\d{4}-\d{2}$/.test(String(r.lastYm)) ? r.lastYm : '';   // 最後に記録した月
     r.active = r.active !== false;
+    // 棚卸しのため。次に契約が更新される日と、最後に見直した月
+    r.renewOn = U.isISO(r.renewOn) ? r.renewOn : '';
+    r.reviewedYm = /^\d{4}-\d{2}$/.test(String(r.reviewedYm)) ? r.reviewedYm : '';
     return r;
   }
 

@@ -400,7 +400,70 @@
     return out.sort(function (a, b) { return U.cmp(a.ym, b.ym); });
   }
 
+  /* ---------------- 固定費の棚卸し ----------------
+
+     毎月そっと出ていくものほど気づきにくい。年でいくらか、次の更新はいつか、
+     最後に見直したのはいつか。この3つが分かれば、切るかどうかを決められる。 */
+
+  var STALE_MONTHS = 12;   // これだけ見直していなければ「見直しどき」
+  var RENEW_SOON = 14;     // 更新まで何日で知らせるか
+
+  /** 年でいくら出ていくか */
+  function yearlyOf(r) { return Math.max(0, DL.util.num(r && r.amount, 0)) * 12; }
+
+  /**
+   * 棚卸しの並び。年額の大きい順。休止中は後ろ
+   * @returns {Array} [{r, yearly, renewIn, stale}]
+   */
+  function review(date) {
+    var U = DL.util;
+    var today = U.isISO(date) ? date : U.today();
+    return (DL.store.settings.recurring || []).map(function (r) {
+      return {
+        r: r,
+        yearly: yearlyOf(r),
+        // 次の更新まであと何日（決めていなければ null）
+        renewIn: r.renewOn ? U.diffDays(today, r.renewOn) : null,
+        // 最後に見直してから何ヶ月（一度も見ていなければ null）
+        since: r.reviewedYm ? monthsBetween(r.reviewedYm, today.slice(0, 7)) : null
+      };
+    }).map(function (x) {
+      x.stale = x.r.active !== false && (x.since === null || x.since >= STALE_MONTHS);
+      return x;
+    }).sort(function (a, b) {
+      if ((a.r.active !== false) !== (b.r.active !== false)) return a.r.active === false ? 1 : -1;
+      return b.yearly - a.yearly;
+    });
+  }
+
+  function monthsBetween(fromYm, toYm) {
+    var a = String(fromYm).split('-'), b = String(toYm).split('-');
+    return (DL.util.num(b[0], 0) - DL.util.num(a[0], 0)) * 12
+      + (DL.util.num(b[1], 0) - DL.util.num(a[1], 0));
+  }
+
+  /** 更新が近い固定費。ホームの警告に混ぜる形で返す */
+  function renewAlerts(date, days) {
+    var U = DL.util, D = DL.docs;
+    var today = U.isISO(date) ? date : U.today();
+    var within = U.num(days, RENEW_SOON);
+    return review(today).filter(function (x) {
+      return x.r.active !== false && x.renewIn !== null && x.renewIn <= within;
+    }).sort(function (a, b) { return a.renewIn - b.renewIn; }).map(function (x) {
+      var over = x.renewIn < 0;
+      return {
+        level: over || x.renewIn <= 3 ? 'danger' : x.renewIn <= 7 ? 'warn' : 'info',
+        overdue: over,
+        href: '#/books',
+        text: x.r.name + 'の更新が' + U.untilLabel(x.r.renewOn, today)
+          + '（年 ' + D.yen(x.yearly) + '）'
+      };
+    });
+  }
+
   DL.expenses = {
+    STALE_MONTHS: STALE_MONTHS, RENEW_SOON: RENEW_SOON,
+    yearlyOf: yearlyOf, review: review, renewAlerts: renewAlerts,
     RECEIPT_FOLDER: RECEIPT_FOLDER, receiptFolder: receiptFolder,
     BOOKS: BOOKS, categories: categories, baseCategories: baseCategories, bookLabel: bookLabel,
     total: total, dailyBudget: dailyBudget, fixedOfMonth: fixedOfMonth, byCategory: byCategory, byTag: byTag, byMonth: byMonth, shrink: shrink,

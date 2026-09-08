@@ -63,7 +63,8 @@
     }
 
     /* 警告。「重要」にした日常の予定は、その日いちばん上に出す */
-    var al = sc.alerts(today);
+    // 更新の近い固定費も、切るかどうかを決める日があるのでここに混ぜる
+    var al = sc.alerts(today).concat(DL.expenses.renewAlerts(today));
     var urgent = plans.filter(function (o) { return o.ev.important; });
     if (al.length || urgent.length) {
       var box = el('div', { class: 'alerts' });

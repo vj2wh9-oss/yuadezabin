@@ -279,7 +279,10 @@
             ]),
             el('div', { class: 'row-sub' }, [
               ui.chip('毎月' + r.day + '日', 'soft'),
+              ui.chip('年 ' + D.yen(E.yearlyOf(r)), 'ghosty'),
               ui.chip(r.category, 'ghosty'),
+              r.renewOn ? ui.chip('更新 ' + U.fmtMD(r.renewOn),
+                U.diffDays(U.today(), r.renewOn) <= E.RENEW_SOON ? 'warn' : 'ghosty') : null,
               r.lastYm ? el('span', { class: 'muted small', text: '最後 ' + r.lastYm.replace('-', '/') }) : null
             ])
           ]),
@@ -291,9 +294,80 @@
     }
     box.appendChild(el('div', { class: 'row-wrap' }, [
       ui.btn('固定費を登録', 'ghost', function () { recurringSheet(null); }, 'plus'),
-      ui.btn('登録済みの支出から', 'ghost', function () { fromExpenseSheet(); }, 'receipt')
+      ui.btn('登録済みの支出から', 'ghost', function () { fromExpenseSheet(); }, 'receipt'),
+      S.recurring().length ? ui.btn('棚卸し', 'ghost', function () { reviewSheet(); }, 'chartLine') : null
     ]));
     return box;
+  }
+
+  /* ---------------- 固定費の棚卸し ----------------
+
+     年でいくら出ていくか、次の更新はいつか、最後に見たのはいつか。
+     大きい順に並べて、切るか続けるかを決められるようにする。
+     帳簿で分けず、事業と日常をまとめて出す（財布は1つなので） */
+
+  function reviewSheet() {
+    var body = el('div', { class: 'rv-wrap' });
+    var refresh = function () { draw(); DL.app.render(); };
+    draw();
+    ui.sheet({ title: '固定費の棚卸し', body: body });
+
+    function draw() {
+      var today = U.today();
+      var rows = E.review(today);
+      var live = rows.filter(function (x) { return x.r.active !== false; });
+      var year = live.reduce(function (n, x) { return n + x.yearly; }, 0);
+      var stale = live.filter(function (x) { return x.stale; }).length;
+      body.textContent = '';
+
+      body.appendChild(el('div', { class: 'card sum-grid' }, [
+        sumBox('年でいくら', D.yen(year), 'big'),
+        sumBox('毎月', D.yen(Math.round(year / 12))),
+        sumBox('件数', live.length + '件'),
+        sumBox('見直しどき', stale + '件', stale ? 'warn' : '')
+      ]));
+      if (!rows.length) {
+        body.appendChild(el('p', { class: 'muted small pad', text: 'まだ固定費がありません。' }));
+        return;
+      }
+      body.appendChild(el('p', { class: 'muted small', text:
+        '年額の大きい順です。行を押すと直せます。'
+        + E.STALE_MONTHS + 'ヶ月ぶり以上のものには「見直しどき」を付けています。' }));
+
+      var list = el('div', { class: 'list' });
+      rows.forEach(function (x) { list.appendChild(reviewRow(x, today, refresh)); });
+      body.appendChild(list);
+    }
+  }
+
+  function reviewRow(x, today, refresh) {
+    var r = x.r;
+    return el('div', { class: 'row rv-row' + (r.active === false ? ' dim' : '') }, [
+      el('div', { class: 'row-main', onclick: function () { recurringSheet(r); } }, [
+        el('div', { class: 'row-title' }, [
+          el('span', { text: r.name }),
+          r.active === false ? ui.chip('休止中', 'ghosty') : null,
+          x.stale && r.active !== false ? ui.chip('見直しどき', 'warn') : null
+        ]),
+        el('div', { class: 'row-sub' }, [
+          ui.chip(E.bookLabel(r.book), 'ghosty'),
+          ui.chip('月 ' + D.yen(r.amount), 'soft'),
+          r.renewOn ? ui.chip('更新 ' + U.fmtMD(r.renewOn)
+            + '・' + U.untilLabel(r.renewOn, today),
+          x.renewIn !== null && x.renewIn <= E.RENEW_SOON ? 'warn' : 'ghosty') : null,
+          el('span', { class: 'muted small', text: r.reviewedYm
+            ? '見直し ' + r.reviewedYm.replace('-', '/') : 'まだ見直していません' })
+        ])
+      ]),
+      el('div', { class: 'rv-right' }, [
+        el('b', { class: 'rv-year', text: D.yen(x.yearly) }),
+        ui.btn('見た', 'ghost tiny', function () {
+          S.updateRecurring(r.id, { reviewedYm: today.slice(0, 7) });
+          ui.toast('見直したことにしました');
+          refresh();
+        }, 'check')
+      ])
+    ]);
   }
 
   /* ---------------- すでに登録した支出から固定費にする ----------------
@@ -400,6 +474,8 @@
     var firstYm = r ? r.startYm
       : (from && from.last ? U.addYm(String(from.last).slice(0, 7), 1) : U.today().slice(0, 7));
     var startIn = ui.input({ type: 'month', value: firstYm });
+    // 棚卸しのため。年契約の更新日や、解約できる日を入れておく
+    var renewIn = ui.input({ type: 'date', value: v.renewOn || '' });
     var catOpts = cats.slice();
     if (v.category && catOpts.indexOf(v.category) < 0) catOpts.unshift(v.category);
     var catSel = ui.select(catOpts.map(function (c) { return { value: c, label: c }; }),
@@ -423,6 +499,10 @@
         ui.field('支払先', vendorIn),
         ui.field('いつから', startIn,
           from ? '最後に出た月の翌月にしてあります。さかのぼるとその月ぶんも起こします' : ''),
+        ui.field('次の更新日', renewIn,
+          '年契約や解約できる日を入れておくと、近づいたらホームで知らせます'),
+        el('p', { class: 'muted small', text: '年でいくら：'
+          + D.yen(E.yearlyOf({ amount: U.num(amountIn.value, 0) || v.amount || 0 })) }),
         el('label', { class: 'row-check' }, [activeChk, el('span', { text: '記録の対象にする' })]),
         !isNew ? ui.btn('この固定費を削除', 'danger full mt', function () {
           ui.confirm('「' + r.name + '」を削除します。記録済みの経費はそのまま残ります。',
@@ -442,7 +522,8 @@
             book: bk, name: name, amount: U.num(amountIn.value, 0),
             category: catSel.value, day: U.num(dayIn.value, 1),
             vendor: vendorIn.value.trim(),
-            startYm: startIn.value, active: activeChk.checked
+            startYm: startIn.value, active: activeChk.checked,
+            renewOn: renewIn.value
           };
           // 支出から起こしたときは、案件と名義も引き継ぐ
           if (from) {

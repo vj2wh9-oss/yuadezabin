@@ -1981,3 +1981,10 @@ a.tp-proj:active { color: var(--accent); }
   background: var(--card2); border: 1px solid var(--line); padding: 10px;
   max-height: 40vh; overflow: auto;
 }
+
+/* 固定費の棚卸し（経理 → 固定費 → 棚卸し） */
+.rv-wrap .card { margin-bottom: 10px; }
+.rv-wrap > p { margin: 8px 0; }
+.rv-row { align-items: center; }
+.rv-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; }
+.rv-year { font-variant-numeric: tabular-nums; color: var(--accent); }
