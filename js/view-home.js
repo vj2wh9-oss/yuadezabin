@@ -116,6 +116,10 @@
       }
     }
 
+    /* 貯金。数字を1行だけ。中身は経理で見る */
+    var sv = savingsRow();
+    if (sv) wrap.appendChild(sv);
+
     /* いまの様子。7日ぶんの棒は、カレンダーと重なるので出さない */
     wrap.appendChild(ui.section('いまの様子'));
     wrap.appendChild(stats(today, load));
@@ -671,6 +675,31 @@
         ui.toast(e.message, 'danger');
       });
     }
+  }
+
+  /* 貯金の1行。残高か目標があるときだけ出す */
+  function savingsRow() {
+    var sv = S.savings();
+    if (!sv.total && !sv.goal) return null;
+    var yen = DL.docs.yen;
+    var out = DL.bank.outlook();
+    var gain = DL.bank.gainOfMonth();
+    return el('a', { class: 'row sv-row', href: '#/books' }, [
+      el('div', { class: 'row-main' }, [
+        el('div', { class: 'row-title' }, [
+          ui.icon('books', 16),
+          el('span', { text: '貯金' }),
+          el('b', { class: 'sv-row-v', text: yen(sv.total) })
+        ]),
+        el('div', { class: 'row-sub' }, [
+          out ? ui.chip(out.done ? '目標達成' : '目標まで ' + yen(out.left),
+            out.done ? 'ok' : 'soft') : null,
+          gain !== null ? ui.chip('今月 ' + (gain >= 0 ? '+' : '−') + yen(Math.abs(gain)),
+            gain >= 0 ? 'ghosty' : 'warn') : null
+        ])
+      ]),
+      el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+    ]);
   }
 
   /* 期限の切れたもの。押すと「捨てた」ことにして一覧から消す。

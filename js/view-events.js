@@ -93,6 +93,9 @@
           o.ev.important ? ui.iconChip('alert', '重要', 'warn') : null,
           ui.chip(E.whenText(o), 'soft'),
           o.ev.repeat ? ui.iconChip('refresh', E.repeatLabel(o.ev.repeat), 'ghosty') : null,
+          // 鳴らす約束をしてあるものは、それが分かるようにする
+          o.ev.important && (o.ev.reminders || []).length
+            ? ui.iconChip('clock', '通知' + o.ev.reminders.length, 'soft') : null,
           withCheck && done ? ui.chip('ホームから外し中', 'ghosty') : null
         ]),
         o.ev.memo ? el('p', { class: 'muted small ev-memo', text: o.ev.memo }) : null
@@ -189,6 +192,90 @@
     }
     syncRepeat();
 
+    /* リマインダー（重要にした予定だけ）。日にちと時刻をいくつでも足せる */
+    var reminders = (v.reminders || []).map(function (r) { return Object.assign({}, r); });
+    var remList = el('div', { class: 'rm-list' });
+    var remWrap = el('div', { class: 'rm-wrap' }, [
+      remList,
+      el('div', { class: 'row-wrap' }, [
+        ui.btn('前日 20:00', 'ghost tiny', function () { addRem({ mode: 'rel', days: 1, time: '20:00' }); }, 'plus'),
+        ui.btn('当日 08:00', 'ghost tiny', function () { addRem({ mode: 'rel', days: 0, time: '08:00' }); }, 'plus'),
+        ui.btn('30分前', 'ghost tiny', function () { addRem({ mode: 'min', minutes: 30 }); }, 'plus'),
+        ui.btn('日時を選ぶ', 'ghost tiny', function () { pickRem(); }, 'clock')
+      ])
+    ]);
+
+    function drawRem() {
+      U.clear(remList);
+      if (!reminders.length) {
+        remList.appendChild(el('p', { class: 'muted small',
+          text: 'まだありません。下から足せます（いくつでも）。' }));
+        return;
+      }
+      sortRem().forEach(function (r) {
+        remList.appendChild(el('div', { class: 'rm-item' }, [
+          ui.icon('clock', 15),
+          el('span', { text: S.reminderLabel(r) }),
+          el('button', {
+            type: 'button', class: 'iconbtn rm-del', 'aria-label': 'この通知を消す',
+            onclick: function () {
+              reminders = reminders.filter(function (x) { return x.id !== r.id; });
+              drawRem();
+            }
+          }, ui.icon('close', 16))
+        ]));
+      });
+    }
+
+    /* 早く鳴るものから並べる。目安の順で、きっちりでなくてよい */
+    function sortRem() {
+      return reminders.slice().sort(function (a, b) {
+        return rank(a) - rank(b);
+      });
+      function rank(r) {
+        if (r.mode === 'abs') return -1000 + U.num(String(r.date).replace(/-/g, ''), 0) / 1e6;
+        if (r.mode === 'min') return 1000 - r.minutes / 1000;
+        return 100 - r.days;
+      }
+    }
+
+    function addRem(r) {
+      if (reminders.length >= 8) { ui.toast('通知は8つまでです', 'warn'); return; }
+      var one = S.normalizeReminders([Object.assign({ id: U.uid() }, r)])[0];
+      if (!one) return;
+      // 同じものは足さない
+      var same = reminders.some(function (x) { return S.reminderLabel(x) === S.reminderLabel(one); });
+      if (same) { ui.toast('同じ通知がもうあります', 'warn'); return; }
+      reminders.push(one);
+      drawRem();
+    }
+
+    /* 日時をそのまま決めるぶん */
+    function pickRem() {
+      var dIn = ui.input({ type: 'date', value: dateIn.value });
+      var tIn = ui.input({ type: 'time', value: '09:00' });
+      var close2 = ui.sheet({
+        title: '日時を選ぶ',
+        body: el('div', { class: 'form' }, [
+          el('div', { class: 'grid2' }, [ui.field('日付', dIn), ui.field('時刻', tIn)]),
+          el('p', { class: 'muted small', text: 'この日時にちょうど鳴ります。' })
+        ]),
+        actions: [
+          ui.btn('やめる', 'ghost', function () { close2(); }),
+          ui.btn('足す', 'primary', function () {
+            if (!U.isISO(dIn.value)) { ui.toast('日付を入れてください', 'warn'); return; }
+            addRem({ mode: 'abs', date: dIn.value, time: tIn.value });
+            close2();
+          })
+        ]
+      });
+    }
+    drawRem();
+    // 重要でない予定は鳴らないので、そう見えるようにしておく
+    function syncImp() { remWrap.classList.toggle('off', !importantIn.checked); }
+    importantIn.addEventListener('change', syncImp);
+    syncImp();
+
     /* 色 */
     var color = v.color;
     // 一覧に無い色（前の配色で作った予定など）は、選んだままに見えるよう先頭に足す
@@ -218,6 +305,8 @@
         title: title, date: dateIn.value, days: daysIn.getValue(),
         start: allDay ? '' : startIn.value, end: allDay ? '' : endIn.value,
         memo: memoIn.value, color: color, important: importantIn.checked,
+        // 重要をやめたら鳴らさない。書いたものは消さずに取っておく
+        reminders: reminders,
         repeat: repeat, until: repeat ? untilIn.value : ''
       };
       // 終了が開始より前なら、入れ違いとして終了を落とす（翌日にまたがる指定は日数で表す）
@@ -251,6 +340,8 @@
             el('span', { class: 'muted small', text: '　当日ホームの上に出します' })
           ])
         ]),
+        ui.block('リマインダー', remWrap,
+          '重要にした予定だけ鳴ります。通知は設定でオンにしてください'),
         ui.field('メモ', memoIn),
         !isNew ? ui.btn('この予定を削除', 'danger full mt', function () {
           var msg = ev.repeat

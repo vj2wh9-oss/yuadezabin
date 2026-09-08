@@ -52,6 +52,11 @@
       el('span', { class: 'muted small', text: '事業＋日常' })));
     wrap.appendChild(budgetCard());
 
+    /* ---- 貯金（貯蓄用の口座） ---- */
+    wrap.appendChild(ui.section('貯金',
+      el('span', { class: 'muted small', text: savingsWhen() })));
+    wrap.appendChild(savingsCard());
+
     /* ---- 固定費 ---- */
     var fixed = S.recurring(book);
     var due = E.dueRecurring(fixed);
@@ -298,6 +303,199 @@
       S.recurring().length ? ui.btn('棚卸し', 'ghost', function () { reviewSheet(); }, 'chartLine') : null
     ]));
     return box;
+  }
+
+  /* ---------------- 貯金 ----------------
+
+     貯蓄用の口座の残高。銀行につなぐのは同期サーバー側で、
+     こちらは受け取った数字を出すだけ。口座がまだ無いうちは手で入れられる。 */
+
+  var svBusy = false;
+
+  function savingsWhen() {
+    var sv = S.savings();
+    if (!sv.at) return '';
+    var d = new Date(sv.at);
+    return U.fmtMD(sv.at.slice(0, 10)) + ' ' + String(d.getHours()).padStart(2, '0')
+      + ':' + String(d.getMinutes()).padStart(2, '0') + ' 現在';
+  }
+
+  function savingsCard() {
+    var B = DL.bank;
+    var sv = S.savings();
+    var out = B.outlook();
+    var gain = B.gainOfMonth();
+    var box = el('div', { class: 'card sv-card' });
+
+    box.appendChild(el('div', { class: 'sv-total' }, [
+      el('span', { class: 'sv-label', text: 'いまの貯金' }),
+      el('b', { text: D.yen(sv.total) })
+    ]));
+
+    if (out) {
+      box.appendChild(el('div', { class: 'sv-goal' }, [
+        el('div', { class: 'sv-goal-head' }, [
+          el('span', { text: '目標 ' + D.yen(out.goal) }),
+          el('b', { class: out.done ? 'ok' : '', text: out.done ? '達成' : 'あと ' + D.yen(out.left) })
+        ]),
+        ui.progress(out.pct, null),
+        el('div', { class: 'muted small', text: out.pct + '%'
+          + (out.months ? '・このペースだと あと' + out.months + 'ヶ月' : '') })
+      ]));
+    }
+
+    var notes = [];
+    if (gain !== null) notes.push('今月 ' + (gain >= 0 ? '+' : '−') + D.yen(Math.abs(gain)));
+    var pace = B.monthlyPace();
+    if (pace) notes.push('ひと月あたり ' + (pace >= 0 ? '+' : '−') + D.yen(Math.abs(pace)));
+    if (notes.length) box.appendChild(el('p', { class: 'muted small', text: notes.join('　') }));
+
+    var line = savingsLine(B.series(180));
+    if (line) box.appendChild(line);
+
+    if (sv.accounts.length > 1) {
+      box.appendChild(el('div', { class: 'mn-list' }, sv.accounts.map(function (a) {
+        return el('div', { class: 'mn-item' }, [
+          el('span', { class: 'mn-item-n', text: a.name || a.id || '口座' }),
+          el('b', { text: D.yen(a.balance) })
+        ]);
+      })));
+    }
+
+    box.appendChild(el('div', { class: 'row-wrap' }, [
+      DL.bank.ready() ? ui.btn(svBusy ? '読んでいます…' : '残高を更新', 'primary', function () {
+        if (svBusy) return;
+        svBusy = true;
+        DL.app.render();
+        B.refresh().then(function () {
+          svBusy = false;
+          ui.toast('残高を読みました');
+          DL.app.render();
+        }).catch(function (e) {
+          svBusy = false;
+          DL.app.render();
+          ui.toast(e.message, 'danger');
+        });
+      }, 'refresh') : null,
+      ui.btn('手で入れる', 'ghost', function () { savingsInput(); }, 'edit'),
+      ui.btn('目標を決める', 'ghost', function () { savingsGoal(); }, 'chartLine'),
+      DL.bank.ready() ? ui.btn('つながるか試す', 'ghost', function () { savingsCheck(); }, 'cloud') : null
+    ]));
+
+    if (!sv.at) {
+      box.appendChild(el('p', { class: 'muted small', text:
+        '口座がまだなら「手で入れる」で始められます。'
+        + '銀行につなぐ支度ができたら、そのまま「残高を更新」で入れ替わります。' }));
+    }
+    return box;
+  }
+
+  /* 推移の細い折れ線。控えが2つ以上あるときだけ */
+  function savingsLine(rows) {
+    if (rows.length < 2) return null;
+    var W = 280, H = 44, pad = 3;
+    var vals = rows.map(function (r) { return r.total; });
+    var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+    var span = hi - lo || 1;
+    var step = (W - pad * 2) / (rows.length - 1);
+    var pts = rows.map(function (r, i) {
+      var x = pad + step * i;
+      var y = pad + (H - pad * 2) * (1 - (r.total - lo) / span);
+      return Math.round(x * 10) / 10 + ',' + Math.round(y * 10) / 10;
+    }).join(' ');
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    svg.setAttribute('class', 'sv-line');
+    svg.setAttribute('aria-hidden', 'true');
+    var path = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+    path.setAttribute('points', pts);
+    svg.appendChild(path);
+    return svg;
+  }
+
+  function savingsInput() {
+    var sv = S.savings();
+    var amount = ui.input({ type: 'number', inputmode: 'numeric', min: 0, value: sv.total || '' });
+    var dateIn = ui.input({ type: 'date', value: U.today() });
+    var close = ui.sheet({
+      title: '残高を手で入れる',
+      body: el('div', { class: 'form' }, [
+        ui.field('残高（円）', amount),
+        ui.field('いつの残高か', dateIn, 'その日の記録として残します'),
+        el('p', { class: 'muted small', text:
+          '銀行につないだあとも、この記録はそのまま残ります。' })
+      ]),
+      actions: [
+        ui.btn('キャンセル', 'ghost', function () { close(); }),
+        ui.btn('保存', 'primary', function () {
+          if (!U.isISO(dateIn.value)) { ui.toast('日付を入れてください', 'warn'); return; }
+          S.setSavings({ total: U.num(amount.value, 0), date: dateIn.value });
+          close();
+          ui.toast('入れました');
+        })
+      ]
+    });
+  }
+
+  function savingsGoal() {
+    var sv = S.savings();
+    var goal = ui.input({ type: 'number', inputmode: 'numeric', min: 0, value: sv.goal || '' });
+    var close = ui.sheet({
+      title: '貯金の目標',
+      body: el('div', { class: 'form' }, [
+        ui.field('目標（円）', goal, '0 にすると目標を出しません'),
+        el('p', { class: 'muted small', text:
+          '決めておくと、あといくらか・このペースであと何ヶ月かを出します。' })
+      ]),
+      actions: [
+        ui.btn('キャンセル', 'ghost', function () { close(); }),
+        ui.btn('保存', 'primary', function () {
+          S.setSavingsGoal(goal.value);
+          close();
+          ui.toast('決めました');
+        })
+      ]
+    });
+  }
+
+  /* つながるかを確かめる。合わないときに、どこが合わないかが見えるように */
+  function savingsCheck() {
+    var body = el('div', { class: 'form' }, [
+      el('p', { class: 'muted small', text: '確かめています…' })
+    ]);
+    ui.sheet({ title: '銀行につながるか', body: body });
+    DL.bank.check().then(function (b) {
+      U.clear(body);
+      body.appendChild(el('div', { class: 'row-sub' }, [
+        ui.chip(b.ok ? 'つながりました' : 'つながりません', b.ok ? 'ok' : 'danger'),
+        ui.chip('鍵 ' + ((b.conf && b.conf.auth) || '?'), 'ghosty'),
+        b.status ? ui.chip('応答 ' + b.status, 'ghosty') : null
+      ]));
+      if (b.conf) {
+        body.appendChild(el('p', { class: 'muted small',
+          text: b.conf.base + b.conf.balancePath }));
+      }
+      if ((b.accounts || []).length) {
+        body.appendChild(el('div', { class: 'mn-list' }, b.accounts.map(function (a) {
+          return el('div', { class: 'mn-item' }, [
+            el('span', { class: 'mn-item-n', text: a.name || a.id || '口座' }),
+            el('b', { text: D.yen(a.balance) })
+          ]);
+        })));
+      } else {
+        body.appendChild(el('p', { class: 'muted small', text:
+          '口座を読み取れませんでした。下の返事を見て、Worker の BANK_ 系の設定を直してください。' }));
+      }
+      if (b.sample) {
+        body.appendChild(el('pre', { class: 'sv-sample', text: b.sample }));
+      }
+      if (b.message) body.appendChild(el('p', { class: 'muted small', text: b.message }));
+    }).catch(function (e) {
+      U.clear(body);
+      body.appendChild(el('p', { class: 'mn-warn small' }, [
+        ui.icon('alert', 14), el('span', { text: e.message })
+      ]));
+    });
   }
 
   /* ---------------- 固定費の棚卸し ----------------

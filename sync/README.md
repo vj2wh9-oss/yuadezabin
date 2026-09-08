@@ -150,6 +150,74 @@ wrangler deploy --var BACKUP_HOUR:21     # 21:00 UTC ＝ 日本の朝6時
 
 ---
 
+## 貯金口座（GMOあおぞらネット銀行）につなぐ
+
+貯蓄用の口座の残高を、アプリの「経理 → 貯金」に出せます。
+**銀行の鍵は Worker の secret にだけ置き、アプリには渡しません。**
+アプリが受け取るのは「いくらあるか」という数字だけです。
+
+口座がまだ無いあいだは、同じ画面の「手で入れる」で始められます。
+入れた数字はその日ごとに残るので、あとで銀行につないでも記録は続きます。
+
+### 1. 鍵を入れる
+
+`bash sync/setup.sh` の途中で聞かれます。あとから入れ直すこともできます:
+
+```sh
+cd sync
+wrangler secret put BANK_ACCESS_TOKEN     # アクセストークンをそのまま使うとき
+# OAuth で回すときは、こちらの3つ
+wrangler secret put BANK_CLIENT_ID
+wrangler secret put BANK_CLIENT_SECRET
+wrangler secret put BANK_REFRESH_TOKEN
+```
+
+`BANK_ACCESS_TOKEN` があればそれを使い、無ければ OAuth の3つで更新しながら使います。
+更新したトークンは KV に短いあいだだけ置きます。
+
+### 2. 口座と道を合わせる
+
+既定は個人向け API の本番と、よくある道・名前です:
+
+| 名前 | 既定 | 何のため |
+| --- | --- | --- |
+| `BANK_BASE` | `https://api.gmo-aozora.com/ganb/api/personal/v1` | API の入口 |
+| `BANK_BALANCE_PATH` | `/accounts/balances` | 残高の道 |
+| `BANK_TOKEN_PATH` | `/oauth/token` | トークンの道（OAuth のとき） |
+| `BANK_ACCOUNT_ID` | （空） | 貯蓄用の口座だけに絞る |
+| `BANK_LIST_KEY` | `balances` | 口座の並びの名前 |
+| `BANK_AMOUNT_KEY` | `balance` | 残高の名前 |
+| `BANK_NAME_KEY` | `accountTypeName` | 口座名の名前 |
+| `BANK_ID_KEY` | `accountId` | 口座IDの名前 |
+
+**道や JSON の名前は、開発者ポータルの仕様（sunabar の返事）で確かめてください。**
+違っていても、上の名前を変えるだけで直ります（コードは触りません）。
+変えるときは Cloudflare のダッシュボード → Workers → Settings → Variables で足すのが手軽です。
+
+砂場（sunabar）で試すときは `BANK_BASE` を砂場の入口にして、
+砂場で発行したトークンを `BANK_ACCESS_TOKEN` に入れます。
+
+### 3. 確かめる
+
+アプリの 経理 →「貯金」→「つながるか試す」を押すと、
+
+- つながったか／応答の番号
+- 読み取れた口座と残高
+- 銀行から返ってきた JSON の頭のほう
+
+が出ます（鍵は出ません）。口座が読めていなければ、その JSON を見て
+`BANK_LIST_KEY` などを合わせてください。
+`BANK_ACCOUNT_ID` が合っていないときは、返ってきた口座IDを教えます。
+
+### 4. ふだんの動き
+
+- 「残高を更新」を押すと、そのとき読みに行きます。
+- 夜（日本時間の0時すぎ）に1日1回、Cron が自分で読んで控えます。
+  アプリを開いていなくても、日ごとの記録が積み上がります。
+- 控えは Worker 側にも 400日ぶん残るので、端末を変えても推移が続きます。
+
+---
+
 ## 5. アプリにつなぐ
 
 1. iPhone（または PC）でアプリを開き、設定 →「同期」

@@ -109,10 +109,11 @@ globalThis.crypto.subtle.deriveKey = function (algo, ...rest) {
 };
 
 const env = { SYNC: KV, FILES: R2, ALLOW_ORIGIN: process.env.ALLOW_ORIGIN || '*' };
-// OPENAI_* は手元の環境変数から通す（レシート読み取りの動きを確かめるため）
+// OPENAI_* などは手元の環境変数から通す（読み取りや銀行の動きを確かめるため）
 for (const k of Object.keys(process.env)) {
   if (k.startsWith('OPENAI_') || k.startsWith('VAPID_')
-    || k.startsWith('DISCORD_') || k.startsWith('BACKUP_')) env[k] = process.env[k];
+    || k.startsWith('DISCORD_') || k.startsWith('BACKUP_')
+    || k.startsWith('BANK_')) env[k] = process.env[k];
 }
 
 createServer(async (req, res) => {

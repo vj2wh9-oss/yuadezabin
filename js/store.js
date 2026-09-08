@@ -164,6 +164,9 @@
     logs: {},
     // 採用した献立 { 'YYYY-MM-DD': {meals, shopping, total, servings, note, at} }
     menus: {},
+    // 貯金（貯蓄用の口座）。残高は銀行から読むか、手で入れる
+    // { goal, at, total, accounts:[{id,name,balance}], history:{'YYYY-MM-DD': 残高} }
+    savings: { goal: 0, at: '', total: 0, accounts: [], history: {} },
     // 家にある調味料 [{id, name, qty, unit, until}]
     pantry: [],
     // 残り物 [{id, name, qty, unit, until, kept}]。kept＝食材ではない作り置き
@@ -310,6 +313,7 @@
     s.settings.dutyLogDone = normalizeDutyLogDone(s.settings.dutyLogDone);
     s.settings.logs = normalizeLogs(s.settings.logs);
     s.settings.menus = normalizeMenus(s.settings.menus);
+    s.settings.savings = normalizeSavings(s.settings.savings);
     s.settings.pantry = (s.settings.pantry || []).map(normalizePantry);
     s.settings.leftovers = (s.settings.leftovers || []).map(normalizeLeftover);
     s.settings.notify = normalizeNotify(s.settings.notify);
@@ -1280,6 +1284,36 @@
   var HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
   var HEX = /^#[0-9a-f]{6}$/i;
 
+  /* 予定に付けるリマインダー。
+     rel＝◯日前の何時／abs＝この日この時刻／min＝開始の◯分前 */
+  var REMINDER_MODES = ['rel', 'abs', 'min'];
+
+  function normalizeReminders(list) {
+    return (Array.isArray(list) ? list : []).slice(0, 8).map(function (r) {
+      r = r || {};
+      var mode = REMINDER_MODES.indexOf(r.mode) >= 0 ? r.mode : 'rel';
+      var out = { id: r.id || U.uid(), mode: mode };
+      if (mode === 'abs') {
+        out.date = U.isISO(r.date) ? r.date : '';
+        out.time = HHMM.test(String(r.time)) ? r.time : '09:00';
+      } else if (mode === 'min') {
+        out.minutes = Math.min(1440, Math.max(0, U.num(r.minutes, 30)));
+      } else {
+        out.days = Math.min(60, Math.max(0, U.num(r.days, 0)));   // 0＝当日
+        out.time = HHMM.test(String(r.time)) ? r.time : '09:00';
+      }
+      return out;
+    }).filter(function (r) { return r.mode !== 'abs' || r.date; });
+  }
+
+  /** リマインダー1つの言い方。「3日前 09:00」「9/20 18:00」「30分前」 */
+  function reminderLabel(r) {
+    if (!r) return '';
+    if (r.mode === 'min') return r.minutes + '分前';
+    if (r.mode === 'abs') return U.fmtMD(r.date) + ' ' + r.time;
+    return (r.days === 0 ? '当日' : r.days + '日前') + ' ' + r.time;
+  }
+
   function normalizeEvent(e) {
     e = e || {};
     e.id = e.id || U.uid();
@@ -1294,6 +1328,8 @@
     if (OLD_EVENT_COLORS[e.color]) e.color = OLD_EVENT_COLORS[e.color];   // 旧配色はそのまま置き換える
     // 重要：その日にホームのいちばん上（アラート欄）へ出す
     e.important = !!e.important;
+    // その予定だけのリマインダー。重要にした予定で使う
+    e.reminders = normalizeReminders(e.reminders);
     e.repeat = ['weekly', 'monthly', 'yearly'].indexOf(e.repeat) >= 0 ? e.repeat : '';
     e.until = (e.repeat && U.isISO(e.until)) ? e.until : '';   // 繰り返しの終わり（空でずっと）
     e.createdAt = e.createdAt || new Date().toISOString();
@@ -1626,6 +1662,76 @@
       });
     });
     return out.slice(0, 12);
+  }
+
+  /* ---- 貯金 ----
+
+     貯蓄用の口座の残高。銀行から読むのは同期サーバーの役目で、
+     こちらは受け取った数字と、その日ごとの控えを持つだけ。
+     口座がまだ無いあいだは、手で入れても同じように使える。 */
+
+  function normalizeSavings(s) {
+    s = (s && typeof s === 'object') ? s : {};
+    var history = {};
+    var from = U.addDays(U.today(), -800);
+    Object.keys(s.history || {}).forEach(function (d) {
+      if (!U.isISO(d) || U.cmp(d, from) < 0) return;
+      history[d] = Math.round(U.num(s.history[d], 0));
+    });
+    return {
+      goal: Math.max(0, Math.round(U.num(s.goal, 0))),
+      at: typeof s.at === 'string' ? s.at : '',
+      total: Math.max(0, Math.round(U.num(s.total, 0))),
+      accounts: (Array.isArray(s.accounts) ? s.accounts : []).slice(0, 10).map(function (a) {
+        a = a || {};
+        return {
+          id: String(a.id || '').slice(0, 40),
+          name: String(a.name || '').slice(0, 40),
+          balance: Math.round(U.num(a.balance, 0))
+        };
+      }),
+      history: history
+    };
+  }
+
+  function savings() { return normalizeSavings(state.settings.savings); }
+
+  /**
+   * 残高を入れる。銀行から読んだときも、手で入れたときもここを通る
+   * @param {object} o {total, accounts, at, date}
+   */
+  function setSavings(o) {
+    o = o || {};
+    var cur = savings();
+    var date = U.isISO(o.date) ? o.date : U.today();
+    cur.total = Math.max(0, Math.round(U.num(o.total, cur.total)));
+    if (Array.isArray(o.accounts)) cur.accounts = o.accounts;
+    cur.at = o.at || new Date().toISOString();
+    cur.history[date] = cur.total;
+    state.settings.savings = normalizeSavings(cur);
+    save();
+    return state.settings.savings;
+  }
+
+  /** 目標額を決める */
+  function setSavingsGoal(v) {
+    var cur = savings();
+    cur.goal = Math.max(0, Math.round(U.num(v, 0)));
+    state.settings.savings = normalizeSavings(cur);
+    save();
+    return state.settings.savings;
+  }
+
+  /** サーバーから受け取った日ごとの控えを混ぜる（多いほうを残す） */
+  function mergeSavingsHistory(map) {
+    var cur = savings();
+    Object.keys(map || {}).forEach(function (d) {
+      if (!U.isISO(d)) return;
+      cur.history[d] = Math.round(U.num(map[d], 0));
+    });
+    state.settings.savings = normalizeSavings(cur);
+    save();
+    return state.settings.savings;
   }
 
   /* ---- 家にある調味料と、残り物 ----
@@ -2858,6 +2964,7 @@
     stockMoves: stockMoves, getMove: getMove, addMove: addMove, updateMove: updateMove, removeMove: removeMove,
     MOVE_KINDS: MOVE_KINDS,
     events: events, getEvent: getEvent, addEvent: addEvent,
+    reminderLabel: reminderLabel, normalizeReminders: normalizeReminders,
     updateEvent: updateEvent, removeEvent: removeEvent,
     duty: duty, setDuty: setDuty, dutyLabel: dutyLabel,
     dutyLogDone: dutyLogDone, setDutyLogDone: setDutyLogDone,
@@ -2874,6 +2981,8 @@
     leftovers: leftovers, getLeftover: getLeftover, addLeftover: addLeftover,
     updateLeftover: updateLeftover, removeLeftover: removeLeftover,
     foodQty: foodQty, foodExpired: foodExpired, expiredFood: expiredFood,
+    savings: savings, setSavings: setSavings, setSavingsGoal: setSavingsGoal,
+    mergeSavingsHistory: mergeSavingsHistory,
     ideas: ideas, getIdea: getIdea, addIdea: addIdea, updateIdea: updateIdea,
     markIdeaSent: markIdeaSent, ideaTitleOf: ideaTitleOf,
     removeIdea: removeIdea, allIdeas: allIdeas,

@@ -71,6 +71,15 @@ put_secret DISCORD_RECEIPT_WEBHOOK  "領収書のチャンネル"
 put_secret DISCORD_MEMO_WEBHOOK     "ひらめきメモのチャンネル"
 put_secret DISCORD_WEBHOOK          "夜のバックアップのチャンネル"
 
+echo
+echo "==== 貯金口座（GMOあおぞらネット銀行）============================="
+echo "口座がまだなら、ぜんぶ空のまま Enter で飛ばせます（あとから入れ直せます）。"
+echo "アクセストークンをそのまま使うなら1つめだけ。OAuth で回すなら下の3つ。"
+put_secret BANK_ACCESS_TOKEN  "アクセストークン"
+put_secret BANK_CLIENT_ID     "クライアントID（OAuth のとき）"
+put_secret BANK_CLIENT_SECRET "クライアントシークレット（OAuth のとき）"
+put_secret BANK_REFRESH_TOKEN "リフレッシュトークン（OAuth のとき）"
+
 # ---- deploy -------------------------------------------------------
 echo
 echo "==== deploy ======================================================"
@@ -88,6 +97,6 @@ fi
 echo
 echo "確かめかた：ブラウザで Worker の /health を開いて、次が true になっていること"
 echo "  estimateWebhook / invoiceWebhook / receiptWebhook / memoWebhook / discord"
-echo "  openai / backupKey"
+echo "  openai / backupKey / bank"
 echo
 echo "Worker の URL は、上の deploy の出力に出ています（https://$NAME.…workers.dev）。"

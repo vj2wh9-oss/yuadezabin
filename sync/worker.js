@@ -100,9 +100,11 @@ export default {
           memoWebhook: !!env.DISCORD_MEMO_WEBHOOK,
           estimateWebhook: !!env.DISCORD_ESTIMATE_WEBHOOK,
           invoiceWebhook: !!env.DISCORD_INVOICE_WEBHOOK,
-          receiptWebhook: !!env.DISCORD_RECEIPT_WEBHOOK
+          receiptWebhook: !!env.DISCORD_RECEIPT_WEBHOOK,
+          // 貯金口座（鍵が入っているかだけ。中身は出さない）
+          bank: bankReady(env)
         },
-        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/reschedule'],
+        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/reschedule', '/v1/bank/balance'],
         note: '各 /v1/... は Authorization: Bearer <合鍵> が必要です'
       }, 200, cors);
     }
@@ -224,6 +226,10 @@ export default {
         return reschedule(request, env, cors);
       }
 
+      if (url.pathname.indexOf('/v1/bank/') === 0) {
+        return bank(request, env, cors, url);
+      }
+
       if (url.pathname === '/v1/roomreserve') {
         return roomReserve(request, env, cors, url);
       }
@@ -238,6 +244,7 @@ export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(sendDue(env));
     ctx.waitUntil(dailyBackup(env));
+    ctx.waitUntil(dailyBank(env));
   }
 };
 
@@ -806,6 +813,268 @@ async function askJson(env, model, prompt, schemaName, schema, maxTokens) {
     return { ok: false, status: 502, body: { error: 'not_json', sample: content.slice(0, 200) } };
   }
   return { ok: true, data, model, usage: out.usage || null };
+}
+
+/* ---------------- 貯金口座の残高 ----------------
+
+   GMOあおぞらネット銀行の API（個人向け）から、貯蓄用口座の残高を読む。
+   鍵はここ（Worker の secret）にだけ置き、アプリには渡さない。
+   アプリが受け取るのは「いくらあるか」という数字だけ。
+
+   secret（wrangler secret put ...）
+     BANK_ACCESS_TOKEN     …… アクセストークンをそのまま使うとき（sunabar など）
+     BANK_CLIENT_ID        …┐
+     BANK_CLIENT_SECRET    …┼ OAuth で更新しながら使うとき
+     BANK_REFRESH_TOKEN    …┘
+
+   var（wrangler.jsonc の vars か、ダッシュボードで足す）
+     BANK_BASE          …… API の入口（既定は本番の個人向け）
+     BANK_BALANCE_PATH  …… 残高の道（既定 /accounts/balances）
+     BANK_TOKEN_PATH    …… トークンの道（既定 /oauth/token）
+     BANK_ACCOUNT_ID    …… 口座を1つに絞るとき
+     BANK_LIST_KEY / BANK_AMOUNT_KEY / BANK_NAME_KEY / BANK_ID_KEY
+                        …… 返ってくる JSON の名前が違うときの逃げ道
+
+   道や名前が合っているかは /v1/bank/debug で確かめられる（鍵は出ない）。 */
+
+const BANK_DEFAULTS = {
+  base: 'https://api.gmo-aozora.com/ganb/api/personal/v1',
+  balancePath: '/accounts/balances',
+  tokenPath: '/oauth/token',
+  listKey: 'balances',
+  amountKey: 'balance',
+  nameKey: 'accountTypeName',
+  idKey: 'accountId'
+};
+
+function bankConf(env) {
+  const v = (k, d) => (env[k] === undefined || env[k] === '' ? d : String(env[k]));
+  return {
+    base: v('BANK_BASE', BANK_DEFAULTS.base).replace(/\/+$/, ''),
+    balancePath: v('BANK_BALANCE_PATH', BANK_DEFAULTS.balancePath),
+    tokenPath: v('BANK_TOKEN_PATH', BANK_DEFAULTS.tokenPath),
+    accountId: v('BANK_ACCOUNT_ID', ''),
+    listKey: v('BANK_LIST_KEY', BANK_DEFAULTS.listKey),
+    amountKey: v('BANK_AMOUNT_KEY', BANK_DEFAULTS.amountKey),
+    nameKey: v('BANK_NAME_KEY', BANK_DEFAULTS.nameKey),
+    idKey: v('BANK_ID_KEY', BANK_DEFAULTS.idKey)
+  };
+}
+
+function bankReady(env) {
+  return !!(env.BANK_ACCESS_TOKEN
+    || (env.BANK_CLIENT_ID && env.BANK_CLIENT_SECRET && env.BANK_REFRESH_TOKEN));
+}
+
+/**
+ * 使えるアクセストークンを1つ用意する。
+ * そのまま渡されていればそれを、OAuth なら更新して KV に取っておく。
+ */
+async function bankToken(env) {
+  if (env.BANK_ACCESS_TOKEN) return String(env.BANK_ACCESS_TOKEN);
+  if (!(env.BANK_CLIENT_ID && env.BANK_CLIENT_SECRET && env.BANK_REFRESH_TOKEN)) return '';
+
+  const cached = env.SYNC ? await env.SYNC.get('bank:token', 'json') : null;
+  if (cached && cached.token && cached.until > Date.now() + 60000) return cached.token;
+
+  const c = bankConf(env);
+  const body = new URLSearchParams({
+    grant_type: 'refresh_token',
+    refresh_token: String(env.BANK_REFRESH_TOKEN),
+    client_id: String(env.BANK_CLIENT_ID),
+    client_secret: String(env.BANK_CLIENT_SECRET)
+  });
+  const res = await fetch(c.base + c.tokenPath, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
+    body: body.toString()
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error('token ' + res.status + ' ' + text.slice(0, 200));
+  let out;
+  try { out = JSON.parse(text); } catch (e) { throw new Error('token が JSON ではありません'); }
+  const token = String(out.access_token || '');
+  if (!token) throw new Error('token が入っていません');
+  const life = Math.max(60, Number(out.expires_in) || 3600) * 1000;
+  if (env.SYNC) {
+    await env.SYNC.put('bank:token', JSON.stringify({ token, until: Date.now() + life }),
+      { expirationTtl: Math.ceil(life / 1000) + 60 });
+  }
+  return token;
+}
+
+/* 返ってきた JSON から口座の並びを探す。
+   名前が違っても拾えるよう、最後は中を舐めて「数字を持った並び」を探す */
+function bankPickList(data, c) {
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data[c.listKey])) return data[c.listKey];
+  const seen = [];
+  const walk = (o, depth) => {
+    if (!o || typeof o !== 'object' || depth > 4 || seen.length) return;
+    for (const k of Object.keys(o)) {
+      const v = o[k];
+      if (Array.isArray(v) && v.length && typeof v[0] === 'object') { seen.push(v); return; }
+      if (v && typeof v === 'object') walk(v, depth + 1);
+    }
+  };
+  walk(data, 0);
+  return seen[0] || [];
+}
+
+function bankNum(v) {
+  const n = Number(String(v == null ? '' : v).replace(/[,\s円]/g, ''));
+  return Number.isFinite(n) ? Math.round(n) : 0;
+}
+
+/* 1口座ぶんを、こちらの形にそろえる */
+function bankAccount(row, c) {
+  const pick = (keys) => {
+    for (const k of keys) {
+      if (row && row[k] !== undefined && row[k] !== null && row[k] !== '') return row[k];
+    }
+    return '';
+  };
+  const amount = pick([c.amountKey, 'balance', 'currentBalance', 'amount', 'balanceAmount']);
+  return {
+    id: String(pick([c.idKey, 'accountId', 'accountNumber', 'id'])).slice(0, 40),
+    name: String(pick([c.nameKey, 'accountTypeName', 'accountName', 'name', 'branchName'])).slice(0, 40),
+    balance: bankNum(amount)
+  };
+}
+
+/** 残高を読んで、こちらの形にして返す */
+async function bankFetch(env) {
+  const c = bankConf(env);
+  const token = await bankToken(env);
+  if (!token) return { ok: false, status: 503, body: { error: 'no_bank_token' } };
+
+  let res, text;
+  try {
+    res = await fetch(c.base + c.balancePath, {
+      headers: { authorization: 'Bearer ' + token, accept: 'application/json' }
+    });
+    text = await res.text();
+  } catch (e) {
+    return { ok: false, status: 502,
+      body: { error: 'bank_unreachable', message: String((e && e.message) || e).slice(0, 200) } };
+  }
+  if (!res.ok) {
+    return { ok: false, status: res.status === 401 ? 502 : res.status,
+      body: { error: 'bank_error', status: res.status, message: text.slice(0, 300) } };
+  }
+  let data;
+  try { data = JSON.parse(text); } catch (e) {
+    return { ok: false, status: 502, body: { error: 'bank_not_json', sample: text.slice(0, 200) } };
+  }
+
+  const all = bankPickList(data, c).map((r) => bankAccount(r, c)).filter((a) => a.name || a.id);
+  let accounts = all;
+  if (c.accountId) accounts = all.filter((a) => a.id === c.accountId);
+  // 絞り込みが合っていないのを、0円と取り違えないようにする
+  if (c.accountId && !accounts.length && all.length) {
+    return { ok: false, status: 409, body: {
+      error: 'bank_no_match', wanted: c.accountId, ids: all.map((a) => a.id).slice(0, 10)
+    } };
+  }
+  const total = accounts.reduce((n, a) => n + a.balance, 0);
+  return { ok: true, data: { accounts, total, at: new Date().toISOString() } };
+}
+
+/* その日ぶんを控える。日ごとに1つで、上書きしていく */
+async function bankSnap(env, data) {
+  if (!env.SYNC || !data) return;
+  const day = jstDate(Date.now());
+  await env.SYNC.put('bank:day:' + day, JSON.stringify({ total: data.total, at: data.at }),
+    { expirationTtl: 60 * 60 * 24 * 400 });
+  await env.SYNC.put('bank:last', JSON.stringify(data), { expirationTtl: 60 * 60 * 24 * 400 });
+}
+
+async function bankHistory(env, days) {
+  if (!env.SYNC) return {};
+  const n = Math.min(400, Math.max(1, Number(days) || 180));
+  const out = {};
+  const list = await env.SYNC.list({ prefix: 'bank:day:' });
+  const from = jstDate(Date.now() - n * 86400000);
+  for (const k of list.keys) {
+    const day = k.name.slice('bank:day:'.length);
+    if (day < from) continue;
+    const v = await env.SYNC.get(k.name, 'json');
+    if (v) out[day] = v.total;
+  }
+  return out;
+}
+
+async function bank(request, env, cors, url) {
+  const path = url.pathname.slice('/v1/bank/'.length);
+
+  if (path === 'balance') {
+    if (!bankReady(env)) return json({ error: 'no_bank_token' }, 503, cors);
+    let pass;
+    try { pass = await bankFetch(env); } catch (e) {
+      return json({ error: 'bank_error', message: String((e && e.message) || e).slice(0, 300) }, 502, cors);
+    }
+    if (!pass.ok) return json(pass.body, pass.status, cors);
+    await bankSnap(env, pass.data);
+    const history = await bankHistory(env, url.searchParams.get('days'));
+    return json({ ok: true, data: pass.data, history }, 200, cors);
+  }
+
+  if (path === 'history') {
+    const last = env.SYNC ? await env.SYNC.get('bank:last', 'json') : null;
+    return json({ ok: true, data: last, history: await bankHistory(env, url.searchParams.get('days')) },
+      200, cors);
+  }
+
+  /* つながるかを確かめる。どこで詰まっているかが分かるよう、
+     返ってきた中身を少しだけ見せる（鍵は出さない） */
+  if (path === 'debug') {
+    const c = bankConf(env);
+    const info = {
+      base: c.base, balancePath: c.balancePath,
+      auth: env.BANK_ACCESS_TOKEN ? 'token' : bankReady(env) ? 'oauth' : 'none',
+      accountId: c.accountId || '(絞っていません)'
+    };
+    if (!bankReady(env)) return json({ ok: false, error: 'no_bank_token', conf: info }, 503, cors);
+    let token = '';
+    try { token = await bankToken(env); } catch (e) {
+      return json({ ok: false, error: 'token_failed', conf: info,
+        message: String((e && e.message) || e).slice(0, 300) }, 502, cors);
+    }
+    let res, text;
+    try {
+      res = await fetch(c.base + c.balancePath, {
+        headers: { authorization: 'Bearer ' + token, accept: 'application/json' }
+      });
+      text = await res.text();
+    } catch (e) {
+      return json({ ok: false, error: 'bank_unreachable', conf: info,
+        message: String((e && e.message) || e).slice(0, 200) }, 502, cors);
+    }
+    let parsed = null;
+    try { parsed = JSON.parse(text); } catch (e) { /* そのまま出す */ }
+    const accounts = parsed ? bankPickList(parsed, c).map((r) => bankAccount(r, c)) : [];
+    return json({
+      ok: res.ok, status: res.status, conf: info,
+      accounts,
+      // 名前が合わないときのために、返ってきた形をそのまま少しだけ
+      sample: text.slice(0, 900)
+    }, 200, cors);
+  }
+
+  return json({ error: 'not_found' }, 404, cors);
+}
+
+/* 1日1回、夜のうちに残高を控えておく（アプリを開いていなくても残る） */
+async function dailyBank(env) {
+  if (!env.SYNC || !bankReady(env)) return;
+  const now = Date.now();
+  if (new Date(now).getUTCHours() < backupHour(env)) return;
+  const today = jstDate(now);
+  if ((await env.SYNC.get('bank:day:' + today, 'text'))) return;   // もう控えてある
+  try {
+    const pass = await bankFetch(env);
+    if (pass.ok) await bankSnap(env, pass.data);
+  } catch (e) { /* next time */ }
 }
 
 /* ---------------- 遅れたときの立て直し ----------------

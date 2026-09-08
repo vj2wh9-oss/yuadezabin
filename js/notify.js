@@ -378,6 +378,62 @@
     return d.toISOString();
   }
 
+  /* ---------------- 予定そのものに付けたリマインダー ----------------
+
+     「重要」にした予定には、日にちと時刻をいくつでも足せる。
+     設定の決まりごと（KINDS）とは別の道で、こちらは常に作る。 */
+
+  function leadText(days) {
+    if (days <= 0) return '今日';
+    if (days === 1) return '明日';
+    return 'あと' + days + '日';
+  }
+
+  function eventReminders(from, to) {
+    var out = [];
+    var map = DL.events.byDay(from, U.addDays(to, 2));
+    var seenAbs = {};
+    Object.keys(map).sort().forEach(function (date) {
+      map[date].forEach(function (o) {
+        if (o.index !== 0) return;                  // またがる予定は初日だけ
+        var ev = o.ev;
+        if (!ev.important) return;                  // 重要にした予定のためのもの
+        var list = ev.reminders || [];
+        if (!list.length) return;
+        if (DL.events.isDone(o)) return;            // 済ませたものは鳴らさない
+
+        list.forEach(function (r) {
+          var at = null, lead = '';
+          if (r.mode === 'min') {
+            if (!ev.start) return;                  // 終日には効かない
+            at = atLocal(date, ev.start, -U.num(r.minutes, 30));
+            lead = 'まもなく';
+          } else if (r.mode === 'abs') {
+            // 日時を決めたぶんは、その日以降でいちばん近い回に結び付ける
+            var key = ev.id + '|' + r.id;
+            if (seenAbs[key] || U.cmp(date, r.date) < 0) return;
+            seenAbs[key] = true;
+            at = atLocal(r.date, r.time, 0);
+            lead = leadText(U.diffDays(r.date, date));
+          } else {
+            at = atLocal(U.addDays(date, -U.num(r.days, 0)), r.time, 0);
+            lead = leadText(U.num(r.days, 0));
+          }
+          if (!at) return;
+          out.push({
+            id: 'rem|' + ev.id + '|' + r.id + (r.mode === 'abs' ? '' : '|' + date),
+            at: at,
+            title: lead + '　' + ev.title,
+            body: U.fmtMDW(date) + '　' + bodyOf(o),
+            tag: 'rem-' + ev.id + '-' + r.id,
+            url: '#/day/' + date
+          });
+        });
+      });
+    });
+    return out;
+  }
+
   /* ---------------- 予定表を組む ---------------- */
 
   /**
@@ -399,6 +455,12 @@
       try { made = kind.build(r, start, end) || []; } catch (e) { made = []; }
       made.forEach(function (x) { if (x && x.at > now) out.push(x); });   // 過ぎたぶんは送らない
     });
+
+    // 予定そのものに付けたリマインダー。設定の決まりごととは別に、いつも作る。
+    // 「重要」にした予定を取りこぼさないための道なので、ここは止めない
+    var made2;
+    try { made2 = eventReminders(start, end); } catch (e) { made2 = []; }
+    made2.forEach(function (x) { if (x && x.at > now) out.push(x); });
 
     // 同じ id は1つに。時刻の早い順
     var by = {};
@@ -562,6 +624,6 @@
     KINDS: KINDS, build: build, rules: rules, settings: settings, defaultRules: defaultRules,
     status: status, supported: supported, standalone: standalone,
     enable: enable, disable: disable, sync: sync, state: state, testSend: testSend,
-    atLocal: atLocal
+    atLocal: atLocal, eventReminders: eventReminders
   };
 })(window.DL);
