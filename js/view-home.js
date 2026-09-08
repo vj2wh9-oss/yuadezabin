@@ -717,7 +717,7 @@
   }
 
   /* 一品ぶん。主菜・副菜の別と、使う調味料の分量と、その一品の手順 */
-  function dishBox(d, date, pm) {
+  function dishBox(d, date, find) {
     var box = el('div', { class: 'mn-dish' });
     box.appendChild(el('div', { class: 'mn-dish-h' }, [
       d.role ? ui.chip(d.role, 'soft') : null,
@@ -727,7 +727,7 @@
       // 家に無いもの・期限の切れたものは、その場で分かるようにする
       var vals = el('span', { class: 'mn-seas-v' });
       d.seasonings.forEach(function (s, i) {
-        var st = DL.menu.seasoningState(s.name, date, pm);
+        var st = DL.menu.seasoningState(s.name, date, find);
         if (i) vals.appendChild(el('span', { text: '・' }));
         vals.appendChild(el('span', {
           class: st === 'ok' ? '' : 'mn-s-bad',
@@ -753,7 +753,8 @@
   function menuBody(m, date) {
     var yen = DL.docs.yen;
     var box = el('div', { class: 'mn-body' });
-    var pm = DL.menu.pantryMap();
+    // 献立を作ったときに突き合わせた呼び方（しょうが(チューブ)＝おろししょうが）で当てる
+    var find = DL.menu.matcher(m);
     // 家に無い調味料と、期限の切れた調味料。予算には数えず、買うものへ足す
     var extras = DL.menu.extras(m, date);
 
@@ -766,7 +767,7 @@
       ]));
       if (x.dishes.length) {
         open.appendChild(el('div', { class: 'mn-dishes' }, x.dishes.map(function (d) {
-          return dishBox(d, date, pm);
+          return dishBox(d, date, find);
         })));
       }
       // 前に採ってあった献立は、手順が一品ごとではなく献立ぜんぶで1つ

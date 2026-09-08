@@ -1568,10 +1568,19 @@
       };
     }).filter(function (x) { return x.name; });
 
+    // 献立を作ったときに突き合わせた呼び方 {使う名前: 家にある名前}。
+    // 「しょうが(チューブ)＝おろししょうが」のような言い換えを、この献立に残す
+    var match = {};
+    Object.keys((m && m.match) || {}).slice(0, 40).forEach(function (k) {
+      var name = String(k || '').trim().slice(0, 40);
+      var to = String(m.match[k] || '').trim().slice(0, 40);
+      if (name && to) match[name] = to;
+    });
+
     // 合計は自分で数え直す。向こうの足し算を当てにしない
     var sum = shopping.reduce(function (a, x) { return a + x.price; }, 0);
     return {
-      meals: meals, shopping: shopping,
+      meals: meals, shopping: shopping, match: match,
       total: sum || Math.max(0, Math.round(U.num(m.total, 0))),
       servings: U.num(m.servings, 1) === 2 ? 2 : 1,
       budget: Math.max(0, Math.round(U.num(m.budget, 0))),

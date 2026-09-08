@@ -653,21 +653,114 @@ async function menu(request, env, cors) {
   const pass = await askMenu(env, model, o);
   if (!pass.ok) return json(pass.body, pass.status, cors);
 
-  return json({ ok: true, data: pass.data, model: pass.model, usage: pass.usage }, 200, cors);
+  // 献立ができてから、家にある調味料と呼び方を突き合わせる。
+  // ここで初めて家の在庫を見るので、献立の中身には影響しない。
+  // 失敗しても献立は返す（アプリ側が言い換え表で当てる）
+  const have = (Array.isArray(body.pantry) ? body.pantry : []).slice(0, 60)
+    .map((s) => String(s || '').trim().slice(0, 40)).filter(Boolean);
+  const matchModel = String(env.OPENAI_MATCH_MODEL || model);
+  const match = await askMatch(env, matchModel, usedSeasonings(pass.data), have);
+
+  return json({ ok: true, data: pass.data, match: match, model: pass.model, usage: pass.usage },
+    200, cors);
+}
+
+/* ---- 呼び方の突き合わせ ----
+
+   「しょうが(チューブ)」と「おろししょうが」のように、献立の書き方と
+   家にある調味料の書き方はそろわない。名前だけを見て、同じものかどうかを
+   決めてもらう。献立ができたあとに聞くので、献立そのものには効かない。 */
+
+const MATCH_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['pairs'],
+  properties: {
+    pairs: {
+      type: 'array',
+      description: '使う調味料ひとつにつき1件',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['used', 'have'],
+        properties: {
+          used: { type: 'string', description: '献立で使う調味料の名前。渡した字のまま' },
+          have: { type: 'string', description: '同じものが家にあればその名前（渡した字のまま）。無ければ空文字' }
+        }
+      }
+    }
+  }
+};
+
+function matchPrompt(used, have) {
+  return [
+    '料理で使う調味料の名前を、家にある調味料の名前と突き合わせてください。',
+    '呼び方が違っても中身が同じものは、同じものとして結び付けてください'
+      + '（例：「しょうが(チューブ)」と「おろししょうが」、「醤油」と「しょうゆ」、'
+      + '「顆粒だし」と「ほんだし」）。',
+    '中身が違うものは結び付けないでください'
+      + '（例：「ごま油」と「サラダ油」、「しょうゆ」と「めんつゆ」、「酢」と「ポン酢」、'
+      + '「砂糖」と「黒糖」、「バター」と「マーガリン」）。',
+    '家にある中に同じものが無ければ、have は空文字にしてください。',
+    '名前は渡した字のまま返し、使う調味料はひとつ残らず返してください。',
+    '',
+    '【使う調味料】' + used.join('、'),
+    '【家にある調味料】' + (have.length ? have.join('、') : 'なし')
+  ].join('\n');
+}
+
+/**
+ * 献立で使う調味料が家にあるかを、名前だけ見て突き合わせる
+ * @returns {object} {使う名前: 家にある名前 or ''}。聞けなければ null
+ */
+async function askMatch(env, model, used, have) {
+  if (!used.length || !have.length) return null;
+  const pass = await askJson(env, model, matchPrompt(used, have), 'pantry_match', MATCH_SCHEMA,
+    Number(env.OPENAI_MATCH_MAX_TOKENS || 1500));
+  if (!pass.ok) return null;
+
+  const out = {};
+  (Array.isArray(pass.data && pass.data.pairs) ? pass.data.pairs : []).forEach((x) => {
+    const u = String((x && x.used) || '');
+    const h = String((x && x.have) || '');
+    if (used.indexOf(u) < 0) return;              // 渡していない名前は捨てる
+    out[u] = have.indexOf(h) >= 0 ? h : '';       // 家にある名前そのものでなければ「無い」
+  });
+  return out;
+}
+
+/* 献立で使う調味料の名前を、重複なく取り出す */
+function usedSeasonings(data) {
+  const out = [];
+  ((data && data.meals) || []).forEach((m) => {
+    ((m && m.dishes) || []).forEach((d) => {
+      ((d && d.seasonings) || []).forEach((s) => {
+        const n = String((s && s.name) || '').trim();
+        if (n && out.indexOf(n) < 0) out.push(n);
+      });
+    });
+  });
+  return out;
 }
 
 async function askMenu(env, model, o) {
+  return askJson(env, model, menuPrompt(o), 'menu', MENU_SCHEMA,
+    // 一品ごとに調味料と手順を書くぶん、返りが長くなる
+    Number(env.OPENAI_MENU_MAX_TOKENS || 4000));
+}
+
+/* 文だけ渡して、決めた型の JSON をもらう（献立と、呼び方の突き合わせで使う） */
+async function askJson(env, model, prompt, schemaName, schema, maxTokens) {
   const base = String(env.OPENAI_BASE || OCR_DEFAULTS.base).replace(/\/+$/, '');
   const effort = env.OPENAI_REASONING === undefined ? OCR_DEFAULTS.reasoning : String(env.OPENAI_REASONING);
 
   const payload = {
     model,
-    input: [{ role: 'user', content: [{ type: 'input_text', text: menuPrompt(o) }] }],
+    input: [{ role: 'user', content: [{ type: 'input_text', text: prompt }] }],
     text: {
-      format: { type: 'json_schema', name: 'menu', strict: true, schema: MENU_SCHEMA }
+      format: { type: 'json_schema', name: schemaName, strict: true, schema: schema }
     },
-    // 一品ごとに調味料と手順を書くぶん、返りが長くなる
-    max_output_tokens: Number(env.OPENAI_MENU_MAX_TOKENS || 4000),
+    max_output_tokens: maxTokens,
     tools: [],
     store: false
   };

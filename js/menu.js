@@ -85,15 +85,19 @@
         servings: U.num(o.servings, 1) === 2 ? 2 : 1,
         // 同じものばかり出ないよう、最近のぶんを渡す
         avoid: (o.avoid || []).concat(S.recentMenuNames(14)).slice(0, 12),
-        // 残り物は先に食べたいので渡す（調味料のほうは献立に効かせない）
+        // 残り物は先に食べたいので渡す
         leftovers: useLeftovers(o.date),
+        // 家にある調味料の名前。献立を作ったあとに、呼び方を突き合わせるためだけに使う
+        pantry: S.pantry().map(function (x) { return x.name; }).filter(Boolean).slice(0, 60),
         season: season(o.date)
       })
     }).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (b) {
         if (!res.ok) throw new Error(reason(res.status, b));
         var m = S.normalizeMenu(Object.assign({}, b.data, {
-          servings: U.num(o.servings, 1), budget: budget
+          servings: U.num(o.servings, 1), budget: budget,
+          // 呼び方の突き合わせ。この献立と一緒に残す
+          match: b.match || {}
         }));
         if (!m.meals.length) throw new Error('献立を組み立てられませんでした');
         return m;
@@ -153,11 +157,40 @@
   }
 
   /**
+   * その献立の調味料を、家にあるものと結ぶ役。
+   *
+   * 献立を作ったときに OpenAI が突き合わせた組（m.match）をまず見る。
+   * 「しょうが(チューブ)＝おろししょうが」のような言い換えは、ここで拾える。
+   * 組が無いもの（作ったあとに登録した調味料など）は、こちらの言い換え表で当てる。
+   *
+   * @returns {function(string): object|null} 調味料の名前 → 家にあるもの
+   */
+  function matcher(m) {
+    var map = pantryMap();
+    var byName = {};
+    S.pantry().forEach(function (x) { byName[plain(x.name)] = x; });
+    var pairs = (m && m.match) || {};
+
+    return function (name) {
+      var paired = pairs[name];
+      if (paired) {
+        var own = byName[plain(paired)] || map[key(paired)];
+        if (own) return own;
+      }
+      // 突き合わせが無い・相手が消えている場合は、こちらで当てる
+      return byName[plain(name)] || map[key(name)] || null;
+    };
+  }
+
+  function plain(s) { return String(s || '').replace(/[\s　]/g, ''); }
+
+  /**
    * その調味料が家にあるか
+   * @param {function} [find] matcher() で作ったもの
    * @returns {'ok'|'none'|'expired'}
    */
-  function seasoningState(name, date, map) {
-    var own = (map || pantryMap())[key(name)];
+  function seasoningState(name, date, find) {
+    var own = (find || matcher(null))(name);
     if (!own) return 'none';
     return S.foodExpired(own, date) ? 'expired' : 'ok';
   }
@@ -168,22 +201,22 @@
    * @returns {Array} [{name, qty, state:'none'|'expired', tag}]
    */
   function extras(m, date) {
-    var map = pantryMap();
+    var find = matcher(m);
     var seen = {}, out = [];
     ((m && m.meals) || []).forEach(function (meal) {
       (meal.dishes || []).forEach(function (d) {
         (d.seasonings || []).forEach(function (s) {
-          var k = key(s.name);
+          var own = find(s.name);
+          // 同じものを二度は出さない。家にあるものは家の呼び名でまとめる
+          var k = own ? 'have:' + own.id : 'none:' + key(s.name);
           if (seen[k]) return;
           seen[k] = true;
-          var st = seasoningState(s.name, date, map);
-          if (st === 'ok') return;
-          var own = map[k];
+          if (own && !S.foodExpired(own, date)) return;
           out.push({
             name: (own && own.name) || s.name,
-            qty: st === 'expired' ? S.foodQty(own) : (s.qty || ''),
-            state: st,
-            tag: st === 'expired' ? '期限切れ' : '家にない'
+            qty: own ? S.foodQty(own) : (s.qty || ''),
+            state: own ? 'expired' : 'none',
+            tag: own ? '期限切れ' : '家にない'
           });
         });
       });
@@ -206,7 +239,7 @@
   DL.menu = {
     SLOTS: SLOTS, SLOT_LABEL: SLOT_LABEL,
     ready: ready, suggest: suggest, namesOf: namesOf, slotsLabel: slotsLabel, season: season,
-    extras: extras, seasoningState: seasoningState, pantryMap: pantryMap,
+    extras: extras, seasoningState: seasoningState, matcher: matcher, pantryMap: pantryMap,
     useLeftovers: useLeftovers, key: key
   };
 })(window.DL);
