@@ -569,6 +569,7 @@
   var mServ = 1;             // 何人分
   var mDraft = null;         // まだ採用していない献立
   var mBusy = false;
+  var mFrom = '';            // どの献立に合わせて mSlots をそろえたか
 
   function menuCard(today) {
     var M = DL.menu;
@@ -579,9 +580,19 @@
 
     var card = el('div', { class: 'card mn-card' });
 
-    // すでに採用してあるなら、それを出す
-    if (saved) {
+    // すでに採用してあるなら、それを出す（考え直したものがあれば、そちらを先に見せる）
+    if (saved && !mDraft) {
+      /* 採用したあとでも食事は選び直せる。朝食を足して考え直す、ができるように。
+         いま採用しているぶんに合わせておいて、押されたらそれを覚える */
+      var slots = (saved.meals || []).map(function (m) { return m.slot; });
+      var from = today + ':' + slots.join(',');
+      if (mFrom !== from) {
+        if (slots.length) mSlots = slots;
+        mFrom = from;
+      }
+
       card.appendChild(menuBody(saved, today));
+      if (M.ready()) card.appendChild(slotPick());
       card.appendChild(el('div', { class: 'row-wrap mn-acts' }, [
         ui.btn(mBusy ? '考えています…' : '再考案', 'ghost', function () {
           mDraft = null;
@@ -605,17 +616,7 @@
     }
 
     /* 選ぶところ。どの食事を、何人分で */
-    card.appendChild(ui.block('どの食事', el('div', { class: 'mn-pick' },
-      M.SLOTS.map(function (s) {
-        var on = mSlots.indexOf(s.value) >= 0;
-        return ui.btn(s.label, 'ghost' + (on ? ' on' : ''), function () {
-          var i = mSlots.indexOf(s.value);
-          if (i >= 0) mSlots.splice(i, 1);
-          else mSlots.push(s.value);
-          if (!mSlots.length) mSlots.push(s.value);      // 全部外すことはできない
-          DL.app.render();
-        });
-      }))));
+    card.appendChild(slotPick());
 
     card.appendChild(ui.block('何人分', ui.segmented(
       [{ value: 1, label: '1人分' }, { value: 2, label: '2人分' }],
@@ -646,13 +647,20 @@
     card.appendChild(menuBody(mDraft, today));
     card.appendChild(el('div', { class: 'row-wrap mn-acts' }, [
       ui.btn('これにする', 'primary', function () {
-        S.setMenu(today, mDraft);
+        // setMenu で描き直しが走るので、先に下書きを片づけてから保存する
+        var m = mDraft;
         mDraft = null;
+        S.setMenu(today, m);
         ui.toast('今日の献立にしました');
       }, 'check'),
       ui.btn(mBusy ? '考えています…' : '再考案', 'ghost', function () {
         run(today, b, DL.menu.namesOf(mDraft));
       }, 'refresh'),
+      // 採用してあるものから考え直したときは、元に戻れるように
+      saved ? onlyIcon('close', 'やめる', 'ghost', function () {
+        mDraft = null;
+        DL.app.render();
+      }) : null,
       kitchenBtn()
     ]));
     return card;
@@ -675,6 +683,21 @@
         ui.toast(e.message, 'danger');
       });
     }
+  }
+
+  /* どの食事にするか。押すと入る・外れる（全部外すことはできない） */
+  function slotPick() {
+    return ui.block('どの食事', el('div', { class: 'mn-pick' },
+      DL.menu.SLOTS.map(function (s) {
+        var on = mSlots.indexOf(s.value) >= 0;
+        return ui.btn(s.label, 'ghost' + (on ? ' on' : ''), function () {
+          var i = mSlots.indexOf(s.value);
+          if (i >= 0) mSlots.splice(i, 1);
+          else mSlots.push(s.value);
+          if (!mSlots.length) mSlots.push(s.value);
+          DL.app.render();
+        });
+      })));
   }
 
   /* 貯金の1行。残高か目標があるときだけ出す */
