@@ -1940,11 +1940,25 @@ a.tp-proj:active { color: var(--accent); }
 .mn-foot { margin: 0; }
 .mn-foot.over { color: var(--danger); }
 
-/* 家にある調味料と残り物の設定（献立の歯車から開くシート） */
-.kt-wrap .section { margin-top: 14px; }
-.kt-wrap .section:first-child { margin-top: 0; }
-.kt-wrap > p { margin: 0 0 8px; }
-.kt-wrap .list { margin-bottom: 8px; }
+/* 家にある調味料と残り物の設定（献立の歯車から開くシート）。
+   数が増えても行が埋もれないよう、それぞれ畳めるようにしてある */
+.kt-sec {
+  border: 1px solid var(--line); border-radius: var(--radius-s);
+  background: var(--card2); padding: 10px 12px; margin-bottom: 10px;
+}
+.kt-sec > summary {
+  display: flex; align-items: center; gap: 7px; cursor: pointer;
+  list-style: none; font-size: 14px;
+}
+.kt-sec > summary::-webkit-details-marker { display: none; }
+.kt-sec > summary > b { flex: 1; min-width: 0; }
+.kt-mark { display: inline-flex; color: var(--muted); transition: transform .15s ease; }
+.kt-sec[open] .kt-mark { transform: rotate(180deg); }
+.kt-sec > p { margin: 8px 0; }
+/* 一覧が長くなったら、この中だけを転がす。
+   高さを決めると縦並びの行が潰れるので、行は縮ませない */
+.kt-sec .list { max-height: 46vh; overflow-y: auto; margin-bottom: 8px; }
+.kt-sec .list > * { flex: none; }
 .kt-qty { display: flex; gap: 8px; }
 .kt-qty .field { flex: 1; }
 /* 捨てるもの。今日やることに混ぜて出す */

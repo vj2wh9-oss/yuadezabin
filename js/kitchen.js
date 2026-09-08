@@ -21,31 +21,44 @@
     ui.sheet({ title: '家にあるもの', body: body });
   }
 
+  /* 開いているのはどちらか。書き直しても畳み方は覚えておく。
+     調味料は数が増えるので、はじめは畳んでおく */
+  var opened = { pantry: false, leftover: true };
+
   function draw(body, refresh) {
     var today = U.today();
     body.textContent = '';
 
-    body.appendChild(ui.section('家にある調味料',
-      el('span', { class: 'muted small', text: S.pantry().length + '点' })));
-    body.appendChild(el('p', { class: 'muted small', text:
+    body.appendChild(fold('pantry', '家にある調味料', S.pantry(), today, refresh,
       'ここに無い調味料は、献立に出てきたら買うものへ足します（予算には数えません）。'
-      + '砂糖や塩などもここに書いてください。' }));
-    body.appendChild(list(S.pantry(), 'pantry', today, refresh,
-      'まだありません。よく使う調味料を入れておくと、足りないものだけ買い物に出ます。'));
-    body.appendChild(ui.btn('調味料を足す', 'ghost full', function () {
-      edit('pantry', null, refresh);
-    }, 'plus'));
+      + '砂糖や塩などもここに書いてください。',
+      'まだありません。よく使う調味料を入れておくと、足りないものだけ買い物に出ます。',
+      '調味料を足す'));
 
-    body.appendChild(ui.section('残り物',
-      el('span', { class: 'muted small', text: S.leftovers().length + '点' })));
-    body.appendChild(el('p', { class: 'muted small', text:
+    body.appendChild(fold('leftover', '残り物', S.leftovers(), today, refresh,
       'ここに書いたものから先に使う献立を考えます。'
-      + '食材ではない作り置き（夕飯の残りなど）は「保存あり」にしてください。' }));
-    body.appendChild(list(S.leftovers(), 'leftover', today, refresh,
-      'まだありません。使いかけの食材や、作り置きを入れておけます。'));
-    body.appendChild(ui.btn('残り物を足す', 'ghost full', function () {
-      edit('leftover', null, refresh);
+      + '食材ではない作り置き（夕飯の残りなど）は「保存あり」にしてください。',
+      'まだありません。使いかけの食材や、作り置きを入れておけます。',
+      '残り物を足す'));
+  }
+
+  /* 畳めるひと組。閉じているときも、点数と期限切れの数は見えるようにする */
+  function fold(kind, title, rows, today, refresh, hint, emptyText, addText) {
+    var bad = rows.filter(function (x) { return S.foodExpired(x, today); }).length;
+    var box = el('details', { class: 'kt-sec', open: opened[kind] });
+    box.addEventListener('toggle', function () { opened[kind] = box.open; });
+    box.appendChild(el('summary', {}, [
+      el('span', { class: 'kt-mark' }, ui.icon('chevronDown', 16)),
+      el('b', { text: title }),
+      ui.chip(rows.length + '点', 'ghosty'),
+      bad ? ui.chip('期限切れ' + bad, 'danger') : null
+    ]));
+    box.appendChild(el('p', { class: 'muted small', text: hint }));
+    box.appendChild(list(rows, kind, today, refresh, emptyText));
+    box.appendChild(ui.btn(addText, 'ghost full', function () {
+      edit(kind, null, refresh);
     }, 'plus'));
+    return box;
   }
 
   function list(rows, kind, today, refresh, emptyText) {
