@@ -570,6 +570,8 @@
   var mDraft = null;         // まだ採用していない献立
   var mBusy = false;
   var mFrom = '';            // どの献立に合わせて mSlots をそろえたか
+  var mAmount = 0;           // 金額指定で入れた額。次に開いたときの初期値にする
+  var mBudget = 0;           // いまの下書きを出したときの額（0 は今日あと使える額）
 
   function menuCard(today) {
     var M = DL.menu;
@@ -627,11 +629,13 @@
       card.appendChild(el('p', { class: 'muted small',
         text: '今日あと使える ' + yen(b.todayLeft) + ' で考えます' }));
       var sv = savingLeft(today, b);
-      // 2つ並ぶと絵を入れる幅が無いので、この列は文字だけにする
+      /* 通常出力＝今日あと使える金額いっぱい、金額指定＝入れた額、
+         貯金予算＝貯金ぶんを引いた額。並ぶので、この列は文字だけにする */
       card.appendChild(el('div', { class: 'row-wrap mn-acts' }, [
-        ui.btn(mBusy ? '考えています…' : '献立を出す',
-          'primary grow', function () { run(today, b, []); }, sv ? null : 'idea'),
-        sv ? ui.btn('貯金予算献立', 'ghost grow', function () {
+        ui.btn(mBusy ? '考え中…' : '通常出力',
+          'primary grow', function () { run(today, b, []); }),
+        ui.btn('金額指定', 'ghost grow', function () { amountSheet(today, b); }),
+        sv ? ui.btn('貯金予算', 'ghost grow', function () {
           if (sv.left <= 0) {
             ui.toast('貯金ぶんを引くと、今日の食費が残りません（'
               + yen(-sv.left) + ' 足りません）', 'danger');
@@ -654,7 +658,8 @@
         ui.toast('今日の献立にしました');
       }, 'check'),
       ui.btn(mBusy ? '考えています…' : '再考案', 'ghost', function () {
-        run(today, b, DL.menu.namesOf(mDraft));
+        // 金額指定・貯金予算で出したものは、同じ額のまま考え直す
+        run(today, b, DL.menu.namesOf(mDraft), mBudget);
       }, 'refresh'),
       // 採用してあるものから考え直したときは、元に戻れるように
       saved ? onlyIcon('close', 'やめる', 'ghost', function () {
@@ -665,10 +670,34 @@
     ]));
     return card;
 
-    /* @param {number} [budget] 貯金ぶんを引いた額で作るときに渡す */
+    /* 金額を決めて考えてもらう。今日あと使える額とは切り離して入れられる */
+    function amountSheet(date, bd) {
+      var amount = ui.input({
+        type: 'number', inputmode: 'numeric', min: 1, step: 100,
+        value: mAmount || bd.todayLeft
+      });
+      var close = ui.sheet({
+        title: '金額指定',
+        body: el('div', { class: 'form' }, [ui.field('金額（円）', amount)]),
+        actions: [
+          ui.btn('キャンセル', 'ghost', function () { close(); }),
+          ui.btn('確定', 'primary', function () {
+            var v = Math.round(U.num(amount.value, 0));
+            if (v <= 0) { ui.toast('金額を入れてください', 'warn'); return; }
+            mAmount = v;
+            close();
+            run(date, bd, [], v);
+          })
+        ]
+      });
+      setTimeout(function () { amount.focus(); amount.select(); }, 120);
+    }
+
+    /* @param {number} [budget] 金額指定・貯金予算のときに渡す */
     function run(date, bd, avoid, budget) {
       if (mBusy) return;
       mBusy = true;
+      mBudget = budget || 0;      // 「再考案」でも同じ額のままにする
       DL.app.render();
       DL.menu.suggest({
         budget: budget || bd.todayLeft, slots: mSlots.slice(), servings: mServ,

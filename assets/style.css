@@ -1947,8 +1947,9 @@ a.tp-proj:active { color: var(--accent); }
 .mn-extra-note { margin: 4px 0 0; }
 .mn-warn { display: flex; align-items: center; gap: 5px; margin: 0; color: var(--warn); }
 .mn-warn .icon { flex: none; }
-/* 献立のボタン列。絵だけのボタンは幅を詰める */
-.mn-acts .btn.grow { flex: 1; min-width: 0; padding-left: 8px; padding-right: 8px; }
+/* 献立のボタン列。3つ＋歯車が1行に収まるよう、詰めて並べる */
+.mn-acts { gap: 6px; }
+.mn-acts .btn.grow { flex: 1; min-width: 0; padding-left: 6px; padding-right: 6px; }
 .mn-item-n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mn-item b { flex: none; font-variant-numeric: tabular-nums; }
 .mn-foot { margin: 0; }
