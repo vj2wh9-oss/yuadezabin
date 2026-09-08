@@ -106,6 +106,8 @@ export default {
           plotWebhook: !!env.DISCORD_PLOT_WEBHOOK
         },
         endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/reschedule', '/v1/bank/balance', '/v1/plot', '/v1/plot/send', '/v1/spend'],
+        // どの食事に対応しているか。deploy を忘れると古いままなのが分かる
+        menuSlots: MENU_SLOTS,
         note: '各 /v1/... は Authorization: Bearer <合鍵> が必要です'
       }, 200, cors);
     }
@@ -546,7 +548,7 @@ const MENU_SCHEMA = {
         properties: {
           slot: {
             type: 'string', enum: ['breakfast', 'lunch', 'dinner'],
-            description: 'breakfast=朝 lunch=昼 dinner=夕'
+            description: 'breakfast=朝 lunch=昼 dinner=夕'   // MENU_SLOTS と同じ順・同じ中身
           },
           name: { type: 'string', description: '献立の呼び名。例）鶏の照り焼き定食' },
           dishes: {
@@ -606,6 +608,7 @@ const MENU_SCHEMA = {
   }
 };
 
+const MENU_SLOTS = ['breakfast', 'lunch', 'dinner'];
 const SLOT_JA = { breakfast: '朝食', lunch: '昼食', dinner: '夕飯' };
 
 function menuPrompt(o) {
@@ -660,7 +663,7 @@ async function menu(request, env, cors) {
 
   // 1日の順（朝→昼→夕）にそろえる。押した順のままだと言い回しが逆になる
   const asked = Array.isArray(body.slots) ? body.slots : [];
-  const slots = ['breakfast', 'lunch', 'dinner'].filter((s) => asked.indexOf(s) >= 0);
+  const slots = MENU_SLOTS.filter((s) => asked.indexOf(s) >= 0);
   if (!slots.length) return json({ error: 'no_slots' }, 400, cors);
 
   const o = {

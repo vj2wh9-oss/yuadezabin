@@ -677,6 +677,11 @@
         mBusy = false;
         mDraft = m;
         DL.app.render();
+        // 頼んだ食事が返ってこなかったら、たいてい Worker が古い
+        if (m.missingSlots && m.missingSlots.length) {
+          ui.toast(DL.menu.slotsJa(m.missingSlots)
+            + ' が出せませんでした。Cloudflare の Worker を deploy し直してください', 'warn');
+        }
       }).catch(function (e) {
         mBusy = false;
         DL.app.render();

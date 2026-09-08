@@ -38,6 +38,11 @@
     return 'サーバーが応答しませんでした（' + status + '）';
   }
 
+  /** ['breakfast','dinner'] → '朝食・夕飯' */
+  function slotsJa(slots) {
+    return (slots || []).map(function (s) { return SLOT_LABEL[s] || s; }).join('・');
+  }
+
   /* いまの季節。旬のものを使ってもらう手がかり */
   function season(date) {
     var m = U.num(String(date || U.today()).slice(5, 7), 0);
@@ -94,6 +99,12 @@
       })
     }).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (b) {
+        // こちらは選んでいるのに向こうが「選ばれていない」と言うのは、
+        // Worker が古くてその食事を知らないとき（朝食を足す前のもの）
+        if (!res.ok && b && b.error === 'no_slots') {
+          throw new Error('サーバー側が ' + slotsJa(slots)
+            + ' に未対応です。Cloudflare の Worker を新しくして deploy し直してください');
+        }
         if (!res.ok) throw new Error(reason(res.status, b));
         var m = S.normalizeMenu(Object.assign({}, b.data, {
           servings: U.num(o.servings, 1), budget: budget,
@@ -101,6 +112,9 @@
           match: b.match || {}
         }));
         if (!m.meals.length) throw new Error('献立を組み立てられませんでした');
+        // 頼んだのに返ってこなかった食事。古い Worker は知らない食事を黙って落とす
+        var got = m.meals.map(function (x) { return x.slot; });
+        m.missingSlots = slots.filter(function (s) { return got.indexOf(s) < 0; });
         return m;
       });
     }, function () {
@@ -239,7 +253,8 @@
 
   DL.menu = {
     SLOTS: SLOTS, SLOT_LABEL: SLOT_LABEL,
-    ready: ready, suggest: suggest, namesOf: namesOf, slotsLabel: slotsLabel, season: season,
+    ready: ready, suggest: suggest, namesOf: namesOf, slotsLabel: slotsLabel, slotsJa: slotsJa,
+    season: season,
     extras: extras, seasoningState: seasoningState, matcher: matcher, pantryMap: pantryMap,
     useLeftovers: useLeftovers, key: key
   };
