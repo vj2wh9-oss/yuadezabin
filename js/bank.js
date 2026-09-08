@@ -22,7 +22,18 @@
       return 'サーバー側に銀行の鍵がありません。Worker に BANK_ACCESS_TOKEN を入れてください';
     }
     if (k === 'bank_unreachable') return '銀行につながりませんでした';
-    if (k === 'bank_error') return '銀行が断りました（' + (body.status || status) + '）：' + (body.message || '');
+    if (k === 'bank_error') {
+      var code = body.status || status;
+      // HTML が返るのは、API まで届いていないとき（入口ちがい・許可されていない）
+      if (body.html) {
+        return '銀行の入口が ' + code + ' を返しました（' + (body.message || '') + '）。'
+          + (code === 403
+            ? 'URL・鍵・利用の許可のどれかが合っていません。BANK_BASE と BANK_BALANCE_PATH、'
+              + 'それに鍵の種類（本番か砂場か）を確かめてください'
+            : 'API の入口（BANK_BASE）が合っているか確かめてください');
+      }
+      return '銀行が断りました（' + code + '）：' + (body.message || '');
+    }
     if (k === 'bank_not_json') return '銀行の返事が JSON になっていません';
     if (k === 'bank_no_match') {
       return '口座の絞り込み（BANK_ACCOUNT_ID）が合っていません。'

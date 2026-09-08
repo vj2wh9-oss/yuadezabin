@@ -921,6 +921,14 @@ function bankPickList(data, c) {
   return seen[0] || [];
 }
 
+/* HTML のエラーページから、題と1行目だけ取り出す */
+function htmlSummary(text) {
+  const title = (/<title[^>]*>([\s\S]*?)<\/title>/i.exec(text) || [])[1] || '';
+  const h1 = (/<h1[^>]*>([\s\S]*?)<\/h1>/i.exec(text) || [])[1] || '';
+  const body = (title + (h1 && h1 !== title ? '／' + h1 : '')).replace(/\s+/g, ' ').trim();
+  return body ? body.slice(0, 120) : 'HTML のエラーページが返りました';
+}
+
 function bankNum(v) {
   const n = Number(String(v == null ? '' : v).replace(/[,\s円]/g, ''));
   return Number.isFinite(n) ? Math.round(n) : 0;
@@ -959,8 +967,14 @@ async function bankFetch(env) {
       body: { error: 'bank_unreachable', message: String((e && e.message) || e).slice(0, 200) } };
   }
   if (!res.ok) {
+    // API まで届かず、途中の入口が HTML のエラーページを返すことがある。
+    // そのまま出すと読めないので、要点だけにする
+    const html = /^\s*<(!doctype|html)/i.test(text);
     return { ok: false, status: res.status === 401 ? 502 : res.status,
-      body: { error: 'bank_error', status: res.status, message: text.slice(0, 300) } };
+      body: {
+        error: 'bank_error', status: res.status, html: html,
+        message: html ? htmlSummary(text) : text.slice(0, 300)
+      } };
   }
   let data;
   try { data = JSON.parse(text); } catch (e) {
