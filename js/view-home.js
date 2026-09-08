@@ -11,7 +11,9 @@
     var load = sc.loadOfDay(today);
     // チェックを付けたものはホームから消す（カレンダーには残る）
     var plans = DL.events.ofDay(today).filter(function (o) { return !DL.events.isDone(o); });
-    var todo = load.entries.length + plans.length;
+    // 期限の切れた調味料と残り物。捨てるものとして、ここにだけ出す
+    var toss = S.expiredFood(today);
+    var todo = load.entries.length + plans.length + toss.length;
     wrap.appendChild(el('div', { class: 'today-head' }, [ui.dateHead(today), weatherChip(today)]));
 
     // iCloud への書き出しは Cloudflare 同期の予備なので、ホームでは案内しない。
@@ -95,6 +97,7 @@
       // 日常の予定は案件のノルマのあとに続ける。
       // カレンダーの切り替えとは関わりなく、ホームには両方を出す
       plans.forEach(function (o) { list.appendChild(planRow(o)); });
+      toss.forEach(function (t) { list.appendChild(tossRow(t)); });
       wrap.appendChild(list);
     }
 
@@ -583,18 +586,19 @@
     // すでに採用してあるなら、それを出す
     if (saved) {
       card.appendChild(menuBody(saved, today));
-      card.appendChild(el('div', { class: 'row-wrap' }, [
-        ui.btn('別のを出す', 'ghost', function () {
+      card.appendChild(el('div', { class: 'row-wrap mn-acts' }, [
+        ui.btn(mBusy ? '考えています…' : '再考案', 'ghost', function () {
           mDraft = null;
           run(today, b, M.namesOf(saved));
         }, 'refresh'),
-        ui.btn('外す', 'ghost', function () {
+        kitchenBtn(),
+        onlyIcon('trash', '献立を外す', 'ghost', function () {
           ui.confirm('今日の献立を外します。', { okText: '外す' }).then(function (ok) {
             if (!ok) return;
             S.removeMenu(today);
             ui.toast('外しました');
           });
-        }, 'trash')
+        })
       ]));
       return card;
     }
@@ -627,21 +631,25 @@
       card.appendChild(el('p', { class: 'muted small',
         text: '今日あと使える ' + yen(b.todayLeft) + ' で作れる献立を考えます。'
           + 'お米は家にあるものとして、買い物には入れません。' }));
-      card.appendChild(ui.btn(mBusy ? '考えています…' : '献立を出す',
-        'primary full', function () { run(today, b, []); }, 'idea'));
+      card.appendChild(el('div', { class: 'row-wrap mn-acts' }, [
+        ui.btn(mBusy ? '考えています…' : '献立を出す',
+          'primary grow', function () { run(today, b, []); }, 'idea'),
+        kitchenBtn()
+      ]));
       return card;
     }
 
     card.appendChild(menuBody(mDraft, today));
-    card.appendChild(el('div', { class: 'row-wrap' }, [
+    card.appendChild(el('div', { class: 'row-wrap mn-acts' }, [
       ui.btn('これにする', 'primary', function () {
         S.setMenu(today, mDraft);
         mDraft = null;
         ui.toast('今日の献立にしました');
       }, 'check'),
-      ui.btn(mBusy ? '考えています…' : '別のを出す', 'ghost', function () {
+      ui.btn(mBusy ? '考えています…' : '再考案', 'ghost', function () {
         run(today, b, DL.menu.namesOf(mDraft));
-      }, 'refresh')
+      }, 'refresh'),
+      kitchenBtn()
     ]));
     return card;
 
@@ -664,19 +672,73 @@
     }
   }
 
+  /* 期限の切れたもの。押すと「捨てた」ことにして一覧から消す。
+     献立の設定に置いたものなので、出すのはホームだけ */
+  function tossRow(t) {
+    var x = t.item;
+    var what = t.kind === 'pantry' ? '調味料' : (x.kept ? '保存あり' : '残り物');
+    return el('button', { class: 'row toss-row', onclick: function () {
+      ui.confirm(x.name + 'を捨てましたか？　一覧からも消します。',
+        { okText: '捨てた', danger: true }).then(function (ok) {
+        if (!ok) return;
+        if (t.kind === 'pantry') S.removePantry(x.id);
+        else S.removeLeftover(x.id);
+        ui.toast('消しました');
+      });
+    } }, [
+      el('div', { class: 'row-main' }, [
+        el('div', { class: 'row-title' }, [
+          ui.icon('trash', 16),
+          el('span', { text: x.name + 'を捨てる' })
+        ]),
+        el('div', { class: 'row-sub' }, [
+          ui.chip(what, 'ghosty'),
+          ui.chip(U.fmtMD(x.until) + 'まで', 'danger'),
+          S.foodQty(x) ? ui.chip(S.foodQty(x), 'ghosty') : null
+        ])
+      ]),
+      el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+    ]);
+  }
+
+  /* 絵だけのボタン。読み上げのために名前は付けておく */
+  function onlyIcon(name, label, cls, onclick) {
+    return el('button', {
+      type: 'button', class: 'btn only ' + (cls || 'ghost'),
+      'aria-label': label, title: label, onclick: onclick
+    }, ui.icon(name, 16));
+  }
+
+  /* 家にある調味料と残り物の設定 */
+  function kitchenBtn() {
+    return onlyIcon('settings', '家にあるものの設定', 'ghost', function () {
+      DL.kitchen.open(function () { DL.app.render(); });
+    });
+  }
+
   /* 一品ぶん。主菜・副菜の別と、使う調味料の分量と、その一品の手順 */
-  function dishBox(d) {
+  function dishBox(d, date, pm) {
     var box = el('div', { class: 'mn-dish' });
     box.appendChild(el('div', { class: 'mn-dish-h' }, [
       d.role ? ui.chip(d.role, 'soft') : null,
       el('b', { text: d.name })
     ]));
     if ((d.seasonings || []).length) {
+      // 家に無いもの・期限の切れたものは、その場で分かるようにする
+      var vals = el('span', { class: 'mn-seas-v' });
+      d.seasonings.forEach(function (s, i) {
+        var st = DL.menu.seasoningState(s.name, date, pm);
+        if (i) vals.appendChild(el('span', { text: '・' }));
+        vals.appendChild(el('span', {
+          class: st === 'ok' ? '' : 'mn-s-bad',
+          text: s.name + (s.qty ? ' ' + s.qty : '')
+        }));
+        // 家に無いものは点線だけ（買うものの並びに出る）。
+        // 期限切れは、その場で気づけるように印を付ける
+        if (st === 'expired') vals.appendChild(ui.chip('期限切れ', 'danger'));
+      });
       box.appendChild(el('div', { class: 'mn-seas' }, [
-        el('span', { class: 'mn-seas-l', text: '調味料' }),
-        el('span', { text: d.seasonings.map(function (s) {
-          return s.name + (s.qty ? ' ' + s.qty : '');
-        }).join('・') })
+        el('span', { class: 'mn-seas-l', text: '調味料' }), vals
       ]));
     }
     if ((d.steps || []).length) {
@@ -691,6 +753,9 @@
   function menuBody(m, date) {
     var yen = DL.docs.yen;
     var box = el('div', { class: 'mn-body' });
+    var pm = DL.menu.pantryMap();
+    // 家に無い調味料と、期限の切れた調味料。予算には数えず、買うものへ足す
+    var extras = DL.menu.extras(m, date);
 
     (m.meals || []).forEach(function (x) {
       var open = el('details', { class: 'mn-meal' });
@@ -700,7 +765,9 @@
         x.minutes ? el('span', { class: 'muted small', text: x.minutes + '分' }) : null
       ]));
       if (x.dishes.length) {
-        open.appendChild(el('div', { class: 'mn-dishes' }, x.dishes.map(dishBox)));
+        open.appendChild(el('div', { class: 'mn-dishes' }, x.dishes.map(function (d) {
+          return dishBox(d, date, pm);
+        })));
       }
       // 前に採ってあった献立は、手順が一品ごとではなく献立ぜんぶで1つ
       if (x.steps.length) {
@@ -711,21 +778,33 @@
       box.appendChild(open);
     });
 
-    if ((m.shopping || []).length) {
+    if ((m.shopping || []).length || extras.length) {
       var sh = el('details', { class: 'mn-shop' });
       sh.appendChild(el('summary', {}, [
         el('b', { text: '買うもの' }),
-        ui.chip(m.shopping.length + '点', 'ghosty'),
+        ui.chip((m.shopping || []).length + '点', 'ghosty'),
+        extras.length ? ui.chip('調味料' + extras.length + '点', 'ghosty') : null,
         el('span', { class: 'mn-total', text: yen(m.total) })
       ]));
       var ul = el('div', { class: 'mn-list' });
-      m.shopping.forEach(function (s) {
+      (m.shopping || []).forEach(function (s) {
         ul.appendChild(el('div', { class: 'mn-item' }, [
           el('span', { class: 'mn-item-n', text: s.name }),
           el('span', { class: 'muted small', text: s.qty }),
           el('b', { text: yen(s.price) })
         ]));
       });
+      extras.forEach(function (x) {
+        ul.appendChild(el('div', { class: 'mn-item extra' }, [
+          el('span', { class: 'mn-item-n', text: x.name }),
+          x.qty ? el('span', { class: 'muted small', text: x.qty }) : null,
+          ui.chip(x.tag, x.state === 'expired' ? 'danger' : 'warn')
+        ]));
+      });
+      if (extras.length) {
+        ul.appendChild(el('p', { class: 'muted small mn-extra-note',
+          text: '調味料 ' + extras.length + '点は、予算には数えていません。' }));
+      }
       sh.appendChild(ul);
       box.appendChild(sh);
     }
@@ -737,6 +816,15 @@
       + '　買い物 ' + yen(m.total)
       + (m.budget ? '（予算 ' + yen(m.budget) + (over ? '・超えています' : '・残り '
         + yen(m.budget - m.total) + '）') : '') }));
+    // 期限の切れた調味料は、献立のところでも断っておく
+    var bad = extras.filter(function (x) { return x.state === 'expired'; });
+    if (bad.length) {
+      box.appendChild(el('p', { class: 'mn-warn small' }, [
+        ui.icon('alert', 14),
+        el('span', { text: bad.map(function (x) { return x.name; }).join('・')
+          + ' は消費期限が切れています。買うものに入れました。' })
+      ]));
+    }
     if (m.note) box.appendChild(el('p', { class: 'muted small', text: m.note }));
     return box;
   }

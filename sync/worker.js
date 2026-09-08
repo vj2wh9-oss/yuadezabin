@@ -602,6 +602,13 @@ function menuPrompt(o) {
     '手順は一品ごとに、家庭の台所でできる範囲で2〜5行。'
       + '手順の中でも材料と調味料の分量が分かるように書いてください。'
   ];
+  if (o.leftovers && o.leftovers.length) {
+    lines.push('家に次の残り物があります。日もちしないので、できるだけ先に使い切ってください：'
+      + o.leftovers.map((x) => x.name + (x.qty ? '（' + x.qty + '）' : '')
+        + (x.until ? ' ' + x.until + 'まで' : '')
+        + (x.kept ? '（作り置き。そのまま出せます）' : '')).join('、'));
+    lines.push('残り物で足りるところは、新しく買わないでください。');
+  }
   if (o.avoid && o.avoid.length) {
     lines.push('次の献立は最近出したので、それとは別のものにしてください：'
       + o.avoid.slice(0, 12).join('、'));
@@ -631,6 +638,14 @@ async function menu(request, env, cors) {
     servings: Number(body.servings) === 2 ? 2 : 1,
     avoid: (Array.isArray(body.avoid) ? body.avoid : [])
       .map((s) => String(s || '').slice(0, 40)).filter(Boolean),
+    // 家の残り物。先に使い切ってもらう
+    leftovers: (Array.isArray(body.leftovers) ? body.leftovers : []).slice(0, 12)
+      .map((x) => ({
+        name: String((x && x.name) || '').slice(0, 40),
+        qty: String((x && x.qty) || '').slice(0, 20),
+        until: /^\d{4}-\d{2}-\d{2}$/.test(String(x && x.until)) ? x.until : '',
+        kept: !!(x && x.kept)
+      })).filter((x) => x.name),
     season: String(body.season || '').slice(0, 10)
   };
 

@@ -46,6 +46,16 @@
     return '冬';
   }
 
+  /* 献立を頼むときに渡す残り物。期限の切れたものは食べないので外す */
+  function useLeftovers(date) {
+    var d = U.isISO(date) ? date : U.today();
+    return S.leftovers().filter(function (x) {
+      return x.name && !S.foodExpired(x, d);
+    }).slice(0, 12).map(function (x) {
+      return { name: x.name, qty: S.foodQty(x), until: x.until, kept: !!x.kept };
+    });
+  }
+
   /**
    * 献立を考えてもらう。
    * @param {object} o {budget, slots:['lunch','dinner'], servings:1|2, avoid:[名前], date}
@@ -75,6 +85,8 @@
         servings: U.num(o.servings, 1) === 2 ? 2 : 1,
         // 同じものばかり出ないよう、最近のぶんを渡す
         avoid: (o.avoid || []).concat(S.recentMenuNames(14)).slice(0, 12),
+        // 残り物は先に食べたいので渡す（調味料のほうは献立に効かせない）
+        leftovers: useLeftovers(o.date),
         season: season(o.date)
       })
     }).then(function (res) {
@@ -91,6 +103,94 @@
     });
   }
 
+  /* ---- 家にある調味料と、献立で使う調味料の突き合わせ ----
+
+     呼び方は献立ごとにぶれる（しょうゆ／醤油、油／サラダ油）ので、
+     よくある言い換えだけまとめて、同じものとして数える。 */
+
+  var SAME = [
+    ['しょうゆ', '醤油', 'しょう油', '濃口しょうゆ', '薄口しょうゆ'],
+    ['みそ', '味噌', 'みそ（合わせ）', '合わせみそ'],
+    ['砂糖', 'さとう', '上白糖', 'グラニュー糖'],
+    ['塩', 'しお', '食塩', '粗塩'],
+    ['こしょう', '胡椒', 'コショウ', '黒こしょう', 'ブラックペッパー'],
+    ['みりん', '味醂', 'みりん風調味料'],
+    ['酒', '料理酒', '日本酒', '清酒'],
+    ['酢', 'お酢', '米酢', '穀物酢'],
+    ['ごま油', '胡麻油'],
+    ['オリーブオイル', 'オリーブ油'],
+    ['サラダ油', '食用油', '植物油', '油'],
+    ['だしの素', '和風だし', '顆粒だし', 'ほんだし', 'だし']
+  ];
+  // 長い言い方から先に当てる（「ごま油」を「油」と取り違えないため）
+  var WORDS = [];
+  SAME.forEach(function (g) {
+    g.forEach(function (w) { WORDS.push({ w: w, to: g[0] }); });
+  });
+  WORDS.sort(function (a, b) { return b.w.length - a.w.length; });
+
+  /** 突き合わせ用の呼び名にそろえる */
+  function key(name) {
+    var n = String(name || '').replace(/[\s　]/g, '');
+    for (var i = 0; i < WORDS.length; i++) {
+      if (n === WORDS[i].w || n.indexOf(WORDS[i].w) >= 0) return WORDS[i].to;
+    }
+    return n;
+  }
+
+  /* 家にある調味料を、呼び名ごとに1つにまとめる（期限の遠いほうを残す） */
+  function pantryMap() {
+    var map = {};
+    S.pantry().forEach(function (x) {
+      var k = key(x.name);
+      var cur = map[k];
+      if (!cur) { map[k] = x; return; }
+      // 期限を決めていないものがいちばん強い
+      if (!x.until) map[k] = x;
+      else if (cur.until && U.cmp(x.until, cur.until) > 0) map[k] = x;
+    });
+    return map;
+  }
+
+  /**
+   * その調味料が家にあるか
+   * @returns {'ok'|'none'|'expired'}
+   */
+  function seasoningState(name, date, map) {
+    var own = (map || pantryMap())[key(name)];
+    if (!own) return 'none';
+    return S.foodExpired(own, date) ? 'expired' : 'ok';
+  }
+
+  /**
+   * 献立で使う調味料のうち、買い足すもの。
+   * 家に無いものと、期限の切れたもの。どちらも予算には数えない。
+   * @returns {Array} [{name, qty, state:'none'|'expired', tag}]
+   */
+  function extras(m, date) {
+    var map = pantryMap();
+    var seen = {}, out = [];
+    ((m && m.meals) || []).forEach(function (meal) {
+      (meal.dishes || []).forEach(function (d) {
+        (d.seasonings || []).forEach(function (s) {
+          var k = key(s.name);
+          if (seen[k]) return;
+          seen[k] = true;
+          var st = seasoningState(s.name, date, map);
+          if (st === 'ok') return;
+          var own = map[k];
+          out.push({
+            name: (own && own.name) || s.name,
+            qty: st === 'expired' ? S.foodQty(own) : (s.qty || ''),
+            state: st,
+            tag: st === 'expired' ? '期限切れ' : '家にない'
+          });
+        });
+      });
+    });
+    return out;
+  }
+
   /** その献立の呼び名を並べたもの（「別のを出す」で避けるため） */
   function namesOf(m) {
     return ((m && m.meals) || []).map(function (x) { return x.name; })
@@ -105,6 +205,8 @@
 
   DL.menu = {
     SLOTS: SLOTS, SLOT_LABEL: SLOT_LABEL,
-    ready: ready, suggest: suggest, namesOf: namesOf, slotsLabel: slotsLabel, season: season
+    ready: ready, suggest: suggest, namesOf: namesOf, slotsLabel: slotsLabel, season: season,
+    extras: extras, seasoningState: seasoningState, pantryMap: pantryMap,
+    useLeftovers: useLeftovers, key: key
   };
 })(window.DL);

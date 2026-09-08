@@ -810,6 +810,8 @@ a.alert-main { text-decoration: none; }
 .btn.danger { background: transparent; border-color: var(--danger); color: var(--danger); }
 .btn.tiny { padding: 5px 8px; font-size: 12px; }
 .btn.full { width: 100%; }
+/* 絵だけのボタン。字が無いぶん左右を詰める */
+.btn.only { padding: 10px; }
 .btn:active { opacity: .75; }
 
 .row-wrap { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -1921,12 +1923,32 @@ a.tp-proj:active { color: var(--accent); }
   margin: 8px 0 0; padding-left: 18px;
   font-size: 12.5px; line-height: 1.7; color: var(--muted);
 }
+.mn-seas-v .chip { margin-left: 4px; vertical-align: middle; }
+.mn-s-bad { color: var(--text); text-decoration: underline dotted; text-underline-offset: 3px; }
+
 .mn-list { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
 .mn-item { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; }
+/* 買い足す調味料。予算には数えていない */
+.mn-item.extra .mn-item-n { color: var(--muted); }
+.mn-extra-note { margin: 4px 0 0; }
+.mn-warn { display: flex; align-items: center; gap: 5px; margin: 0; color: var(--warn); }
+.mn-warn .icon { flex: none; }
+/* 献立のボタン列。絵だけのボタンは幅を詰める */
+.mn-acts .btn.grow { flex: 1; }
 .mn-item-n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mn-item b { flex: none; font-variant-numeric: tabular-nums; }
 .mn-foot { margin: 0; }
 .mn-foot.over { color: var(--danger); }
+
+/* 家にある調味料と残り物の設定（献立の歯車から開くシート） */
+.kt-wrap .section { margin-top: 14px; }
+.kt-wrap .section:first-child { margin-top: 0; }
+.kt-wrap > p { margin: 0 0 8px; }
+.kt-wrap .list { margin-bottom: 8px; }
+.kt-qty { display: flex; gap: 8px; }
+.kt-qty .field { flex: 1; }
+/* 捨てるもの。今日やることに混ぜて出す */
+.toss-row .row-title .icon { color: var(--danger); }
 
 .bg-day-note { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
 .bg-day-note.warn { color: var(--warn); }

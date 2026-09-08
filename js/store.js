@@ -164,6 +164,10 @@
     logs: {},
     // 採用した献立 { 'YYYY-MM-DD': {meals, shopping, total, servings, note, at} }
     menus: {},
+    // 家にある調味料 [{id, name, qty, unit, until}]
+    pantry: [],
+    // 残り物 [{id, name, qty, unit, until, kept}]。kept＝食材ではない作り置き
+    leftovers: [],
     // 天気を出す地点（Open-Meteo）。予報そのものは端末ごとに持つ
     weather: { name: '', lat: null, lon: null },
     weatherCache: null,    // { at, key, name, days:[{date,code,max,min,pop}], now }
@@ -306,6 +310,8 @@
     s.settings.dutyLogDone = normalizeDutyLogDone(s.settings.dutyLogDone);
     s.settings.logs = normalizeLogs(s.settings.logs);
     s.settings.menus = normalizeMenus(s.settings.menus);
+    s.settings.pantry = (s.settings.pantry || []).map(normalizePantry);
+    s.settings.leftovers = (s.settings.leftovers || []).map(normalizeLeftover);
     s.settings.notify = normalizeNotify(s.settings.notify);
     s.settings.docSeq = migrateDocSeq(s.settings.docSeq);
     s.projects = (s.projects || []).map(normalizeProject);
@@ -1610,6 +1616,107 @@
     return out.slice(0, 12);
   }
 
+  /* ---- 家にある調味料と、残り物 ----
+
+     調味料は「家にあるか・切れていないか」を見るだけのもので、
+     献立そのものには効かせない（無いぶんを買い物に足すのに使う）。
+     残り物は先に食べてほしいので、献立を頼むときに渡す。 */
+
+  function normalizeFood(x) {
+    x = x || {};
+    x.id = x.id || U.uid();
+    x.name = String(x.name || '').trim().slice(0, 40);
+    x.qty = String(x.qty == null ? '' : x.qty).trim().slice(0, 12);   // 「1」「500」など
+    x.unit = String(x.unit || '').trim().slice(0, 10);                // 「本」「ml」など
+    x.until = U.isISO(x.until) ? x.until : '';                        // 消費期限（空＝決めない）
+    return x;
+  }
+
+  function normalizePantry(x) { return normalizeFood(x); }
+
+  function normalizeLeftover(x) {
+    x = normalizeFood(x);
+    x.kept = !!x.kept;       // 食材ではない作り置き（「保存あり」）
+    return x;
+  }
+
+  /** 「1本」「500ml」。数量も単位も無ければ空 */
+  function foodQty(x) { return ((x && x.qty) || '') + ((x && x.unit) || ''); }
+
+  /** 期限切れか。期限を決めていないものは切れない */
+  function foodExpired(x, date) {
+    var until = x && x.until;
+    if (!until) return false;
+    return U.cmp(until, U.isISO(date) ? date : U.today()) < 0;
+  }
+
+  function pantry() { return (state.settings.pantry || []).slice(); }
+  function leftovers() { return (state.settings.leftovers || []).slice(); }
+
+  function getPantry(id) {
+    return (state.settings.pantry || []).filter(function (x) { return x.id === id; })[0] || null;
+  }
+  function getLeftover(id) {
+    return (state.settings.leftovers || []).filter(function (x) { return x.id === id; })[0] || null;
+  }
+
+  function addPantry(data) {
+    var x = normalizePantry(Object.assign({ id: U.uid() }, data));
+    state.settings.pantry = (state.settings.pantry || []).concat([x]);
+    save();
+    return x;
+  }
+
+  function updatePantry(id, patch) {
+    var x = getPantry(id);
+    if (!x) return null;
+    Object.assign(x, patch);
+    normalizePantry(x);
+    save();
+    return x;
+  }
+
+  function removePantry(id) {
+    state.settings.pantry = (state.settings.pantry || []).filter(function (x) { return x.id !== id; });
+    save();
+  }
+
+  function addLeftover(data) {
+    var x = normalizeLeftover(Object.assign({ id: U.uid() }, data));
+    state.settings.leftovers = (state.settings.leftovers || []).concat([x]);
+    save();
+    return x;
+  }
+
+  function updateLeftover(id, patch) {
+    var x = getLeftover(id);
+    if (!x) return null;
+    Object.assign(x, patch);
+    normalizeLeftover(x);
+    save();
+    return x;
+  }
+
+  function removeLeftover(id) {
+    state.settings.leftovers = (state.settings.leftovers || []).filter(function (x) { return x.id !== id; });
+    save();
+  }
+
+  /**
+   * 期限の切れたもの。捨てるものとしてホームに出す
+   * @returns {Array} [{kind:'pantry'|'leftover', item}]
+   */
+  function expiredFood(date) {
+    var out = [];
+    pantry().forEach(function (x) {
+      if (foodExpired(x, date)) out.push({ kind: 'pantry', item: x });
+    });
+    leftovers().forEach(function (x) {
+      if (foodExpired(x, date)) out.push({ kind: 'leftover', item: x });
+    });
+    return out.sort(function (a, b) { return U.cmp(a.item.until, b.item.until); });
+  }
+
   /* ---- ひらめきメモ ---- */
 
   function ideas(date) { return ((getLog(date) || {}).ideas || []).slice(); }
@@ -2750,6 +2857,11 @@
     getLog: getLog, setLog: setLog, logDates: logDates, MOODS: MOODS,
     getMenu: getMenu, setMenu: setMenu, removeMenu: removeMenu,
     recentMenuNames: recentMenuNames, normalizeMenu: normalizeMenu,
+    pantry: pantry, getPantry: getPantry, addPantry: addPantry,
+    updatePantry: updatePantry, removePantry: removePantry,
+    leftovers: leftovers, getLeftover: getLeftover, addLeftover: addLeftover,
+    updateLeftover: updateLeftover, removeLeftover: removeLeftover,
+    foodQty: foodQty, foodExpired: foodExpired, expiredFood: expiredFood,
     ideas: ideas, getIdea: getIdea, addIdea: addIdea, updateIdea: updateIdea,
     markIdeaSent: markIdeaSent, ideaTitleOf: ideaTitleOf,
     removeIdea: removeIdea, allIdeas: allIdeas,
