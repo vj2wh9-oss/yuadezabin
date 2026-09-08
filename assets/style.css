@@ -1880,13 +1880,20 @@ a.tp-proj:active { color: var(--accent); }
 .bg-day-used b.over, .bg-head b.over { color: var(--danger); }
 /* 今日あといくら使えるか。いちばん知りたい数字なので大きく */
 .bg-rest {
-  display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px;
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
   padding-bottom: 10px; border-bottom: 1px solid var(--line);
 }
+.bg-rest-c { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; min-width: 0; }
+/* 貯金するなら、の側。控えめに右へ */
+.bg-rest-c.save { flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; }
+.bg-rest-c.save b { font-size: 18px; color: var(--accent2); }
+.bg-rest-c.save.zero b { color: var(--danger); }
 .bg-rest-l { font-size: 12.5px; color: var(--muted); }
 .bg-rest b { font-size: 26px; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .bg-rest-s { font-size: 11px; color: var(--muted); }
-.bg-rest.over b, .bg-rest.over .bg-rest-l, .bg-rest.over .bg-rest-s { color: var(--danger); }
+.bg-rest.over .bg-rest-c b, .bg-rest.over .bg-rest-l, .bg-rest.over .bg-rest-s { color: var(--danger); }
+.bg-rest.over .bg-rest-c.save b { color: var(--accent2); }
+.bg-rest.over .bg-rest-c.save.zero b { color: var(--danger); }
 
 /* ---------------- 今日の献立 ---------------- */
 .mn-card { display: flex; flex-direction: column; gap: 10px; }

@@ -500,10 +500,17 @@
     /* いちばん知りたいのは「今日いくら使えるか」なので、頭に大きく出す。
        ペースが崩れているときは、立て直しの予算から引いた額を出す
        （ふだんの1日予算から引くと、守っても月末に足りなくなる） */
+    var sv = savingLeft(today, b);
     card.appendChild(el('div', { class: 'bg-rest' + (b.todayOver ? ' over' : '') }, [
-      el('span', { class: 'bg-rest-l', text: '本日使える金額' }),
-      el('b', { text: yen(b.todayLeft) }),
-      b.todayOver ? el('span', { class: 'bg-rest-s', text: yen(b.todayOver) + ' 使いすぎ' }) : null
+      el('div', { class: 'bg-rest-c' }, [
+        el('span', { class: 'bg-rest-l', text: '本日使える金額' }),
+        el('b', { text: yen(b.todayLeft) }),
+        b.todayOver ? el('span', { class: 'bg-rest-s', text: yen(b.todayOver) + ' 使いすぎ' }) : null
+      ]),
+      sv ? el('div', { class: 'bg-rest-c save' + (sv.left <= 0 ? ' zero' : '') }, [
+        el('span', { class: 'bg-rest-l', text: '貯金するなら' }),
+        el('b', { text: yen(Math.max(0, sv.left)) })
+      ]) : null
     ]));
 
     /* 棒は1本だけ。ペースが崩れている月は、割り直したほうだけを出す。
@@ -609,9 +616,18 @@
     if (!mDraft) {
       card.appendChild(el('p', { class: 'muted small',
         text: '今日あと使える ' + yen(b.todayLeft) + ' で考えます' }));
+      var sv = savingLeft(today, b);
       card.appendChild(el('div', { class: 'row-wrap mn-acts' }, [
         ui.btn(mBusy ? '考えています…' : '献立を出す',
           'primary grow', function () { run(today, b, []); }, 'idea'),
+        sv ? ui.btn('貯金予算献立', 'ghost', function () {
+          if (sv.left <= 0) {
+            ui.toast('貯金ぶんを引くと、今日の食費が残りません（'
+              + yen(-sv.left) + ' 足りません）', 'danger');
+            return;
+          }
+          run(today, b, [], sv.left);
+        }, 'books') : null,
         kitchenBtn()
       ]));
       return card;
@@ -631,12 +647,13 @@
     ]));
     return card;
 
-    function run(date, bd, avoid) {
+    /* @param {number} [budget] 貯金ぶんを引いた額で作るときに渡す */
+    function run(date, bd, avoid, budget) {
       if (mBusy) return;
       mBusy = true;
       DL.app.render();
       DL.menu.suggest({
-        budget: bd.todayLeft, slots: mSlots.slice(), servings: mServ,
+        budget: budget || bd.todayLeft, slots: mSlots.slice(), servings: mServ,
         avoid: avoid, date: date
       }).then(function (m) {
         mBusy = false;
@@ -831,6 +848,19 @@
     }
     if (m.note) box.appendChild(el('p', { class: 'muted small', text: m.note }));
     return box;
+  }
+
+  /**
+   * 貯金の目標を守るなら、今日あといくら使えるか。
+   * （1日の予算 − 貯金の1日ぶん）− 今日すでに使った額。
+   * 使いすぎている月は、立て直しの予算を超えないところで止める。
+   * @returns {object|null} 目標と期日を決めていなければ null
+   */
+  function savingLeft(date, b) {
+    var pl = DL.bank.plan(date);
+    if (!pl || pl.done) return null;
+    var left = pl.spendable - b.today;
+    return { perDay: pl.perDay, left: Math.min(left, b.todayLeft) };
   }
 
   /**
