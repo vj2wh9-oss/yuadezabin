@@ -264,7 +264,7 @@
               + (t.behind ? '・' + t.behind + t.unit + '遅れ' : '') });
           })) : null
         ]),
-        ui.field('足しておきたいこと', memo, '空でも構いません'),
+        ui.field('足しておきたいこと', memo),
         goBtn,
         out
       ])

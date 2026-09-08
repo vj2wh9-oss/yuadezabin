@@ -30,16 +30,12 @@
     body.textContent = '';
 
     body.appendChild(fold('pantry', '家にある調味料', S.pantry(), today, refresh,
-      'ここに無い調味料は、献立に出てきたら買うものへ足します（予算には数えません）。'
-      + '砂糖や塩などもここに書いてください。',
-      'まだありません。よく使う調味料を入れておくと、足りないものだけ買い物に出ます。',
-      '調味料を足す'));
+      'ここに無いものは買い物に足します（予算外）',
+      'まだありません', '調味料を足す'));
 
     body.appendChild(fold('leftover', '残り物', S.leftovers(), today, refresh,
-      'ここに書いたものから先に使う献立を考えます。'
-      + '食材ではない作り置き（夕飯の残りなど）は「保存あり」にしてください。',
-      'まだありません。使いかけの食材や、作り置きを入れておけます。',
-      '残り物を足す'));
+      'ここにあるものから先に使います',
+      'まだありません', '残り物を足す'));
   }
 
   /* 畳めるひと組。閉じているときも、点数と期限切れの数は見えるようにする */
@@ -120,11 +116,10 @@
       el('div', { class: 'kt-qty' }, [
         ui.field('数量', qty), ui.field('単位', unit)
       ]),
-      ui.field('消費期限', until, '決めなければ空のままで構いません'),
+      ui.field('消費期限', until),
       isLeft ? ui.block('種類', ui.segmented(
         [{ value: 'food', label: '食材' }, { value: 'kept', label: '保存あり' }],
-        kept ? 'kept' : 'food', function (v) { kept = v === 'kept'; }),
-      '食材ではない作り置きは「保存あり」。期限は自分で決めてください') : null
+        kept ? 'kept' : 'food', function (v) { kept = v === 'kept'; })) : null
     ]);
 
     var actions = [];

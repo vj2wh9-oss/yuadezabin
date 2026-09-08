@@ -102,9 +102,10 @@ export default {
           invoiceWebhook: !!env.DISCORD_INVOICE_WEBHOOK,
           receiptWebhook: !!env.DISCORD_RECEIPT_WEBHOOK,
           // 貯金口座（鍵が入っているかだけ。中身は出さない）
-          bank: bankReady(env)
+          bank: bankReady(env),
+          plotWebhook: !!env.DISCORD_PLOT_WEBHOOK
         },
-        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/reschedule', '/v1/bank/balance'],
+        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/reschedule', '/v1/bank/balance', '/v1/plot', '/v1/plot/send'],
         note: '各 /v1/... は Authorization: Bearer <合鍵> が必要です'
       }, 200, cors);
     }
@@ -228,6 +229,14 @@ export default {
 
       if (url.pathname.indexOf('/v1/bank/') === 0) {
         return bank(request, env, cors, url);
+      }
+
+      if (url.pathname === '/v1/plot') {
+        return plot(request, env, cors);
+      }
+
+      if (url.pathname === '/v1/plot/send') {
+        return plotSend(request, env, cors);
       }
 
       if (url.pathname === '/v1/roomreserve') {
@@ -813,6 +822,224 @@ async function askJson(env, model, prompt, schemaName, schema, maxTokens) {
     return { ok: false, status: 502, body: { error: 'not_json', sample: content.slice(0, 200) } };
   }
   return { ok: true, data, model, usage: out.usage || null };
+}
+
+/* ---------------- プロット相談 ----------------
+
+   物語の大きな流れだけを作ってもらう。性的な場面は書かせず、
+   その位置に印（kind:'adult'）を置くだけにする。アプリ側はそこに
+   「ここから成人向けシーン」と出す。
+   登場人物は全員おとなにする。未成年を思わせる言葉が混ざったら、
+   一度だけ言い直してもらい、それでも混ざるなら断る。 */
+
+const PLOT_LENGTHS = ['short', 'long'];
+
+const PLOT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['title', 'logline', 'characters', 'beats', 'note'],
+  properties: {
+    title: { type: 'string', description: '仮の題' },
+    logline: { type: 'string', description: '話のあらすじを1〜2行で' },
+    characters: {
+      type: 'array',
+      description: '主要人物。頼まれた人数ちょうど',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['name', 'role', 'age', 'note'],
+        properties: {
+          name: { type: 'string', description: '呼び名' },
+          role: { type: 'string', description: '立ち位置。例）攻／受、主人公、相手役' },
+          age: { type: 'string', description: '年齢。必ず20代以上のおとな。例）28歳' },
+          note: { type: 'string', description: '性格・職業・関係。1〜2行' }
+        }
+      }
+    },
+    beats: {
+      type: 'array',
+      description: '話の流れ。頭から終わりまで順に',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['label', 'kind', 'text', 'page'],
+        properties: {
+          label: { type: 'string', description: '場面の見出し' },
+          kind: {
+            type: 'string', enum: ['story', 'adult'],
+            description: 'story=ふつうの場面 adult=成人向けの場面（中身は書かない）'
+          },
+          text: { type: 'string', description: 'その場面で起きること。kind が adult のときは空文字' },
+          page: { type: 'string', description: '目安のページ数。例）8P' }
+        }
+      }
+    },
+    note: { type: 'string', description: '組み立ての狙いや注意。無ければ空文字' }
+  }
+};
+
+/* 未成年を思わせる言葉。ここに引っかかったら出さない */
+const PLOT_BAN = ['小学', '中学', '高校', '学生', '生徒', '児童', '幼', '少年', 'ショタ',
+  '制服', '学園', '学校', 'ランドセル', '未成年', '10代', '十代', 'JK', 'JC'];
+
+function plotPrompt(o, strict) {
+  const lines = [
+    '男性同士（ゲイ向け）のマンガのプロットを考えてください。作者は成人向け同人作家です。',
+    '書くのは物語の大きな流れだけです。台詞や細かい描写は要りません。',
+    '',
+    '【長さ】' + (o.length === 'long' ? '長編' : '短編') + '（およそ ' + o.pages + 'ページ）',
+    '【ジャンル】' + (o.genre || 'おまかせ'),
+    '【入れたいシーン】' + (o.want || 'とくになし'),
+    '【主要人物】' + o.people + '人',
+    '',
+    '守ること：',
+    '・登場人物は全員はっきりとおとな（20代以上の社会人）にしてください。',
+    '・未成年を思わせる設定・言葉は一切使わないでください'
+      + '（学生、生徒、学校、学園、制服、幼い、少年 などは禁止です）。',
+    '・性的な場面そのものは書かないでください。その位置には kind を "adult" にした場面を置き、'
+      + 'text は空文字にしてください。前後のふつうの場面だけを書きます。',
+    '・場面ごとに、目安のページ数を入れてください。合計が ' + o.pages + 'ページ前後になるように。',
+    '・場面は' + (o.length === 'long' ? '10〜16' : '5〜9') + 'つくらいに分けてください。'
+  ];
+  if (strict) {
+    lines.push('・前回の答えに未成年を思わせる言葉が混ざっていました。'
+      + '年齢・職業・場所をすべておとなのものに置き換えてください。');
+  }
+  return lines.join('\n');
+}
+
+/* 年齢は必ずおとなにする。数が小さければ言い方を変える */
+function plotAge(s) {
+  const t = String(s || '').trim().slice(0, 20);
+  const m = /(\d{1,3})/.exec(t);
+  if (m && Number(m[1]) < 20) return '成人';
+  return t || '成人';
+}
+
+function plotClean(data, o) {
+  const str = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
+  return {
+    title: str(data && data.title, 80),
+    logline: str(data && data.logline, 300),
+    characters: (Array.isArray(data && data.characters) ? data.characters : [])
+      .slice(0, 8).map((c) => ({
+        name: str(c && c.name, 40),
+        role: str(c && c.role, 30),
+        age: plotAge(c && c.age),
+        note: str(c && c.note, 200)
+      })).filter((c) => c.name),
+    beats: (Array.isArray(data && data.beats) ? data.beats : []).slice(0, 24).map((b) => {
+      const kind = (b && b.kind) === 'adult' ? 'adult' : 'story';
+      return {
+        label: str(b && b.label, 60),
+        kind: kind,
+        // 成人向けの場面は、中身を持たせない
+        text: kind === 'adult' ? '' : str(b && b.text, 600),
+        page: str(b && b.page, 20)
+      };
+    }).filter((b) => b.label || b.text || b.kind === 'adult'),
+    note: str(data && data.note, 300),
+    length: o.length, pages: o.pages, genre: o.genre, people: o.people
+  };
+}
+
+/* 未成年を思わせる言葉が混ざっていないか */
+function plotBanned(p) {
+  const hay = [p.title, p.logline, p.note]
+    .concat(p.characters.map((c) => c.name + c.role + c.age + c.note))
+    .concat(p.beats.map((b) => b.label + b.text)).join('\n');
+  for (const w of PLOT_BAN) {
+    if (hay.indexOf(w) >= 0) return w;
+  }
+  return '';
+}
+
+async function plot(request, env, cors) {
+  if (request.method !== 'POST') return json({ error: 'not_found' }, 404, cors);
+  if (!env.OPENAI_API_KEY) return json({ error: 'no_api_key' }, 503, cors);
+
+  let body;
+  try { body = await request.json(); } catch (e) { return json({ error: 'bad_json' }, 400, cors); }
+
+  const o = {
+    length: PLOT_LENGTHS.indexOf(body && body.length) >= 0 ? body.length : 'short',
+    pages: Math.min(600, Math.max(4, Math.round(Number(body && body.pages) || 24))),
+    genre: String((body && body.genre) || '').slice(0, 120),
+    want: String((body && body.want) || '').slice(0, 600),
+    people: Math.min(6, Math.max(1, Math.round(Number(body && body.people) || 2)))
+  };
+
+  const model = String(body.model || env.OPENAI_PLOT_MODEL || env.OPENAI_MODEL || OCR_DEFAULTS.model);
+  const max = Number(env.OPENAI_PLOT_MAX_TOKENS || 4000);
+
+  let pass = await askJson(env, model, plotPrompt(o, false), 'plot', PLOT_SCHEMA, max);
+  if (!pass.ok) return json(pass.body, pass.status, cors);
+  let out = plotClean(pass.data, o);
+  let bad = plotBanned(out);
+
+  // 一度だけ言い直してもらう
+  if (bad) {
+    pass = await askJson(env, model, plotPrompt(o, true), 'plot', PLOT_SCHEMA, max);
+    if (!pass.ok) return json(pass.body, pass.status, cors);
+    out = plotClean(pass.data, o);
+    bad = plotBanned(out);
+  }
+  if (bad) return json({ error: 'plot_unsafe', word: bad }, 422, cors);
+
+  return json({ ok: true, data: out, model: pass.model, usage: pass.usage }, 200, cors);
+}
+
+/* できたプロットを Discord のチャンネルへ送る */
+async function plotSend(request, env, cors) {
+  if (request.method !== 'POST') return json({ error: 'not_found' }, 404, cors);
+  if (!env.DISCORD_PLOT_WEBHOOK) return json({ error: 'no_plot_webhook' }, 503, cors);
+
+  let body;
+  try { body = await request.json(); } catch (e) { return json({ error: 'bad_json' }, 400, cors); }
+  const p = plotClean(body && body.plot, {
+    length: (body && body.plot && body.plot.length) || 'short',
+    pages: (body && body.plot && body.plot.pages) || 0,
+    genre: (body && body.plot && body.plot.genre) || '',
+    people: (body && body.plot && body.plot.people) || 0
+  });
+  if (!p.title && !p.beats.length) return json({ error: 'empty' }, 400, cors);
+
+  const head = '**' + escapeMd(p.title || 'プロット') + '**'
+    + '　' + (p.length === 'long' ? '長編' : '短編') + (p.pages ? ' ' + p.pages + 'P' : '')
+    + (p.genre ? '　' + escapeMd(p.genre) : '');
+  const lines = [head];
+  if (p.logline) lines.push(p.logline);
+  if (p.characters.length) {
+    lines.push('', '＜人物＞');
+    p.characters.forEach((c) => {
+      lines.push('・' + c.name + '（' + c.age + (c.role ? '／' + c.role : '') + '）'
+        + (c.note ? ' ' + c.note : ''));
+    });
+  }
+  lines.push('', '＜流れ＞');
+  p.beats.forEach((b, i) => {
+    if (b.kind === 'adult') {
+      lines.push((i + 1) + '. ここから成人向けシーン' + (b.page ? '（' + b.page + '）' : ''));
+      return;
+    }
+    lines.push((i + 1) + '. ' + b.label + (b.page ? '（' + b.page + '）' : ''));
+    if (b.text) lines.push('　　' + b.text);
+  });
+  if (p.note) lines.push('', p.note);
+
+  const parts = chunk(lines.join('\n'), DISCORD_LIMIT);
+  for (let i = 0; i < parts.length; i++) {
+    const res = await fetch(env.DISCORD_PLOT_WEBHOOK + '?wait=true', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ content: parts[i], allowed_mentions: { parse: [] } })
+    });
+    if (!res.ok) {
+      const msg = (await res.text()).slice(0, 300);
+      return json({ error: 'discord_error', status: res.status, message: msg }, 502, cors);
+    }
+  }
+  return json({ ok: true, parts: parts.length }, 200, cors);
 }
 
 /* ---------------- 貯金口座の残高 ----------------

@@ -20,10 +20,6 @@
     } else {
       wrap.appendChild(el('div', { class: 'list' }, list.map(function (o) { return row(o, true); })));
       // 押し間違えても、ここからいつでも戻せる
-      if (list.some(function (o) { return E.isDone(o); })) {
-        wrap.appendChild(el('p', { class: 'muted small pad',
-          text: 'チェックを押すと、ホームの「今日やること」から外れます。' }));
-      }
     }
 
     // 「予定を追加」は置かない。右下の＋が同じ入り口なので、二重になる
@@ -41,9 +37,6 @@
     var cur = S.duty(date);
 
     wrap.appendChild(ui.section('この日の勤務', cur ? ui.chip(S.dutyLabel(cur), 'soft') : null));
-    if (cur === 'stay') {
-      wrap.appendChild(el('p', { class: 'muted small', text: '泊まり勤務の日は、案件のほうを休業日にしています。' }));
-    }
 
     wrap.appendChild(el('div', { class: 'duty-row' }, S.DUTIES.map(function (d) {
       var on = cur === d.value;
@@ -188,7 +181,7 @@
         class: 'muted small',
         text: E.repeatNote({ date: dateIn.value, repeat: repeat })
       }));
-      repeatBox.appendChild(ui.field('いつまで', untilIn, '空にすると、ずっと繰り返します'));
+      repeatBox.appendChild(ui.field('いつまで', untilIn));
     }
     syncRepeat();
 
@@ -208,8 +201,7 @@
     function drawRem() {
       U.clear(remList);
       if (!reminders.length) {
-        remList.appendChild(el('p', { class: 'muted small',
-          text: 'まだありません。下から足せます（いくつでも）。' }));
+        remList.appendChild(el('p', { class: 'muted small', text: 'まだありません' }));
         return;
       }
       sortRem().forEach(function (r) {
@@ -258,7 +250,6 @@
         title: '日時を選ぶ',
         body: el('div', { class: 'form' }, [
           el('div', { class: 'grid2' }, [ui.field('日付', dIn), ui.field('時刻', tIn)]),
-          el('p', { class: 'muted small', text: 'この日時にちょうど鳴ります。' })
         ]),
         actions: [
           ui.btn('やめる', 'ghost', function () { close2(); }),
@@ -337,11 +328,10 @@
           importantIn,
           el('span', {}, [
             el('span', { text: '重要' }),
-            el('span', { class: 'muted small', text: '　当日ホームの上に出します' })
+            null
           ])
         ]),
-        ui.block('リマインダー', remWrap,
-          '重要にした予定だけ鳴ります。通知は設定でオンにしてください'),
+        ui.block('リマインダー', remWrap, '重要にした予定だけ鳴ります'),
         ui.field('メモ', memoIn),
         !isNew ? ui.btn('この予定を削除', 'danger full mt', function () {
           var msg = ev.repeat

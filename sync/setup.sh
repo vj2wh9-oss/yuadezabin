@@ -69,6 +69,7 @@ put_secret DISCORD_ESTIMATE_WEBHOOK "見積書のチャンネル"
 put_secret DISCORD_INVOICE_WEBHOOK  "請求書のチャンネル"
 put_secret DISCORD_RECEIPT_WEBHOOK  "領収書のチャンネル"
 put_secret DISCORD_MEMO_WEBHOOK     "ひらめきメモのチャンネル"
+put_secret DISCORD_PLOT_WEBHOOK     "プロットのチャンネル"
 put_secret DISCORD_WEBHOOK          "夜のバックアップのチャンネル"
 
 echo
@@ -96,7 +97,7 @@ if [ "$FAILED" = "1" ]; then
 fi
 echo
 echo "確かめかた：ブラウザで Worker の /health を開いて、次が true になっていること"
-echo "  estimateWebhook / invoiceWebhook / receiptWebhook / memoWebhook / discord"
+echo "  estimateWebhook / invoiceWebhook / receiptWebhook / memoWebhook / plotWebhook / discord"
 echo "  openai / backupKey / bank"
 echo
 echo "Worker の URL は、上の deploy の出力に出ています（https://$NAME.…workers.dev）。"

@@ -2028,3 +2028,18 @@ a.tp-proj:active { color: var(--accent); }
   white-space: pre-wrap; word-break: break-all; max-height: 30vh; overflow: auto;
 }
 .sv-row-v { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--accent); }
+
+/* プロット相談（ホーム） */
+.pl-card { display: flex; flex-direction: column; gap: 10px; }
+.pl-body { display: flex; flex-direction: column; gap: 8px; }
+.pl-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 14px; }
+.pl-log { margin: 0; font-size: 12.5px; line-height: 1.7; }
+.pl-people { display: flex; flex-direction: column; gap: 4px; }
+.pl-person { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12.5px; }
+.pl-beats { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
+.pl-beat { font-size: 12.5px; line-height: 1.7; }
+.pl-beat-h { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pl-beat p { margin: 2px 0 0; color: var(--muted); }
+/* 成人向けの場面は、印だけ置く（番号は続けたいので list-item のまま） */
+.pl-beat.adult { color: var(--accent2); }
+.pl-beat.adult .chip { margin-left: 6px; vertical-align: middle; }

@@ -150,6 +150,19 @@ wrangler deploy --var BACKUP_HOUR:21     # 21:00 UTC ＝ 日本の朝6時
 
 ---
 
+## プロットの送り先（Discord）
+
+ホームの「プロット相談」で作ったものを、決めたチャンネルへ送れます。
+チャンネルの「連携サービス → ウェブフック」で URL を作り、`bash sync/setup.sh`
+の途中で貼るか、次のコマンドで入れてください。
+
+```sh
+cd sync
+wrangler secret put DISCORD_PLOT_WEBHOOK
+```
+
+---
+
 ## 貯金口座（GMOあおぞらネット銀行）につなぐ
 
 貯蓄用の口座の残高を、アプリの「経理 → 貯金」に出せます。

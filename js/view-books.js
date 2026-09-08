@@ -363,30 +363,9 @@
     }
 
     box.appendChild(el('div', { class: 'row-wrap' }, [
-      DL.bank.ready() ? ui.btn(svBusy ? '読んでいます…' : '残高を更新', 'primary', function () {
-        if (svBusy) return;
-        svBusy = true;
-        DL.app.render();
-        B.refresh().then(function () {
-          svBusy = false;
-          ui.toast('残高を読みました');
-          DL.app.render();
-        }).catch(function (e) {
-          svBusy = false;
-          DL.app.render();
-          ui.toast(e.message, 'danger');
-        });
-      }, 'refresh') : null,
-      ui.btn('手で入れる', 'ghost', function () { savingsInput(); }, 'edit'),
-      ui.btn('目標を決める', 'ghost', function () { savingsGoal(); }, 'chartLine'),
-      DL.bank.ready() ? ui.btn('つながるか試す', 'ghost', function () { savingsCheck(); }, 'cloud') : null
+      ui.btn('手で入れる', 'primary', function () { savingsInput(); }, 'edit'),
+      ui.btn('目標を決める', 'ghost', function () { savingsGoal(); }, 'chartLine')
     ]));
-
-    if (!sv.at) {
-      box.appendChild(el('p', { class: 'muted small', text:
-        '口座がまだなら「手で入れる」で始められます。'
-        + '銀行につなぐ支度ができたら、そのまま「残高を更新」で入れ替わります。' }));
-    }
     return box;
   }
 
@@ -421,9 +400,7 @@
       title: '残高を手で入れる',
       body: el('div', { class: 'form' }, [
         ui.field('残高（円）', amount),
-        ui.field('いつの残高か', dateIn, 'その日の記録として残します'),
-        el('p', { class: 'muted small', text:
-          '銀行につないだあとも、この記録はそのまま残ります。' })
+        ui.field('いつの残高か', dateIn)
       ]),
       actions: [
         ui.btn('キャンセル', 'ghost', function () { close(); }),
@@ -443,9 +420,7 @@
     var close = ui.sheet({
       title: '貯金の目標',
       body: el('div', { class: 'form' }, [
-        ui.field('目標（円）', goal, '0 にすると目標を出しません'),
-        el('p', { class: 'muted small', text:
-          '決めておくと、あといくらか・このペースであと何ヶ月かを出します。' })
+        ui.field('目標（円）', goal, '0 で目標なし')
       ]),
       actions: [
         ui.btn('キャンセル', 'ghost', function () { close(); }),
@@ -455,46 +430,6 @@
           ui.toast('決めました');
         })
       ]
-    });
-  }
-
-  /* つながるかを確かめる。合わないときに、どこが合わないかが見えるように */
-  function savingsCheck() {
-    var body = el('div', { class: 'form' }, [
-      el('p', { class: 'muted small', text: '確かめています…' })
-    ]);
-    ui.sheet({ title: '銀行につながるか', body: body });
-    DL.bank.check().then(function (b) {
-      U.clear(body);
-      body.appendChild(el('div', { class: 'row-sub' }, [
-        ui.chip(b.ok ? 'つながりました' : 'つながりません', b.ok ? 'ok' : 'danger'),
-        ui.chip('鍵 ' + ((b.conf && b.conf.auth) || '?'), 'ghosty'),
-        b.status ? ui.chip('応答 ' + b.status, 'ghosty') : null
-      ]));
-      if (b.conf) {
-        body.appendChild(el('p', { class: 'muted small',
-          text: b.conf.base + b.conf.balancePath }));
-      }
-      if ((b.accounts || []).length) {
-        body.appendChild(el('div', { class: 'mn-list' }, b.accounts.map(function (a) {
-          return el('div', { class: 'mn-item' }, [
-            el('span', { class: 'mn-item-n', text: a.name || a.id || '口座' }),
-            el('b', { text: D.yen(a.balance) })
-          ]);
-        })));
-      } else {
-        body.appendChild(el('p', { class: 'muted small', text:
-          '口座を読み取れませんでした。下の返事を見て、Worker の BANK_ 系の設定を直してください。' }));
-      }
-      if (b.sample) {
-        body.appendChild(el('pre', { class: 'sv-sample', text: b.sample }));
-      }
-      if (b.message) body.appendChild(el('p', { class: 'muted small', text: b.message }));
-    }).catch(function (e) {
-      U.clear(body);
-      body.appendChild(el('p', { class: 'mn-warn small' }, [
-        ui.icon('alert', 14), el('span', { text: e.message })
-      ]));
     });
   }
 
@@ -528,10 +463,6 @@
         body.appendChild(el('p', { class: 'muted small pad', text: 'まだ固定費がありません。' }));
         return;
       }
-      body.appendChild(el('p', { class: 'muted small', text:
-        '年額の大きい順です。行を押すと直せます。'
-        + E.STALE_MONTHS + 'ヶ月ぶり以上のものには「見直しどき」を付けています。' }));
-
       var list = el('div', { class: 'list' });
       rows.forEach(function (x) { list.appendChild(reviewRow(x, today, refresh)); });
       body.appendChild(list);
@@ -697,8 +628,7 @@
         ui.field('支払先', vendorIn),
         ui.field('いつから', startIn,
           from ? '最後に出た月の翌月にしてあります。さかのぼるとその月ぶんも起こします' : ''),
-        ui.field('次の更新日', renewIn,
-          '年契約や解約できる日を入れておくと、近づいたらホームで知らせます'),
+        ui.field('次の更新日', renewIn),
         el('p', { class: 'muted small', text: '年でいくら：'
           + D.yen(E.yearlyOf({ amount: U.num(amountIn.value, 0) || v.amount || 0 })) }),
         el('label', { class: 'row-check' }, [activeChk, el('span', { text: '記録の対象にする' })]),

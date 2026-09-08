@@ -120,42 +120,17 @@
     var sv = savingsRow();
     if (sv) wrap.appendChild(sv);
 
-    /* いまの様子。7日ぶんの棒は、カレンダーと重なるので出さない */
-    wrap.appendChild(ui.section('いまの様子'));
-    wrap.appendChild(stats(today, load));
-
-    /* 売上（書類があるときだけ） */
-    var sales = DL.views.sales && DL.views.sales.homeCard();
-    if (sales) {
-      wrap.appendChild(ui.section('売上', el('a', { class: 'link', href: '#/sales', text: '内訳' })));
-      wrap.appendChild(sales);
+    /* プロット相談。物語の大きな流れを考えてもらう */
+    var pl = DL.views.plot && DL.views.plot.card();
+    if (pl) {
+      wrap.appendChild(ui.section('プロット相談'));
+      wrap.appendChild(pl);
     }
 
-    // 「近い締切」「進行中の案件」は案件タブと重なるので、ホームには出さない
-
-    /* 1日の記録。今日ぶんへの入り口をいちばん下に置く */
-    wrap.appendChild(ui.section('1日の記録', el('a', { class: 'link', href: '#/logs', text: '一覧' })));
-    wrap.appendChild(logCard(today));
+    // 「いまの様子」「売上」「1日の記録」は、それぞれのタブと重なるのでホームには出さない。
+    // 「近い締切」「進行中の案件」も同じ理由で出さない
 
     root.appendChild(wrap);
-  }
-
-  /* 今日の記録への入り口。書いてあれば頭のところを、無ければ誘い文句を出す */
-  function logCard(date) {
-    var log = S.getLog(date);
-    var txt = (log && log.text) || '';
-    return el('a', { class: 'row log-link' + (txt ? ' has-note' : ''), href: '#/log/' + date }, [
-      el('div', { class: 'row-main' }, [
-        el('div', { class: 'row-title' }, [
-          ui.icon('edit', 16),
-          el('span', { text: txt ? '今日のこと' : '今日のことを書く' }),
-          log && log.mood ? el('span', { class: 'mood-dot m' + log.mood, title: (S.MOODS[log.mood - 1] || {}).label }) : null
-        ]),
-        txt ? el('p', { class: 'log-excerpt', text: txt })
-          : el('div', { class: 'row-sub' }, el('span', { class: 'muted small', text: '進めたことや使ったお金も、まとめて残ります' }))
-      ]),
-      el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
-    ]);
   }
 
   /* ノルマ1行 */
@@ -554,7 +529,7 @@
     } else if (b.behind) {
       card.appendChild(el('div', { class: 'bg-day-note warn' }, [
         ui.icon('alert', 15),
-        el('span', { text: '使いすぎているので、残り' + b.rest + '日で割り直しています' })
+        el('span', { text: '支出ペースが予算超過' })
       ]));
     }
 
@@ -609,8 +584,7 @@
     }
 
     if (!M.ready()) {
-      card.appendChild(el('p', { class: 'muted small',
-        text: '「PC・iPhone の同期」を設定すると、今日の予算に合わせた献立を出せます。' }));
+      card.appendChild(el('p', { class: 'muted small', text: '同期を設定すると使えます' }));
       return card;
     }
 
@@ -625,7 +599,7 @@
           if (!mSlots.length) mSlots.push(s.value);      // 全部外すことはできない
           DL.app.render();
         });
-      })), '両方を選ぶこともできます'));
+      }))));
 
     card.appendChild(ui.block('何人分', ui.segmented(
       [{ value: 1, label: '1人分' }, { value: 2, label: '2人分' }],
@@ -634,8 +608,7 @@
     // まだ出していないとき
     if (!mDraft) {
       card.appendChild(el('p', { class: 'muted small',
-        text: '今日あと使える ' + yen(b.todayLeft) + ' で作れる献立を考えます。'
-          + 'お米は家にあるものとして、買い物には入れません。' }));
+        text: '今日あと使える ' + yen(b.todayLeft) + ' で考えます' }));
       card.appendChild(el('div', { class: 'row-wrap mn-acts' }, [
         ui.btn(mBusy ? '考えています…' : '献立を出す',
           'primary grow', function () { run(today, b, []); }, 'idea'),
@@ -881,31 +854,6 @@
       el('div', { class: 'bg-day-used' }, [
         el('span', { class: 'muted small', text: '使った ' + yen(used) }),
         el('b', { class: over ? 'over' : '', text: pct + '%' })
-      ])
-    ]);
-  }
-
-  /* ひと目でわかる集計 */
-  function stats(today, todayLoad) {
-    var planned = 0, done = 0;
-    for (var i = 1; i <= 7; i++) {
-      var l = sc.loadOfDay(U.addDays(today, -i));
-      planned += l.qty; done += l.done;
-    }
-    var rate = planned ? Math.round(done / planned * 100) : 100;
-    var pace = sc.actualPace(60, today);
-    var limit = U.num(S.settings.dailyLimit, 0);
-    var over = limit > 0 && todayLoad.qty > limit;
-    return el('div', { class: 'quota-row four' }, [
-      el('div', { class: 'quota-box' }, [el('span', { text: '進行中の案件' }), el('b', { text: String(S.activeProjects().length) })]),
-      el('div', { class: 'quota-box' + (over ? ' over' : '') }, [
-        el('span', { text: '今日のノルマ' + (limit ? '（上限' + limit + '）' : '') }),
-        el('b', { text: todayLoad.done + '/' + todayLoad.qty })
-      ]),
-      el('div', { class: 'quota-box' }, [el('span', { text: '直近7日の達成' }), el('b', { text: rate + '%' })]),
-      el('div', { class: 'quota-box' }, [
-        el('span', { text: '実績ペース(60日)' }),
-        el('b', { text: pace.activeDays ? pace.perActiveDay + '/日' : '—' })
       ])
     ]);
   }

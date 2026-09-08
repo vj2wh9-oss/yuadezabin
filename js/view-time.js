@@ -483,13 +483,13 @@
     var close = ui.sheet({
       title: isNew ? '時間を足す' : '時間を直す',
       body: el('div', { class: 'form' }, [
-        ui.block('何をしていたか', nameWrap, '好きな名前を書けます。押すと、よく使う名前が入ります'),
+        ui.block('何をしていたか', nameWrap),
         el('div', { class: 'grid2' }, [
           ui.field('始まり', startIn),
           ui.field('終わり', endIn)
         ]),
         note,
-        ui.field('案件', projSel, '結びつけると、その案件に使った時間が集まります'),
+        ui.field('案件', projSel),
         ui.field('メモ', memoIn),
         !isNew ? ui.btn('この時間を消す', 'danger full mt', function () {
           S.removeTimeblock(cur && src ? b.date : date, v.id);

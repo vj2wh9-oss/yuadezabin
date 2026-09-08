@@ -164,6 +164,8 @@
     logs: {},
     // 採用した献立 { 'YYYY-MM-DD': {meals, shopping, total, servings, note, at} }
     menus: {},
+    // いま手元に置いてあるプロット（1つだけ）
+    plot: null,
     // 貯金（貯蓄用の口座）。残高は銀行から読むか、手で入れる
     // { goal, at, total, accounts:[{id,name,balance}], history:{'YYYY-MM-DD': 残高} }
     savings: { goal: 0, at: '', total: 0, accounts: [], history: {} },
@@ -314,6 +316,7 @@
     s.settings.logs = normalizeLogs(s.settings.logs);
     s.settings.menus = normalizeMenus(s.settings.menus);
     s.settings.savings = normalizeSavings(s.settings.savings);
+    s.settings.plot = normalizePlot(s.settings.plot);
     s.settings.pantry = (s.settings.pantry || []).map(normalizePantry);
     s.settings.leftovers = (s.settings.leftovers || []).map(normalizeLeftover);
     s.settings.notify = normalizeNotify(s.settings.notify);
@@ -1664,6 +1667,46 @@
     return out.slice(0, 12);
   }
 
+  /* ---- プロット ----
+
+     ホームで作ったものを1つだけ持っておく。中身は向こう（OpenAI）から
+     来るので、形はこちらでそろえる。成人向けの場面は中身を持たない */
+
+  function normalizePlot(p) {
+    if (!p || typeof p !== 'object') return null;
+    var str = function (v, n) { return String(v == null ? '' : v).trim().slice(0, n); };
+    var out = {
+      title: str(p.title, 80),
+      logline: str(p.logline, 300),
+      length: p.length === 'long' ? 'long' : 'short',
+      pages: Math.max(0, Math.round(U.num(p.pages, 0))),
+      genre: str(p.genre, 60),
+      people: Math.max(0, Math.round(U.num(p.people, 0))),
+      note: str(p.note, 300),
+      at: p.at || new Date().toISOString(),
+      characters: (Array.isArray(p.characters) ? p.characters : []).slice(0, 8).map(function (c) {
+        c = c || {};
+        return { name: str(c.name, 40), role: str(c.role, 30),
+          age: str(c.age, 20) || '成人', note: str(c.note, 200) };
+      }).filter(function (c) { return c.name; }),
+      beats: (Array.isArray(p.beats) ? p.beats : []).slice(0, 24).map(function (b) {
+        b = b || {};
+        var kind = b.kind === 'adult' ? 'adult' : 'story';
+        return { label: str(b.label, 60), kind: kind,
+          text: kind === 'adult' ? '' : str(b.text, 600), page: str(b.page, 20) };
+      }).filter(function (b) { return b.label || b.text || b.kind === 'adult'; })
+    };
+    return (out.title || out.beats.length) ? out : null;
+  }
+
+  function getPlot() { return normalizePlot(state.settings.plot); }
+
+  function setPlot(p) {
+    state.settings.plot = normalizePlot(p);
+    save();
+    return state.settings.plot;
+  }
+
   /* ---- 貯金 ----
 
      貯蓄用の口座の残高。銀行から読むのは同期サーバーの役目で、
@@ -2981,6 +3024,7 @@
     leftovers: leftovers, getLeftover: getLeftover, addLeftover: addLeftover,
     updateLeftover: updateLeftover, removeLeftover: removeLeftover,
     foodQty: foodQty, foodExpired: foodExpired, expiredFood: expiredFood,
+    getPlot: getPlot, setPlot: setPlot,
     savings: savings, setSavings: setSavings, setSavingsGoal: setSavingsGoal,
     mergeSavingsHistory: mergeSavingsHistory,
     ideas: ideas, getIdea: getIdea, addIdea: addIdea, updateIdea: updateIdea,
