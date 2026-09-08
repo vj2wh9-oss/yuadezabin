@@ -664,6 +664,29 @@
     }
   }
 
+  /* 一品ぶん。主菜・副菜の別と、使う調味料の分量と、その一品の手順 */
+  function dishBox(d) {
+    var box = el('div', { class: 'mn-dish' });
+    box.appendChild(el('div', { class: 'mn-dish-h' }, [
+      d.role ? ui.chip(d.role, 'soft') : null,
+      el('b', { text: d.name })
+    ]));
+    if ((d.seasonings || []).length) {
+      box.appendChild(el('div', { class: 'mn-seas' }, [
+        el('span', { class: 'mn-seas-l', text: '調味料' }),
+        el('span', { text: d.seasonings.map(function (s) {
+          return s.name + (s.qty ? ' ' + s.qty : '');
+        }).join('・') })
+      ]));
+    }
+    if ((d.steps || []).length) {
+      box.appendChild(el('ol', { class: 'mn-steps' }, d.steps.map(function (s) {
+        return el('li', { text: s });
+      })));
+    }
+    return box;
+  }
+
   /* 献立の中身。ホームでも日別画面でも同じものを出す */
   function menuBody(m, date) {
     var yen = DL.docs.yen;
@@ -677,10 +700,9 @@
         x.minutes ? el('span', { class: 'muted small', text: x.minutes + '分' }) : null
       ]));
       if (x.dishes.length) {
-        open.appendChild(el('ul', { class: 'mn-dishes' }, x.dishes.map(function (d) {
-          return el('li', { text: d });
-        })));
+        open.appendChild(el('div', { class: 'mn-dishes' }, x.dishes.map(dishBox)));
       }
+      // 前に採ってあった献立は、手順が一品ごとではなく献立ぜんぶで1つ
       if (x.steps.length) {
         open.appendChild(el('ol', { class: 'mn-steps' }, x.steps.map(function (s) {
           return el('li', { text: s });

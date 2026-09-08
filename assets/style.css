@@ -1907,7 +1907,16 @@ a.tp-proj:active { color: var(--accent); }
 .mn-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mn-total { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--accent); }
 
-.mn-dishes { margin: 8px 0 0; padding-left: 18px; font-size: 12.5px; line-height: 1.7; }
+/* 一品ずつ。主菜・副菜の別、調味料の分量、その一品の手順 */
+.mn-dishes { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.mn-dish { border-top: 1px solid var(--line); padding-top: 8px; }
+.mn-dish:first-child { border-top: 0; padding-top: 0; }
+.mn-dish-h { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.mn-seas {
+  display: flex; gap: 6px; margin-top: 4px;
+  font-size: 12px; line-height: 1.6; color: var(--muted);
+}
+.mn-seas-l { flex: none; color: var(--accent); }
 .mn-steps {
   margin: 8px 0 0; padding-left: 18px;
   font-size: 12.5px; line-height: 1.7; color: var(--muted);

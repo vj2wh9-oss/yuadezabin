@@ -518,15 +518,44 @@ const MENU_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['slot', 'name', 'dishes', 'steps', 'minutes'],
+        required: ['slot', 'name', 'dishes', 'minutes'],
         properties: {
           slot: { type: 'string', enum: ['lunch', 'dinner'], description: 'lunch=昼 dinner=夕' },
           name: { type: 'string', description: '献立の呼び名。例）鶏の照り焼き定食' },
           dishes: {
-            type: 'array', description: '一品ずつ。主菜・副菜・汁物など',
-            items: { type: 'string' }
+            type: 'array',
+            description: '一品ずつ。大きめの主菜1品と副菜1品は必ず入れる',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['role', 'name', 'seasonings', 'steps'],
+              properties: {
+                role: {
+                  type: 'string', enum: ['主菜', '副菜', '汁物', '主食'],
+                  description: 'その一品の役どころ'
+                },
+                name: { type: 'string', description: '品名。例）鶏の照り焼き' },
+                seasonings: {
+                  type: 'array',
+                  description: '使う調味料と分量。家にある調味料でも分量は必ず書く',
+                  items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    required: ['name', 'qty'],
+                    properties: {
+                      name: { type: 'string', description: '例）しょうゆ' },
+                      qty: { type: 'string', description: '分量。例）大さじ2 / 小さじ1/2 / 100ml' }
+                    }
+                  }
+                },
+                steps: {
+                  type: 'array',
+                  description: 'その一品の作り方。2〜5行。材料と調味料の分量も書く',
+                  items: { type: 'string' }
+                }
+              }
+            }
           },
-          steps: { type: 'array', description: '作る手順。3〜6行', items: { type: 'string' } },
           minutes: { type: 'number', description: '作るのにかかるおよその分' }
         }
       }
@@ -559,13 +588,19 @@ function menuPrompt(o) {
     '日本のスーパーで買える材料で、自炊の献立を考えてください。',
     '予算は買い物の合計で ' + o.budget + ' 円まで。これを超えないでください。',
     '作るのは ' + slots + '。量は' + people + 'です。',
+    '1食は、大きめの主菜を1品と、副菜を1品の、あわせて2品以上にしてください。'
+      + '予算と手間に余裕があれば汁物やごはんを足しても構いません。',
+    '副菜はもやし・豆腐・卵・きのこ・旬の野菜など、安く作れるもので構いません。',
     'お米はいつも家にあるので、買い物には入れないでください（ごはんは献立に入れて構いません）。',
     '塩・こしょう・しょうゆ・みそ・砂糖・みりん・酒・油などの基本の調味料も、'
       + '家にあるものとして買い物には入れないでください。',
+    'ただし使う調味料は、一品ごとに seasonings へ必ず分量まで書いてください'
+      + '（大さじ1、小さじ1/2、100ml、ひとつまみ など）。「適量」は使わないでください。',
     '冷凍食品は使ってもよいですが、頼りすぎないでください（使うなら1品まで）。',
     '値段はスーパーの並の売値（税込）で、買う単位（1パック・1袋など）で数えてください。',
     '買ったものは使い切るか、余りの使い道を note に書いてください。',
-    '手順は家庭の台所でできる範囲で、3〜6行にまとめてください。'
+    '手順は一品ごとに、家庭の台所でできる範囲で2〜5行。'
+      + '手順の中でも材料と調味料の分量が分かるように書いてください。'
   ];
   if (o.avoid && o.avoid.length) {
     lines.push('次の献立は最近出したので、それとは別のものにしてください：'
@@ -616,7 +651,8 @@ async function askMenu(env, model, o) {
     text: {
       format: { type: 'json_schema', name: 'menu', strict: true, schema: MENU_SCHEMA }
     },
-    max_output_tokens: Number(env.OPENAI_MENU_MAX_TOKENS || 2500),
+    // 一品ごとに調味料と手順を書くぶん、返りが長くなる
+    max_output_tokens: Number(env.OPENAI_MENU_MAX_TOKENS || 4000),
     tools: [],
     store: false
   };

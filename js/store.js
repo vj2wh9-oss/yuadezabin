@@ -1507,6 +1507,33 @@
      中身は向こう（OpenAI）から来るので、形はこちらでそろえる */
 
   var MENU_SLOTS = ['lunch', 'dinner'];
+  var DISH_ROLES = ['主菜', '副菜', '汁物', '主食'];
+
+  /* 一品ぶん。前は品名の文字列だけだったので、その形でも受ける */
+  function normalizeDish(d) {
+    if (typeof d !== 'object' || !d) {
+      return { role: '', name: String(d == null ? '' : d).trim().slice(0, 60),
+        seasonings: [], steps: [] };
+    }
+    return {
+      role: DISH_ROLES.indexOf(d.role) >= 0 ? d.role : '',
+      name: String(d.name || '').trim().slice(0, 60),
+      seasonings: (Array.isArray(d.seasonings) ? d.seasonings : []).slice(0, 12)
+        .map(function (s) {
+          if (typeof s !== 'object' || !s) {
+            return { name: String(s == null ? '' : s).trim().slice(0, 30), qty: '' };
+          }
+          return {
+            name: String(s.name || '').trim().slice(0, 30),
+            qty: String(s.qty || '').trim().slice(0, 24)
+          };
+        })
+        .filter(function (s) { return s.name; }),
+      steps: (Array.isArray(d.steps) ? d.steps : []).slice(0, 8)
+        .map(function (s) { return String(s || '').trim().slice(0, 200); })
+        .filter(function (s) { return s; })
+    };
+  }
 
   function normalizeMenu(m) {
     m = m || {};
@@ -1516,8 +1543,9 @@
         slot: MENU_SLOTS.indexOf(x.slot) >= 0 ? x.slot : 'dinner',
         name: String(x.name || '').trim().slice(0, 60),
         dishes: (Array.isArray(x.dishes) ? x.dishes : []).slice(0, 8)
-          .map(function (s) { return String(s || '').trim().slice(0, 60); })
-          .filter(function (s) { return s; }),
+          .map(normalizeDish)
+          .filter(function (d) { return d.name; }),
+        // 前の形（献立ぜんぶで1つの手順）。いまは一品ごとに持つ
         steps: (Array.isArray(x.steps) ? x.steps : []).slice(0, 10)
           .map(function (s) { return String(s || '').trim().slice(0, 200); })
           .filter(function (s) { return s; }),
