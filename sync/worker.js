@@ -102,7 +102,7 @@ export default {
           invoiceWebhook: !!env.DISCORD_INVOICE_WEBHOOK,
           receiptWebhook: !!env.DISCORD_RECEIPT_WEBHOOK
         },
-        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu'],
+        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/reschedule'],
         note: '各 /v1/... は Authorization: Bearer <合鍵> が必要です'
       }, 200, cors);
     }
@@ -218,6 +218,10 @@ export default {
 
       if (url.pathname === '/v1/menu') {
         return menu(request, env, cors);
+      }
+
+      if (url.pathname === '/v1/reschedule') {
+        return reschedule(request, env, cors);
       }
 
       if (url.pathname === '/v1/roomreserve') {
@@ -802,6 +806,116 @@ async function askJson(env, model, prompt, schemaName, schema, maxTokens) {
     return { ok: false, status: 502, body: { error: 'not_json', sample: content.slice(0, 200) } };
   }
   return { ok: true, data, model, usage: out.usage || null };
+}
+
+/* ---------------- 遅れたときの立て直し ----------------
+
+   締切に間に合いそうにないとき、どこを削るか・どれだけ上げるか・
+   いつまで延ばせるかを、いくつかの案として出してもらう。
+   ここでは案を出すだけで、予定そのものは書き換えない。 */
+
+const PLAN_KINDS = ['pace', 'cut', 'move', 'help', 'other'];
+
+const RESCHEDULE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['summary', 'risk', 'plans', 'note'],
+  properties: {
+    summary: { type: 'string', description: 'いまの状況をひと言で（1〜2行）' },
+    risk: { type: 'string', enum: ['low', 'mid', 'high'], description: 'このままで間に合うか' },
+    plans: {
+      type: 'array',
+      description: '立て直しの案を2〜3つ。効きめの大きい順',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['title', 'kind', 'detail', 'perDay', 'risk'],
+        properties: {
+          title: { type: 'string', description: '案の名前。例）仕上げを軽くする' },
+          kind: {
+            type: 'string', enum: PLAN_KINDS,
+            description: 'pace=ペースを上げる cut=減らす move=締切を動かす help=人に頼む other=その他'
+          },
+          detail: { type: 'string', description: '何をどうするか。2〜4行' },
+          perDay: { type: 'number', description: 'その案での1日あたりの目安。数で出せなければ0' },
+          risk: { type: 'string', enum: ['low', 'mid', 'high'], description: 'この案の危うさ' }
+        }
+      }
+    },
+    note: { type: 'string', description: '気をつけること。無ければ空文字' }
+  }
+};
+
+function reschedulePrompt(o) {
+  const lines = [
+    '同人・フリーランスで漫画とイラストを描いている人の作業計画です。',
+    '締切に間に合いそうにありません。立て直しの案を2〜3つ出してください。',
+    '',
+    '【案件】' + o.title + '（' + o.kind + '）',
+    '【締切】' + o.deadline + '（今日は ' + o.today + '。あと ' + o.daysLeft + '日。'
+      + '今日と締切日を入れて、作業できる日は ' + o.workdaysLeft + '日）'
+  ];
+  if (o.tasks.length) {
+    lines.push('【残っている工程】');
+    o.tasks.forEach((t) => {
+      lines.push('・' + t.name + '：残り ' + t.remaining + t.unit
+        + (t.behind ? '（' + t.behind + t.unit + '遅れ）' : '')
+        + '、割り当ては ' + t.days + '日で1日 ' + t.perDay + t.unit
+        + (t.end ? '、' + t.end + 'まで' : ''));
+    });
+  }
+  if (o.pace) lines.push('【いつものペース】作業した日で1日あたり ' + o.pace + '（直近60日）');
+  if (o.otherLoad) lines.push('【ほかの案件】同じころに1日あたり ' + o.otherLoad + ' のノルマがあります');
+  if (o.limit) lines.push('【1日の上限】' + o.limit + '（本人が決めた上限）');
+  if (o.note) lines.push('【本人のメモ】' + o.note);
+  lines.push('');
+  lines.push('案は、この人がひとりで今日から実行できることにしてください。');
+  lines.push('「ペースを上げる」だけで終わらせず、削れるところ（作画の手間、ページ数、'
+    + '仕上げの度合い、新刊を減らす）や、締切そのものを動かせるか'
+    + '（印刷所の割増や、相手への連絡）も考えてください。');
+  lines.push('数で言えるところは数で書いてください（1日◯ページ、◯日短縮 など）。');
+  lines.push('できない約束や、体を壊すような案は出さないでください。');
+  return lines.join('\n');
+}
+
+async function reschedule(request, env, cors) {
+  if (request.method !== 'POST') return json({ error: 'not_found' }, 404, cors);
+  if (!env.OPENAI_API_KEY) return json({ error: 'no_api_key' }, 503, cors);
+
+  let body;
+  try { body = await request.json(); } catch (e) { return json({ error: 'bad_json' }, 400, cors); }
+
+  const str = (v, n) => String(v == null ? '' : v).slice(0, n);
+  const num = (v) => Math.max(0, Math.round(Number(v) || 0));
+  const o = {
+    title: str(body.title, 60) || '（名前なし）',
+    kind: str(body.kind, 20) || '案件',
+    deadline: /^\d{4}-\d{2}-\d{2}$/.test(String(body.deadline)) ? body.deadline : '',
+    today: /^\d{4}-\d{2}-\d{2}$/.test(String(body.today)) ? body.today : '',
+    daysLeft: num(body.daysLeft),
+    workdaysLeft: num(body.workdaysLeft),
+    limit: num(body.limit),
+    otherLoad: num(body.otherLoad),
+    pace: str(body.pace, 20),
+    note: str(body.note, 300),
+    tasks: (Array.isArray(body.tasks) ? body.tasks : []).slice(0, 12).map((t) => ({
+      name: str(t && t.name, 40),
+      unit: str(t && t.unit, 8),
+      remaining: num(t && t.remaining),
+      behind: num(t && t.behind),
+      days: num(t && t.days),
+      perDay: num(t && t.perDay),
+      end: /^\d{4}-\d{2}-\d{2}$/.test(String(t && t.end)) ? t.end : ''
+    })).filter((t) => t.name)
+  };
+  if (!o.deadline || !o.today) return json({ error: 'no_deadline' }, 400, cors);
+
+  const model = String(body.model || env.OPENAI_ADVICE_MODEL || env.OPENAI_MODEL || OCR_DEFAULTS.model);
+  const pass = await askJson(env, model, reschedulePrompt(o), 'reschedule', RESCHEDULE_SCHEMA,
+    Number(env.OPENAI_ADVICE_MAX_TOKENS || 3000));
+  if (!pass.ok) return json(pass.body, pass.status, cors);
+
+  return json({ ok: true, data: pass.data, model: pass.model, usage: pass.usage }, 200, cors);
 }
 
 /* ---------------- 書類を Discord へ ----------------

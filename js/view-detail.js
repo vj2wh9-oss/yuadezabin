@@ -196,6 +196,8 @@
       ui.btn('タスクを追加', 'ghost', function () { DL.forms.taskForm(p.id); }, 'plus'),
       ui.btn('基本タスクを追加', 'ghost', function () { DL.forms.templateSheet(p.id); }, 'task'),
       ui.btn('自動スケジュール', 'primary', function () { DL.forms.autoScheduleSheet(p.id); }, 'refresh'),
+      DL.advice.ready() && U.isISO(p.deadline)
+        ? ui.btn('立て直しを相談', 'ghost', function () { adviceSheet(p); }, 'idea') : null,
       ui.btn('未完了の工程を今日から組み直す', 'ghost', function () {
         ui.confirm('未完了の工程を、今日から締切までの稼働日に割り振り直します。完了済みの工程はそのままです。', { okText: '組み直す' })
           .then(function (ok) {
@@ -226,6 +228,115 @@
   }
 
   /* ---------------- タスク行 ---------------- */
+
+  /* ---------------- 立て直しの相談 ----------------
+
+     いまの数字はこちらで数えて、そのまま画面にも出す。
+     案を出すのは向こう（OpenAI）で、予定はここからは書き換えない。
+     組み直すかどうかは、いつもの道（自動スケジュール）で自分で決める */
+
+  function adviceSheet(p) {
+    var A = DL.advice;
+    var today = U.today();
+    var f = A.facts(p, today);
+    var memo = ui.textarea({ rows: 2,
+      placeholder: '例）今週は本業が忙しい／表紙だけ外注できる' });
+    var out = el('div', { class: 'ad-out' });
+    var busy = false;
+
+    var goBtn = ui.btn('相談する', 'primary full', function () { run(); }, 'idea');
+
+    ui.sheet({
+      title: '立て直しを相談',
+      body: el('div', { class: 'form ad-wrap' }, [
+        el('div', { class: 'card' }, [
+          el('div', { class: 'row-title' }, [el('span', { text: p.title })]),
+          el('div', { class: 'row-sub' }, [
+            ui.chip(sc.deadlineLabel(p) + ' ' + U.fmtMD(p.deadline), 'soft'),
+            ui.chip('あと' + f.daysLeft + '日', f.daysLeft <= 3 ? 'danger' : 'ghosty'),
+            ui.chip('作業できる日 ' + f.workdaysLeft + '日', 'ghosty'),
+            f.behind ? ui.chip('遅れ ' + f.behind, 'danger') : null,
+            f.remaining ? ui.chip('残り ' + f.remaining, 'ghosty') : null
+          ]),
+          f.tasks.length ? el('ul', { class: 'ad-tasks' }, f.tasks.map(function (t) {
+            return el('li', { text: t.name + '：残り ' + t.remaining + t.unit
+              + '（' + t.days + '日で1日 ' + t.perDay + t.unit + '）'
+              + (t.behind ? '・' + t.behind + t.unit + '遅れ' : '') });
+          })) : null
+        ]),
+        ui.field('足しておきたいこと', memo, '空でも構いません'),
+        goBtn,
+        out
+      ])
+    });
+
+    function run() {
+      if (busy) return;
+      busy = true;
+      goBtn.disabled = true;
+      U.clear(out);
+      out.appendChild(el('p', { class: 'muted small', text: '考えています…' }));
+      A.ask(f, memo.value).then(function (a) {
+        busy = false;
+        goBtn.disabled = false;
+        goBtn.querySelector('span').textContent = 'もう一度相談する';
+        U.clear(out);
+        out.appendChild(adviceBody(p, a));
+      }).catch(function (e) {
+        busy = false;
+        goBtn.disabled = false;
+        U.clear(out);
+        out.appendChild(el('p', { class: 'mn-warn small' }, [
+          ui.icon('alert', 14), el('span', { text: e.message })
+        ]));
+      });
+    }
+  }
+
+  function adviceBody(p, a) {
+    var A = DL.advice;
+    var box = el('div', {});
+    var risk = A.RISK[a.risk] || A.RISK.mid;
+
+    box.appendChild(el('div', { class: 'ad-head' }, [
+      ui.chip(risk.label, risk.cls),
+      el('span', { text: a.summary })
+    ]));
+
+    a.plans.forEach(function (x) {
+      var r = A.RISK[x.risk] || A.RISK.mid;
+      box.appendChild(el('div', { class: 'card ad-plan' }, [
+        el('div', { class: 'row-title' }, [
+          ui.chip(A.KIND[x.kind] || 'その他', 'soft'),
+          el('b', { text: x.title })
+        ]),
+        el('p', { class: 'ad-detail', text: x.detail }),
+        el('div', { class: 'row-sub' }, [
+          x.perDay ? ui.chip('1日 ' + x.perDay, 'ghosty') : null,
+          ui.chip(r.label, r.cls)
+        ])
+      ]));
+    });
+
+    if (a.note) box.appendChild(el('p', { class: 'muted small', text: a.note }));
+
+    // 決めるのは自分。組み直しはいつもの道から
+    box.appendChild(el('div', { class: 'row-wrap' }, [
+      ui.btn('今日から組み直す', 'ghost', function () {
+        ui.confirm('未完了の工程を、今日から締切までの稼働日に割り振り直します。',
+          { okText: '組み直す' }).then(function (ok) {
+          if (!ok) return;
+          var r = sc.rescheduleRemaining(S.getProject(p.id));
+          ui.toast(r.ok ? '組み直しました' : r.reason, r.ok ? '' : 'warn');
+        });
+      }, 'arrowRight'),
+      ui.btn('締切を動かす', 'ghost', function () {
+        ui.closeAllSheets();
+        DL.forms.projectForm(S.getProject(p.id));
+      }, 'calendar')
+    ]));
+    return box;
+  }
 
   function taskRow(p, t, index, today) {
     var unit = sc.unit(t);
