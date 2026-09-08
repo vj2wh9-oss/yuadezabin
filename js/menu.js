@@ -8,10 +8,11 @@
   var U = DL.util, S = DL.store;
 
   var SLOTS = [
-    { value: 'lunch', label: '昼ごはん' },
-    { value: 'dinner', label: '晩ごはん' }
+    { value: 'breakfast', label: '朝食' },
+    { value: 'lunch', label: '昼食' },
+    { value: 'dinner', label: '夕飯' }
   ];
-  var SLOT_LABEL = { lunch: '昼ごはん', dinner: '晩ごはん' };
+  var SLOT_LABEL = { breakfast: '朝食', lunch: '昼食', dinner: '夕飯' };
 
   function conf() { return S.syncSettings ? S.syncSettings() : (S.settings.sync || {}); }
   function base() { return String(conf().url || '').replace(/\/+$/, ''); }
@@ -58,7 +59,7 @@
 
   /**
    * 献立を考えてもらう。
-   * @param {object} o {budget, slots:['lunch','dinner'], servings:1|2, avoid:[名前], date}
+   * @param {object} o {budget, slots:['breakfast','lunch','dinner'], servings:1|2, avoid:[名前], date}
    * @returns {Promise<object>} 正規化した献立
    */
   function suggest(o) {
@@ -68,8 +69,8 @@
     }
     var budget = Math.max(0, Math.round(U.num(o.budget, 0)));
     if (!budget) return Promise.reject(new Error('今日の予算が決まっていません'));
-    // 押した順ではなく、1日の順（昼→晩）にそろえる
-    var order = ['lunch', 'dinner'];
+    // 押した順ではなく、1日の順（朝→昼→夕）にそろえる
+    var order = ['breakfast', 'lunch', 'dinner'];
     var slots = order.filter(function (s) { return (o.slots || []).indexOf(s) >= 0; });
     if (!slots.length) return Promise.reject(new Error('どの食事にするか選んでください'));
 
@@ -230,7 +231,7 @@
       .filter(function (s) { return s; });
   }
 
-  /** '昼ごはん・晩ごはん' */
+  /** '昼食・夕飯' */
   function slotsLabel(m) {
     return ((m && m.meals) || []).map(function (x) { return SLOT_LABEL[x.slot] || ''; })
       .filter(Boolean).join('・');

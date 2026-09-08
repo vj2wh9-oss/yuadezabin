@@ -380,18 +380,13 @@
     return box;
   }
 
-  /* 日ごと・月ごとに、いくら貯めればよいか */
-  function savingsPlan() {
+  /* 日ごと・月ごとに、いくら貯めればよいか。
+     ホームにも同じものを出すので、中身だけを組み立てて返す */
+  function planBody() {
     var B = DL.bank;
     var pl = B.plan();
+    if (!pl) return null;
     var body = el('div', { class: 'form sv-plan' });
-
-    if (!pl) {
-      body.appendChild(ui.empty('目標と期日を決めると出ます。',
-        ui.btn('目標入力', 'primary', function () { ui.closeAllSheets(); savingsGoal(); })));
-      ui.sheet({ title: '節約目標', body: body });
-      return;
-    }
 
     body.appendChild(el('div', { class: 'card sum-grid' }, [
       sumBox('毎日', D.yen(pl.perDay), 'big'),
@@ -423,6 +418,16 @@
       ui.btn('目標入力', 'ghost', function () { ui.closeAllSheets(); savingsGoal(); }, 'chartLine'),
       ui.btn('アドバイス', 'ghost', function () { ui.closeAllSheets(); savingsAdvice(); }, 'idea')
     ]));
+    return body;
+  }
+
+  function savingsPlan() {
+    var body = planBody();
+    if (!body) {
+      body = el('div', { class: 'form sv-plan' });
+      body.appendChild(ui.empty('目標と期日を決めると出ます。',
+        ui.btn('目標入力', 'primary', function () { ui.closeAllSheets(); savingsGoal(); })));
+    }
     ui.sheet({ title: '節約目標', body: body });
   }
 
@@ -1411,6 +1416,8 @@
   DL.views.books = {
     render: render,
     addExpense: addExpense,
+    // ホームにも節約目標を出すため
+    planBody: planBody,
     // 横断検索から、その1件を直接開くために使う
     editExpense: editExpense,
     editRecurring: function (id) {

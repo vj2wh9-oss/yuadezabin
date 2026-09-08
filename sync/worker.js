@@ -544,7 +544,10 @@ const MENU_SCHEMA = {
         additionalProperties: false,
         required: ['slot', 'name', 'dishes', 'minutes'],
         properties: {
-          slot: { type: 'string', enum: ['lunch', 'dinner'], description: 'lunch=昼 dinner=夕' },
+          slot: {
+            type: 'string', enum: ['breakfast', 'lunch', 'dinner'],
+            description: 'breakfast=朝 lunch=昼 dinner=夕'
+          },
           name: { type: 'string', description: '献立の呼び名。例）鶏の照り焼き定食' },
           dishes: {
             type: 'array',
@@ -603,7 +606,7 @@ const MENU_SCHEMA = {
   }
 };
 
-const SLOT_JA = { lunch: '昼ごはん', dinner: '晩ごはん' };
+const SLOT_JA = { breakfast: '朝食', lunch: '昼食', dinner: '夕飯' };
 
 function menuPrompt(o) {
   const slots = (o.slots || []).map((s) => SLOT_JA[s] || s).join('と');
@@ -626,6 +629,10 @@ function menuPrompt(o) {
     '手順は一品ごとに、家庭の台所でできる範囲で2〜5行。'
       + '手順の中でも材料と調味料の分量が分かるように書いてください。'
   ];
+  // 朝はそこまで作り込めないので、手早いものにしてもらう
+  if ((o.slots || []).indexOf('breakfast') >= 0) {
+    lines.push('朝食は10分ほどで作れる軽いものにしてください（主菜1品と副菜1品の決まりは、朝食には当てはめなくて構いません）。');
+  }
   if (o.leftovers && o.leftovers.length) {
     lines.push('家に次の残り物があります。日もちしないので、できるだけ先に使い切ってください：'
       + o.leftovers.map((x) => x.name + (x.qty ? '（' + x.qty + '）' : '')
@@ -651,9 +658,9 @@ async function menu(request, env, cors) {
   const budget = Math.round(Number(body && body.budget) || 0);
   if (!(budget > 0)) return json({ error: 'no_budget' }, 400, cors);
 
-  // 1日の順（昼→晩）にそろえる。押した順のままだと言い回しが逆になる
+  // 1日の順（朝→昼→夕）にそろえる。押した順のままだと言い回しが逆になる
   const asked = Array.isArray(body.slots) ? body.slots : [];
-  const slots = ['lunch', 'dinner'].filter((s) => asked.indexOf(s) >= 0);
+  const slots = ['breakfast', 'lunch', 'dinner'].filter((s) => asked.indexOf(s) >= 0);
   if (!slots.length) return json({ error: 'no_slots' }, 400, cors);
 
   const o = {

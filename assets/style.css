@@ -1880,13 +1880,20 @@ a.tp-proj:active { color: var(--accent); }
 .bg-day-used b.over, .bg-head b.over { color: var(--danger); }
 /* 今日あといくら使えるか。いちばん知りたい数字なので大きく */
 .bg-rest {
-  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  display: flex; align-items: stretch;
   padding-bottom: 10px; border-bottom: 1px solid var(--line);
 }
-.bg-rest-c { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; min-width: 0; }
-/* 貯金するなら、の側。控えめに右へ */
-.bg-rest-c.save { flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; }
-.bg-rest-c.save b { font-size: 18px; color: var(--accent2); }
+/* 左右おなじ幅・おなじ大きさ。2つ並ぶときは真ん中に薄い仕切り */
+.bg-rest-c {
+  flex: 1 1 0; min-width: 0; padding: 0 6px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center;
+  /* 仕切りのぶんで幅がずれないよう、どちらにも枠を持たせて色だけ変える */
+  border-left: 1px solid transparent;
+}
+.bg-rest-c + .bg-rest-c { border-left-color: var(--line); }
+/* 貯金の目標が無いときは1つだけ。そのときは左寄せのまま */
+.bg-rest-c:only-child { align-items: flex-start; text-align: left; }
+.bg-rest-c.save b { color: var(--accent2); }
 .bg-rest-c.save.zero b { color: var(--danger); }
 .bg-rest-l { font-size: 12.5px; color: var(--muted); }
 .bg-rest b { font-size: 26px; font-variant-numeric: tabular-nums; line-height: 1.1; }
@@ -1941,7 +1948,7 @@ a.tp-proj:active { color: var(--accent); }
 .mn-warn { display: flex; align-items: center; gap: 5px; margin: 0; color: var(--warn); }
 .mn-warn .icon { flex: none; }
 /* 献立のボタン列。絵だけのボタンは幅を詰める */
-.mn-acts .btn.grow { flex: 1; }
+.mn-acts .btn.grow { flex: 1; min-width: 0; padding-left: 8px; padding-right: 8px; }
 .mn-item-n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mn-item b { flex: none; font-variant-numeric: tabular-nums; }
 .mn-foot { margin: 0; }
@@ -2054,6 +2061,12 @@ a.tp-proj:active { color: var(--accent); }
 /* 貯金の目標と節約目標 */
 .sv-need { display: flex; gap: 6px; flex-wrap: wrap; }
 .sv-plan .card { margin-bottom: 10px; }
+/* ホームでは外側がカードなので、中の枠は外す */
+.sv-plan-home .sv-plan { gap: 0; }
+.sv-plan-home .sv-plan .card {
+  background: none; border: 0; padding: 0; margin-bottom: 6px;
+}
+.sv-plan-home .row-wrap { margin-top: 10px; }
 .sv-line-row {
   display: flex; align-items: baseline; justify-content: space-between;
   border-top: 1px solid var(--line); padding: 8px 0; font-size: 13px;

@@ -107,18 +107,27 @@
     if (bg) {
       wrap.appendChild(ui.section('今日の予算'));
       wrap.appendChild(bg);
+    }
 
-      /* その予算で作れる献立。予算のすぐ下に置く */
+    /* 貯金。数字を1行だけ。中身は経理で見る */
+    var sv = savingsRow();
+    if (sv) wrap.appendChild(sv);
+
+    /* 目標と期日を決めてあれば、毎日いくら貯めるかも出す（経理と同じもの） */
+    var pn = planCard(today);
+    if (pn) {
+      wrap.appendChild(ui.section('節約目標'));
+      wrap.appendChild(pn);
+    }
+
+    /* その予算で作れる献立 */
+    if (bg) {
       var mn = menuCard(today);
       if (mn) {
         wrap.appendChild(ui.section('今日の献立'));
         wrap.appendChild(mn);
       }
     }
-
-    /* 貯金。数字を1行だけ。中身は経理で見る */
-    var sv = savingsRow();
-    if (sv) wrap.appendChild(sv);
 
     /* プロット相談。物語の大きな流れを考えてもらう */
     var pl = DL.views.plot && DL.views.plot.card();
@@ -617,17 +626,18 @@
       card.appendChild(el('p', { class: 'muted small',
         text: '今日あと使える ' + yen(b.todayLeft) + ' で考えます' }));
       var sv = savingLeft(today, b);
+      // 2つ並ぶと絵を入れる幅が無いので、この列は文字だけにする
       card.appendChild(el('div', { class: 'row-wrap mn-acts' }, [
         ui.btn(mBusy ? '考えています…' : '献立を出す',
-          'primary grow', function () { run(today, b, []); }, 'idea'),
-        sv ? ui.btn('貯金予算献立', 'ghost', function () {
+          'primary grow', function () { run(today, b, []); }, sv ? null : 'idea'),
+        sv ? ui.btn('貯金予算献立', 'ghost grow', function () {
           if (sv.left <= 0) {
             ui.toast('貯金ぶんを引くと、今日の食費が残りません（'
               + yen(-sv.left) + ' 足りません）', 'danger');
             return;
           }
           run(today, b, [], sv.left);
-        }, 'books') : null,
+        }) : null,
         kitchenBtn()
       ]));
       return card;
@@ -690,6 +700,17 @@
       ]),
       el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
     ]);
+  }
+
+  /* 節約目標。経理と同じ中身を、そのままホームにも出す */
+  function planCard(today) {
+    var pl = DL.bank.plan(today);
+    if (!pl || pl.done) return null;
+    var body = DL.views.books && DL.views.books.planBody && DL.views.books.planBody();
+    if (!body) return null;
+    var card = el('div', { class: 'card sv-plan-home' });
+    card.appendChild(body);
+    return card;
   }
 
   /* 期限の切れたもの。押すと「捨てた」ことにして一覧から消す。
@@ -882,7 +903,7 @@
       el('div', { class: 'bg-bar' + (over ? ' over' : '') },
         el('i', { style: { width: Math.min(100, pct) + '%' } })),
       el('div', { class: 'bg-day-used' }, [
-        el('span', { class: 'muted small', text: '使った ' + yen(used) }),
+        el('span', { class: 'muted small', text: '支出：' + yen(used) }),
         el('b', { class: over ? 'over' : '', text: pct + '%' })
       ])
     ]);

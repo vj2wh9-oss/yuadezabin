@@ -1554,7 +1554,7 @@
      予算から起こして、採用したものをその日にぶら下げる。
      中身は向こう（OpenAI）から来るので、形はこちらでそろえる */
 
-  var MENU_SLOTS = ['lunch', 'dinner'];
+  var MENU_SLOTS = ['breakfast', 'lunch', 'dinner'];
   var DISH_ROLES = ['主菜', '副菜', '汁物', '主食'];
 
   /* 一品ぶん。前は品名の文字列だけだったので、その形でも受ける */
