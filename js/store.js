@@ -1723,6 +1723,7 @@
     });
     return {
       goal: Math.max(0, Math.round(U.num(s.goal, 0))),
+      goalOn: U.isISO(s.goalOn) ? s.goalOn : '',      // いつまでに貯めるか
       at: typeof s.at === 'string' ? s.at : '',
       total: Math.max(0, Math.round(U.num(s.total, 0))),
       accounts: (Array.isArray(s.accounts) ? s.accounts : []).slice(0, 10).map(function (a) {
@@ -1756,10 +1757,11 @@
     return state.settings.savings;
   }
 
-  /** 目標額を決める */
-  function setSavingsGoal(v) {
+  /** 目標額と期日を決める */
+  function setSavingsGoal(v, on) {
     var cur = savings();
     cur.goal = Math.max(0, Math.round(U.num(v, 0)));
+    cur.goalOn = U.isISO(on) ? on : '';
     state.settings.savings = normalizeSavings(cur);
     save();
     return state.settings.savings;

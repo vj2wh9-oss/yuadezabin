@@ -2043,3 +2043,15 @@ a.tp-proj:active { color: var(--accent); }
 /* 成人向けの場面は、印だけ置く（番号は続けたいので list-item のまま） */
 .pl-beat.adult { color: var(--accent2); }
 .pl-beat.adult .chip { margin-left: 6px; vertical-align: middle; }
+
+/* 貯金の目標と節約目標 */
+.sv-need { display: flex; gap: 6px; flex-wrap: wrap; }
+.sv-plan .card { margin-bottom: 10px; }
+.sv-line-row {
+  display: flex; align-items: baseline; justify-content: space-between;
+  border-top: 1px solid var(--line); padding: 8px 0; font-size: 13px;
+}
+.sv-line-row b { font-variant-numeric: tabular-nums; }
+.sv-line-row.over b { color: var(--danger); }
+.sv-line-row b.ok { color: var(--ok); }
+.sv-line-row b.over { color: var(--warn); }

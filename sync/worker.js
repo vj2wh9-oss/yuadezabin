@@ -105,7 +105,7 @@ export default {
           bank: bankReady(env),
           plotWebhook: !!env.DISCORD_PLOT_WEBHOOK
         },
-        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/reschedule', '/v1/bank/balance', '/v1/plot', '/v1/plot/send'],
+        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/reschedule', '/v1/bank/balance', '/v1/plot', '/v1/plot/send', '/v1/spend'],
         note: '各 /v1/... は Authorization: Bearer <合鍵> が必要です'
       }, 200, cors);
     }
@@ -229,6 +229,10 @@ export default {
 
       if (url.pathname.indexOf('/v1/bank/') === 0) {
         return bank(request, env, cors, url);
+      }
+
+      if (url.pathname === '/v1/spend') {
+        return spend(request, env, cors);
       }
 
       if (url.pathname === '/v1/plot') {
@@ -822,6 +826,99 @@ async function askJson(env, model, prompt, schemaName, schema, maxTokens) {
     return { ok: false, status: 502, body: { error: 'not_json', sample: content.slice(0, 200) } };
   }
   return { ok: true, data, model, usage: out.usage || null };
+}
+
+/* ---------------- 支出のアドバイス ----------------
+
+   直近の支出と、予算・貯金の目標を渡して、どこを削れば届くかを出してもらう。
+   金額はこちらで数えて渡す（向こうに数え直させない）。 */
+
+const SPEND_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['summary', 'risk', 'tips', 'note'],
+  properties: {
+    summary: { type: 'string', description: 'いまの使いかたをひと言で（1〜2行）' },
+    risk: { type: 'string', enum: ['low', 'mid', 'high'], description: '目標に届きそうか' },
+    tips: {
+      type: 'array',
+      description: '削る案を3〜5つ。効きめの大きい順',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['title', 'detail', 'saving'],
+        properties: {
+          title: { type: 'string', description: '案の名前。例）コンビニを週2回に' },
+          detail: { type: 'string', description: '何をどうするか。1〜3行。数字を添える' },
+          saving: { type: 'number', description: 'ひと月で浮くおよその額（円）。分からなければ0' }
+        }
+      }
+    },
+    note: { type: 'string', description: '気をつけること。無ければ空文字' }
+  }
+};
+
+function spendPrompt(o) {
+  const lines = [
+    '日本のフリーランス（同人・イラスト）の家計です。支出の中身を見て、'
+      + '貯金の目標に届かせるための削りどころを出してください。',
+    '',
+    '【1ヶ月の予算】' + o.month + '円（うち固定費 ' + o.fixed + '円）',
+    '【1日に使える額】' + o.perDay + '円',
+    '【今月ここまで使った額】' + o.spent + '円'
+  ];
+  if (o.goal) {
+    lines.push('【貯金の目標】' + o.goal + '円を ' + o.goalOn + 'まで。'
+      + 'あと ' + o.left + '円、毎月 ' + o.perMonth + '円・毎日 ' + o.goalPerDay + '円ぶん必要');
+  }
+  if (o.cats.length) {
+    lines.push('', '【科目ごと（直近' + o.days + '日）】');
+    o.cats.forEach((c) => lines.push('・' + c.name + '　' + c.amount + '円（' + c.count + '件）'));
+  }
+  if (o.rows.length) {
+    lines.push('', '【1件ずつ（直近' + o.days + '日・多い順）】');
+    o.rows.forEach((r) => lines.push('・' + r.date + '　' + r.category
+      + (r.vendor ? '　' + r.vendor : '') + '　' + r.amount + '円'));
+  }
+  lines.push('', '守ること：',
+    '・数字を根拠にして、具体的に書いてください（「◯◯を月◯回減らすと ◯円」）。',
+    '・仕事に要るもの（画材・ソフト・印刷費）は、まず削る対象にしないでください。',
+    '・食事を抜く、体を壊すような節約は出さないでください。',
+    '・すぐ今日から実行できることを優先してください。');
+  return lines.join('\n');
+}
+
+async function spend(request, env, cors) {
+  if (request.method !== 'POST') return json({ error: 'not_found' }, 404, cors);
+  if (!env.OPENAI_API_KEY) return json({ error: 'no_api_key' }, 503, cors);
+
+  let body;
+  try { body = await request.json(); } catch (e) { return json({ error: 'bad_json' }, 400, cors); }
+
+  const num = (v) => Math.max(0, Math.round(Number(v) || 0));
+  const str = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
+  const o = {
+    days: Math.min(120, Math.max(7, Math.round(Number(body.days) || 30))),
+    month: num(body.month), fixed: num(body.fixed), perDay: num(body.perDay),
+    spent: num(body.spent),
+    goal: num(body.goal), goalOn: str(body.goalOn, 10),
+    left: num(body.left), perMonth: num(body.perMonth), goalPerDay: num(body.goalPerDay),
+    cats: (Array.isArray(body.cats) ? body.cats : []).slice(0, 20).map((c) => ({
+      name: str(c && c.name, 30), amount: num(c && c.amount), count: num(c && c.count)
+    })).filter((c) => c.name),
+    rows: (Array.isArray(body.rows) ? body.rows : []).slice(0, 60).map((r) => ({
+      date: str(r && r.date, 10), category: str(r && r.category, 20),
+      vendor: str(r && r.vendor, 30), amount: num(r && r.amount)
+    })).filter((r) => r.amount)
+  };
+  if (!o.month && !o.rows.length) return json({ error: 'no_data' }, 400, cors);
+
+  const model = String(body.model || env.OPENAI_ADVICE_MODEL || env.OPENAI_MODEL || OCR_DEFAULTS.model);
+  const pass = await askJson(env, model, spendPrompt(o), 'spend', SPEND_SCHEMA,
+    Number(env.OPENAI_ADVICE_MAX_TOKENS || 3000));
+  if (!pass.ok) return json(pass.body, pass.status, cors);
+
+  return json({ ok: true, data: pass.data, model: pass.model, usage: pass.usage }, 200, cors);
 }
 
 /* ---------------- プロット相談 ----------------

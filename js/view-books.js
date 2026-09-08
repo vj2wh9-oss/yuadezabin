@@ -332,15 +332,24 @@
       el('b', { text: D.yen(sv.total) })
     ]));
 
+    var pl = B.plan();
     if (out) {
       box.appendChild(el('div', { class: 'sv-goal' }, [
         el('div', { class: 'sv-goal-head' }, [
-          el('span', { text: '目標 ' + D.yen(out.goal) }),
+          el('span', { text: '目標 ' + D.yen(out.goal)
+            + (sv.goalOn ? '（' + U.fmtYMD(sv.goalOn) + '）' : '') }),
           el('b', { class: out.done ? 'ok' : '', text: out.done ? '達成' : 'あと ' + D.yen(out.left) })
         ]),
         ui.progress(out.pct, null),
         el('div', { class: 'muted small', text: out.pct + '%'
           + (out.months ? '・このペースだと あと' + out.months + 'ヶ月' : '') })
+      ]));
+    }
+    if (pl && !pl.done) {
+      box.appendChild(el('div', { class: 'sv-need' }, [
+        ui.chip('毎月 ' + D.yen(pl.perMonth), 'soft'),
+        ui.chip('毎日 ' + D.yen(pl.perDay), pl.short ? 'danger' : 'soft'),
+        pl.over ? ui.chip('期日超過', 'danger') : ui.chip('あと' + pl.days + '日', 'ghosty')
       ]));
     }
 
@@ -364,8 +373,109 @@
 
     box.appendChild(el('div', { class: 'row-wrap' }, [
       ui.btn('手で入れる', 'primary', function () { savingsInput(); }, 'edit'),
-      ui.btn('目標を決める', 'ghost', function () { savingsGoal(); }, 'chartLine')
+      ui.btn('目標入力', 'ghost', function () { savingsGoal(); }, 'chartLine'),
+      ui.btn('節約目標', 'ghost', function () { savingsPlan(); }, 'books'),
+      ui.btn('アドバイス', 'ghost', function () { savingsAdvice(); }, 'idea')
     ]));
+    return box;
+  }
+
+  /* 日ごと・月ごとに、いくら貯めればよいか */
+  function savingsPlan() {
+    var B = DL.bank;
+    var pl = B.plan();
+    var body = el('div', { class: 'form sv-plan' });
+
+    if (!pl) {
+      body.appendChild(ui.empty('目標と期日を決めると出ます。',
+        ui.btn('目標入力', 'primary', function () { ui.closeAllSheets(); savingsGoal(); })));
+      ui.sheet({ title: '節約目標', body: body });
+      return;
+    }
+
+    body.appendChild(el('div', { class: 'card sum-grid' }, [
+      sumBox('毎日', D.yen(pl.perDay), 'big'),
+      sumBox('毎月', D.yen(pl.perMonth)),
+      sumBox('のこり', D.yen(pl.left)),
+      sumBox('期日まで', pl.over ? '超過' : pl.days + '日', pl.over ? 'warn' : '')
+    ]));
+
+    if (pl.budgetPerDay) {
+      body.appendChild(el('div', { class: 'sv-line-row' }, [
+        el('span', { text: '1日の予算' }), el('b', { text: D.yen(pl.budgetPerDay) })
+      ]));
+      body.appendChild(el('div', { class: 'sv-line-row' + (pl.short ? ' over' : '') }, [
+        el('span', { text: pl.short ? '足りない額' : '使ってよい額' }),
+        el('b', { text: D.yen(pl.short ? pl.short : pl.spendable) })
+      ]));
+    }
+
+    var pace = B.monthlyPace();
+    if (pace) {
+      body.appendChild(el('div', { class: 'sv-line-row' }, [
+        el('span', { text: 'いまのペース' }),
+        el('b', { class: pace >= pl.perMonth ? 'ok' : 'over',
+          text: (pace >= 0 ? '+' : '−') + D.yen(Math.abs(pace)) + ' / 月' })
+      ]));
+    }
+
+    body.appendChild(el('div', { class: 'row-wrap' }, [
+      ui.btn('目標入力', 'ghost', function () { ui.closeAllSheets(); savingsGoal(); }, 'chartLine'),
+      ui.btn('アドバイス', 'ghost', function () { ui.closeAllSheets(); savingsAdvice(); }, 'idea')
+    ]));
+    ui.sheet({ title: '節約目標', body: body });
+  }
+
+  /* 支出を見てもらう */
+  var advBusy = false;
+
+  function savingsAdvice() {
+    var B = DL.bank;
+    var out = el('div', { class: 'ad-out' });
+    var go = ui.btn('もう一度', 'ghost full', function () { run(); }, 'refresh');
+    go.hidden = true;
+    ui.sheet({ title: 'アドバイス', body: el('div', { class: 'form' }, [out, go]) });
+    run();
+
+    function run() {
+      if (advBusy) return;
+      advBusy = true;
+      go.hidden = true;
+      U.clear(out);
+      out.appendChild(el('p', { class: 'muted small', text: '見ています…' }));
+      B.advise(30).then(function (a) {
+        advBusy = false;
+        go.hidden = false;
+        U.clear(out);
+        out.appendChild(adviceBody(a));
+      }).catch(function (e) {
+        advBusy = false;
+        go.hidden = false;
+        U.clear(out);
+        out.appendChild(el('p', { class: 'mn-warn small' }, [
+          ui.icon('alert', 14), el('span', { text: e.message })
+        ]));
+      });
+    }
+  }
+
+  function adviceBody(a) {
+    var R = DL.bank.RISK[a.risk] || DL.bank.RISK.mid;
+    var box = el('div', {});
+    box.appendChild(el('div', { class: 'ad-head' }, [
+      ui.chip(R.label, R.cls),
+      el('span', { text: a.summary })
+    ]));
+    a.tips.forEach(function (t) {
+      box.appendChild(el('div', { class: 'card ad-plan' }, [
+        el('div', { class: 'row-title' }, [
+          el('b', { text: t.title }),
+          t.saving ? ui.chip('−' + D.yen(t.saving) + ' / 月', 'ok') : null
+        ]),
+        t.detail ? el('p', { class: 'ad-detail', text: t.detail }) : null
+      ]));
+    });
+    if (a.note) box.appendChild(el('p', { class: 'muted small', text: a.note }));
     return box;
   }
 
@@ -417,15 +527,17 @@
   function savingsGoal() {
     var sv = S.savings();
     var goal = ui.input({ type: 'number', inputmode: 'numeric', min: 0, value: sv.goal || '' });
+    var on = ui.input({ type: 'date', value: sv.goalOn || '' });
     var close = ui.sheet({
-      title: '貯金の目標',
+      title: '目標入力',
       body: el('div', { class: 'form' }, [
-        ui.field('目標（円）', goal, '0 で目標なし')
+        ui.field('目標（円）', goal, '0 で目標なし'),
+        ui.field('いつまでに', on)
       ]),
       actions: [
         ui.btn('キャンセル', 'ghost', function () { close(); }),
         ui.btn('保存', 'primary', function () {
-          S.setSavingsGoal(goal.value);
+          S.setSavingsGoal(goal.value, on.value);
           close();
           ui.toast('決めました');
         })
