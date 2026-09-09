@@ -51,12 +51,12 @@
           var msg = on ? d.label + 'を外しました' : d.label + 'にしました';
           if (!wasOff && isOff) msg += '\n案件のほうは休業日にしました';
           else if (wasOff && !isOff) msg += '\n案件の休業日も外しました';
-          // 勤務を選んだら、1日の時間もひな型で入れておく。
+          // 勤務を選んだら、1日の時間もプリセットで入れておく。
           // すでに書いてある日は、勝手に置き換えず先に聞く
           if (!on && DL.timeblocks.hasPreset(d.value)) {
             var had = S.timeblocks(date).length;
             DL.views.time.offerPreset(date, d.value, had > 0);
-            if (!had) msg += '\n1日の時間もひな型で入れました';
+            if (!had) msg += '\n1日の時間もプリセットで入れました';
           }
           ui.toast(msg);
           // 休みが増えたぶん、残りの割り振りを組み直すか聞く

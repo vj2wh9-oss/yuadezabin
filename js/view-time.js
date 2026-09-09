@@ -72,11 +72,25 @@
       hand.forEach(function (n) { svg.appendChild(n); });
     }
 
-    // まん中に、いちばん長いものを出す
+    /* まん中に、いちばん長いものの名前と、その時間帯。
+       同じ名前が何回かに分かれている日は、いちばん長い1本の時間帯を出す */
     var top = T.sums(date)[0];
     if (top) {
-      svg.appendChild(svgEl('text', { class: 'tp-mid-v', x: C, y: C + 1, 'text-anchor': 'middle', text: hm(top.min) }));
-      svg.appendChild(svgEl('text', { class: 'tp-mid-l', x: C, y: C + 12, 'text-anchor': 'middle', text: top.label }));
+      var main = T.ofDay(date).filter(function (x) { return x.label === top.label; })
+        .sort(function (p, q) { return (q.end - q.start) - (p.end - p.start); })[0];
+      // 長い名前は入りきらないので、字を少し小さくする
+      var n = top.label.length;
+      var fs = n > 6 ? 7.5 : n > 5 ? 8.5 : n > 4 ? 9.5 : 11;
+      svg.appendChild(svgEl('text', {
+        class: 'tp-mid-v', x: C, y: C + 1, 'text-anchor': 'middle',
+        style: 'font-size:' + fs + 'px', text: top.label
+      }));
+      if (main) {
+        svg.appendChild(svgEl('text', {
+          class: 'tp-mid-l', x: C, y: C + 12, 'text-anchor': 'middle',
+          text: T.fmt(main.start) + '〜' + T.fmt(main.end)
+        }));
+      }
     }
 
     /* 開いたときの見せ方。0→1 を渡すと、0時のところから時計回りに出てくる。
@@ -233,8 +247,7 @@
    */
   function dayCard(wrap, date) {
     var list = T.ofDay(date);
-    wrap.appendChild(ui.section('1日の時間',
-      list.length ? ui.chip(hm(T.filled(date)) + ' ぶん', 'soft') : null));
+    wrap.appendChild(ui.section('1日の時間'));
 
     var card = el('div', { class: 'card tp-card' });
 
@@ -243,7 +256,7 @@
     if (nb) card.appendChild(nb);
 
     if (!list.length) {
-      card.appendChild(el('p', { class: 'muted small', text: 'まだ書いていません。時間を足すか、勤務のひな型から入れられます。' }));
+      card.appendChild(el('p', { class: 'muted small', text: 'まだ書いていません。時間を足すか、勤務のプリセットから入れられます。' }));
     } else {
       card.appendChild(el('div', { class: 'tp-top' }, [
         pie(date, { size: 168, onPick: function (b) { blockSheet(date, b); } }),
@@ -262,26 +275,26 @@
     wrap.appendChild(card);
   }
 
-  /* 勤務のひな型を入れるボタン。勤務を選んでいる日だけ出す。
-     3つ並べても1行に収めたいので、ボタンの字は「ひな型」だけにして、
+  /* 勤務のプリセットを入れるボタン。勤務を選んでいる日だけ出す。
+     3つ並べても1行に収めたいので、ボタンの字は「プリセット」だけにして、
      どの勤務のものかは読み上げと長押しの説明に持たせる */
   function presetBtn(date) {
     var duty = S.duty(date);
     if (!T.hasPreset(duty)) return null;
-    var b = ui.btn('ひな型', 'ghost', function () { offerPreset(date, duty, true); }, 'refresh');
-    b.setAttribute('aria-label', S.dutyLabel(duty) + 'のひな型を入れる');
-    b.setAttribute('title', S.dutyLabel(duty) + 'のひな型を入れる');
+    var b = ui.btn('プリセット', 'ghost', function () { offerPreset(date, duty, true); }, 'refresh');
+    b.setAttribute('aria-label', S.dutyLabel(duty) + 'のプリセットを入れる');
+    b.setAttribute('title', S.dutyLabel(duty) + 'のプリセットを入れる');
     return b;
   }
 
   /**
-   * ひな型を入れるか聞いてから入れる。
+   * プリセットを入れるか聞いてから入れる。
    * @param {boolean} [ask] すでに書いてあるときも聞く
    */
   function offerPreset(date, duty, ask) {
     if (!T.hasPreset(duty)) return Promise.resolve(false);
     var had = S.timeblocks(date).length;
-    var msg = S.dutyLabel(duty) + 'のひな型を入れます。\n\n' + T.presetText(duty)
+    var msg = S.dutyLabel(duty) + 'のプリセットを入れます。\n\n' + T.presetText(duty)
       + (had ? '\n\nすでに書いてあるぶんは、置き換わります。' : '');
     if (!ask && !had) {
       T.applyPreset(date, duty, true);
@@ -290,7 +303,7 @@
     return ui.confirm(msg, { title: '1日の時間', okText: '入れる' }).then(function (ok) {
       if (!ok) return false;
       T.applyPreset(date, duty, true);
-      ui.toast('ひな型を入れました');
+      ui.toast('プリセットを入れました');
       return true;
     });
   }
@@ -306,24 +319,45 @@
 
   /* 帯を上から順に並べた一覧。押すと直せる。
      いま進行中のものは青く光らせて、どれが「今」か目で追えるようにする */
+  /* 予定の名前。色の中に入れて、字の色は色の明るさで決める */
+  function blockTag(b) {
+    return el('span', { class: 'tp-np-t', text: b.label,
+      style: { background: b.color, color: U.inkOn(b.color) } });
+  }
+
   /* いまの時刻と、いましていること。今日を見ているときだけ出す。
      円や帯の印は小さいので、まず文字で言い切っておく */
   function nowBanner(date) {
     var m = nowMin(date);
     if (m === null) return null;
-    var b = T.ofDay(date).filter(function (x) { return m >= x.start && m < x.end; })[0];
+    var list = T.ofDay(date);
+    var b = list.filter(function (x) { return m >= x.start && m < x.end; })[0];
+    // このあと最初に始まるもの
+    var next = list.filter(function (x) { return x.start > m; })
+      .sort(function (p, q) { return p.start - q.start; })[0];
 
-    var box = el('div', { class: 'tp-nowbar' + (b ? '' : ' empty') }, [
-      el('i', { class: 'tp-nowdot', style: b ? { background: b.color } : null }),
-      el('span', { class: 'tp-nowlabel', text: 'いま' }),
-      el('b', { class: 'tp-nowtime', text: T.fmt(m) }),
-      b ? el('span', { class: 'tp-nowwhat' }, [
-        el('span', { text: b.label }),
-        el('span', { class: 'muted small', text: T.fmt(b.start) + '〜' + T.fmt(b.end) })
-      ]) : el('span', { class: 'tp-nowwhat muted small', text: 'まだ書いていません' }),
-      b ? null : ui.btn('ここを書く', 'ghost tiny', function () {
-        blockSheet(date, null);
-      }, 'plus')
+    // 'empty' という名前は、空っぽの案内枠（.empty）と当たって縦並びになる
+    var box = el('div', { class: 'tp-nowbar' + (b ? '' : ' is-empty') }, [
+      /* いま何時で、何をしていることになっているか */
+      el('div', { class: 'tp-np' }, [
+        el('div', { class: 'tp-np-h' }, [
+          el('b', { class: 'tp-nowtime', text: T.fmt(m) }),
+          b ? blockTag(b) : el('span', { class: 'tp-np-none', text: 'まだ書いていません' })
+        ]),
+        b ? el('div', { class: 'tp-np-r', text: T.fmt(b.start) + '〜' + T.fmt(b.end) }) : null
+      ]),
+      /* 次へ流れていく印。押せるものではないので読み上げからは外す */
+      next ? el('div', { class: 'tp-flow', 'aria-hidden': 'true' },
+        [el('i'), el('i'), el('i')]) : null,
+      /* このあとの予定 */
+      next ? el('div', { class: 'tp-np next' }, [
+        el('div', { class: 'tp-np-h' }, [
+          el('b', { class: 'tp-np-time', text: T.fmt(next.start) }),
+          blockTag(next)
+        ]),
+        el('div', { class: 'tp-np-r', text: T.fmt(next.start) + '〜' + T.fmt(next.end) })
+      ]) : null
+      // 「ここを書く」は、すぐ下の「時間を足す」と同じことなので置かない
     ]);
 
     /* 時計は進む。開きっぱなしでも合うように書き替える。
