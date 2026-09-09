@@ -22,15 +22,13 @@
   function pie(date, opts) {
     opts = opts || {};
     /* 230×206 の中に描いて、表示は幅いっぱいに伸ばす。
-       まん中に円、その左右に名前を置く列を取る */
+       まん中に円、そのまわりを囲うように名前を置く */
     var VW = 230, VH = 206;
     var C = 115, CY = 100, R = 56, r = 34;
-    var FS = 7.5;                 // 名前の字の大きさ
-    var TAG_H = 12;               // 名前を囲う枠の高さ
-    var TAG_W = 46;               // 名前を囲う枠の幅
-    var GAP = 14;                 // 縦に並べるときの最小の間
-    var RX = C + R + 13;          // 右の列の左端（時刻の数字を避ける）
-    var LX = C - R - 13 - TAG_W;  // 左の列の左端
+    var FS = 7;                   // 名前の字の大きさ
+    var TAG_H = 11;               // 名前を囲う枠の高さ
+    var TAG_MAX = 44;             // 名前を囲う枠の幅（いっぱいまで）
+    var LR = R + 13;              // 名前を置く輪の大きさ
 
     var svg = svgEl('svg', {
       class: 'tp-pie', viewBox: '0 0 ' + VW + ' ' + VH, role: 'img',
@@ -57,30 +55,37 @@
       slices.push({ node: p, start: b.start, end: b.end });
     });
 
-    // 時刻の目盛り。0/6/12/18 だけ置く
+    /* 円を囲う目盛り。数字を置く 0/6/12/18 以外の時刻に、細い線を1本ずつ */
+    TICK_HOURS.forEach(function (h) {
+      var a = ang(h * 60);
+      var s1 = Math.sin(a), c1 = Math.cos(a);
+      svg.appendChild(svgEl('line', {
+        class: 'tp-hair',
+        x1: C + s1 * (R + 2), y1: CY - c1 * (R + 2),
+        x2: C + s1 * (R + 5.5), y2: CY - c1 * (R + 5.5)
+      }));
+    });
+
+    /* 時刻の数字。0/6/12/18 だけ、輪の内側に置く
+       （外は名前の場所なので、ぶつからないように） */
     [0, 6, 12, 18].forEach(function (h) {
       var a = ang(h * 60);
       svg.appendChild(svgEl('text', {
-        class: 'tp-tick', x: C + Math.sin(a) * (R + 7), y: CY - Math.cos(a) * (R + 7) + 3,
+        class: 'tp-tick', x: C + Math.sin(a) * (r - 6), y: CY - Math.cos(a) * (r - 6) + 2.5,
         'text-anchor': 'middle', text: String(h)
       }));
     });
 
-    // いまの時刻。今日を見ているときだけ、針を出す
+    /* いまの時刻。針は出さず、円の中のその場所だけを点滅させる */
     var now = nowMin(date);
-    var hand = [];
+    var nowArc = null;
     if (now !== null) {
-      var na = ang(now);
-      var sin = Math.sin(na), cos = Math.cos(na);
-      hand.push(svgEl('line', {
-        class: 'tp-hand',
-        x1: C + sin * (r - 4), y1: CY - cos * (r - 4),
-        x2: C + sin * (R + 4), y2: CY - cos * (R + 4)
-      }));
-      hand.push(svgEl('circle', {
-        class: 'tp-hand-tip', cx: C + sin * (R + 4), cy: CY - cos * (R + 4), r: 2.4
-      }));
-      hand.forEach(function (n) { svg.appendChild(n); });
+      nowArc = svgEl('path', {
+        class: 'tp-nowarc',
+        d: ring(C, CY, R + 1, r - 1, Math.max(0, now - 11), Math.min(DAY, now + 11))
+      });
+      nowArc.appendChild(svgEl('title', { text: 'いま ' + T.fmt(now) }));
+      svg.appendChild(nowArc);
     }
 
     /* まん中に、いちばん長いものの名前と、その時間帯 */
@@ -102,44 +107,44 @@
       }
     }
 
-    /* まわりに置く名前。左右の列に分けて、上から時刻の順に並べる */
-    var tags = layout(list, { C: C, CY: CY, R: R, VH: VH, TAG_H: TAG_H, GAP: GAP });
+    /* まわりに置く名前。円を囲うように、その時刻の外側へ。
+       ぶつかるときは1つ外の輪へ逃がす（縦にはそろえない） */
+    var tags = place(list, {
+      cx: C, cy: CY, LR: LR, VW: VW, VH: VH, H: TAG_H, MAX: TAG_MAX, FS: FS
+    });
+
+    // 線は名前より先に描く（名前が線の端を隠す）
     var marks = [];
     tags.forEach(function (o) {
       var b = o.b;
-      var right = o.side > 0;
-      var x = right ? RX : LX;
-      var ink = U.inkOn(b.color);
-
-      // その時刻から、名前のところまで引く線
       var a = ang((b.start + b.end) / 2);
       var s2 = Math.sin(a), c2 = Math.cos(a);
-      var pts = [
-        [C + s2 * (R + 1), CY - c2 * (R + 1)],
-        [C + s2 * (R + 9), CY - c2 * (R + 9)],
-        [right ? x - 3 : x + TAG_W + 3, o.y]
-      ];
-      var line = svgEl('polyline', {
+      var line = svgEl('line', {
         class: 'tp-lead', stroke: b.color,
-        points: pts.map(function (q) { return q[0].toFixed(1) + ',' + q[1].toFixed(1); }).join(' ')
+        x1: C + s2 * (R + 1), y1: CY - c2 * (R + 1),
+        x2: C + s2 * (o.rad - 1), y2: CY - c2 * (o.rad - 1)
       });
       svg.appendChild(line);
-
+      marks.push({ line: line, at: ((b.start + b.end) / 2) / DAY,
+        len: Math.round(Math.abs(o.rad - 1 - R - 1) * 10) / 10 });
+    });
+    tags.forEach(function (o, i) {
+      var b = o.b;
       var g = svgEl('g', { class: 'tp-tag' + (opts.onPick && !b.carry ? ' tap' : '') });
       g.appendChild(svgEl('rect', {
-        x: x, y: o.y - TAG_H / 2, width: TAG_W, height: TAG_H, rx: 2, fill: b.color
+        x: o.x, y: o.y, width: o.w, height: TAG_H, rx: 2, fill: b.color
       }));
       g.appendChild(svgEl('text', {
-        class: 'tp-tag-t', x: x + TAG_W / 2, y: o.y + FS * 0.36, 'text-anchor': 'middle',
-        fill: ink, style: 'font-size:' + FS + 'px', text: fit(b.label, TAG_W - 6, FS)
+        class: 'tp-tag-t', x: o.x + o.w / 2, y: o.y + TAG_H / 2 + FS * 0.36,
+        'text-anchor': 'middle', fill: U.inkOn(b.color),
+        style: 'font-size:' + FS + 'px', text: o.text
       }));
       g.appendChild(svgEl('title', { text: slabel(b) }));
       if (opts.onPick && !b.carry) {
         g.addEventListener('click', function () { opts.onPick(b); });
       }
       svg.appendChild(g);
-      // 2周目に出す順（0時から時計回り）
-      marks.push({ tag: g, line: line, at: ((b.start + b.end) / 2) / DAY, len: polyLen(pts) });
+      marks[i].tag = g;
     });
 
     /* 見せ方は3段。
@@ -152,9 +157,8 @@
         o.node.setAttribute('d', ring(C, CY, R, r, o.start, e));
         o.node.style.visibility = e > o.start ? '' : 'hidden';
       });
-      // 針は、時計回りがそこを通り過ぎてから出す
-      var at = Math.min(now, last);
-      hand.forEach(function (n) { n.style.visibility = upto >= at ? '' : 'hidden'; });
+      // いまの印は、時計回りがそこを通り過ぎてから出す
+      if (nowArc) nowArc.style.visibility = upto >= Math.min(now, last) ? '' : 'hidden';
       if (t <= 0) hold();
       if (t >= 1) release();
     };
@@ -185,15 +189,8 @@
 
   var LAP_MS = 800;      // 名前がぐるっと一周そろうまで
   var LINE_MS = 400;     // 線が順に伸びるまで
-
-  /* 折れ線の長さ。画面に入る前でも測れるよう、自分で足す */
-  function polyLen(pts) {
-    var n = 0;
-    for (var i = 1; i < pts.length; i++) {
-      n += Math.sqrt(Math.pow(pts[i][0] - pts[i - 1][0], 2) + Math.pow(pts[i][1] - pts[i - 1][1], 2));
-    }
-    return Math.round(n * 10) / 10;
-  }
+  /* 数字を置く 0/6/12/18 以外の時刻。ここに細い目盛りを引く */
+  var TICK_HOURS = [1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 19, 20, 21, 22, 23];
 
   /* 字の幅のあたり。日本語は1文字ぶん、英数字は半分で数える */
   function textW(s, fs) {
@@ -214,34 +211,42 @@
 
   /**
    * まわりに置く名前の位置を決める。
-   * 右半分（0時〜12時）は右の列、左半分は左の列。どちらも時刻の順に上から並べ、
-   * 重なるときは下へずらす。入りきらないぶんは間を詰める。
+   * その帯のまん中の時刻の外側に、円を囲うように置く。
+   * 右半分は右へ、左半分は左へ、上下は真ん中ぞろえで伸ばす。
+   * すでに置いたものとぶつかるときは、1つ外の輪へ逃がす。
    */
-  function layout(list, g) {
+  function place(list, g) {
     var out = [];
-    ['r', 'l'].forEach(function (side) {
-      var mine = list.filter(function (b) {
-        var m = (b.start + b.end) / 2;
-        return side === 'r' ? m < DAY / 2 : m >= DAY / 2;
-      }).map(function (b) {
-        var a = ang((b.start + b.end) / 2);
-        return { b: b, side: side === 'r' ? 1 : -1, want: g.CY - Math.cos(a) * (g.R + 16) };
-      });
-      // 右は上から下、左は下から上（時計回りの順）
-      mine.sort(function (p, q) { return side === 'r' ? p.want - q.want : q.want - p.want; });
-      var top = g.TAG_H / 2 + 2, bottom = g.VH - g.TAG_H / 2 - 2;
-      var gap = Math.min(g.GAP, mine.length > 1 ? (bottom - top) / (mine.length - 1) : g.GAP);
-      var y = null;
-      mine.forEach(function (o) {
-        var v = side === 'r'
-          ? Math.max(top, y === null ? o.want : Math.max(o.want, y + gap))
-          : Math.min(bottom, y === null ? o.want : Math.min(o.want, y - gap));
-        o.y = Math.max(top, Math.min(bottom, v));
-        y = o.y;
-        out.push(o);
-      });
+    list.forEach(function (b) {
+      var text = fit(b.label, g.MAX - 7, g.FS);
+      var w = Math.min(g.MAX, Math.round(textW(text, g.FS)) + 7);
+      var a = ang((b.start + b.end) / 2);
+      var s = Math.sin(a), c = Math.cos(a);
+      var best = null;
+      for (var step = 0; step < 4; step++) {
+        var rad = g.LR + step * (g.H + 4);
+        var px = g.cx + s * rad, py = g.cy - c * rad;
+        var x = s > 0.25 ? px : (s < -0.25 ? px - w : px - w / 2);
+        var y = py - g.H / 2;
+        x = Math.max(1, Math.min(g.VW - w - 1, x));
+        y = Math.max(1, Math.min(g.VH - g.H - 1, y));
+        var box = { b: b, text: text, x: x, y: y, w: w, rad: rad };
+        if (!best) best = box;
+        if (!bump(box, out, g.H)) { best = box; break; }
+      }
+      out.push(best);
     });
     return out;
+  }
+
+  /* すでに置いたものと重なっているか */
+  function bump(box, list, h) {
+    for (var i = 0; i < list.length; i++) {
+      var o = list[i];
+      if (box.x < o.x + o.w + 2 && o.x < box.x + box.w + 2
+        && box.y < o.y + h + 2 && o.y < box.y + h + 2) return true;
+    }
+    return false;
   }
 
   /* 描き出しをどこまで進めればいいか。

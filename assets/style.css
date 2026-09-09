@@ -1695,7 +1695,9 @@ a.alert-main { text-decoration: none; }
 }
 .tp-pie-wrap .tp-pie { width: 100%; height: auto; }
 /* まわりに置いた名前と、そこへ引く線 */
-.tp-lead { fill: none; stroke-width: 1; stroke-linejoin: round; stroke-linecap: round; opacity: .85; }
+.tp-lead { stroke-width: .7; stroke-linecap: round; opacity: .8; }
+/* 円を囲う細い目盛り（数字を置かない時刻） */
+.tp-hair { stroke: var(--line2); stroke-width: .7; stroke-linecap: round; }
 .tp-tag-t { font-weight: 700; }
 .tp-tag.tap { cursor: pointer; }
 .tp-tag.tap:active { opacity: .75; }
@@ -1771,19 +1773,18 @@ a.tp-proj:active { color: var(--accent); }
 .tp-acts.n3 { grid-template-columns: repeat(3, 1fr); }
 .tp-acts .btn { padding: 9px 4px; font-size: 13px; gap: 4px; min-width: 0; white-space: nowrap; }
 
-/* いまの時刻。円は針で、帯は縦線で示す */
-.tp-hand { stroke: var(--text); stroke-width: 1.6; stroke-linecap: butt; }
-.tp-hand-tip { fill: var(--text); }
+/* いまの時刻。円は中の色で、帯は縦線で示す */
+.tp-nowarc { fill: var(--danger); }
 
 /* いまの時刻の印は、ゆっくり点滅させて見つけやすくする。
    消えきらないので、動きが苦手なときも位置は分かる */
-.tp-hand, .tp-hand-tip { animation: tp-pulse 2.6s ease-in-out infinite; }
+.tp-nowarc { animation: tp-pulse 2.6s ease-in-out infinite; }
 @keyframes tp-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: .28; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .tp-now, .tp-hand, .tp-hand-tip { animation: none; opacity: 1; }
+  .tp-now, .tp-nowarc { animation: none; opacity: 1; }
   .tp-flow i { animation: none; opacity: .85; }
 }
 
