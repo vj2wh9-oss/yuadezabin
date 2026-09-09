@@ -15,27 +15,38 @@
 
   /**
    * 24時間の円グラフ。0時が上で、時計と同じ右回り。
+   * まわりに予定の名前を置き、その時刻から線で結ぶ。
    * @param {string} date
-   * @param {object} [opts] {size, onPick:fn(block)}
+   * @param {object} [opts] {onPick:fn(block)}
    */
   function pie(date, opts) {
     opts = opts || {};
-    var size = opts.size || 200;
-    var R = 50, r = 29, C = 60;      // 60×60 の座標で描いて、表示だけ大きくする
+    /* 230×206 の中に描いて、表示は幅いっぱいに伸ばす。
+       まん中に円、その左右に名前を置く列を取る */
+    var VW = 230, VH = 206;
+    var C = 115, CY = 100, R = 56, r = 34;
+    var FS = 7.5;                 // 名前の字の大きさ
+    var TAG_H = 12;               // 名前を囲う枠の高さ
+    var TAG_W = 46;               // 名前を囲う枠の幅
+    var GAP = 14;                 // 縦に並べるときの最小の間
+    var RX = C + R + 13;          // 右の列の左端（時刻の数字を避ける）
+    var LX = C - R - 13 - TAG_W;  // 左の列の左端
 
     var svg = svgEl('svg', {
-      class: 'tp-pie', viewBox: '0 0 120 120',
-      width: size, height: size, role: 'img',
+      class: 'tp-pie', viewBox: '0 0 ' + VW + ' ' + VH, role: 'img',
       'aria-label': date + ' の時間の振り分け'
     });
 
     // まだ書いていないところ
-    svg.appendChild(svgEl('circle', { cx: C, cy: C, r: (R + r) / 2, class: 'tp-rest', 'stroke-width': R - r }));
+    svg.appendChild(svgEl('circle', {
+      cx: C, cy: CY, r: (R + r) / 2, class: 'tp-rest', 'stroke-width': R - r
+    }));
 
+    var list = T.ofDay(date);
     var slices = [];
-    T.ofDay(date).forEach(function (b) {
+    list.forEach(function (b) {
       var p = svgEl('path', {
-        class: 'tp-slice', d: ring(C, R, r, b.start, b.end), fill: b.color
+        class: 'tp-slice', d: ring(C, CY, R, r, b.start, b.end), fill: b.color
       });
       p.appendChild(svgEl('title', { text: slabel(b) }));
       if (opts.onPick && !b.carry) {
@@ -50,7 +61,7 @@
     [0, 6, 12, 18].forEach(function (h) {
       var a = ang(h * 60);
       svg.appendChild(svgEl('text', {
-        class: 'tp-tick', x: C + Math.sin(a) * (R + 7), y: C - Math.cos(a) * (R + 7) + 3,
+        class: 'tp-tick', x: C + Math.sin(a) * (R + 7), y: CY - Math.cos(a) * (R + 7) + 3,
         'text-anchor': 'middle', text: String(h)
       }));
     });
@@ -63,52 +74,174 @@
       var sin = Math.sin(na), cos = Math.cos(na);
       hand.push(svgEl('line', {
         class: 'tp-hand',
-        x1: C + sin * (r - 4), y1: C - cos * (r - 4),
-        x2: C + sin * (R + 4), y2: C - cos * (R + 4)
+        x1: C + sin * (r - 4), y1: CY - cos * (r - 4),
+        x2: C + sin * (R + 4), y2: CY - cos * (R + 4)
       }));
       hand.push(svgEl('circle', {
-        class: 'tp-hand-tip', cx: C + sin * (R + 4), cy: C - cos * (R + 4), r: 2.4
+        class: 'tp-hand-tip', cx: C + sin * (R + 4), cy: CY - cos * (R + 4), r: 2.4
       }));
       hand.forEach(function (n) { svg.appendChild(n); });
     }
 
-    /* まん中に、いちばん長いものの名前と、その時間帯。
-       同じ名前が何回かに分かれている日は、いちばん長い1本の時間帯を出す */
+    /* まん中に、いちばん長いものの名前と、その時間帯 */
     var top = T.sums(date)[0];
     if (top) {
-      var main = T.ofDay(date).filter(function (x) { return x.label === top.label; })
+      var main = list.filter(function (x) { return x.label === top.label; })
         .sort(function (p, q) { return (q.end - q.start) - (p.end - p.start); })[0];
-      // 長い名前は入りきらないので、字を少し小さくする
       var n = top.label.length;
-      var fs = n > 6 ? 7.5 : n > 5 ? 8.5 : n > 4 ? 9.5 : 11;
+      var fs = n > 6 ? 8 : n > 5 ? 9 : n > 4 ? 10 : 11.5;
       svg.appendChild(svgEl('text', {
-        class: 'tp-mid-v', x: C, y: C + 1, 'text-anchor': 'middle',
+        class: 'tp-mid-v', x: C, y: CY + 1, 'text-anchor': 'middle',
         style: 'font-size:' + fs + 'px', text: top.label
       }));
       if (main) {
         svg.appendChild(svgEl('text', {
-          class: 'tp-mid-l', x: C, y: C + 12, 'text-anchor': 'middle',
+          class: 'tp-mid-l', x: C, y: CY + 12, 'text-anchor': 'middle',
           text: T.fmt(main.start) + '〜' + T.fmt(main.end)
         }));
       }
     }
 
-    /* 開いたときの見せ方。0→1 を渡すと、0時のところから時計回りに出てくる。
-       扇形そのものを描き直すので、まん中の字や目盛りは動かない。
-       ui.introduce がこれを見つけて呼ぶ */
+    /* まわりに置く名前。左右の列に分けて、上から時刻の順に並べる */
+    var tags = layout(list, { C: C, CY: CY, R: R, VH: VH, TAG_H: TAG_H, GAP: GAP });
+    var marks = [];
+    tags.forEach(function (o) {
+      var b = o.b;
+      var right = o.side > 0;
+      var x = right ? RX : LX;
+      var ink = U.inkOn(b.color);
+
+      // その時刻から、名前のところまで引く線
+      var a = ang((b.start + b.end) / 2);
+      var s2 = Math.sin(a), c2 = Math.cos(a);
+      var pts = [
+        [C + s2 * (R + 1), CY - c2 * (R + 1)],
+        [C + s2 * (R + 9), CY - c2 * (R + 9)],
+        [right ? x - 3 : x + TAG_W + 3, o.y]
+      ];
+      var line = svgEl('polyline', {
+        class: 'tp-lead', stroke: b.color,
+        points: pts.map(function (q) { return q[0].toFixed(1) + ',' + q[1].toFixed(1); }).join(' ')
+      });
+      svg.appendChild(line);
+
+      var g = svgEl('g', { class: 'tp-tag' + (opts.onPick && !b.carry ? ' tap' : '') });
+      g.appendChild(svgEl('rect', {
+        x: x, y: o.y - TAG_H / 2, width: TAG_W, height: TAG_H, rx: 2, fill: b.color
+      }));
+      g.appendChild(svgEl('text', {
+        class: 'tp-tag-t', x: x + TAG_W / 2, y: o.y + FS * 0.36, 'text-anchor': 'middle',
+        fill: ink, style: 'font-size:' + FS + 'px', text: fit(b.label, TAG_W - 6, FS)
+      }));
+      g.appendChild(svgEl('title', { text: slabel(b) }));
+      if (opts.onPick && !b.carry) {
+        g.addEventListener('click', function () { opts.onPick(b); });
+      }
+      svg.appendChild(g);
+      // 2周目に出す順（0時から時計回り）
+      marks.push({ tag: g, line: line, at: ((b.start + b.end) / 2) / DAY, len: polyLen(pts) });
+    });
+
+    /* 見せ方は3段。
+       ①0時から時計回りに色が埋まる ②もう一周して名前が並ぶ ③線が伸びる */
     var last = sweepEnd(slices, now);
     svg._sweep = function (t) {
       var upto = last * t;
       slices.forEach(function (o) {
         var e = Math.max(o.start, Math.min(o.end, upto));
-        o.node.setAttribute('d', ring(C, R, r, o.start, e));
+        o.node.setAttribute('d', ring(C, CY, R, r, o.start, e));
         o.node.style.visibility = e > o.start ? '' : 'hidden';
       });
       // 針は、時計回りがそこを通り過ぎてから出す
       var at = Math.min(now, last);
       hand.forEach(function (n) { n.style.visibility = upto >= at ? '' : 'hidden'; });
+      if (t <= 0) hold();
+      if (t >= 1) release();
     };
+    /* ①のあいだ、名前と線は伏せておく */
+    function hold() {
+      marks.forEach(function (m) {
+        m.tag.style.transition = 'none';
+        m.tag.style.opacity = '0';
+        m.line.style.transition = 'none';
+        m.line.style.strokeDasharray = m.len;
+        m.line.style.strokeDashoffset = m.len;
+      });
+    }
+    /* ②名前を一周ぶんかけて出し、そろってから③線を伸ばす */
+    function release() {
+      if (!marks.length) return;
+      marks.forEach(function (m) {
+        m.tag.style.transition = 'opacity .3s ease';
+        m.tag.style.transitionDelay = Math.round(m.at * LAP_MS) + 'ms';
+        m.tag.style.opacity = '1';
+        m.line.style.transition = 'stroke-dashoffset .45s ease';
+        m.line.style.transitionDelay = Math.round(LAP_MS + 300 + m.at * LINE_MS) + 'ms';
+        m.line.style.strokeDashoffset = '0';
+      });
+    }
     return svg;
+  }
+
+  var LAP_MS = 800;      // 名前がぐるっと一周そろうまで
+  var LINE_MS = 400;     // 線が順に伸びるまで
+
+  /* 折れ線の長さ。画面に入る前でも測れるよう、自分で足す */
+  function polyLen(pts) {
+    var n = 0;
+    for (var i = 1; i < pts.length; i++) {
+      n += Math.sqrt(Math.pow(pts[i][0] - pts[i - 1][0], 2) + Math.pow(pts[i][1] - pts[i - 1][1], 2));
+    }
+    return Math.round(n * 10) / 10;
+  }
+
+  /* 字の幅のあたり。日本語は1文字ぶん、英数字は半分で数える */
+  function textW(s, fs) {
+    var w = 0;
+    for (var i = 0; i < s.length; i++) {
+      w += s.charCodeAt(i) > 0x2e80 ? fs : fs * 0.55;
+    }
+    return w;
+  }
+
+  /* 入らない名前は、後ろを「…」にして詰める */
+  function fit(s, max, fs) {
+    if (textW(s, fs) <= max) return s;
+    var out = s;
+    while (out.length > 1 && textW(out + '…', fs) > max) out = out.slice(0, -1);
+    return out + '…';
+  }
+
+  /**
+   * まわりに置く名前の位置を決める。
+   * 右半分（0時〜12時）は右の列、左半分は左の列。どちらも時刻の順に上から並べ、
+   * 重なるときは下へずらす。入りきらないぶんは間を詰める。
+   */
+  function layout(list, g) {
+    var out = [];
+    ['r', 'l'].forEach(function (side) {
+      var mine = list.filter(function (b) {
+        var m = (b.start + b.end) / 2;
+        return side === 'r' ? m < DAY / 2 : m >= DAY / 2;
+      }).map(function (b) {
+        var a = ang((b.start + b.end) / 2);
+        return { b: b, side: side === 'r' ? 1 : -1, want: g.CY - Math.cos(a) * (g.R + 16) };
+      });
+      // 右は上から下、左は下から上（時計回りの順）
+      mine.sort(function (p, q) { return side === 'r' ? p.want - q.want : q.want - p.want; });
+      var top = g.TAG_H / 2 + 2, bottom = g.VH - g.TAG_H / 2 - 2;
+      var gap = Math.min(g.GAP, mine.length > 1 ? (bottom - top) / (mine.length - 1) : g.GAP);
+      var y = null;
+      mine.forEach(function (o) {
+        var v = side === 'r'
+          ? Math.max(top, y === null ? o.want : Math.max(o.want, y + gap))
+          : Math.min(bottom, y === null ? o.want : Math.min(o.want, y - gap));
+        o.y = Math.max(top, Math.min(bottom, v));
+        y = o.y;
+        out.push(o);
+      });
+    });
+    return out;
   }
 
   /* 描き出しをどこまで進めればいいか。
@@ -132,13 +265,13 @@
   }
 
   /* ドーナツの一切れ */
-  function ring(c, R, r, start, end) {
+  function ring(cx, cy, R, r, start, end) {
     var span = Math.max(0, end - start);
     if (span >= DAY) span = DAY - 0.01;      // まるまる1日は、閉じないように少し欠かす
     var a0 = ang(start), a1 = ang(start) + span / DAY * Math.PI * 2;
     var big = span / DAY > 0.5 ? 1 : 0;
     var p = function (a, rad) {
-      return [c + Math.sin(a) * rad, c - Math.cos(a) * rad];
+      return [cx + Math.sin(a) * rad, cy - Math.cos(a) * rad];
     };
     var o0 = p(a0, R), o1 = p(a1, R), i1 = p(a1, r), i0 = p(a0, r);
     return 'M' + o0 + 'A' + R + ',' + R + ' 0 ' + big + ' 1 ' + o1 +
@@ -258,10 +391,9 @@
     if (!list.length) {
       card.appendChild(el('p', { class: 'muted small', text: 'まだ書いていません。時間を足すか、勤務のプリセットから入れられます。' }));
     } else {
-      card.appendChild(el('div', { class: 'tp-top' }, [
-        pie(date, { size: 168, onPick: function (b) { blockSheet(date, b); } }),
-        legend(date)
-      ]));
+      /* 円は真ん中に大きく。名前は円のまわりに置くので、横に並べない */
+      card.appendChild(el('div', { class: 'tp-pie-wrap' },
+        pie(date, { onPick: function (b) { blockSheet(b.carry ? b.date : date, b); } })));
       card.appendChild(rows(date));
       var pr = projRows(date);
       if (pr) card.appendChild(pr);
