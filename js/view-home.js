@@ -102,26 +102,14 @@
       wrap.appendChild(list);
     }
 
-    /* 今日の予算（日常の予算を決めているときだけ） */
+    /* お金。今日いくら使えるか・貯金・節約目標を1枚にまとめる
+       （日常の予算を決めているときだけ） */
     var bg = budgetCard(today);
     if (bg) {
-      wrap.appendChild(ui.section('今日の予算'));
+      wrap.appendChild(ui.section('お金'));
       wrap.appendChild(bg);
-    }
 
-    /* 貯金。数字を1行だけ。中身は経理で見る */
-    var sv = savingsRow();
-    if (sv) wrap.appendChild(sv);
-
-    /* 目標と期日を決めてあれば、毎日いくら貯めるかも出す（経理と同じもの） */
-    var pn = planCard(today);
-    if (pn) {
-      wrap.appendChild(ui.section('節約目標'));
-      wrap.appendChild(pn);
-    }
-
-    /* その予算で作れる献立 */
-    if (bg) {
+      /* その予算で作れる献立 */
       var mn = menuCard(today);
       if (mn) {
         wrap.appendChild(ui.section('今日の献立'));
@@ -129,12 +117,9 @@
       }
     }
 
-    /* プロット相談。物語の大きな流れを考えてもらう */
-    var pl = DL.views.plot && DL.views.plot.card();
-    if (pl) {
-      wrap.appendChild(ui.section('プロット相談'));
-      wrap.appendChild(pl);
-    }
+    /* プロット相談。中身はシートで開く（ホームは入口だけ） */
+    var pl = DL.views.plot && DL.views.plot.row();
+    if (pl) wrap.appendChild(pl);
 
     // 「いまの様子」「売上」「1日の記録」は、それぞれのタブと重なるのでホームには出さない。
     // 「近い締切」「進行中の案件」も同じ理由で出さない
@@ -549,6 +534,12 @@
       ]));
     }
 
+    /* 貯金と節約目標も、お金の話としてこの1枚にまとめる。
+       中身（進み具合・アドバイス）は経理と節約目標で見る */
+    var line;
+    if ((line = savingsLine())) card.appendChild(line);
+    if ((line = planLine(today))) card.appendChild(line);
+
     card.appendChild(el('div', { class: 'bg-foot' }, [
       el('span', { class: 'muted small',
         text: '今月 ' + yen(b.spent) + ' / ' + yen(b.budget)
@@ -557,6 +548,39 @@
     ]));
 
     return card;
+  }
+
+  /* 貯金。残高と、目標までの残り。押すと経理へ */
+  function savingsLine() {
+    var sv = S.savings();
+    if (!sv.total && !sv.goal) return null;
+    var yen = DL.docs.yen;
+    var out = DL.bank.outlook();
+    return el('a', { class: 'mo-line', href: '#/books' }, [
+      el('span', { class: 'mo-k', text: '貯金' }),
+      el('b', { text: yen(sv.total) }),
+      out ? el('span', { class: 'mo-s' + (out.done ? ' ok' : ''),
+        text: out.done ? '目標達成' : '目標まで ' + yen(out.left) }) : null,
+      el('span', { class: 'chev' }, ui.icon('chevronRight', 15))
+    ]);
+  }
+
+  /* 節約目標。毎日いくら貯めるか。押すと経理と同じ画面が開く */
+  function planLine(today) {
+    var pl = DL.bank.plan(today);
+    if (!pl || pl.done) return null;
+    var yen = DL.docs.yen;
+    var open = DL.views.books && DL.views.books.planSheet;
+    return el(open ? 'button' : 'div', {
+      type: open ? 'button' : null, class: 'mo-line',
+      onclick: open ? function () { open(); } : null
+    }, [
+      el('span', { class: 'mo-k', text: '節約目標' }),
+      el('b', { class: 'save', text: yen(pl.perDay) }),
+      el('span', { class: 'mo-u', text: '/日' }),
+      el('span', { class: 'mo-s', text: pl.over ? '期日超過' : 'あと' + pl.days + '日' }),
+      open ? el('span', { class: 'chev' }, ui.icon('chevronRight', 15)) : null
+    ]);
   }
 
   /* ---------------- 今日の献立 ----------------
@@ -617,17 +641,14 @@
       return card;
     }
 
-    /* 選ぶところ。どの食事を、何人分で */
+    /* 選ぶところ。見出しは付けない（朝食・1人分と書いてあれば分かる） */
     card.appendChild(slotPick());
-
-    card.appendChild(ui.block('何人分', ui.segmented(
+    card.appendChild(el('div', { class: 'mn-serv' }, ui.segmented(
       [{ value: 1, label: '1人分' }, { value: 2, label: '2人分' }],
       mServ, function (v) { mServ = U.num(v, 1); DL.app.render(); })));
 
     // まだ出していないとき
     if (!mDraft) {
-      card.appendChild(el('p', { class: 'muted small',
-        text: '今日あと使える ' + yen(b.todayLeft) + ' で考えます' }));
       var sv = savingLeft(today, b);
       /* 通常出力＝今日あと使える金額いっぱい、金額指定＝入れた額、
          貯金予算＝貯金ぶんを引いた額。並ぶので、この列は文字だけにする */
@@ -721,7 +742,7 @@
 
   /* どの食事にするか。押すと入る・外れる（全部外すことはできない） */
   function slotPick() {
-    return ui.block('どの食事', el('div', { class: 'mn-pick' },
+    return el('div', { class: 'mn-pick' },
       DL.menu.SLOTS.map(function (s) {
         var on = mSlots.indexOf(s.value) >= 0;
         return ui.btn(s.label, 'ghost' + (on ? ' on' : ''), function () {
@@ -731,43 +752,7 @@
           if (!mSlots.length) mSlots.push(s.value);
           DL.app.render();
         });
-      })));
-  }
-
-  /* 貯金の1行。残高か目標があるときだけ出す */
-  function savingsRow() {
-    var sv = S.savings();
-    if (!sv.total && !sv.goal) return null;
-    var yen = DL.docs.yen;
-    var out = DL.bank.outlook();
-    var gain = DL.bank.gainOfMonth();
-    return el('a', { class: 'row sv-row', href: '#/books' }, [
-      el('div', { class: 'row-main' }, [
-        el('div', { class: 'row-title' }, [
-          ui.icon('books', 16),
-          el('span', { text: '貯金' }),
-          el('b', { class: 'sv-row-v', text: yen(sv.total) })
-        ]),
-        el('div', { class: 'row-sub' }, [
-          out ? ui.chip(out.done ? '目標達成' : '目標まで ' + yen(out.left),
-            out.done ? 'ok' : 'soft') : null,
-          gain !== null ? ui.chip('今月 ' + (gain >= 0 ? '+' : '−') + yen(Math.abs(gain)),
-            gain >= 0 ? 'ghosty' : 'warn') : null
-        ])
-      ]),
-      el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
-    ]);
-  }
-
-  /* 節約目標。経理と同じ中身を、そのままホームにも出す */
-  function planCard(today) {
-    var pl = DL.bank.plan(today);
-    if (!pl || pl.done) return null;
-    var body = DL.views.books && DL.views.books.planBody && DL.views.books.planBody();
-    if (!body) return null;
-    var card = el('div', { class: 'card sv-plan-home' });
-    card.appendChild(body);
-    return card;
+      }));
   }
 
   /* 期限の切れたもの。押すと「捨てた」ことにして一覧から消す。

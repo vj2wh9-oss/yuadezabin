@@ -80,14 +80,14 @@
         ui.btn(busy ? '送っています…' : 'Discordへ送る', 'primary', function () {
           if (busy) return;
           busy = true;
-          DL.app.render();
+          paint();
           send(saved).then(function () {
             busy = false;
             ui.toast('送りました');
-            DL.app.render();
+            paint();
           }).catch(function (e) {
             busy = false;
-            DL.app.render();
+            paint();
             ui.toast(e.message, 'danger');
           });
         }, 'send'),
@@ -99,6 +99,7 @@
               if (!ok) return;
               S.setPlot(null);
               ui.toast('消しました');
+              paint();
             });
           }
         }, ui.icon('trash', 16))
@@ -109,7 +110,7 @@
     box.appendChild(ui.block('長さ', ui.segmented(LENGTHS, form.length, function (v) {
       form.length = v;
       form.pages = DEFAULT_PAGES[v] || 24;
-      DL.app.render();
+      paint();
     })));
 
     var pagesIn = ui.input({ type: 'number', inputmode: 'numeric', min: 4, max: 600,
@@ -139,14 +140,57 @@
   function run() {
     if (busy) return;
     busy = true;
-    DL.app.render();
+    paint();
     make(form).then(function () {
       busy = false;
-      DL.app.render();
+      paint();
     }).catch(function (e) {
       busy = false;
-      DL.app.render();
+      paint();
       ui.toast(e.message, 'danger');
+    });
+  }
+
+  /* ---------------- ホームの1行と、開いたシート ---------------- */
+
+  var host = null;      // シートの中身。開いているあいだだけ
+
+  /* シートを開いていればその中を、いつでもホームの1行も描き直す */
+  function paint() {
+    if (host) {
+      host.textContent = '';
+      host.appendChild(card());
+    }
+    DL.app.render();
+  }
+
+  /** ホームに置く入口。プロットがあれば、その名前まで出す */
+  function row() {
+    if (!ready()) return null;
+    var saved = S.getPlot();
+    return el('button', { type: 'button', class: 'row', onclick: open }, [
+      el('div', { class: 'row-main' }, [
+        el('div', { class: 'row-title' }, [
+          ui.icon('idea', 16),
+          el('span', { text: 'プロット相談' }),
+          saved ? el('span', { class: 'muted small', text: '　' + (saved.title || '') }) : null
+        ]),
+        saved ? el('div', { class: 'row-sub' }, [
+          ui.chip((saved.length === 'long' ? '長編' : '短編')
+            + (saved.pages ? ' ' + saved.pages + 'P' : ''), 'soft'),
+          saved.genre ? ui.chip(saved.genre, 'ghosty') : null
+        ]) : null
+      ]),
+      el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+    ]);
+  }
+
+  function open() {
+    host = el('div');
+    host.appendChild(card());
+    ui.sheet({
+      title: 'プロット相談', body: host,
+      onClose: function () { host = null; }
     });
   }
 
@@ -194,5 +238,5 @@
 
   DL.plot = { ready: ready, make: make, send: send, ADULT_MARK: ADULT_MARK };
   DL.views = DL.views || {};
-  DL.views.plot = { card: card, body: body };
+  DL.views.plot = { row: row, open: open, card: card, body: body };
 })(window.DL);

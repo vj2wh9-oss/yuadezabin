@@ -1901,12 +1901,34 @@ a.tp-proj:active { color: var(--accent); }
 .bg-rest.over .bg-rest-c b, .bg-rest.over .bg-rest-l, .bg-rest.over .bg-rest-s { color: var(--danger); }
 .bg-rest.over .bg-rest-c.save b { color: var(--accent2); }
 .bg-rest.over .bg-rest-c.save.zero b { color: var(--danger); }
+/* お金カードの中の「貯金」「節約目標」。1行ずつ、押すと先へ */
+.mo-line {
+  display: flex; align-items: baseline; gap: 8px; width: 100%;
+  padding: 9px 0; border: 0; border-top: 1px solid var(--line);
+  background: none; color: inherit; text-align: left; font: inherit;
+  text-decoration: none; cursor: pointer;
+}
+.mo-k { flex: none; font-size: 12.5px; color: var(--muted); }
+.mo-line b { font-size: 15px; font-variant-numeric: tabular-nums; }
+.mo-line b.save { color: var(--accent2); }
+.mo-s {
+  margin-left: auto; min-width: 0; font-size: 11.5px; color: var(--muted);
+  text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mo-u { font-size: 11px; color: var(--muted); margin-left: -4px; }
+.mo-s.ok { color: var(--ok); }
+.mo-line .chev { flex: none; display: flex; align-items: center; color: var(--muted); }
+.mo-line:active { opacity: .7; }
 
 /* ---------------- 今日の献立 ---------------- */
 .mn-card { display: flex; flex-direction: column; gap: 10px; }
 /* 昼／晩の選び口。押すと入る・外れる */
 .mn-pick { display: flex; gap: 6px; }
 .mn-pick .btn { flex: 1; }
+/* 何人分。見出しを付けないぶん、控えめな大きさで左に置く */
+.mn-serv { display: flex; }
+.mn-serv .segmented { flex: none; }
+.mn-serv .seg { flex: none; padding: 7px 14px; font-size: 12.5px; }
 .mn-pick .btn.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 
 .mn-body { display: flex; flex-direction: column; gap: 8px; }
@@ -2042,10 +2064,10 @@ a.tp-proj:active { color: var(--accent); }
   background: var(--card2); font-size: 11px; line-height: 1.5;
   white-space: pre-wrap; word-break: break-all; max-height: 30vh; overflow: auto;
 }
-.sv-row-v { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--accent); }
-
-/* プロット相談（ホーム） */
+/* プロット相談（シート） */
 .pl-card { display: flex; flex-direction: column; gap: 10px; }
+/* シートの中では、外側の枠は要らない */
+.sheet-body .pl-card { border: 0; background: none; padding: 0; }
 .pl-body { display: flex; flex-direction: column; gap: 8px; }
 .pl-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 14px; }
 .pl-log { margin: 0; font-size: 12.5px; line-height: 1.7; }
@@ -2062,12 +2084,6 @@ a.tp-proj:active { color: var(--accent); }
 /* 貯金の目標と節約目標 */
 .sv-need { display: flex; gap: 6px; flex-wrap: wrap; }
 .sv-plan .card { margin-bottom: 10px; }
-/* ホームでは外側がカードなので、中の枠は外す */
-.sv-plan-home .sv-plan { gap: 0; }
-.sv-plan-home .sv-plan .card {
-  background: none; border: 0; padding: 0; margin-bottom: 6px;
-}
-.sv-plan-home .row-wrap { margin-top: 10px; }
 .sv-line-row {
   display: flex; align-items: baseline; justify-content: space-between;
   border-top: 1px solid var(--line); padding: 8px 0; font-size: 13px;

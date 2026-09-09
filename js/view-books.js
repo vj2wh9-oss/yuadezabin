@@ -1416,8 +1416,8 @@
   DL.views.books = {
     render: render,
     addExpense: addExpense,
-    // ホームにも節約目標を出すため
-    planBody: planBody,
+    // ホームの「節約目標」の行から、同じ画面を開くため
+    planSheet: savingsPlan,
     // 横断検索から、その1件を直接開くために使う
     editExpense: editExpense,
     editRecurring: function (id) {
