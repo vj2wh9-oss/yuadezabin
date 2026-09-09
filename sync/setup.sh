@@ -70,6 +70,7 @@ put_secret DISCORD_INVOICE_WEBHOOK  "請求書のチャンネル"
 put_secret DISCORD_RECEIPT_WEBHOOK  "領収書のチャンネル"
 put_secret DISCORD_MEMO_WEBHOOK     "ひらめきメモのチャンネル"
 put_secret DISCORD_PLOT_WEBHOOK     "プロットのチャンネル"
+put_secret DISCORD_MENU_WEBHOOK     "献立のチャンネル"
 put_secret DISCORD_WEBHOOK          "夜のバックアップのチャンネル"
 
 echo

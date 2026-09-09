@@ -596,6 +596,25 @@
   var mFrom = '';            // どの献立に合わせて mSlots をそろえたか
   var mAmount = 0;           // 金額指定で入れた額。次に開いたときの初期値にする
   var mBudget = 0;           // いまの下書きを出したときの額（0 は今日あと使える額）
+  var mSend = false;         // Discord へ送っている最中か
+
+  /* 献立を Discord のチャンネルへ送るボタン。採用の前でも押せる */
+  function sendBtn(m, date) {
+    return onlyIcon(mSend ? 'refresh' : 'send', 'Discordへ送る', 'ghost', function () {
+      if (mSend) return;
+      mSend = true;
+      DL.app.render();
+      DL.menu.send(m, date).then(function () {
+        mSend = false;
+        DL.app.render();
+        ui.toast('送りました');
+      }).catch(function (e) {
+        mSend = false;
+        DL.app.render();
+        ui.toast(e.message, 'danger');
+      });
+    });
+  }
 
   function menuCard(today) {
     var M = DL.menu;
@@ -624,6 +643,7 @@
           mDraft = null;
           run(today, b, M.namesOf(saved));
         }, 'refresh'),
+        M.ready() ? sendBtn(saved, today) : null,
         kitchenBtn(),
         onlyIcon('trash', '献立を外す', 'ghost', function () {
           ui.confirm('今日の献立を外します。', { okText: '外す' }).then(function (ok) {
@@ -671,17 +691,20 @@
 
     card.appendChild(menuBody(mDraft, today));
     card.appendChild(el('div', { class: 'row-wrap mn-acts' }, [
+      // 絵だけのボタンが並ぶので、この2つは文字だけにして幅を空ける
       ui.btn('これにする', 'primary', function () {
         // setMenu で描き直しが走るので、先に下書きを片づけてから保存する
         var m = mDraft;
         mDraft = null;
         S.setMenu(today, m);
         ui.toast('今日の献立にしました');
-      }, 'check'),
-      ui.btn(mBusy ? '考えています…' : '再考案', 'ghost', function () {
+      }),
+      ui.btn(mBusy ? '考え中…' : '再考案', 'ghost', function () {
         // 金額指定・貯金予算で出したものは、同じ額のまま考え直す
         run(today, b, DL.menu.namesOf(mDraft), mBudget);
-      }, 'refresh'),
+      }),
+      // 採用の前でも送れる（これで作る、と決める前に台所へ流したいので）
+      sendBtn(mDraft, today),
       // 採用してあるものから考え直したときは、元に戻れるように
       saved ? onlyIcon('close', 'やめる', 'ghost', function () {
         mDraft = null;

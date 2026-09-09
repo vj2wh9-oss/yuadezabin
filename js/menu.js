@@ -27,6 +27,11 @@
       return 'サーバー側に OpenAI の鍵がありません。Worker に OPENAI_API_KEY を入れてください';
     }
     if (k === 'no_budget') return '今日の予算が決まっていません';
+    if (k === 'no_menu_webhook') {
+      return 'Worker に DISCORD_MENU_WEBHOOK がありません（sync/setup.sh で入れられます）';
+    }
+    if (k === 'discord_error') return 'Discord が断りました（' + (body.status || '') + '）';
+    if (k === 'empty') return '送るものがありません';
     if (k === 'no_slots') return 'どの食事にするか選んでください';
     if (k === 'openai_error') return 'OpenAI が断りました：' + (body.message || '');
     if (k === 'openai_unreachable') return 'OpenAI につながりませんでした';
@@ -36,6 +41,32 @@
       return 'サーバー側が未対応です。Cloudflare の Worker を最新にして deploy し直してください';
     }
     return 'サーバーが応答しませんでした（' + status + '）';
+  }
+
+  /**
+   * できた献立を Discord のチャンネルへ送る。
+   * @param {object} m 献立
+   * @param {string} [date]
+   */
+  function send(m, date) {
+    if (!ready()) {
+      return Promise.reject(new Error('同期の接続先が未設定です。設定から先につないでください'));
+    }
+    return fetch(base() + '/v1/menu/send', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer ' + conf().token,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({ menu: m, date: U.isISO(date) ? date : U.today() })
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (b) {
+        if (!res.ok) throw new Error(reason(res.status, b));
+        return b;
+      });
+    }, function () {
+      throw new Error('通信できませんでした');
+    });
   }
 
   /** ['breakfast','dinner'] → '朝食・夕飯' */
@@ -253,7 +284,8 @@
 
   DL.menu = {
     SLOTS: SLOTS, SLOT_LABEL: SLOT_LABEL,
-    ready: ready, suggest: suggest, namesOf: namesOf, slotsLabel: slotsLabel, slotsJa: slotsJa,
+    ready: ready, suggest: suggest, send: send, namesOf: namesOf,
+    slotsLabel: slotsLabel, slotsJa: slotsJa,
     season: season,
     extras: extras, seasoningState: seasoningState, matcher: matcher, pantryMap: pantryMap,
     useLeftovers: useLeftovers, key: key

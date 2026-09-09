@@ -103,9 +103,10 @@ export default {
           receiptWebhook: !!env.DISCORD_RECEIPT_WEBHOOK,
           // 貯金口座（鍵が入っているかだけ。中身は出さない）
           bank: bankReady(env),
-          plotWebhook: !!env.DISCORD_PLOT_WEBHOOK
+          plotWebhook: !!env.DISCORD_PLOT_WEBHOOK,
+          menuWebhook: !!env.DISCORD_MENU_WEBHOOK
         },
-        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/reschedule', '/v1/bank/balance', '/v1/plot', '/v1/plot/send', '/v1/spend'],
+        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/menu/send', '/v1/reschedule', '/v1/bank/balance', '/v1/plot', '/v1/plot/send', '/v1/spend'],
         // どの食事に対応しているか。deploy を忘れると古いままなのが分かる
         menuSlots: MENU_SLOTS,
         note: '各 /v1/... は Authorization: Bearer <合鍵> が必要です'
@@ -223,6 +224,10 @@ export default {
 
       if (url.pathname === '/v1/menu') {
         return menu(request, env, cors);
+      }
+
+      if (url.pathname === '/v1/menu/send') {
+        return menuSend(request, env, cors);
       }
 
       if (url.pathname === '/v1/reschedule') {
@@ -697,6 +702,77 @@ async function menu(request, env, cors) {
 
   return json({ ok: true, data: pass.data, match: match, model: pass.model, usage: pass.usage },
     200, cors);
+}
+
+/* ---- 献立を Discord へ送る ----
+
+   買い物と作りかたを、そのまま台所で見られるように流す。
+   送り先の Webhook URL は secret（DISCORD_MENU_WEBHOOK）にだけ置く。 */
+
+async function menuSend(request, env, cors) {
+  if (request.method !== 'POST') return json({ error: 'not_found' }, 404, cors);
+  if (!env.DISCORD_MENU_WEBHOOK) return json({ error: 'no_menu_webhook' }, 503, cors);
+
+  let body;
+  try { body = await request.json(); } catch (e) { return json({ error: 'bad_json' }, 400, cors); }
+
+  const m = (body && body.menu) || {};
+  const str = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
+  const meals = (Array.isArray(m.meals) ? m.meals : []).slice(0, 3);
+  const shopping = (Array.isArray(m.shopping) ? m.shopping : []).slice(0, 40);
+  if (!meals.length && !shopping.length) return json({ error: 'empty' }, 400, cors);
+
+  const date = str(body && body.date, 10);
+  const yen = (v) => '¥' + Math.max(0, Math.round(Number(v) || 0)).toLocaleString('en-US');
+  const total = Math.max(0, Math.round(Number(m.total) || 0));
+  const serv = Number(m.servings) === 2 ? '2人分' : '1人分';
+
+  const lines = ['**' + (date ? date.replace(/^\d{4}-/, '').replace('-', '/') + ' の献立' : '献立')
+    + '**　' + serv + (total ? '　買い物 ' + yen(total) : '')];
+
+  meals.forEach((meal) => {
+    const ja = SLOT_JA[meal && meal.slot] || '';
+    const mins = Math.max(0, Math.round(Number(meal && meal.minutes) || 0));
+    lines.push('', '__' + (ja ? ja + '：' : '') + escapeMd(str(meal && meal.name, 60)) + '__'
+      + (mins ? '（' + mins + '分）' : ''));
+    (Array.isArray(meal && meal.dishes) ? meal.dishes : []).slice(0, 6).forEach((d) => {
+      const se = (Array.isArray(d && d.seasonings) ? d.seasonings : []).slice(0, 12)
+        .map((s) => str(s && s.name, 30) + (s && s.qty ? ' ' + str(s.qty, 20) : ''))
+        .filter(Boolean).join('、');
+      lines.push('・' + (d && d.role ? '［' + str(d.role, 6) + '］' : '') + escapeMd(str(d && d.name, 60)));
+      if (se) lines.push('　　調味料：' + escapeMd(se));
+      (Array.isArray(d && d.steps) ? d.steps : []).slice(0, 8).forEach((s, i) => {
+        const t = str(s, 300);
+        if (t) lines.push('　　' + (i + 1) + '. ' + escapeMd(t));
+      });
+    });
+  });
+
+  if (shopping.length) {
+    lines.push('', '＜買うもの＞');
+    shopping.forEach((s) => {
+      const price = Math.max(0, Math.round(Number(s && s.price) || 0));
+      lines.push('・' + escapeMd(str(s && s.name, 40))
+        + (s && s.qty ? '　' + escapeMd(str(s.qty, 20)) : '')
+        + (price ? '　' + yen(price) : ''));
+    });
+    if (total) lines.push('合計 ' + yen(total));
+  }
+  if (m.note) lines.push('', escapeMd(str(m.note, 400)));
+
+  const parts = chunk(lines.join('\n'), DISCORD_LIMIT);
+  for (let i = 0; i < parts.length; i++) {
+    const res = await fetch(env.DISCORD_MENU_WEBHOOK + '?wait=true', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ content: parts[i], allowed_mentions: { parse: [] } })
+    });
+    if (!res.ok) {
+      const msg = (await res.text()).slice(0, 300);
+      return json({ error: 'discord_error', status: res.status, message: msg }, 502, cors);
+    }
+  }
+  return json({ ok: true, parts: parts.length }, 200, cors);
 }
 
 /* ---- 呼び方の突き合わせ ----
