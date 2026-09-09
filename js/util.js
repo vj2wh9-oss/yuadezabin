@@ -226,6 +226,27 @@ window.DL = window.DL || {};
     });
   }
 
+  /**
+   * その色の上に置く字の色。暗い色なら明るい字、明るい色なら暗い字。
+   * 明るさ（WCAG の相対輝度）で、白と黒のどちらがよく見えるかを選ぶ。
+   * @param {string} bg '#2563eb' などの色
+   * @returns {string} 字の色
+   */
+  function inkOn(bg) {
+    var c = String(bg || '').replace('#', '').trim();
+    if (c.length === 3) c = c[0] + c[0] + c[1] + c[1] + c[2] + c[2];
+    if (!/^[0-9a-fA-F]{6}$/.test(c)) return '#ffffff';
+    var lin = function (v) {
+      v = parseInt(v, 16) / 255;
+      return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    };
+    var L = 0.2126 * lin(c.slice(0, 2)) + 0.7152 * lin(c.slice(2, 4)) + 0.0722 * lin(c.slice(4, 6));
+    // 白い字との見やすさと、黒い字との見やすさを比べる
+    var onWhite = 1.05 / (L + 0.05);
+    var onBlack = (L + 0.05) / 0.05;
+    return onWhite >= onBlack ? '#ffffff' : '#101418';
+  }
+
   DL.util = {
     WD: WD, pad: pad, toISO: toISO, parse: parse, isISO: isISO, today: today,
     addDays: addDays, addMonths: addMonths, diffDays: diffDays, dow: dow,
@@ -235,6 +256,7 @@ window.DL = window.DL || {};
     fmtMD: fmtMD, fmtMDW: fmtMDW, fmtYMD: fmtYMD, fmtYMDW: fmtYMDW,
     wdName: wdName, untilLabel: untilLabel,
     el: el, append: append, clear: clear, $: $, $$: $$,
-    uid: uid, clone: clone, num: num, sum: sum, groupBy: groupBy, readImage: readImage
+    uid: uid, clone: clone, num: num, sum: sum, groupBy: groupBy, readImage: readImage,
+    inkOn: inkOn
   };
 })(window.DL);

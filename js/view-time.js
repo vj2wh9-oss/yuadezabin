@@ -142,6 +142,13 @@
     opts = opts || {};
     var box = el('div', { class: 'tp-bar' });
     var segs = [];
+    /* 3時間ごとの目盛り。帯の上に薄く引いて、どのあたりが何時か分かるように
+       （6時間ごとは少し濃く。0時と24時は帯の縁なので引かない） */
+    for (var h = 3; h < 24; h += 3) {
+      box.appendChild(el('i', {
+        class: 'tp-tick' + (h % 6 === 0 ? ' big' : ''), style: { left: (h / 24 * 100) + '%' }
+      }));
+    }
     T.ofDay(date).forEach(function (b) {
       var i = el('i', {
         class: 'tp-seg', title: slabel(b),
@@ -178,9 +185,11 @@
     };
     var wrap = el('div', { class: 'tp-barwrap' }, [
       box,
-      // 目盛りは帯の位置とそろえたいので、左からの割合で置く
-      el('div', { class: 'tp-scale' }, [0, 6, 12, 18, 24].map(function (h) {
-        return el('span', { text: h + '時', style: { left: (h / 24 * 100) + '%' } });
+      // 目盛りは帯の位置とそろえたいので、左からの割合で置く。
+      // 3時間ごとに刻み、6時間ごとははっきり見せる
+      el('div', { class: 'tp-scale' }, [0, 3, 6, 9, 12, 15, 18, 21, 24].map(function (h) {
+        return el('span', { class: h % 6 === 0 ? 'big' : '',
+          text: h + '時', style: { left: (h / 24 * 100) + '%' } });
       }))
     ]);
     return wrap;
@@ -207,10 +216,11 @@
     var rows = T.sums(date);
     if (max) rows = rows.slice(0, max);
     return el('div', { class: 'tp-legend' }, rows.map(function (s) {
+      // 名前はその色の中に入れる。字の色は、色の明るさで白と黒を選ぶ
       return el('span', { class: 'tp-leg' }, [
-        el('i', { style: { background: s.color } }),
-        el('span', { text: s.label }),
-        el('b', { text: hm(s.min) })
+        el('span', { class: 'tp-leg-t',
+          style: { background: s.color, color: U.inkOn(s.color) }, text: s.label }),
+        el('span', { class: 'tp-leg-v', text: hm(s.min) })
       ]);
     }));
   }
