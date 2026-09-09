@@ -1671,7 +1671,8 @@ a.alert-main { text-decoration: none; }
 .tp-legend { display: flex; flex-wrap: wrap; gap: 5px 10px; }
 .tp-leg { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
 .tp-leg-t {
-  padding: 2px 7px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+  /* 角はほんの少しだけ落とす（ほかの部品と同じ 3px） */
+  padding: 2px 7px; border-radius: var(--radius-s); font-size: 11.5px; font-weight: 600;
   line-height: 1.5; white-space: nowrap;
 }
 .tp-leg-v { color: var(--text); font-weight: 400; font-variant-numeric: tabular-nums; }
