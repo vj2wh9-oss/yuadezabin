@@ -328,9 +328,11 @@
     // 1日の時間の振り分けは案件と日常で分けないので、どちらにも同じものを出す。
     // 1日の記録への入り口は、どちらもいちばん下に置く
     if (life) {
-      DL.views.events.dayView(wrap, date);
-      menuCard(wrap, date);
+      // この日の予定 → 1日の時間 → この日の勤務 → 献立 の順に並べる
+      DL.views.events.dayView(wrap, date, { duty: false });
       DL.views.time.dayCard(wrap, date);
+      DL.views.events.dutyBox(wrap, date);
+      menuCard(wrap, date);
       wrap.appendChild(logLink(date));
       root.appendChild(wrap);
       return;

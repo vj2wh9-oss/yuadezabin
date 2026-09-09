@@ -9,8 +9,10 @@
    * その日の予定を並べる（案件側の renderDay から呼ばれる）。
    * @param {HTMLElement} wrap 追記先
    * @param {string} date 'YYYY-MM-DD'
+   * @param {object} [opts] {duty:false} にすると勤務は出さない
+   *   （呼ぶ側が dutyBox を好きな位置に置きたいとき）
    */
-  function dayView(wrap, date) {
+  function dayView(wrap, date, opts) {
     var list = E.ofDay(date);
 
     wrap.appendChild(ui.section('この日の予定', list.length ? ui.chip(list.length + '件', 'soft') : null));
@@ -24,7 +26,7 @@
 
     // 「予定を追加」は置かない。右下の＋が同じ入り口なので、二重になる
 
-    dutyBox(wrap, date);
+    if (!opts || opts.duty !== false) dutyBox(wrap, date);
   }
 
   /* ---------------- その日の働き方 ---------------- */
@@ -351,5 +353,5 @@
   }
 
   DL.views = DL.views || {};
-  DL.views.events = { dayView: dayView, monthBody: monthBody, form: form };
+  DL.views.events = { dayView: dayView, dutyBox: dutyBox, monthBody: monthBody, form: form };
 })(window.DL);

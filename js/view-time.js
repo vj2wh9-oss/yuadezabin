@@ -66,12 +66,12 @@
       }));
     });
 
-    /* 時刻の数字。0/6/12/18 だけ、輪の内側に置く
-       （外は名前の場所なので、ぶつからないように） */
+    /* 時刻の数字。0/6/12/18 だけ、輪の外側に置く。
+       薄い色にしてあるので、名前や線と重なってもじゃまにならない */
     [0, 6, 12, 18].forEach(function (h) {
       var a = ang(h * 60);
       svg.appendChild(svgEl('text', {
-        class: 'tp-tick', x: C + Math.sin(a) * (r - 6), y: CY - Math.cos(a) * (r - 6) + 2.5,
+        class: 'tp-htick', x: C + Math.sin(a) * (R + 9), y: CY - Math.cos(a) * (R + 9) + 2.5,
         'text-anchor': 'middle', text: String(h)
       }));
     });

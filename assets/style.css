@@ -1633,7 +1633,6 @@ a.alert-main { text-decoration: none; }
 .tp-slice { stroke: var(--card); stroke-width: .8; }
 .tp-slice.tap { cursor: pointer; }
 .tp-slice.tap:active { opacity: .75; }
-.tp-tick { font-size: 7px; fill: var(--muted); }
 .tp-mid-v { font-size: 11px; font-weight: 800; fill: var(--text); }
 .tp-mid-l { font-size: 7px; fill: var(--muted); }
 
@@ -1698,6 +1697,8 @@ a.alert-main { text-decoration: none; }
 .tp-lead { stroke-width: .7; stroke-linecap: round; opacity: .8; }
 /* 円を囲う細い目盛り（数字を置かない時刻） */
 .tp-hair { stroke: var(--line2); stroke-width: .7; stroke-linecap: round; }
+/* 0/6/12/18 の数字。輪の外側。薄くして、名前や線と重なってもよいことにする */
+.tp-htick { font-size: 7px; fill: var(--muted); opacity: .5; }
 .tp-tag-t { font-weight: 700; }
 .tp-tag.tap { cursor: pointer; }
 .tp-tag.tap:active { opacity: .75; }
