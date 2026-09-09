@@ -61,6 +61,47 @@
 
   function pad(n) { return (n < 10 ? '0' : '') + n; }
 
+  /* ---------------- 帯の色 ----------------
+
+     名前ごとではなく「いつのことか」で決める。0時から24時へ、
+     淡い水色から紺へ移っていく。画面に出すときに毎回そこから作るので、
+     すでに書いてある帯にもそのまま効く（保存してある色は見ない）。 */
+
+  var RAMP = [
+    { at: 0, c: [125, 211, 245] },      // 0時　淡い水色
+    { at: 360, c: [56, 189, 248] },     // 6時　水色
+    { at: 720, c: [37, 99, 235] },      // 12時　青
+    { at: 1080, c: [29, 78, 216] },     // 18時　濃い青
+    { at: DAY, c: [23, 45, 110] }       // 24時　紺
+  ];
+
+  function hex(c) {
+    return '#' + c.map(function (v) {
+      var n = Math.max(0, Math.min(255, Math.round(v)));
+      return (n < 16 ? '0' : '') + n.toString(16);
+    }).join('');
+  }
+
+  /**
+   * その時刻の色。
+   * @param {number} min 0時からの分
+   * @returns {string} '#7dd3f5' のような色
+   */
+  function colorAt(min) {
+    var m = Math.max(0, Math.min(DAY, U.num(min, 0)));
+    for (var i = 1; i < RAMP.length; i++) {
+      if (m > RAMP[i].at) continue;
+      var a = RAMP[i - 1], b = RAMP[i];
+      var t = (m - a.at) / (b.at - a.at);
+      return hex([
+        a.c[0] + (b.c[0] - a.c[0]) * t,
+        a.c[1] + (b.c[1] - a.c[1]) * t,
+        a.c[2] + (b.c[2] - a.c[2]) * t
+      ]);
+    }
+    return hex(RAMP[RAMP.length - 1].c);
+  }
+
   /* ---------------- その日の帯 ---------------- */
 
   /**
@@ -74,16 +115,17 @@
     var prev = U.addDays(date, -1);
     S.timeblocks(prev).forEach(function (b) {
       if (b.end <= DAY) return;
+      var start = Math.max(0, b.start - DAY);
       out.push({
-        id: b.id, label: b.label, color: b.color, memo: b.memo, projectId: b.projectId || '',
-        start: Math.max(0, b.start - DAY), end: Math.min(DAY, b.end - DAY),
+        id: b.id, label: b.label, color: colorAt(start), memo: b.memo, projectId: b.projectId || '',
+        start: start, end: Math.min(DAY, b.end - DAY),
         date: prev, carry: true, over: false
       });
     });
     S.timeblocks(date).forEach(function (b) {
       if (b.start >= DAY) return;      // 翌日ぶんだけの帯は、翌日の画面で出す
       out.push({
-        id: b.id, label: b.label, color: b.color, memo: b.memo, projectId: b.projectId || '',
+        id: b.id, label: b.label, color: colorAt(b.start), memo: b.memo, projectId: b.projectId || '',
         start: b.start, end: Math.min(DAY, b.end),
         date: date, carry: false, over: b.end > DAY
       });
@@ -99,10 +141,12 @@
    * @returns {Array<{label,color,min,pct}>} 多い順
    */
   function sums(date) {
-    var map = {}, color = {};
+    var map = {}, color = {}, longest = {};
     ofDay(date).forEach(function (b) {
-      map[b.label] = (map[b.label] || 0) + (b.end - b.start);
-      color[b.label] = b.color;
+      var len = b.end - b.start;
+      map[b.label] = (map[b.label] || 0) + len;
+      // 色は時刻ごとに変わるので、同じ名前ではいちばん長い帯の色を代表にする
+      if (!(longest[b.label] >= len)) { longest[b.label] = len; color[b.label] = b.color; }
     });
     return Object.keys(map).map(function (k) {
       return {
@@ -325,7 +369,7 @@
     DAY: DAY,
     REMIND: REMIND, remindMin: remindMin, remindAt: remindAt, dueWorkLogs: dueWorkLogs,
     labels: labels, colorOf: colorOf,
-    fmt: fmt, fmtDay: fmtDay, parse: parse,
+    fmt: fmt, fmtDay: fmtDay, parse: parse, colorAt: colorAt,
     ofDay: ofDay, has: has, sums: sums, filled: filled, gaps: gaps,
     projectMinutes: projectMinutes, byProject: byProject, projectsOfDay: projectsOfDay,
     hours: hours,

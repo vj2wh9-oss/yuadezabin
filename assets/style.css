@@ -1643,7 +1643,11 @@ a.alert-main { text-decoration: none; }
   position: relative; height: 26px; border-radius: var(--radius-s); overflow: hidden;
   background: var(--card2); border: 1px solid var(--line);
 }
-.tp-seg { position: absolute; top: 0; bottom: 0; display: block; }
+.tp-seg {
+  position: absolute; top: 0; bottom: 0; display: block;
+  /* 時刻で決まる色は隣どうし似るので、境目に細い切れ目を入れる */
+  border-right: 1px solid var(--card);
+}
 /* 3時間ごとの目盛り。帯の上に薄く重ねる（帯より手前・いまの線より奥） */
 .tp-tick {
   position: absolute; top: 0; bottom: 0; width: 1px; z-index: 1;
@@ -1749,7 +1753,6 @@ a.tp-proj:active { color: var(--accent); }
   padding: 7px 11px; border-radius: var(--radius-s); font-size: 13px;
   background: var(--card2); border: 1px solid var(--line2); color: var(--text);
 }
-.tp-kind i { width: 9px; height: 9px; border-radius: 2px; }
 .tp-kind.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 
 /* いちばん下のボタン。iPhone の幅でも折り返さないよう、等分の1行にする */

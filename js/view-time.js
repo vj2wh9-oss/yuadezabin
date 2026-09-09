@@ -490,9 +490,11 @@
     var swatch = el('i', { class: 'tp-swatch' });
     var pickWrap = el('div', { class: 'tp-kinds' });
 
+    /* 色は名前ではなく始まりの時刻で決まるので、印もその色にしておく */
     function markPick() {
       var now = nameIn.value.trim();
-      swatch.style.background = now ? T.colorOf(now) : 'transparent';
+      var at = T.parse(startIn.value);
+      swatch.style.background = T.colorAt(at === null ? v.start : at);
       U.$$('.tp-kind', pickWrap).forEach(function (x) {
         x.classList.toggle('on', x.dataset.label === now);
       });
@@ -501,10 +503,11 @@
       var btn = el('button', {
         type: 'button', class: 'tp-kind', 'data-label': k.label,
         onclick: function () { nameIn.value = k.label; markPick(); }
-      }, [el('i', { style: { background: k.color } }), el('span', { text: k.label })]);
+      }, [el('span', { text: k.label })]);
       pickWrap.appendChild(btn);
     });
     nameIn.addEventListener('input', markPick);
+    startIn.addEventListener('input', markPick);
     markPick();
 
     var nameWrap = el('div', { class: 'tp-name' }, [
