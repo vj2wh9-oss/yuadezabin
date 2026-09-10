@@ -140,7 +140,7 @@
     var over = days <= 0;                               // 期日を過ぎている
     var d = Math.max(1, days), m = Math.max(1, months);
     var b = DL.expenses.dailyBudget(today);             // いまの1日予算
-    var perDay = Math.ceil(left / d);
+    var perDay = perDayFor(sv.total, today);
     return {
       goal: sv.goal, on: sv.goalOn, total: sv.total, left: left,
       days: days, months: months, over: over, done: left <= 0,
@@ -150,6 +150,52 @@
       budgetPerDay: b ? b.perDay : 0,
       spendable: b ? b.perDay - perDay : 0,
       short: b ? Math.max(0, perDay - b.perDay) : 0
+    };
+  }
+
+  /**
+   * その残高だったときの、毎日の節約ノルマ。
+   * 「目標までの残り ÷ 期日までの日数」。残高を入れ直すたび、ここが引き直される。
+   * @param {number} total 貯まっている額
+   * @param {string} [date] いつの時点で見るか。既定は今日
+   */
+  function perDayFor(total, date) {
+    var sv = S.savings();
+    if (!sv.goal || !sv.goalOn) return 0;
+    var today = U.isISO(date) ? date : U.today();
+    var days = Math.max(1, U.diffDays(today, sv.goalOn) + 1);
+    return Math.ceil(Math.max(0, sv.goal - Math.max(0, U.num(total, 0))) / days);
+  }
+
+  /**
+   * 今月の貯金額を、まだ入れていないか。
+   *
+   * 節約ノルマは「目標までの残り ÷ 期日までの日数」なので、
+   * いくら貯まっているかが古いままだと、ノルマもずれていく。
+   * そこで月が変わったら入れてもらい、そこで引き直す。
+   * 1日に入れそこねても、その月のぶんが入るまでは促し続ける。
+   *
+   * @param {string} [date] 見たい日。既定は今日
+   * @returns {object|null} 促す必要がなければ null
+   */
+  function monthlyDue(date) {
+    var sv = S.savings();
+    if (!sv.goal || !sv.goalOn) return null;       // 目標が無ければ、ノルマも無い
+    var today = U.isISO(date) ? date : U.today();
+    var ym = today.slice(0, 7);
+    if (ym > String(sv.goalOn).slice(0, 7)) return null;   // 期日の月を過ぎたら促さない
+
+    var days = Object.keys(sv.history).sort();
+    var has = days.filter(function (d) { return d.slice(0, 7) === ym; }).length;
+    if (has) return null;                          // 今月ぶんは入っている
+
+    // 前の月までに控えた、いちばん新しい額。入力の初期値にする
+    var before = days.filter(function (d) { return d.slice(0, 7) < ym; });
+    var last = before.length ? sv.history[before[before.length - 1]] : sv.total;
+    return {
+      ym: ym, month: U.num(ym.slice(5, 7), 0),
+      last: last, goal: sv.goal, goalOn: sv.goalOn,
+      perDay: perDayFor(sv.total, today)           // いまのノルマ（入れ直す前）
     };
   }
 
@@ -258,6 +304,6 @@
     RISK: RISK,
     ready: ready, refresh: refresh, pull: pull, check: check,
     gainOfMonth: gainOfMonth, outlook: outlook, monthlyPace: monthlyPace, series: series,
-    plan: plan, facts: facts, advise: advise
+    plan: plan, perDayFor: perDayFor, monthlyDue: monthlyDue, facts: facts, advise: advise
   };
 })(window.DL);

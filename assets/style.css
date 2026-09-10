@@ -1112,6 +1112,19 @@ a.alert-main { text-decoration: none; }
 .lc-dot.is-st { fill: var(--series3); }
 .lc-cursor { stroke: var(--line2); stroke-width: 1; stroke-dasharray: 2 2; }
 
+/* 予算の折れ線。予算（これから守るもの）は破線、実際に使った額は実線。
+   色が見分けにくいときでも、線の引きかたで区別できる */
+.lc-key i.is-bg { background: var(--series1); }
+.lc-key i.is-goal { background: var(--ok); }
+.lc-key i.is-used { background: var(--series2); }
+.lc-line.is-bg { stroke: var(--series1); stroke-dasharray: 5 3; }
+.lc-line.is-goal { stroke: var(--ok); stroke-dasharray: 2 3; }
+.lc-line.is-used { stroke: var(--series2); stroke-width: 2.4; }
+/* 今日のところ。支出の線がどこで止まっているのかが分かる */
+.lc-today { stroke: var(--line2); stroke-width: 1; stroke-dasharray: 3 3; }
+.bg-chart-note { margin: 0; }
+.bg-chart-note.over { color: var(--danger); }
+
 .lchart-read { font-size: 10.5px; color: var(--muted); }
 .lc-tip {
   position: absolute; top: 26px; transform: translateX(-50%);   /* top は描画時に合わせ直す */
@@ -2137,3 +2150,22 @@ a.tp-proj:active { color: var(--accent); }
 .sv-line-row.over b { color: var(--danger); }
 .sv-line-row b.ok { color: var(--ok); }
 .sv-line-row b.over { color: var(--warn); }
+
+/* 月が変わったら貯金額を入れてもらう。ホームと経理の両方に出す */
+.sv-due {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  text-align: left; font: inherit; color: inherit; cursor: pointer;
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--line2));
+  background: color-mix(in srgb, var(--warn) 8%, var(--card));
+}
+.sv-due:active { opacity: .8; }
+.sv-due > svg { color: var(--warn); flex: none; }
+.sv-due-t { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.sv-due-t b { font-size: 14px; }
+/* 入れたあとのノルマ。上の線は要らない（枠の中で1行だけ出すため） */
+.sv-after { padding: 4px 12px 10px; }
+.sv-after .sv-line-row { border-top: 0; }
+.sv-after p { margin: 0; }
+.sv-after-v { display: inline-flex; align-items: baseline; gap: 2px; }
+.sv-after-v b { font-size: 17px; font-variant-numeric: tabular-nums; }
+.sv-after-v b.save { color: var(--accent2); }

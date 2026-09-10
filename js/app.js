@@ -235,11 +235,13 @@
     modeBtn.appendChild(el('span', { text: life ? '日常' : '案件' }));
   }
 
-  modeBtn.addEventListener('click', function () {
-    var next = S.calMode() === 'life' ? 'work' : 'life';
-    S.setCalMode(next);      // 保存すると購読側で描き直される
-    ui.toast(next === 'life' ? '日常のカレンダーに切り替えました' : '案件のカレンダーに切り替えました');
-  });
+  /* 案件 ⇔ 日常。切り替えたことは画面の中身と上のボタンで分かるので、
+     わざわざ知らせない */
+  function flipCalMode() {
+    S.setCalMode(S.calMode() === 'life' ? 'work' : 'life');   // 保存すると購読側で描き直される
+  }
+
+  modeBtn.addEventListener('click', flipCalMode);
 
   /* ---------------- 名義の切り替え ---------------- */
 
@@ -418,12 +420,19 @@
 
   /* 開いている画面のタブをもう一度押したときの動き。
      ファイルはフォルダを開いていればひとつ上へ戻す（いちばん上なら何もしない）。
+     カレンダーは案件と日常を切り替える（上の切替ボタンと同じ）。
      同じ hash への移動では hashchange が起きないので、ここで拾う。 */
   U.$$('.tab').forEach(function (t) {
     t.addEventListener('click', function (e) {
       if (t.dataset.tab === 'files' && route.name === 'files') {
         e.preventDefault();
         DL.views.files.up();
+        return;
+      }
+      // 月表示を見ているときだけ。日別や1日の時間からは、いつもどおり月表示へ戻す
+      if (t.dataset.tab === 'calendar' && route.name === 'calendar') {
+        e.preventDefault();
+        flipCalMode();
         return;
       }
       // ホームを見ているときにホームを押したら、いちばん上まで戻す

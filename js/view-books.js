@@ -51,10 +51,14 @@
     wrap.appendChild(ui.section('1ヶ月の予算',
       el('span', { class: 'muted small', text: '事業＋日常' })));
     wrap.appendChild(budgetCard());
+    var chart = budgetChart();
+    if (chart) wrap.appendChild(chart);
 
     /* ---- 貯金（貯蓄用の口座） ---- */
     wrap.appendChild(ui.section('貯金',
       el('span', { class: 'muted small', text: savingsWhen() })));
+    var dueSv = monthlyDueCard();
+    if (dueSv) wrap.appendChild(dueSv);
     wrap.appendChild(savingsCard());
 
     /* ---- 固定費 ---- */
@@ -191,6 +195,130 @@
       })));
     }
     return box;
+  }
+
+  /* ---------------- 予算の折れ線 ----------------
+
+     縦は金額、横はその月の日にち。3本を同じ軸に重ねる。
+
+       通常予算　　　予算どおりに使ったときの積み上げ
+       貯金目標予算　そこから貯金の1日ぶんを削ったときの積み上げ
+       現在の支出　　実際に使った額の積み上げ（今日まで）
+
+     支出の線が予算の線より下にいるあいだは間に合っている。
+     追い越したところが、使いすぎに変わった日。 */
+
+  function budgetChart() {
+    var s = E.budgetSeries();
+    if (!s) return null;
+    var rows = s.rows;
+
+    var top = Math.max.apply(null, rows.map(function (r) {
+      return Math.max(r.normal, r.spent || 0);
+    }).concat([1]));
+    var step = niceStep(top / 3);
+    top = Math.max(step * 3, step);
+
+    var W = 320, H = 150, L = 40, R = 8, T = 10, B = 20;
+    var iw = W - L - R, ih = H - T - B;
+    var x = function (i) { return L + (rows.length === 1 ? iw / 2 : i * iw / (rows.length - 1)); };
+    var yv = function (v) { return T + ih - Math.min(1, v / top) * ih; };
+
+    var svg = svgEl('svg', {
+      class: 'lchart', viewBox: '0 0 ' + W + ' ' + H,
+      role: 'img', 'aria-label': U.num(s.ym.slice(5, 7), 0) + '月の予算と支出の推移'
+    });
+
+    /* 横の目盛り（金額） */
+    for (var g = 0; g <= 3; g++) {
+      var gv = top / 3 * g;
+      svg.appendChild(svgEl('line', {
+        class: 'lc-grid', x1: L, x2: W - R, y1: yv(gv), y2: yv(gv)
+      }));
+      svg.appendChild(svgEl('text', {
+        class: 'lc-ytick', x: L - 5, y: yv(gv) + 3, 'text-anchor': 'end'
+      }, shortYen(gv)));
+    }
+    /* 下の目盛り（日にち）。1日と5日ごと、それに月の終わり。
+       31日のように、5日ごとの目盛りとくっついてしまう日は出さない */
+    rows.forEach(function (r, i) {
+      var last = r.d === s.days && s.days % 5 > 2;
+      if (r.d !== 1 && r.d % 5 !== 0 && !last) return;
+      svg.appendChild(svgEl('text', {
+        class: 'lc-xtick', x: x(i), y: H - 6, 'text-anchor': 'middle'
+      }, String(r.d)));
+    });
+
+    /* 今日のところに細い縦線。線がどこまで伸びているのかが分かる */
+    if (s.day >= 1 && s.day <= s.days) {
+      svg.appendChild(svgEl('line', {
+        class: 'lc-today', x1: x(s.day - 1), x2: x(s.day - 1), y1: T, y2: T + ih
+      }));
+    }
+
+    bgSeries(svg, rows, 'normal', x, yv, 'is-bg');
+    if (s.hasSave) bgSeries(svg, rows, 'save', x, yv, 'is-goal');
+    bgSeries(svg, rows, 'spent', x, yv, 'is-used');
+
+    /* いまどうなっているか、ひとことで */
+    var atToday = rows[Math.min(s.day, s.days) - 1] || rows[rows.length - 1];
+    var limit = s.hasSave && atToday.save !== null ? atToday.save : atToday.normal;
+    var diff = limit - (atToday.spent || 0);
+    var note = diff >= 0
+      ? '今日の目安より ' + D.yen(diff) + ' 少なく済んでいます'
+      : '今日の目安より ' + D.yen(-diff) + ' 多く使っています';
+
+    var box = el('div', { class: 'card lchart-box' }, [
+      el('div', { class: 'lchart-legend' }, [
+        legend('is-bg', '通常予算'),
+        s.hasSave ? legend('is-goal', '貯金目標予算') : null,
+        legend('is-used', '現在の支出')
+      ]),
+      svg,
+      el('p', { class: 'muted small bg-chart-note' + (diff < 0 ? ' over' : ''), text: note })
+    ]);
+    return box;
+  }
+
+  /* 1本ぶんの線。値が無い日（今日より先の支出）は線を切る */
+  function bgSeries(svg, rows, key, x, yv, cls) {
+    var pts = [];
+    rows.forEach(function (r, i) {
+      if (r[key] === null || r[key] === undefined) return;
+      pts.push(Math.round(x(i) * 10) / 10 + ',' + Math.round(yv(r[key]) * 10) / 10);
+    });
+    if (pts.length < 2) return;
+    svg.appendChild(svgEl('polyline', {
+      class: 'lc-line ' + cls, points: pts.join(' ')
+    }));
+  }
+
+  function legend(cls, label) {
+    return el('span', { class: 'lc-key' }, [el('i', { class: cls }), el('span', { text: label })]);
+  }
+
+  function svgEl(name, attrs, text) {
+    var n = document.createElementNS('http://www.w3.org/2000/svg', name);
+    Object.keys(attrs || {}).forEach(function (k) { n.setAttribute(k, attrs[k]); });
+    if (text !== undefined) n.textContent = text;
+    return n;
+  }
+
+  /* 目盛りを 1/2/5×10ⁿ にまるめる */
+  function niceStep(v) {
+    if (v <= 0) return 1;
+    var e = Math.pow(10, Math.floor(Math.log(v) / Math.LN10));
+    var f = v / e;
+    return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * e;
+  }
+
+  /* 軸は「12万」のように短く出す */
+  function shortYen(n) {
+    if (!n) return '0';
+    if (n >= 100000000) return Math.round(n / 10000000) / 10 + '億';
+    if (n >= 10000) return Math.round(n / 1000) / 10 + '万';
+    if (n >= 1000) return Math.round(n / 100) / 10 + '千';
+    return String(Math.round(n));
   }
 
   function budgetSheet() {
@@ -527,6 +655,81 @@
         })
       ]
     });
+  }
+
+  /* ---------------- 毎月の貯金額 ----------------
+
+     節約ノルマは「目標までの残り ÷ 期日までの日数」なので、
+     いくら貯まっているかが古いままだとノルマもずれる。
+     月が変わったら入れてもらい、その場でノルマを引き直す。 */
+
+  /** 今月ぶんを入れてもらう。入れた時点で節約ノルマが変わる */
+  function monthlySheet() {
+    var B = DL.bank;
+    var due = B.monthlyDue();
+    if (!due) { savingsInput(); return; }        // もう入っていれば、ふだんの入力へ
+    var today = U.today();
+
+    var amount = ui.input({ type: 'number', inputmode: 'numeric', min: 0, value: due.last || '' });
+    var after = el('b', { class: 'save', text: D.yen(due.perDay) });
+    var note = el('p', { class: 'muted small' });
+
+    var recalc = function () {
+      var v = U.num(amount.value, 0);
+      var p = B.perDayFor(v, today);
+      after.textContent = D.yen(p);
+      var diff = p - due.perDay;
+      note.textContent = diff === 0
+        ? 'いまのノルマと同じです。'
+        : diff < 0
+          ? '貯まったぶん、1日あたり ' + D.yen(-diff) + ' 楽になります。'
+          : '目標に届かせるには、1日あたり ' + D.yen(diff) + ' 増やす必要があります。';
+    };
+    amount.addEventListener('input', recalc);
+    recalc();
+
+    var close = ui.sheet({
+      title: due.month + '月の貯金額',
+      body: el('div', { class: 'form' }, [
+        ui.field('いま貯まっている額（円）', amount,
+          due.last ? '前に入れたのは ' + D.yen(due.last) + ' です' : ''),
+        el('div', { class: 'card sv-after' }, [
+          el('div', { class: 'sv-line-row' }, [
+            el('span', { text: '入れたあとの節約ノルマ' }),
+            el('span', { class: 'sv-after-v' }, [after, el('span', { class: 'mo-u', text: '/日' })])
+          ]),
+          note
+        ]),
+        el('p', { class: 'muted small',
+          text: U.fmtMD(due.goalOn) + ' までに ' + D.yen(due.goal) + ' 貯めるとして、'
+            + 'そこまでの残りを日数で割ったものが節約ノルマです。' })
+      ]),
+      actions: [
+        ui.btn('あとで', 'ghost', function () { close(); }),
+        ui.btn('入れる', 'primary', function () {
+          S.setSavings({ total: U.num(amount.value, 0), date: today });
+          close();
+        })
+      ]
+    });
+  }
+
+  /* 今月ぶんがまだのときに出す警告。ホームと経理の両方から使う */
+  function monthlyDueCard() {
+    var due = DL.bank.monthlyDue();
+    if (!due) return null;
+    return el('button', {
+      type: 'button', class: 'card sv-due', onclick: function () { monthlySheet(); }
+    }, [
+      ui.icon('alert', 18),
+      el('div', { class: 'sv-due-t' }, [
+        el('b', { text: due.month + '月の貯金額を入れてください' }),
+        el('span', { class: 'muted small',
+          text: '入れると、毎日の節約ノルマを引き直します（いまは '
+            + D.yen(due.perDay) + '/日）' })
+      ]),
+      el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+    ]);
   }
 
   function savingsGoal() {
@@ -1418,6 +1621,8 @@
     addExpense: addExpense,
     // ホームの「節約目標」の行から、同じ画面を開くため
     planSheet: savingsPlan,
+    // 毎月の貯金額。ホームにも同じ警告と入力を出す
+    monthlySheet: monthlySheet, monthlyDueCard: monthlyDueCard,
     // 横断検索から、その1件を直接開くために使う
     editExpense: editExpense,
     editRecurring: function (id) {

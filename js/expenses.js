@@ -184,6 +184,64 @@
 
   function pct(a, b) { return b > 0 ? Math.round(a / b * 100) : 0; }
 
+  /**
+   * 予算の折れ線のもと。その月の1日から末日まで、日ごとの積み上げを出す。
+   *
+   * 1日ぶんの額をそのまま並べても、同じ高さの点が並ぶだけで
+   * 「いま予算のどのあたりにいるのか」は見えない。積み上げにすると、
+   * 予算の線より支出の線が上か下かで、ひと目で分かる。
+   *
+   * ・通常予算　　　自由に使える額 ÷ その月の日数 を、日ごとに足したもの
+   * ・貯金目標予算　そこから貯金の1日ぶんを引いたもの（目標を決めていれば）
+   * ・現在の支出　　その月に使った額を、日ごとに足したもの。今日から先は引かない
+   *
+   * 固定費は日割りにしても意味がないので、dailyBudget と同じく
+   * 予算からも支出からも先に取りのけてある。
+   *
+   * @param {string} [date] 見たい月の中の1日。既定は今日
+   * @returns {object|null} 予算を決めていなければ null
+   */
+  function budgetSeries(date) {
+    var S = DL.store, U = DL.util;
+    var b = dailyBudget(date);
+    if (!b) return null;
+    date = U.isISO(date) ? date : U.today();
+    var ym = date.slice(0, 7);
+
+    // 貯金の目標を決めていれば、その1日ぶんを予算から削った線も引く
+    var pl = DL.bank && DL.bank.plan ? DL.bank.plan(date) : null;
+    var savePerDay = (pl && !pl.done) ? Math.max(0, pl.perDay) : 0;
+
+    // 日ごとの支出（固定費から起こしたものは、先に引いてあるので数えない）
+    var byDay = {};
+    (S.settings.expenses || []).forEach(function (x) {
+      if (String(x.date).slice(0, 7) !== ym || x.recurringId) return;
+      byDay[x.date] = (byDay[x.date] || 0) + U.num(x.amount, 0);
+    });
+
+    var perDay = b.days ? b.budget / b.days : 0;
+    var rows = [], run = 0;
+    for (var d = 1; d <= b.days; d++) {
+      var iso = ym + '-' + (d < 10 ? '0' : '') + d;
+      run += byDay[iso] || 0;
+      rows.push({
+        d: d, date: iso,
+        normal: Math.round(perDay * d),
+        // 貯金ぶんを削ると足が出る月は、0 で止める（マイナスの予算は引かない）
+        save: savePerDay ? Math.round(Math.max(0, perDay - savePerDay) * d) : null,
+        // 今日より先は、まだ使っていないので線を切る
+        spent: d <= b.day ? Math.round(run) : null
+      });
+    }
+    return {
+      ym: ym, days: b.days, day: b.day,
+      month: b.month, fixed: b.fixed, budget: b.budget,
+      perDay: b.perDay, savePerDay: savePerDay,
+      spent: b.spent, hasSave: !!savePerDay,
+      rows: rows
+    };
+  }
+
   function byMonth(rows, year) {
     var out = [];
     for (var m = 1; m <= 12; m++) {
@@ -466,7 +524,7 @@
     yearlyOf: yearlyOf, review: review, renewAlerts: renewAlerts,
     RECEIPT_FOLDER: RECEIPT_FOLDER, receiptFolder: receiptFolder,
     BOOKS: BOOKS, categories: categories, baseCategories: baseCategories, bookLabel: bookLabel,
-    total: total, dailyBudget: dailyBudget, fixedOfMonth: fixedOfMonth, byCategory: byCategory, byTag: byTag, byMonth: byMonth, shrink: shrink,
+    total: total, dailyBudget: dailyBudget, budgetSeries: budgetSeries, fixedOfMonth: fixedOfMonth, byCategory: byCategory, byTag: byTag, byMonth: byMonth, shrink: shrink,
     toCSV: toCSV, dueRecurring: dueRecurring, recurringRecorded: recurringRecorded,
     fixedCandidates: fixedCandidates
   };

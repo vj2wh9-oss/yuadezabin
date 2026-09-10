@@ -105,12 +105,17 @@
     /* お金。今日いくら使えるか・貯金・節約目標を1枚にまとめる
        （日常の予算を決めているときだけ） */
     var bg = budgetCard(today);
-    if (bg) {
+    /* 月が変わったら、貯金額を入れてもらう。
+       入れるまで節約ノルマが古いままになるので、予算を決めていなくても出す */
+    var dueSv = DL.views.books && DL.views.books.monthlyDueCard
+      ? DL.views.books.monthlyDueCard() : null;
+    if (bg || dueSv) {
       wrap.appendChild(ui.section('お金'));
-      wrap.appendChild(bg);
+      if (dueSv) wrap.appendChild(dueSv);
+      if (bg) wrap.appendChild(bg);
 
-      /* その予算で作れる献立 */
-      var mn = menuCard(today);
+      /* その予算で作れる献立（予算を決めているときだけ） */
+      var mn = bg ? menuCard(today) : null;
       if (mn) {
         wrap.appendChild(ui.section('今日の献立'));
         wrap.appendChild(mn);
