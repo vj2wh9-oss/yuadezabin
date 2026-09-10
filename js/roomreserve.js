@@ -60,7 +60,8 @@
         return {
           events: Array.isArray(b.events) ? b.events : [],
           extra: (b.extra && typeof b.extra === 'object') ? b.extra : {},
-          keys: Array.isArray(b.keys) ? b.keys : []
+          keys: Array.isArray(b.keys) ? b.keys : [],
+          tried: Array.isArray(b.tried) ? b.tried : []
         };
       });
     });
@@ -136,15 +137,24 @@
      予定の題や memo までは見ない（部屋の予定に「出社」と書いてあるだけで
      勤務にされると困るため）。 */
 
-  /* 中身の言葉で見分ける。泊まりを先に見る（「泊まり勤務」は勤務でもある） */
+  /* 中身の言葉で見分ける。泊まりを先に見る（「泊まり勤務」は勤務でもある）。
+     向こう（ROOM RESERVE）は remote / overnight / office の3つを使っていて、
+     画面には「リモートワーク／泊まり勤務／出勤」と出している。
+     どちらの書き方でも読めるようにしてある */
   var DUTY_WORDS = [
     { kind: 'stay', re: /泊|stay|overnight|宿泊/i },
     { kind: 'remote', re: /リモート|在宅|テレワーク|remote|wfh|telework/i },
     { kind: 'office', re: /出社|出勤|通勤|office|onsite|on-site|commute/i }
   ];
 
-  /* 勤務種別が入っていそうなキーの名前 */
-  var DUTY_KEY = /(duty|dutie|work ?style|work ?type|work ?kind|shift|attendance|kinmu|勤務|出勤形態|勤務形態|勤務種別)/i;
+  /* 勤務種別が入っていそうなキーの名前。
+     向こうは日付に付ける印を dayMark と呼び、値は type に入れている。
+     type / mark / kind のように短い名前も見るが、
+     中身が上の言葉に当てはまらなければ勤務にはしないので、取り違えはしない */
+  var DUTY_KEY = new RegExp(
+    'duty|dutie|day ?mark|daymark|work ?style|work ?type|work ?kind'
+    + '|shift|attendance|kinmu|勤務|出勤形態|勤務形態|勤務種別'
+    + '|^type$|^mark$|^kind$|^status$', 'i');
 
   /** 言葉から勤務を見分ける。当てはまらなければ '' */
   function dutyWord(v) {
@@ -196,11 +206,8 @@
 
     // 予定に付いているとき
     (b.events || []).forEach(function (e) {
-      if (!e || !U.isISO(e.date)) return;
-      var d = dutyIn(e, false, 0);
-      // kind そのものが勤務を表しているとき（'remote' など）
-      if (!d) d = dutyWord(e.kind) && e.kind !== 'normal' ? dutyWord(e.kind) : '';
-      put(e.date, d);
+      var d = dateOf(e);
+      if (d) put(d, dutyIn(e, false, 0));
     });
 
     // 予定とは別に、日付の一覧で持っているとき
@@ -208,12 +215,13 @@
     return out;
 
     /* {'2026-09-10': '出社'} のような対応表と、
-       [{date:'2026-09-10', workStyle:'remote'}] のような並びの両方を見る */
+       [{dateKey:'2026-09-10', type:'remote'}] のような並びの両方を見る */
     function walk(o, depth) {
       if (!o || typeof o !== 'object' || depth > 4) return;
       if (Array.isArray(o)) {
         o.forEach(function (x) {
-          if (x && typeof x === 'object' && U.isISO(x.date)) put(x.date, dutyIn(x, false, 0));
+          var d = dateOf(x);
+          if (d) put(d, dutyIn(x, false, 0));
           else walk(x, depth + 1);
         });
         return;
@@ -227,6 +235,18 @@
         walk(v, depth + 1);
       });
     }
+  }
+
+  /* その1件が指している日。向こうは dateKey と呼んでいるが、
+     date で返してくるところもあるので、どちらでも読めるようにしておく */
+  var DATE_FIELDS = ['dateKey', 'date', 'day', 'ymd', 'on'];
+
+  function dateOf(x) {
+    if (!x || typeof x !== 'object') return '';
+    for (var i = 0; i < DATE_FIELDS.length; i++) {
+      if (U.isISO(x[DATE_FIELDS[i]])) return x[DATE_FIELDS[i]];
+    }
+    return '';
   }
 
   /**
@@ -326,6 +346,7 @@
         events: got.events.length,
         keys: got.keys,
         extraKeys: Object.keys(got.extra || {}),
+        tried: got.tried,
         duties: map,
         found: Object.keys(map).length
       };

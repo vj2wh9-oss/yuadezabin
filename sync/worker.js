@@ -1722,22 +1722,46 @@ async function roomReserve(request, env, cors, url) {
      向こうがどのキーで返すかは決められないので、events 以外をそのまま渡し、
      どれが勤務種別かはアプリ側で見分ける。大きすぎるものは落とす */
   const extra = {};
-  Object.keys(data || {}).forEach((k) => {
-    if (k === 'events') return;
-    const v = data[k];
+  const take = (into, k, v) => {
     if (!v || typeof v !== 'object') return;
-    const size = JSON.stringify(v).length;
-    if (size > 200000) return;
-    extra[k] = v;
+    if (JSON.stringify(v).length > 200000) return;
+    into[k] = v;
+  };
+  Object.keys(data || {}).forEach((k) => {
+    if (k !== 'events') take(extra, k, data[k]);
   });
+
+  /* 向こうでは「日付に付けた印」（勤務種別）が予定とは別のもので、
+     /events には入っていないことがある。そのときだけ、隣の入口も見に行く。
+     読むだけで、無ければ黙って諦める（予定の取り込みは止めない） */
+  const tried = [];
+  if (!Object.keys(extra).length) {
+    for (const path of ROOM_MARK_PATHS) {
+      const at = origin.origin + '/api/rooms/' + encodeURIComponent(room) + '/' + path;
+      tried.push(path);
+      try {
+        const r = await fetch(at, { headers: { accept: 'application/json' }, cf: { cacheTtl: 0 } });
+        if (!r.ok) continue;
+        const t = await r.text();
+        let d;
+        try { d = JSON.parse(t); } catch (e) { continue; }
+        take(extra, path, d);
+        if (extra[path]) break;              // 見つかったら、そこでやめる
+      } catch (e) { /* つながらない入口は飛ばす */ }
+    }
+  }
 
   return json({
     ok: true,
     events: Array.isArray(data.events) ? data.events : [],
     extra,
-    keys: Object.keys(data || {}).slice(0, 40)
+    keys: Object.keys(data || {}).slice(0, 40),
+    tried
   }, 200, cors);
 }
+
+/* 「日付に付けた印」がありそうな入口。/events に入っていないときだけ見に行く */
+const ROOM_MARK_PATHS = ['day-marks', 'daymarks', 'marks', 'day-mark'];
 
 /* ---------------- レシートの読み取り（OpenAI） ----------------
 

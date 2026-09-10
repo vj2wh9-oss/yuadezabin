@@ -875,6 +875,10 @@
           text: '返事の項目：' + (r.keys.join('、') || 'なし') }));
         body.appendChild(el('p', { class: 'muted small',
           text: '予定のほかに付いていたもの：' + (r.extraKeys.join('、') || 'なし') }));
+        if (r.tried && r.tried.length) {
+          body.appendChild(el('p', { class: 'muted small',
+            text: '別の入口も見にいきました：' + r.tried.join('、') + '（どれも空でした）' }));
+        }
       }
     }).catch(function (e) {
       U.clear(body);
