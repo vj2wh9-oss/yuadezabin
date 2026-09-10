@@ -89,7 +89,7 @@
   /**
    * 向こうの1件を、日常の予定の形にする。
    * 時間の登録でないもの（締切・イベント）は null を返す。
-   * @returns {object|null} {srcId, date, start, end, open}
+   * @returns {object|null} {srcId, date, start, end, open, memo}
    */
   function toPlan(e) {
     if (!e || e.kind !== 'normal') return null;         // 締切・イベントは入れない
@@ -106,8 +106,40 @@
       start: start,
       end: open ? '' : addMin(start, min),
       open: open,
-      min: open ? 0 : min
+      min: open ? 0 : min,
+      // メモには在宅の可否だけを書く。付いていなければ空のまま
+      memo: homeOf(e)
     };
+  }
+
+  /* ---------------- 在宅の可否 ----------------
+
+     向こうの予定に「けいすけの在宅可否」が付く（ok / ng）。
+     こちらのメモには「在宅可能」「在宅不可」だけを書く。
+     出どころは予定の名前（ROOM RESERVE）で分かるので、
+     メモにそれ以上のことは入れない。 */
+
+  var HOME_FIELDS = ['homeStatus', 'home', 'homeOk', 'stayHome', '在宅'];
+
+  /** その1件に付いている在宅の可否。無ければ空 */
+  function homeOf(e) {
+    for (var i = 0; i < HOME_FIELDS.length; i++) {
+      var t = homeText(e[HOME_FIELDS[i]]);
+      if (t) return t;
+    }
+    return '';
+  }
+
+  /** ok / ng のほか、そのまま日本語で来ても読めるようにする */
+  function homeText(v) {
+    if (v === true) return '在宅可能';
+    if (v === false) return '在宅不可';
+    var s = String(v == null ? '' : v).trim();
+    if (!s || s.length > 20) return '';
+    // 「不可」を先に見る（「在宅不可」にも「可」の字が入っているため）
+    if (/^(ng|no|false)$/i.test(s) || s.indexOf('不可') >= 0) return '在宅不可';
+    if (/^(ok|yes|true)$/i.test(s) || s.indexOf('可') >= 0) return '在宅可能';
+    return '';
   }
 
   /** 'H:MM' も '0H:MM' にそろえる */
@@ -269,16 +301,37 @@
   function seen() { return conf().seen || {}; }
 
   /**
-   * すでにこちらにあるか。
-   * 一度入れた id は控えてあるので、それで見る。
-   * 控えの無いものも、同じ日・同じ時刻の予定があれば「ある」とみなす
+   * すでにこちらにある1件を返す（無ければ null）。
+   * 同じ日・同じ時刻の予定があれば「ある」とみなす
    * （手で入れていたぶんと重ならないように）。
    */
-  function have(plan, list) {
-    if (plan.srcId && seen()[plan.srcId]) return true;
-    return list.some(function (ev) {
+  function existing(plan, list) {
+    return list.filter(function (ev) {
       return ev.date === plan.date && ev.start === plan.start
         && (!plan.end || !ev.end || ev.end === plan.end);
+    })[0] || null;
+  }
+
+  /** こちらが取り込んで作った予定か。手で入れたぶんは書き替えない */
+  function mine(ev) {
+    return !!ev && (ev.title === TITLE || ev.title === OLD_TITLE);
+  }
+
+  /* 前の名前で入っているぶんを、新しい名前に付け替える。
+     向こうから消えた予定はもう照合できないので、ここでまとめて直す。
+     メモは、前に自分で入れていた決まり文句のときだけ空にする
+     （あとから手で書き足したものは残す） */
+  var OLD_MEMO = 'ROOM RESERVE から取り込み';
+
+  function renameOld(list, fixed) {
+    list.forEach(function (ev) {
+      if (ev.title !== OLD_TITLE) return;
+      var patch = { title: TITLE };
+      if (String(ev.memo || '') === OLD_MEMO) patch.memo = '';
+      S.updateEvent(ev.id, patch);
+      ev.title = TITLE;
+      if (patch.memo !== undefined) ev.memo = '';
+      fixed[ev.id] = true;
     });
   }
 
@@ -296,11 +349,25 @@
       });
 
       var list = S.events();
-      var added = [], skipped = 0, mark = {};
+      var added = [], skipped = 0, mark = {}, fixed = {};
       var color = conf().color;
+      // 前の名前（部屋の予約）で入っているぶんを、先に付け替えておく
+      renameOld(list, fixed);
 
       plans.forEach(function (p) {
-        if (have(p, list)) { skipped++; if (p.srcId) mark[p.srcId] = true; return; }
+        if (p.srcId) mark[p.srcId] = true;
+        var was = existing(p, list);
+        if (was) {
+          /* すでに入っている。名前とメモだけ、いまの向こうに合わせ直す。
+             在宅の可否は向こうであとから付くので、取り込み済みのぶんにも届くように
+             （手で入れた予定は書き替えない） */
+          if (mine(was) && String(was.memo || '') !== p.memo) {
+            S.updateEvent(was.id, { title: TITLE, memo: p.memo });
+            fixed[was.id] = true;
+          }
+          skipped++;
+          return;
+        }
         var ev = S.addEvent({
           date: p.date,
           days: 1,
@@ -308,11 +375,10 @@
           start: p.start,
           end: p.end,
           color: color,
-          memo: 'ROOM RESERVE から取り込み'
+          memo: p.memo
         });
         list.push(ev);
         added.push(ev);
-        if (p.srcId) mark[p.srcId] = true;
       });
 
       // 勤務種別は、こちらに登録の無い日だけ写す
@@ -322,7 +388,8 @@
       S.updateRoomReserve({ lastAt: new Date().toISOString(), seen: mark });
 
       return {
-        added: added, skipped: skipped, total: raw.length, plans: plans.length,
+        added: added, skipped: skipped, fixed: Object.keys(fixed).length,
+        total: raw.length, plans: plans.length,
         duties: duty.added, dutiesKept: duty.kept
       };
     });
@@ -334,6 +401,8 @@
     if (r.added.length) parts.push('予定 ' + r.added.length + '件（' + r.plans + '件のうち）');
     if (r.duties.length) parts.push('勤務 ' + r.duties.length + '日');
     if (parts.length) return parts.join('・') + 'を取り込みました';
+    // 新しい予定は無くても、在宅の可否が付いたぶんは書き替えている
+    if (r.fixed) return '予定 ' + r.fixed + '件を今の内容に合わせました';
     if (r.plans) return '新しい予定はありませんでした';
     return '時間の登録がありませんでした';
   }
@@ -353,13 +422,17 @@
     });
   }
 
-  /* 取り込んだ予定に付ける名前。あとから見て出どころが分かるように */
-  var TITLE = '部屋の予約';
+  /* 取り込んだ予定に付ける名前。あとから見て出どころが分かるように。
+     OLD_TITLE は前に付けていた名前。すでに入っているぶんを
+     取り込み直したときに、こちらのものだと見分けて付け替える */
+  var TITLE = 'ROOM RESERVE';
+  var OLD_TITLE = '部屋の予約';
 
   DL.roomreserve = {
-    TITLE: TITLE,
+    TITLE: TITLE, OLD_TITLE: OLD_TITLE,
     conf: conf, ready: ready, parseUrl: parseUrl,
     fetchEvents: fetchEvents, fetchAll: fetchAll, toPlan: toPlan, pull: pull, addMin: addMin,
-    dutiesFrom: dutiesFrom, applyDuties: applyDuties, check: check, pullText: pullText
+    dutiesFrom: dutiesFrom, applyDuties: applyDuties, check: check, pullText: pullText,
+    homeText: homeText
   };
 })(window.DL);
