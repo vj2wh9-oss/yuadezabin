@@ -14,6 +14,14 @@
   ];
   var SLOT_LABEL = { breakfast: '朝食', lunch: '昼食', dinner: '夕飯' };
 
+  /* 料理の系統。選ばなければ指定なし（向こうの好きにしてもらう） */
+  var GENRES = [
+    { value: 'washoku', label: '和食' },
+    { value: 'yoshoku', label: '洋食' },
+    { value: 'chuka', label: '中華' }
+  ];
+  var GENRE_LABEL = { washoku: '和食', yoshoku: '洋食', chuka: '中華' };
+
   function conf() { return S.syncSettings ? S.syncSettings() : (S.settings.sync || {}); }
   function base() { return String(conf().url || '').replace(/\/+$/, ''); }
 
@@ -95,7 +103,8 @@
 
   /**
    * 献立を考えてもらう。
-   * @param {object} o {budget, slots:['breakfast','lunch','dinner'], servings:1|2, avoid:[名前], date}
+   * @param {object} o {budget, slots:['breakfast','lunch','dinner'], servings:1|2,
+   *   genre:'washoku'|'yoshoku'|'chuka'|''（空は指定なし）, avoid:[名前], date}
    * @returns {Promise<object>} 正規化した献立
    */
   function suggest(o) {
@@ -120,6 +129,8 @@
         budget: budget,
         slots: slots,
         servings: U.num(o.servings, 1) === 2 ? 2 : 1,
+        // 選んでいなければ送らない（向こうで指定なしになる）
+        genre: GENRE_LABEL[o.genre] ? o.genre : '',
         // 同じものばかり出ないよう、最近のぶんを渡す
         avoid: (o.avoid || []).concat(S.recentMenuNames(14)).slice(0, 12),
         // 残り物は先に食べたいので渡す
@@ -284,6 +295,7 @@
 
   DL.menu = {
     SLOTS: SLOTS, SLOT_LABEL: SLOT_LABEL,
+    GENRES: GENRES, GENRE_LABEL: GENRE_LABEL,
     ready: ready, suggest: suggest, send: send, namesOf: namesOf,
     slotsLabel: slotsLabel, slotsJa: slotsJa,
     season: season,

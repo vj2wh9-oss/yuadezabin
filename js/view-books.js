@@ -51,8 +51,6 @@
     wrap.appendChild(ui.section('1ヶ月の予算',
       el('span', { class: 'muted small', text: '事業＋日常' })));
     wrap.appendChild(budgetCard());
-    var chart = budgetChart();
-    if (chart) wrap.appendChild(chart);
 
     /* ---- 貯金（貯蓄用の口座） ---- */
     wrap.appendChild(ui.section('貯金',
@@ -158,7 +156,11 @@
 
   /* 1ヶ月の予算と、今月の残り。
      予算は事業と日常を合わせた1本。中身も、ホームの「今日の予算」と
-     同じ数えかたにそろえる（固定費は月ぶんを丸ごと、そのほかは使った額）。 */
+     同じ数えかたにそろえる（固定費は月ぶんを丸ごと、そのほかは使った額）。
+
+     表に出すのは「何月の予算か・棒・残りいくら」だけ。
+     予算を変えるのと、内訳（固定費・使ったぶん）は棒を押した先にまとめる。
+     そのぶん空いたところへ、支出の折れ線を同じ枠の中に入れる。 */
   function budgetCard() {
     var box = el('div', { class: 'card' });
     var b = E.dailyBudget();
@@ -175,12 +177,28 @@
       el('span', { text: U.num(U.today().slice(5, 7), 0) + '月の予算' }),
       el('b', { class: left < 0 ? 'over' : '', text: left < 0 ? D.yen(-left) + ' 超過' : '残り ' + D.yen(left) })
     ]));
-    box.appendChild(el('div', { class: 'bg-bar' + (left < 0 ? ' over' : '') }, el('i', { style: { width: pct + '%' } })));
-    box.appendChild(el('div', { class: 'bg-foot' }, [
-      el('span', { class: 'muted small', text: D.yen(used) + ' / ' + D.yen(b.month) + '（' + pct + '%）' }),
-      ui.btn('予算を変える', 'ghost tiny', function () { budgetSheet(); })
+
+    /* 棒を押すと、予算を変える画面が開く（内訳もそこで見る）。
+       棒は細いので、下の数字までまとめて押せるようにしておく */
+    box.appendChild(el('button', {
+      type: 'button', class: 'bg-tap', 'aria-label': '予算を変える・内訳を見る',
+      onclick: function () { budgetSheet(); }
+    }, [
+      el('div', { class: 'bg-bar' + (left < 0 ? ' over' : '') }, el('i', { style: { width: pct + '%' } })),
+      el('div', { class: 'bg-foot' }, [
+        el('span', { class: 'muted small', text: D.yen(used) + ' / ' + D.yen(b.month) + '（' + pct + '%）' }),
+        el('span', { class: 'chev' }, ui.icon('chevronRight', 15))
+      ])
     ]));
 
+    /* 点線の下に折れ線。予算の棒と同じ枠の中に置く */
+    var chart = budgetChart();
+    if (chart) box.appendChild(chart);
+    return box;
+  }
+
+  /* 予算の内訳。棒を押した先に出す */
+  function budgetBreak(b) {
     var lines = [];
     if (b.fixed > 0) {
       lines.push('うち固定費 ' + D.yen(b.fixed) + '。自由に使えるのは ' + D.yen(b.budget) + ' です');
@@ -189,12 +207,10 @@
       lines.push('そのほかに使ったぶん　事業 ' + D.yen(b.spentWork)
         + '／日常 ' + D.yen(b.spentLife));
     }
-    if (lines.length) {
-      box.appendChild(el('div', { class: 'bg-fixed' }, lines.map(function (t) {
-        return el('p', { class: 'muted small', text: t });
-      })));
-    }
-    return box;
+    if (!lines.length) return null;
+    return el('div', { class: 'bg-fixed' }, lines.map(function (t) {
+      return el('p', { class: 'muted small', text: t });
+    }));
   }
 
   /* ---------------- 予算の折れ線 ----------------
@@ -268,7 +284,8 @@
       ? '今日の目安より ' + D.yen(diff) + ' 少なく済んでいます'
       : '今日の目安より ' + D.yen(-diff) + ' 多く使っています';
 
-    var box = el('div', { class: 'card lchart-box' }, [
+    /* 予算のカードの中に入れる。上の点線が、棒のところと折れ線の区切りになる */
+    var box = el('div', { class: 'lchart-box bg-chart' }, [
       el('div', { class: 'lchart-legend' }, [
         legend('is-bg', '通常予算'),
         s.hasSave ? legend('is-goal', '貯金目標予算') : null,
@@ -324,13 +341,16 @@
   function budgetSheet() {
     var input = ui.input({ type: 'number', inputmode: 'numeric', min: 0,
       value: U.num(S.settings.lifeBudget, 0) || '' });
+    var b = E.dailyBudget();
     var close = ui.sheet({
       title: '1ヶ月の予算',
       body: el('div', { class: 'form' }, [
         ui.field('予算（円）', input),
         el('p', { class: 'muted small',
           text: '事業と日常を合わせた、1ヶ月に使えるお金です。'
-            + 'ここから固定費を引いた残りを日数で割ったものが、ホームの「今日の予算」になります。' })
+            + 'ここから固定費を引いた残りを日数で割ったものが、ホームの「今日の予算」になります。' }),
+        // いま何にいくら出ているか。棒を押した人がまず知りたいところ
+        b ? budgetBreak(b) : null
       ]),
       actions: [
         ui.btn('キャンセル', 'ghost', function () { close(); }),

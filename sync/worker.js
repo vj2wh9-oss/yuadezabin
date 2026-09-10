@@ -50,7 +50,7 @@
  * レシートの読み取り（OpenAI）
  *   GET    /v1/ocr/status  → { key, r2, model, strongModel, reasoning, maxTokens }（鍵は返さない）
  *   POST   /v1/ocr/receipt → 本文 {fileId} → { data:{store,date,total,items,…}, model, retried, usage }
- *   POST   /v1/menu        → 本文 {budget,slots,servings,avoid} → { data:{meals,shopping,total,note} }
+ *   POST   /v1/menu        → 本文 {budget,slots,servings,genre,avoid} → { data:{meals,shopping,total,note} }
  *   POST   /v1/ocr/card    → 本文 {fileId} → { data:{company,contact,email,tel,address,…}, model, retried, usage }
  *                             R2 に置いた写真を読み、JSON だけ受け取る。
  *                             鍵は Worker の secret にだけ置き、アプリには渡さない
@@ -615,6 +615,8 @@ const MENU_SCHEMA = {
 
 const MENU_SLOTS = ['breakfast', 'lunch', 'dinner'];
 const SLOT_JA = { breakfast: '朝食', lunch: '昼食', dinner: '夕飯' };
+/* 料理の系統。選ばれていなければ何も言わない（向こうの好きにしてもらう） */
+const GENRE_JA = { washoku: '和食', yoshoku: '洋食', chuka: '中華' };
 
 function menuPrompt(o) {
   const slots = (o.slots || []).map((s) => SLOT_JA[s] || s).join('と');
@@ -637,6 +639,11 @@ function menuPrompt(o) {
     '手順は一品ごとに、家庭の台所でできる範囲で2〜5行。'
       + '手順の中でも材料と調味料の分量が分かるように書いてください。'
   ];
+  // 系統を選んであれば、そこにそろえてもらう
+  if (GENRE_JA[o.genre]) {
+    lines.push('献立は' + GENRE_JA[o.genre] + 'でまとめてください。'
+      + '主菜も副菜も' + GENRE_JA[o.genre] + 'にそろえ、ほかの系統の料理は混ぜないでください。');
+  }
   // 朝はそこまで作り込めないので、手早いものにしてもらう
   if ((o.slots || []).indexOf('breakfast') >= 0) {
     lines.push('朝食は10分ほどで作れる軽いものにしてください（主菜1品と副菜1品の決まりは、朝食には当てはめなくて構いません）。');
@@ -675,6 +682,8 @@ async function menu(request, env, cors) {
     budget: Math.min(budget, 100000),
     slots,
     servings: Number(body.servings) === 2 ? 2 : 1,
+    // 知らない値は指定なし扱い（古いアプリからは そもそも来ない）
+    genre: GENRE_JA[String(body.genre || '')] ? String(body.genre) : '',
     avoid: (Array.isArray(body.avoid) ? body.avoid : [])
       .map((s) => String(s || '').slice(0, 40)).filter(Boolean),
     // 家の残り物。先に使い切ってもらう
@@ -1709,7 +1718,25 @@ async function roomReserve(request, env, cors, url) {
   try { data = JSON.parse(text); } catch (e) {
     return json({ error: 'room_not_json', message: text.slice(0, 300) }, 502, cors);
   }
-  return json({ ok: true, events: Array.isArray(data.events) ? data.events : [] }, 200, cors);
+  /* 予定のほかに、日付へ付けたもの（勤務種別など）が入っていることがある。
+     向こうがどのキーで返すかは決められないので、events 以外をそのまま渡し、
+     どれが勤務種別かはアプリ側で見分ける。大きすぎるものは落とす */
+  const extra = {};
+  Object.keys(data || {}).forEach((k) => {
+    if (k === 'events') return;
+    const v = data[k];
+    if (!v || typeof v !== 'object') return;
+    const size = JSON.stringify(v).length;
+    if (size > 200000) return;
+    extra[k] = v;
+  });
+
+  return json({
+    ok: true,
+    events: Array.isArray(data.events) ? data.events : [],
+    extra,
+    keys: Object.keys(data || {}).slice(0, 40)
+  }, 200, cors);
 }
 
 /* ---------------- レシートの読み取り（OpenAI） ----------------

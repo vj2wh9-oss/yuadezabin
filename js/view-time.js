@@ -358,24 +358,17 @@
       ]));
       return card;
     }
+    /* 日別画面の円グラフと同じ「いま→次」を、帯の上に置く。
+       種類ごとの合計（帯の下に出していたもの）は、ここでは出さない。
+       いま何をしていて次に何が来るかのほうが、ホームでは知りたい */
+    var nb = nowBanner(date);
+    if (nb) card.appendChild(nb);
     card.appendChild(bar(date, { now: true }));
-    card.appendChild(legend(date, 4));
     return card;
   }
 
-  /* 種類ごとの合計。多い順にいくつかだけ */
-  function legend(date, max) {
-    var rows = T.sums(date);
-    if (max) rows = rows.slice(0, max);
-    return el('div', { class: 'tp-legend' }, rows.map(function (s) {
-      // 名前はその色の中に入れる。字の色は、色の明るさで白と黒を選ぶ
-      return el('span', { class: 'tp-leg' }, [
-        el('span', { class: 'tp-leg-t',
-          style: { background: s.color, color: U.inkOn(s.color) }, text: s.label }),
-        el('span', { class: 'tp-leg-v', text: hm(s.min) })
-      ]);
-    }));
-  }
+  /* 種類ごとの合計は、日別画面の一覧（rows）で見る。
+     ホームでは「いま→次」を出すので、ここには置かない */
 
   /* ---------------- 日別画面に出す一枚 ---------------- */
 
@@ -462,6 +455,24 @@
       style: { background: b.color, color: U.inkOn(b.color) } });
   }
 
+  /**
+   * このあと最初に始まるもの。
+   * 今日にもう無ければ、翌日の最初のものまで見る
+   * （夜に開くと「次の予定」が空になってしまうため）。
+   * 翌日から持ってくるとき、日をまたいで続いている帯（carry）は
+   * 「いましていることの続き」なので、次の予定には数えない。
+   * @returns {object|null} {b:帯, tomorrow:翌日のものか}
+   */
+  function nextBlock(date, m, list) {
+    var n = list.filter(function (x) { return x.start > m; })
+      .sort(function (p, q) { return p.start - q.start; })[0];
+    if (n) return { b: n, tomorrow: false };
+    var t = T.ofDay(U.addDays(date, 1))
+      .filter(function (x) { return !x.carry; })
+      .sort(function (p, q) { return p.start - q.start; })[0];
+    return t ? { b: t, tomorrow: true } : null;
+  }
+
   /* いまの時刻と、いましていること。今日を見ているときだけ出す。
      円や帯の印は小さいので、まず文字で言い切っておく */
   function nowBanner(date) {
@@ -469,9 +480,8 @@
     if (m === null) return null;
     var list = T.ofDay(date);
     var b = list.filter(function (x) { return m >= x.start && m < x.end; })[0];
-    // このあと最初に始まるもの
-    var next = list.filter(function (x) { return x.start > m; })
-      .sort(function (p, q) { return p.start - q.start; })[0];
+    var nx = nextBlock(date, m, list);
+    var next = nx ? nx.b : null;
 
     // 'empty' という名前は、空っぽの案内枠（.empty）と当たって縦並びになる
     var box = el('div', { class: 'tp-nowbar' + (b ? '' : ' is-empty') }, [
@@ -486,13 +496,17 @@
       /* 次へ流れていく印。押せるものではないので読み上げからは外す */
       next ? el('div', { class: 'tp-flow', 'aria-hidden': 'true' },
         [el('i'), el('i'), el('i')]) : null,
-      /* このあとの予定 */
+      /* このあとの予定。翌日から持ってきたときは、そうと分かるようにする。
+         印は時刻の行に置く（名前の行に足すと、名前が削られてしまう） */
       next ? el('div', { class: 'tp-np next' }, [
         el('div', { class: 'tp-np-h' }, [
           el('b', { class: 'tp-np-time', text: T.fmt(next.start) }),
           blockTag(next)
         ]),
-        el('div', { class: 'tp-np-r', text: T.fmt(next.start) + '〜' + T.fmt(next.end) })
+        el('div', { class: 'tp-np-r' }, [
+          nx.tomorrow ? el('span', { class: 'tp-np-d', text: '翌日' }) : null,
+          el('span', { text: T.fmt(next.start) + '〜' + T.fmt(next.end) })
+        ])
       ]) : null
       // 「ここを書く」は、すぐ下の「時間を足す」と同じことなので置かない
     ]);
@@ -767,6 +781,6 @@
   DL.views = DL.views || {};
   DL.views.time = {
     render: render, dayCard: dayCard, homeCard: homeCard,
-    pie: pie, bar: bar, legend: legend, blockSheet: blockSheet, offerPreset: offerPreset
+    pie: pie, bar: bar, blockSheet: blockSheet, offerPreset: offerPreset
   };
 })(window.DL);

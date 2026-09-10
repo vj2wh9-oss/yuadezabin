@@ -1683,19 +1683,9 @@ a.alert-main { text-decoration: none; }
 .tp-scale span:first-child { transform: none; }
 .tp-scale span:last-child { transform: translateX(-100%); }
 
-/* 種類ごとの合計。名前はその色の中に入れる（字の色は明るさで決める） */
-.tp-legend { display: flex; flex-wrap: wrap; gap: 5px 10px; }
-.tp-leg { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
-.tp-leg-t {
-  /* 角はほんの少しだけ落とす（ほかの部品と同じ 3px） */
-  padding: 2px 7px; border-radius: var(--radius-s); font-size: 11.5px; font-weight: 600;
-  line-height: 1.5; white-space: nowrap;
-}
-.tp-leg-v { color: var(--text); font-weight: 400; font-variant-numeric: tabular-nums; }
-
-/* ホームの一枚 */
+/* ホームの一枚。「いま→次」を上に置き、その下に帯を敷く */
 .tp-home { display: block; text-decoration: none; color: inherit; }
-.tp-home .tp-legend { margin-top: 8px; }
+.tp-home .tp-nowbar { margin-bottom: 10px; }
 .tp-empty { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 
 /* 日別画面の一枚 */
@@ -1824,7 +1814,16 @@ a.tp-proj:active { color: var(--accent); }
   padding: 2px 7px; border-radius: var(--radius-s); font-size: 11.5px; font-weight: 600;
   line-height: 1.5; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.tp-np-r { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tp-np-r {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums;
+}
+/* 次の予定を翌日から持ってきたときの印 */
+.tp-np-d {
+  flex: none; font-size: 10px; font-weight: 700; line-height: 1.4;
+  padding: 0 4px; border-radius: var(--radius-s);
+  color: var(--accent2); border: 1px solid currentColor;
+}
 .tp-np-none {
   font-size: 12px; color: var(--muted);
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -1984,9 +1983,18 @@ a.tp-proj:active { color: var(--accent); }
 .mn-pick { display: flex; gap: 6px; }
 .mn-pick .btn { flex: 1; }
 /* 何人分。見出しを付けないぶん、控えめな大きさで左に置く */
-.mn-serv { display: flex; }
+/* 人数と、料理の系統。iPhone の幅でも1行に収まるよう、どちらも小さめに */
+.mn-serv { display: flex; align-items: stretch; gap: 6px; }
 .mn-serv .segmented { flex: none; }
-.mn-serv .seg { flex: none; padding: 7px 14px; font-size: 12.5px; }
+.mn-serv .seg { flex: none; padding: 7px 11px; font-size: 12.5px; }
+.mn-genre { display: flex; gap: 4px; flex: 1; min-width: 0; }
+.mn-g {
+  flex: 1; min-width: 0; padding: 7px 2px; font-size: 12.5px; font: inherit;
+  font-size: 12.5px; line-height: 1.2; color: var(--muted); cursor: pointer;
+  background: var(--card); border: 1px solid var(--line2); border-radius: var(--radius-s);
+}
+.mn-g:active { opacity: .8; }
+.mn-g.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 .mn-pick .btn.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 
 .mn-body { display: flex; flex-direction: column; gap: 8px; }
@@ -2063,6 +2071,18 @@ a.tp-proj:active { color: var(--accent); }
 .bg-day-note.warn { color: var(--warn); }
 .bg-day-note.danger { color: var(--danger); }
 /* 内訳のひとこと。数字の下にそっと置く */
+/* 経理の予算。棒とその下の数字までが、まとめて押せる1つのボタン
+   （棒だけだと 8px しかなく、指で狙えない） */
+.bg-tap {
+  display: block; width: 100%; padding: 0; margin: 0;
+  background: none; border: 0; font: inherit; color: inherit;
+  text-align: left; cursor: pointer;
+}
+.bg-tap:active { opacity: .7; }
+.bg-tap .chev { display: inline-flex; color: var(--muted); }
+/* 折れ線は予算と同じ枠の中。上の点線が棒のところとの区切りになる */
+.bg-chart { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
+
 .bg-fixed { margin: -2px 0 0; padding-top: 8px; border-top: 1px dashed var(--line); line-height: 1.5; }
 /* 「日常」が「日／常」に割れないように、語の途中では折らない */
 .bg-fixed p { margin: 0; word-break: keep-all; overflow-wrap: break-word; }

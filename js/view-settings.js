@@ -817,10 +817,13 @@
       card.appendChild(ui.btn('いま取り込む', 'ghost full', function () {
         ui.toast('取りに行っています…');
         R.pull().then(function (r) {
-          ui.toast(r.added.length ? r.added.length + '件を取り込みました' : '新しい予定はありませんでした');
+          ui.toast(R.pullText(r));
           DL.app.render();
         }).catch(function (e) { ui.toast(e.message, 'danger'); });
       }, 'roomIn'));
+      card.appendChild(ui.btn('勤務種別の見えかたを確かめる', 'ghost full', function () {
+        dutyCheck(R);
+      }, 'search'));
       card.appendChild(ui.btn('取り込み済みの記録を消す', 'ghost full', function () {
         ui.confirm('「もう取り込んだ」という記録だけを消します。カレンダーの予定は消えません。\n\n'
           + '次に同期すると、日時が重なっていないものは入り直します。', { okText: '消す' })
@@ -835,6 +838,48 @@
       }, 'trash'));
     }
     return card;
+  }
+
+  /* 向こうの勤務種別が、こちらでどう見えているか。
+     どのキーに入っているかは向こう次第なので、見つからなかったときに
+     何が来ているのかを出しておく（直すときの手がかりになる） */
+  function dutyCheck(R) {
+    var body = el('div', { class: 'form' }, el('p', { class: 'muted small', text: '取りに行っています…' }));
+    ui.sheet({ title: '勤務種別の見えかた', body: body });
+
+    R.check().then(function (r) {
+      U.clear(body);
+      var dates = Object.keys(r.duties).sort();
+      body.appendChild(el('div', { class: 'info-row' }, [
+        el('span', { class: 'info-k', text: '向こうの予定' }),
+        el('span', { class: 'info-v', text: r.events + '件' })
+      ]));
+      body.appendChild(el('div', { class: 'info-row' }, [
+        el('span', { class: 'info-k', text: '見つかった勤務' }),
+        el('span', { class: 'info-v', text: dates.length + '日' })
+      ]));
+      if (dates.length) {
+        body.appendChild(el('div', { class: 'list' }, dates.slice(0, 40).map(function (d) {
+          var mine = S.duty(d);
+          return el('div', { class: 'info-row' }, [
+            el('span', { class: 'info-k', text: U.fmtMDW(d) }),
+            el('span', { class: 'info-v', text: S.dutyLabel(r.duties[d])
+              + (mine ? '（こちらは ' + S.dutyLabel(mine) + '。写しません）' : '（こちらは未登録）') })
+          ]);
+        })));
+      } else {
+        body.appendChild(el('p', { class: 'muted small', text:
+          '勤務種別が見つかりませんでした。向こうが返しているキーは次のとおりです。'
+          + 'ここに勤務種別が入っていそうなら、その名前を教えてください。' }));
+        body.appendChild(el('p', { class: 'muted small',
+          text: '返事の項目：' + (r.keys.join('、') || 'なし') }));
+        body.appendChild(el('p', { class: 'muted small',
+          text: '予定のほかに付いていたもの：' + (r.extraKeys.join('、') || 'なし') }));
+      }
+    }).catch(function (e) {
+      U.clear(body);
+      body.appendChild(el('p', { class: 'muted small', text: e.message }));
+    });
   }
 
   function orderCard() {

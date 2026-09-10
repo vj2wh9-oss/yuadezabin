@@ -181,9 +181,7 @@
         b.classList.add('busy');
         DL.roomreserve.pull().then(function (r) {
           b.classList.remove('busy');
-          ui.toast(r.added.length
-            ? r.added.length + '件を取り込みました（' + r.plans + '件のうち）'
-            : r.plans ? '新しい予定はありませんでした' : '時間の登録がありませんでした');
+          ui.toast(DL.roomreserve.pullText(r));
           render();
         }).catch(function (e) {
           b.classList.remove('busy');

@@ -596,6 +596,7 @@
 
   var mSlots = ['dinner'];   // 選んだ食事。画面を描き直しても覚えておく
   var mServ = 1;             // 何人分
+  var mGenre = '';           // 和食・洋食・中華。空なら指定なし
   var mDraft = null;         // まだ採用していない献立
   var mBusy = false;
   var mFrom = '';            // どの献立に合わせて mSlots をそろえたか
@@ -642,7 +643,11 @@
       }
 
       card.appendChild(menuBody(saved, today));
-      if (M.ready()) card.appendChild(slotPick());
+      // 「再考案」でも食事・人数・系統を選び直せるようにしておく
+      if (M.ready()) {
+        card.appendChild(slotPick());
+        card.appendChild(servRow());
+      }
       card.appendChild(el('div', { class: 'row-wrap mn-acts' }, [
         ui.btn(mBusy ? '考えています…' : '再考案', 'ghost', function () {
           mDraft = null;
@@ -668,9 +673,7 @@
 
     /* 選ぶところ。見出しは付けない（朝食・1人分と書いてあれば分かる） */
     card.appendChild(slotPick());
-    card.appendChild(el('div', { class: 'mn-serv' }, ui.segmented(
-      [{ value: 1, label: '1人分' }, { value: 2, label: '2人分' }],
-      mServ, function (v) { mServ = U.num(v, 1); DL.app.render(); })));
+    card.appendChild(servRow());
 
     // まだ出していないとき
     if (!mDraft) {
@@ -750,7 +753,7 @@
       DL.app.render();
       DL.menu.suggest({
         budget: budget || bd.todayLeft, slots: mSlots.slice(), servings: mServ,
-        avoid: avoid, date: date
+        genre: mGenre, avoid: avoid, date: date
       }).then(function (m) {
         mBusy = false;
         mDraft = m;
@@ -766,6 +769,27 @@
         ui.toast(e.message, 'danger');
       });
     }
+  }
+
+  /* 人数と、料理の系統。1行に並べる */
+  function servRow() {
+    return el('div', { class: 'mn-serv' }, [
+      ui.segmented([{ value: 1, label: '1人分' }, { value: 2, label: '2人分' }],
+        mServ, function (v) { mServ = U.num(v, 1); DL.app.render(); }),
+      genrePick()
+    ]);
+  }
+
+  /* 和食・洋食・中華。もう一度押すと外れて、指定なしに戻る */
+  function genrePick() {
+    return el('div', { class: 'mn-genre' }, DL.menu.GENRES.map(function (g) {
+      var on = mGenre === g.value;
+      return el('button', {
+        type: 'button', class: 'mn-g' + (on ? ' on' : ''),
+        'aria-pressed': on ? 'true' : 'false',
+        onclick: function () { mGenre = on ? '' : g.value; DL.app.render(); }
+      }, el('span', { text: g.label }));
+    }));
   }
 
   /* どの食事にするか。押すと入る・外れる（全部外すことはできない） */
