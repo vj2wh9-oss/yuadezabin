@@ -2008,6 +2008,11 @@
     var end = Math.max(0, Math.min(BLOCK_MAX, Math.round(U.num(b.end, 0))));
     // 前の作りの kind は名前に読み替える
     var label = String(b.label || OLD_TIME_KIND[b.kind] || '').trim().slice(0, 20) || 'その他';
+    /* どの案件に、そのうち何分ぶん使ったか。
+       1つの帯の中で複数の案件を並行して進めることがあるので、
+       案件ごとに実時間を持つ。合計は帯の長さを超えられない。
+       空なら案件と結びついていない（睡眠・家事など） */
+    var projects = normalizeBlockProjects(b, Math.max(0, end - start));
     return {
       id: b.id || U.uid(),
       label: label,
@@ -2015,9 +2020,39 @@
       start: start,
       end: end,
       memo: String(b.memo || '').trim().slice(0, 40),
-      // どの案件に使った時間か。空なら案件と結びついていない（睡眠・家事など）
-      projectId: String(b.projectId || '')
+      projects: projects,
+      /* 前の作りとの行き来のために、先頭の案件を残しておく
+         （古い版のアプリが同期の中身を読んでも、1件目までは分かる） */
+      projectId: String((projects[0] || {}).projectId || '')
     };
+  }
+
+  /**
+   * 帯に結びつけた案件を整える。
+   * 前の作り（projectId が1つだけ）のものは、帯の長さぶんを使ったことにする。
+   * @param {object} b
+   * @param {number} span その帯の長さ（分）
+   */
+  function normalizeBlockProjects(b, span) {
+    var raw = Array.isArray(b.projects) ? b.projects : null;
+    if (!raw) {
+      var one = String(b.projectId || '');
+      return one ? [{ projectId: one, min: span }] : [];
+    }
+    var out = [], seen = {}, left = span;
+    raw.forEach(function (x) {
+      x = x || {};
+      var id = String(x.projectId || '');
+      if (!id || seen[id]) return;              // 同じ案件を二重に置かない
+      var min = Math.max(0, Math.round(U.num(x.min, 0)));
+      if (min <= 0) return;
+      min = Math.min(min, left);                // 帯の長さを超えるぶんは切る
+      if (min <= 0) return;
+      left -= min;
+      seen[id] = true;
+      out.push({ projectId: id, min: min });
+    });
+    return out.slice(0, 8);
   }
 
   /** これまでに使った名前を、よく使う順に。書くときの選び口に出す */

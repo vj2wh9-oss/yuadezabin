@@ -88,23 +88,37 @@
       svg.appendChild(nowArc);
     }
 
-    /* まん中に、いちばん長いものの名前と、その時間帯 */
-    var top = T.sums(date)[0];
-    if (top) {
-      var main = list.filter(function (x) { return x.label === top.label; })
-        .sort(function (p, q) { return (q.end - q.start) - (p.end - p.start); })[0];
-      var n = top.label.length;
-      var fs = n > 6 ? 8 : n > 5 ? 9 : n > 4 ? 10 : 11.5;
-      svg.appendChild(svgEl('text', {
-        class: 'tp-mid-v', x: C, y: CY + 1, 'text-anchor': 'middle',
-        style: 'font-size:' + fs + 'px', text: top.label
-      }));
-      if (main) {
-        svg.appendChild(svgEl('text', {
-          class: 'tp-mid-l', x: C, y: CY + 12, 'text-anchor': 'middle',
-          text: T.fmt(main.start) + '〜' + T.fmt(main.end)
-        }));
+    /* まん中は、いま進行中のもの。
+       今日でないときや、いま何も入っていないときは、いちばん長いものを出す */
+    var main = null;
+    if (now !== null) {
+      main = list.filter(function (x) { return now >= x.start && now < x.end; })[0] || null;
+    }
+    if (!main) {
+      var top = T.sums(date)[0];
+      if (top) {
+        main = list.filter(function (x) { return x.label === top.label; })
+          .sort(function (p, q) { return (q.end - q.start) - (p.end - p.start); })[0] || null;
       }
+    }
+    if (main) {
+      /* 名前はなるべく全部入れる。1行に入らなければ字を小さくし、
+         それでも入らなければ2行にする。2行でも入らないぶんだけ…で省く */
+      var mid = midFit(main.label, MID_W);
+      mid.lines.forEach(function (t, i) {
+        svg.appendChild(svgEl('text', {
+          class: 'tp-mid-v', x: C,
+          // 1行なら真ん中、2行なら上下に振り分ける
+          y: CY + 1 + (mid.lines.length === 1 ? 0 : (i === 0 ? -mid.fs * 0.58 : mid.fs * 0.58)),
+          'text-anchor': 'middle', style: 'font-size:' + mid.fs + 'px', text: t
+        }));
+      });
+      svg.appendChild(svgEl('text', {
+        class: 'tp-mid-l', x: C,
+        y: CY + (mid.lines.length === 1 ? 12 : 12 + mid.fs * 0.58),
+        'text-anchor': 'middle',
+        text: T.fmt(main.start) + '〜' + T.fmt(main.end)
+      }));
     }
 
     /* まわりに置く名前。円を囲うように、その時刻の外側へ。
@@ -191,6 +205,57 @@
   var LINE_MS = 400;     // 線が順に伸びるまで
   /* 数字を置く 0/6/12/18 以外の時刻。ここに細い目盛りを引く */
   var TICK_HOURS = [1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 19, 20, 21, 22, 23];
+
+  /* まん中に入れられる幅。輪の内側（r=34）に収まるところで取る */
+  var MID_W = 56;
+  /* 試す字の大きさ。上から順に、入るものを選ぶ */
+  var MID_SIZES = [11.5, 10.5, 9.5, 8.5, 7.5];
+
+  /**
+   * まん中の名前を、なるべく全部入るように組む。
+   * まず1行で入る大きさを探し、無ければ2行で入る大きさを探す。
+   * 2行でも入らないときは、いちばん小さい字で2行に詰めて、あふれるぶんだけ…で省く。
+   * @param {string} s
+   * @param {number} max 1行に入れられる幅
+   * @returns {{lines:Array<string>, fs:number}}
+   */
+  function midFit(s, max) {
+    s = String(s || '');
+    var i;
+    // 1行で入るか
+    for (i = 0; i < MID_SIZES.length; i++) {
+      if (textW(s, MID_SIZES[i]) <= max) return { lines: [s], fs: MID_SIZES[i] };
+    }
+    // 2行で入るか
+    for (i = 0; i < MID_SIZES.length; i++) {
+      var two = splitTwo(s, max, MID_SIZES[i]);
+      if (two) return { lines: two, fs: MID_SIZES[i] };
+    }
+    // 入りきらない。いちばん小さい字で2行にして、後ろを…にする
+    var fs = MID_SIZES[MID_SIZES.length - 1];
+    var head = cut(s, max, fs);
+    var rest = s.slice(head.length);
+    return { lines: [head, fit(rest, max, fs)], fs: fs };
+  }
+
+  /* その大きさで2行に割れるか。割れなければ null */
+  function splitTwo(s, max, fs) {
+    if (textW(s, fs) > max * 2) return null;
+    var head = cut(s, max, fs);
+    var rest = s.slice(head.length);
+    if (!rest || textW(rest, fs) > max) return null;
+    return [head, rest];
+  }
+
+  /* その幅に入るところまで、前から取る（最低1文字） */
+  function cut(s, max, fs) {
+    var out = '';
+    for (var i = 0; i < s.length; i++) {
+      if (i && textW(out + s[i], fs) > max) break;
+      out += s[i];
+    }
+    return out || s.slice(0, 1);
+  }
 
   /* 字の幅のあたり。日本語は1文字ぶん、英数字は半分で数える */
   function textW(s, fs) {
@@ -551,6 +616,15 @@
     })));
   }
 
+  /* 帯の下に添える案件。1件なら名前だけ、複数なら実時間も出す */
+  function projLine(ps) {
+    if (!ps.length) return null;
+    var text = ps.length === 1
+      ? projTitle(ps[0].projectId)
+      : ps.map(function (x) { return projTitle(x.projectId) + ' ' + hm(x.min); }).join('　');
+    return el('span', { class: 'tp-row-p', text: text });
+  }
+
   function rows(date) {
     var box = el('div', { class: 'tp-rows' }, T.ofDay(date).map(function (b) {
       var row = el('button', {
@@ -561,8 +635,9 @@
         el('span', { class: 'tp-row-t', text: T.fmt(b.start) + '〜' + T.fmt(b.end) }),
         el('span', { class: 'tp-row-k' }, [
           el('span', { text: b.label + (b.memo ? '　' + b.memo : '') }),
-          // どの案件に使ったかは、名前の下に小さく添える
-          b.projectId ? el('span', { class: 'tp-row-p', text: projTitle(b.projectId) }) : null
+          /* どの案件に使ったかは、名前の下に小さく添える。
+             複数を並行して進めた帯は、案件ごとの実時間も出す */
+          projLine(T.blockProjects(b))
         ]),
         el('span', { class: 'tp-row-d', text: hm(b.end - b.start) + (b.carry ? '（前の日から）' : b.over ? '（翌日へ）' : '') })
       ]);
@@ -611,22 +686,10 @@
       start: cur ? cur.start : nextFree(date),
       end: cur ? cur.end : Math.min(DAY, nextFree(date) + 60),
       memo: cur ? (cur.memo || '') : '',
-      projectId: cur ? (cur.projectId || '') : ''
+      projects: cur ? T.blockProjects(cur).map(function (x) {
+        return { projectId: x.projectId, min: x.min };
+      }) : []
     };
-
-    /* どの案件に使った時間か。
-       結びつけておくと、案件の画面で「実際にどれだけかかったか」が出る。
-       睡眠や家事のように案件と関係ない時間は、空のままでよい。
-       消した案件が入っていても選び口から消えないよう、その1つは残す */
-    var projOpts = [{ value: '', label: '（案件と結びつけない）' }].concat(
-      S.projects().filter(function (p) {
-        return p.status !== 'archived' || p.id === v.projectId;
-      }).map(function (p) { return { value: p.id, label: p.title }; })
-    );
-    if (v.projectId && !projOpts.some(function (o) { return o.value === v.projectId; })) {
-      projOpts.push({ value: v.projectId, label: '（消された案件）' });
-    }
-    var projSel = ui.select(projOpts, v.projectId);
 
     var startIn = ui.input({ value: T.fmt(v.start), inputmode: 'numeric', placeholder: '8:00' });
     var endIn = ui.input({ value: T.fmt(v.end), inputmode: 'numeric', placeholder: '16:30' });
@@ -678,6 +741,144 @@
     endIn.addEventListener('input', showLen);
     showLen();
 
+    /* ---- 案件と実時間 ----
+
+       1つの帯の中で、複数の案件を並行して進めることがある。
+       「案件と結びつける」を押すたびに、案件を選んで実時間を入れ、
+       1段ずつ積み上げていく。合計は帯の長さを超えられない。 */
+
+    var projBox = el('div', { class: 'tp-projs-edit' });
+
+    /* いまの帯の長さ（分）。始まり・終わりを直している最中の値で見る */
+    function spanNow() {
+      var s = T.parse(startIn.value), e = T.parse(endIn.value);
+      if (s === null || e === null || e <= s) return 0;
+      return e - s;
+    }
+    function usedNow() {
+      return v.projects.reduce(function (n, x) { return n + x.min; }, 0);
+    }
+    function leftNow() { return Math.max(0, spanNow() - usedNow()); }
+
+    function drawProjs() {
+      U.clear(projBox);
+      v.projects.forEach(function (x, i) {
+        projBox.appendChild(el('div', { class: 'tp-pe-row' }, [
+          el('span', { class: 'tp-pe-t', text: projTitle(x.projectId) }),
+          el('button', {
+            type: 'button', class: 'tp-pe-m', 'aria-label': '実時間を直す',
+            onclick: function () { askMin(i); }
+          }, el('span', { text: hm(x.min) })),
+          el('button', {
+            type: 'button', class: 'tp-pe-x', 'aria-label': 'この案件を外す',
+            onclick: function () { v.projects.splice(i, 1); drawProjs(); }
+          }, ui.icon('close', 15))
+        ]));
+      });
+
+      var span = spanNow(), left = leftNow();
+      /* 次の1段。まだ入れられる時間が残っているときだけ出す */
+      if (span > 0 && left > 0) {
+        projBox.appendChild(ui.btn(
+          v.projects.length ? 'もう1件、案件と結びつける' : '案件と結びつける',
+          'ghost full', function () { pickProj(); }, 'plus'));
+      }
+      var note = span <= 0
+        ? '始まりと終わりを入れると、案件を結びつけられます。'
+        : v.projects.length
+          ? '合計 ' + hm(usedNow()) + ' / ' + hm(span) + '（残り ' + hm(left) + '）'
+          : '案件と結びつけると、案件の画面に実際にかかった時間が出ます。';
+      projBox.appendChild(el('p', { class: 'muted small', text: note }));
+    }
+
+    /* 案件を選ぶ。まだ結びつけていないものだけを並べる */
+    function pickProj() {
+      var taken = {};
+      v.projects.forEach(function (x) { taken[x.projectId] = true; });
+      var list = S.projects().filter(function (p) {
+        return p.status !== 'archived' && !taken[p.id];
+      });
+      if (!list.length) {
+        ui.toast(taken && Object.keys(taken).length
+          ? 'ほかに結びつけられる案件がありません' : '案件がまだありません', 'warn');
+        return;
+      }
+      var closePick = ui.sheet({
+        title: '案件を選ぶ',
+        body: el('div', { class: 'list' }, list.map(function (p) {
+          return el('button', { class: 'row tp-pick', onclick: function () {
+            closePick();
+            askMin(-1, p.id);
+          } }, [
+            el('div', { class: 'row-bar', style: { background: p.color } }),
+            el('div', { class: 'row-main' }, [
+              el('div', { class: 'row-title', text: p.title }),
+              el('div', { class: 'row-sub' }, [ui.kindChip(p), ui.catChip(p)])
+            ]),
+            el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+          ]);
+        })),
+        actions: [ui.btn('やめる', 'ghost', function () { closePick(); })]
+      });
+    }
+
+    /**
+     * 実時間を入れる。
+     * @param {number} i 直すとき、その位置。足すときは -1
+     * @param {string} [id] 足すときの案件
+     */
+    function askMin(i, id) {
+      var adding = i < 0;
+      var curMin = adding ? 0 : v.projects[i].min;
+      var pid = adding ? id : v.projects[i].projectId;
+      // 自分のぶんは残りに戻して数える（直すときに自分の時間で頭打ちにならないように）
+      var room = leftNow() + curMin;
+      var input = ui.input({
+        type: 'number', inputmode: 'numeric', min: 1, step: 5,
+        value: curMin || room
+      });
+      var msg = el('p', { class: 'muted small' });
+      function check() {
+        var m = Math.round(U.num(input.value, 0));
+        msg.textContent = m > room
+          ? 'この帯に残っているのは ' + hm(room) + ' までです。'
+          : m > 0 ? hm(m) + '（残り ' + hm(room - m) + '）' : '分で入れてください。';
+        msg.classList.toggle('over', m > room);
+      }
+      input.addEventListener('input', check);
+      check();
+
+      var closeMin = ui.sheet({
+        title: projTitle(pid),
+        body: el('div', { class: 'form' }, [
+          ui.field('実際にかかった時間（分）', input,
+            'この帯 ' + hm(spanNow()) + ' のうち、この案件に使ったぶん'),
+          msg
+        ]),
+        actions: [
+          ui.btn('やめる', 'ghost', function () { closeMin(); }),
+          ui.btn(adding ? '足す' : '直す', 'primary', function () {
+            var m = Math.round(U.num(input.value, 0));
+            if (m <= 0) { ui.toast('時間を入れてください', 'danger'); return; }
+            if (m > room) {
+              ui.toast('合計が帯の長さを超えます（残り ' + hm(room) + '）', 'danger');
+              return;
+            }
+            if (adding) v.projects.push({ projectId: pid, min: m });
+            else v.projects[i].min = m;
+            closeMin();
+            drawProjs();
+          })
+        ]
+      });
+      setTimeout(function () { input.focus(); input.select(); }, 120);
+    }
+
+    // 帯の長さを変えたら、残り時間の表示も追いかける
+    startIn.addEventListener('input', drawProjs);
+    endIn.addEventListener('input', drawProjs);
+    drawProjs();
+
     var close = ui.sheet({
       title: isNew ? '時間を足す' : '時間を直す',
       body: el('div', { class: 'form' }, [
@@ -687,7 +888,7 @@
           ui.field('終わり', endIn)
         ]),
         note,
-        ui.field('案件', projSel),
+        ui.block('案件', projBox),
         ui.field('メモ', memoIn),
         !isNew ? ui.btn('この時間を消す', 'danger full mt', function () {
           S.removeTimeblock(cur && src ? b.date : date, v.id);
@@ -703,9 +904,15 @@
           if (!name) { ui.toast('何をしていたかを書いてください', 'danger'); nameIn.focus(); return; }
           if (s === null || e === null) { ui.toast('時刻を読み取れませんでした', 'danger'); return; }
           if (e <= s) { ui.toast('終わりは始まりより後にしてください', 'danger'); return; }
+          // 帯を縮めたときに、案件の合計がはみ出したままにならないようにする
+          var over = v.projects.reduce(function (n, x) { return n + x.min; }, 0) - (e - s);
+          if (over > 0) {
+            ui.toast('案件の合計が帯の長さを ' + hm(over) + ' 超えています', 'danger');
+            return;
+          }
           S.putTimeblock(src ? b.date : date, {
             id: v.id, label: name, start: s, end: e,
-            memo: memoIn.value, projectId: projSel.value
+            memo: memoIn.value, projects: v.projects
           });
           close();
           ui.toast(isNew ? '足しました' : '直しました');
@@ -755,6 +962,96 @@
 
   /* ---------------- その日だけの画面 ---------------- */
 
+  /* ---------------- 日を移す ----------------
+
+     左右のスワイプと、マウスのホイールで前の日・次の日へ。
+     カレンダーの月移動と同じ作りにそろえてある。 */
+
+  /* 日を移した時刻。画面を描き直すたびに見張りを掛け直すので、
+     この間隔だけは画面の外（ここ）で覚えておく。
+     中に置くと描き直しのたびに0に戻り、勢いよく回したぶん何日も飛んでしまう */
+  var lastHop = 0;
+
+  function goDay(date, delta) {
+    location.hash = '#/time/' + U.addDays(date, delta);
+  }
+
+  /**
+   * スワイプとホイールで日を移せるようにする。
+   *
+   * スワイプは画面の入れ物（#view）ぜんぶ。中身（.page）に掛けると、
+   * 予定の少ない日は下に余白ができて、そこでは効かなくなるため。
+   * 入れ物は描き直しても同じものが残るので、前に掛けたぶんを外してから掛ける。
+   *
+   * ホイールは円グラフの上だけにする。画面ぜんぶに掛けると、
+   * 下のボタンまでスクロールしたいだけのときに日が飛んでしまう。
+   * 円グラフの上には動かすものが無いので、ここなら取り違えようがない。
+   *
+   * @param {Element} root #view
+   * @param {Element} pie 円グラフの入れ物（無ければホイールは掛けない）
+   * @param {string} date いま見ている日
+   */
+  function attachDayNav(root, pie, date) {
+    // 前の日ぶんの見張りを外す（重ねて掛けると1回のスワイプで何日も飛ぶ）
+    if (root._dayNav) root._dayNav();
+
+    var x0 = 0, y0 = 0, t0 = 0, tracking = false, swiped = false;
+    var useWheel = !!pie && !!(window.matchMedia
+      && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
+
+    function onWheel(e) {
+      var dy = e.deltaY;
+      if (!dy || Math.abs(dy) < Math.abs(e.deltaX)) return;
+      e.preventDefault();
+      var now = Date.now();
+      if (now - lastHop < 260) return;    // 1回のホイールで何日も飛ばさない
+      lastHop = now;
+      goDay(date, dy > 0 ? 1 : -1);
+    }
+
+    function onStart(e) {
+      swiped = false;
+      if (e.touches.length !== 1) { tracking = false; return; }
+      tracking = true;
+      x0 = e.touches[0].clientX;
+      y0 = e.touches[0].clientY;
+      t0 = Date.now();
+    }
+
+    function onEnd(e) {
+      if (!tracking) return;
+      tracking = false;
+      var t = e.changedTouches[0];
+      var dx = t.clientX - x0, dy = t.clientY - y0;
+      if (Date.now() - t0 > 700) return;
+      if (Math.abs(dx) < 45 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
+      swiped = true;              // 直後のタップ（帯を押して開く）は無効にする
+      lastHop = Date.now();
+      goDay(date, dx < 0 ? 1 : -1);
+    }
+
+    function onClick(e) {
+      if (!swiped) return;
+      swiped = false;
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    root.addEventListener('touchstart', onStart, { passive: true });
+    root.addEventListener('touchend', onEnd, { passive: true });
+    root.addEventListener('click', onClick, true);
+    if (useWheel) pie.addEventListener('wheel', onWheel, { passive: false });
+
+    root._dayNav = function () {
+      root.removeEventListener('touchstart', onStart, { passive: true });
+      root.removeEventListener('touchend', onEnd, { passive: true });
+      root.removeEventListener('click', onClick, true);
+      // 円グラフは描き直しで消えるので、外すのは念のため
+      if (useWheel) pie.removeEventListener('wheel', onWheel, { passive: false });
+      root._dayNav = null;
+    };
+  }
+
   function render(root, params) {
     var date = U.isISO(params.date) ? params.date : U.today();
     var wrap = el('div', { class: 'page' });
@@ -776,6 +1073,8 @@
     ]));
 
     root.appendChild(wrap);
+    // スワイプ（画面ぜんぶ）と、ホイール（円グラフの上）で前後の日へ
+    attachDayNav(root, wrap.querySelector('.tp-pie-wrap'), date);
   }
 
   DL.views = DL.views || {};

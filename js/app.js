@@ -42,6 +42,10 @@
     var key = location.hash;
     var scroll = window.scrollY;
 
+    /* 画面が入れ物そのものに掛けた見張り（1日の時間のスワイプなど）を外す。
+       中身を消すだけでは残ってしまい、別の画面でも効いてしまう */
+    if (view._dayNav) view._dayNav();
+
     U.clear(view);
     U.clear(actionsEl);
     view.className = 'view view-' + route.name;

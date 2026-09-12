@@ -107,8 +107,9 @@
   /**
    * その日の画面に出す帯。0〜24時に収まる形にそろえる。
    * 前の日から続いているものは、0時から始まる帯として足す。
-   * @returns {Array<{id,label,color,memo,start,end,date,carry,over}>}
+   * @returns {Array<{id,label,color,memo,start,end,date,carry,over,projects,span}>}
    *   date … その帯が保存されている日／carry … 前の日から続いているか
+   *   span … 切り分ける前の、帯そのものの長さ（案件の実時間を日で割るのに使う）
    */
   function ofDay(date) {
     var out = [];
@@ -117,7 +118,8 @@
       if (b.end <= DAY) return;
       var start = Math.max(0, b.start - DAY);
       out.push({
-        id: b.id, label: b.label, color: colorAt(start), memo: b.memo, projectId: b.projectId || '',
+        id: b.id, label: b.label, color: colorAt(start), memo: b.memo,
+        projectId: b.projectId || '', projects: blockProjects(b), span: b.end - b.start,
         start: start, end: Math.min(DAY, b.end - DAY),
         date: prev, carry: true, over: false
       });
@@ -125,7 +127,8 @@
     S.timeblocks(date).forEach(function (b) {
       if (b.start >= DAY) return;      // 翌日ぶんだけの帯は、翌日の画面で出す
       out.push({
-        id: b.id, label: b.label, color: colorAt(b.start), memo: b.memo, projectId: b.projectId || '',
+        id: b.id, label: b.label, color: colorAt(b.start), memo: b.memo,
+        projectId: b.projectId || '', projects: blockProjects(b), span: b.end - b.start,
         start: b.start, end: Math.min(DAY, b.end),
         date: date, carry: false, over: b.end > DAY
       });
@@ -174,9 +177,21 @@
     if (!projectId) return 0;
     var sum = 0;
     eachBlock(opts, function (b) {
-      if (b.projectId === projectId) sum += Math.max(0, b.end - b.start);
+      blockProjects(b).forEach(function (x) {
+        if (x.projectId === projectId) sum += x.min;
+      });
     });
     return sum;
+  }
+
+  /**
+   * その帯に結びついている案件と、それぞれの実時間。
+   * 前の作り（projectId だけ）のものは、帯の長さぶんとして読む。
+   * @returns {Array<{projectId, min}>}
+   */
+  function blockProjects(b) {
+    if (Array.isArray(b.projects)) return b.projects;
+    return b.projectId ? [{ projectId: b.projectId, min: Math.max(0, b.end - b.start) }] : [];
   }
 
   /**
@@ -187,10 +202,11 @@
   function byProject(opts) {
     var map = {};
     eachBlock(opts, function (b, date) {
-      if (!b.projectId) return;
-      var g = map[b.projectId] || (map[b.projectId] = { projectId: b.projectId, min: 0, days: {} });
-      g.min += Math.max(0, b.end - b.start);
-      g.days[date] = true;
+      blockProjects(b).forEach(function (x) {
+        var g = map[x.projectId] || (map[x.projectId] = { projectId: x.projectId, min: 0, days: {} });
+        g.min += x.min;
+        g.days[date] = true;
+      });
     });
     return Object.keys(map).map(function (id) {
       var g = map[id];
@@ -210,9 +226,13 @@
   function projectsOfDay(date) {
     var map = {};
     ofDay(date).forEach(function (b) {
-      if (!b.projectId) return;
-      var g = map[b.projectId] || (map[b.projectId] = { min: 0, color: b.color });
-      g.min += b.end - b.start;
+      /* 日をまたぐ帯は、その日に見えているぶんだけを数える
+         （両方の日で丸ごと数えると、二重になる） */
+      var share = b.span > 0 ? (b.end - b.start) / b.span : 1;
+      blockProjects(b).forEach(function (x) {
+        var g = map[x.projectId] || (map[x.projectId] = { min: 0, color: b.color });
+        g.min += Math.round(x.min * share);
+      });
     });
     return Object.keys(map).map(function (id) {
       var p = S.getProject(id);
@@ -372,6 +392,7 @@
     fmt: fmt, fmtDay: fmtDay, parse: parse, colorAt: colorAt,
     ofDay: ofDay, has: has, sums: sums, filled: filled, gaps: gaps,
     projectMinutes: projectMinutes, byProject: byProject, projectsOfDay: projectsOfDay,
+    blockProjects: blockProjects,
     hours: hours,
     presetFor: presetFor, hasPreset: hasPreset, applyPreset: applyPreset, presetText: presetText
   };
