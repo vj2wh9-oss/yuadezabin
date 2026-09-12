@@ -704,7 +704,7 @@
       return card;
     }
 
-    card.appendChild(menuBody(mDraft, today));
+    card.appendChild(menuBody(mDraft, today, true));
     card.appendChild(el('div', { class: 'row-wrap mn-acts' }, [
       // 絵だけのボタンが並ぶので、この2つは文字だけにして幅を空ける
       ui.btn('これにする', 'primary', function () {
@@ -858,12 +858,17 @@
     });
   }
 
-  /* 一品ぶん。主菜・副菜の別と、使う調味料の分量と、その一品の手順 */
-  function dishBox(d, date, find) {
+  /**
+   * 一品ぶん。主菜・副菜の別と、使う調味料の分量と、その一品の手順。
+   * @param {object} [ctx] {m 献立, meal どの食事, draft まだ採っていないか}
+   *   渡すと「この一品だけ出し直す」が出る
+   */
+  function dishBox(d, date, find, ctx) {
     var box = el('div', { class: 'mn-dish' });
     box.appendChild(el('div', { class: 'mn-dish-h' }, [
       d.role ? ui.chip(d.role, 'soft') : null,
-      el('b', { text: d.name })
+      el('b', { text: d.name }),
+      redoBtn(d, date, ctx)
     ]));
     if ((d.seasonings || []).length) {
       // 家に無いもの・期限の切れたものは、その場で分かるようにする
@@ -888,12 +893,158 @@
         return el('li', { text: s });
       })));
     }
+    box.appendChild(rateRow(d.name));
     return box;
+  }
+
+  /* ---------------- 一品だけ出し直す ----------------
+
+     献立をまるごと考え直すと、気に入っていた主菜まで変わってしまう。
+     主菜はそのままで副菜だけ、とやり直せるようにする。
+     買い物と合計は、返ってきたぶんで組み直す。 */
+
+  var mRedo = '';            // いま出し直している一品（食事:品名）
+
+  function redoKey(meal, d) { return (meal && meal.slot) + ':' + (d && d.name); }
+
+  /* その一品を出し直すボタン。役どころが分からない一品には出さない */
+  function redoBtn(d, date, ctx) {
+    if (!ctx || !d.role || !DL.menu.ready()) return null;
+    var busy = mRedo === redoKey(ctx.meal, d);
+    return el('button', {
+      type: 'button', class: 'mn-redo' + (busy ? ' busy' : ''),
+      disabled: mRedo ? 'disabled' : null,
+      'aria-label': d.role + 'を出し直す',
+      onclick: function () { redoDish(d, date, ctx); }
+    }, [
+      ui.icon('refresh', 13),
+      el('span', { text: busy ? '考え中…' : d.role + 'を出し直す' })
+    ]);
+  }
+
+  function redoDish(d, date, ctx) {
+    if (mRedo) return;
+    var m = ctx.m;
+    mRedo = redoKey(ctx.meal, d);
+    DL.app.render();
+    DL.menu.suggestDish({
+      menu: m, slot: ctx.meal.slot, dish: d, genre: mGenre,
+      budget: m.budget, date: date
+    }).then(function (r) {
+      mRedo = '';
+      var next = swapDish(m, ctx.meal, d, r);
+      if (ctx.draft) mDraft = next;
+      else S.setMenu(date, next);      // 保存で描き直しが走る
+      DL.app.render();
+      ui.toast(d.role + 'を「' + r.dish.name + '」にしました');
+    }).catch(function (e) {
+      mRedo = '';
+      DL.app.render();
+      ui.toast(e.message, 'danger');
+    });
+  }
+
+  /**
+   * 一品を差し替えた献立を作る。
+   * 買い物は返ってきたぶんで置き替えるが、買った印は品名で引き継ぐ。
+   */
+  function swapDish(m, meal, d, r) {
+    var meals = (m.meals || []).map(function (x) {
+      if (x !== meal) return x;
+      return Object.assign({}, x, {
+        // 主菜が変われば呼び名も変わる。返ってこなければ元のまま
+        name: r.name || x.name,
+        dishes: (x.dishes || []).map(function (y) { return y === d ? r.dish : y; })
+      });
+    });
+    var got = {};
+    (m.shopping || []).forEach(function (s) { if (s.got) got[s.name] = true; });
+    var shop = (r.shopping || m.shopping || []).map(function (s) {
+      return Object.assign({}, s, { got: !!got[s.name] });
+    });
+    return S.normalizeMenu(Object.assign({}, m, {
+      meals: meals, shopping: shop,
+      // 新しい一品の調味料の言い換えを、この献立の突き合わせに足す
+      match: Object.assign({}, m.match, r.match),
+      total: 0,                       // 買い物から数え直す
+      note: r.note || m.note,
+      at: m.at
+    }));
+  }
+
+  /* ---------------- 作った料理の評価とメモ ----------------
+
+     星は押してすぐ入る。メモは押すと書ける。
+     星2以下を付けたものは、次からあまり出さないよう向こうへ渡す。
+     メモは、同じ料理がまた来たときに出して、向こうにも渡す。 */
+
+  function rateRow(name) {
+    var note = S.dishNote(name) || { stars: 0, memo: '' };
+    var box = el('div', { class: 'mn-rate' });
+
+    var stars = el('div', { class: 'mn-stars', role: 'group',
+      'aria-label': name + 'の評価' });
+    for (var i = 1; i <= 5; i++) {
+      (function (n) {
+        stars.appendChild(el('button', {
+          type: 'button', class: 'mn-star' + (n <= note.stars ? ' on' : ''),
+          'aria-label': '星' + n, 'aria-pressed': n <= note.stars ? 'true' : 'false',
+          // もう一度同じ星を押したら評価を外す
+          onclick: function () {
+            S.setDishNote(name, { stars: n === note.stars ? 0 : n, memo: note.memo });
+            DL.app.render();
+          }
+        }, ui.icon('star', 17)));
+      }(i));
+    }
+    box.appendChild(stars);
+
+    // 星2以下は、次からあまり出さない。そうと分かるようにしておく
+    if (note.stars && note.stars <= 2) {
+      box.appendChild(ui.chip('あまり出さない', 'ghosty'));
+    }
+    box.appendChild(el('button', {
+      type: 'button', class: 'mn-memo-btn' + (note.memo ? ' has' : ''),
+      onclick: function () { memoSheet(name, note); }
+    }, [ui.icon('edit', 14), el('span', { text: note.memo ? 'メモを直す' : 'メモ' })]));
+
+    // 前に書いたメモは、次に同じ料理が来たときに読めるように出しておく
+    if (note.memo) {
+      box.appendChild(el('p', { class: 'mn-memo', text: note.memo }));
+    }
+    return box;
+  }
+
+  function memoSheet(name, note) {
+    var input = ui.textarea
+      ? ui.textarea({ value: note.memo, maxlength: 200, rows: 4 })
+      : ui.input({ value: note.memo, maxlength: 200 });
+    var close = ui.sheet({
+      title: name,
+      body: el('div', { class: 'form' }, [
+        ui.field('次に作るときのメモ', input,
+          '例）しょうゆを控えめに／煮る時間をもう5分'),
+        el('p', { class: 'muted small',
+          text: '同じ料理がまた出てきたときに、ここに書いたことを踏まえてもらいます。' })
+      ]),
+      actions: [
+        ui.btn('キャンセル', 'ghost', function () { close(); }),
+        ui.btn('保存', 'primary', function () {
+          S.setDishNote(name, { stars: note.stars, memo: input.value });
+          close();
+          ui.toast('残しました');
+        })
+      ]
+    });
+    setTimeout(function () { input.focus(); }, 120);
   }
 
   /* 買うものを開いたままにしておくか。印を付けるたびに描き直しが走るので、
      ここで覚えていないと、1つ付けるたびに閉じてしまう */
   var shopOpen = false;
+
+  /* 開いている食事（日付:食事）。一品を出し直したときに閉じてしまわないように */
+  var mealOpen = {};
 
   /**
    * 買い物リストの1行。印を付けて消し込み、値段は押すと直せる。
@@ -976,8 +1127,11 @@
     setTimeout(function () { input.focus(); input.select(); }, 120);
   }
 
-  /* 献立の中身。ホームでも日別画面でも同じものを出す */
-  function menuBody(m, date) {
+  /**
+   * 献立の中身。ホームでも日別画面でも同じものを出す
+   * @param {boolean} [draft] まだ採っていない下書きか（出し直しの書き戻し先が変わる）
+   */
+  function menuBody(m, date, draft) {
     var yen = DL.docs.yen;
     var box = el('div', { class: 'mn-body' });
     // 献立を作ったときに突き合わせた呼び方（しょうが(チューブ)＝おろししょうが）で当てる
@@ -986,7 +1140,10 @@
     var extras = DL.menu.extras(m, date);
 
     (m.meals || []).forEach(function (x) {
-      var open = el('details', { class: 'mn-meal' });
+      /* 一品を出し直すと描き直しが走るので、開いていた食事は開いたままにする */
+      var okey = date + ':' + x.slot;
+      var open = el('details', { class: 'mn-meal', open: mealOpen[okey] });
+      open.addEventListener('toggle', function () { mealOpen[okey] = open.open; });
       open.appendChild(el('summary', {}, [
         ui.chip(DL.menu.SLOT_LABEL[x.slot] || '', 'soft'),
         el('b', { class: 'mn-name', text: x.name }),
@@ -994,7 +1151,7 @@
       ]));
       if (x.dishes.length) {
         open.appendChild(el('div', { class: 'mn-dishes' }, x.dishes.map(function (d) {
-          return dishBox(d, date, find);
+          return dishBox(d, date, find, { m: m, meal: x, draft: !!draft });
         })));
       }
       // 前に採ってあった献立は、手順が一品ごとではなく献立ぜんぶで1つ

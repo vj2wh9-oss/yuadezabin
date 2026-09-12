@@ -2040,6 +2040,16 @@ a.tp-proj:active { color: var(--accent); }
 .mn-dish { border-top: 1px solid var(--line); padding-top: 8px; }
 .mn-dish:first-child { border-top: 0; padding-top: 0; }
 .mn-dish-h { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+/* その一品だけ出し直す。品名の右端に寄せる */
+.mn-redo {
+  margin-left: auto; flex: none;
+  display: inline-flex; align-items: center; gap: 3px; font: inherit; font-size: 11px;
+  padding: 2px 7px; border-radius: 999px; cursor: pointer;
+  color: var(--muted); background: none; border: 1px solid var(--line2);
+}
+.mn-redo:active { opacity: .75; }
+.mn-redo.busy { color: var(--accent); border-color: var(--accent); }
+.mn-redo[disabled] { opacity: .5; cursor: default; }
 .mn-seas {
   display: flex; gap: 6px; margin-top: 4px;
   font-size: 12px; line-height: 1.6; color: var(--muted);
@@ -2081,6 +2091,31 @@ a.tp-proj:active { color: var(--accent); }
 .mn-price b { font-variant-numeric: tabular-nums; }
 /* 実際に払った額を控えてあるものは、見当ではないと分かるようにする */
 .mn-price.known b { color: var(--ok); }
+/* 作った料理の評価とメモ */
+.mn-rate { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.mn-stars { display: flex; gap: 1px; }
+.mn-star {
+  display: inline-flex; padding: 2px; border: 0; background: none; cursor: pointer;
+  color: var(--line2);
+}
+.mn-star:active { opacity: .6; }
+/* 付けた星は塗りつぶす */
+.mn-star.on { color: var(--warn); }
+.mn-star.on svg { fill: currentColor; }
+.mn-memo-btn {
+  display: inline-flex; align-items: center; gap: 4px; font: inherit; font-size: 11.5px;
+  padding: 3px 8px; border-radius: var(--radius-s); cursor: pointer;
+  color: var(--muted); background: none; border: 1px solid var(--line2);
+}
+.mn-memo-btn.has { color: var(--accent); border-color: var(--accent); }
+.mn-memo-btn:active { opacity: .75; }
+/* 前に書いたメモ。同じ料理が来たときに読めるように出す */
+.mn-memo {
+  flex: 1 0 100%; margin: 2px 0 0; font-size: 11.5px; color: var(--text);
+  padding: 5px 8px; border-radius: var(--radius-s);
+  background: var(--card2); border-left: 2px solid var(--accent);
+}
+
 .mn-foot { margin: 0; }
 .mn-foot.over { color: var(--danger); }
 
@@ -2126,6 +2161,13 @@ a.tp-proj:active { color: var(--accent); }
 
 /* 日用品・消耗品を今日ぶんから外したときの断り書き */
 .bg-supply { margin: -2px 0 0; }
+
+/* 固定費のまとめ入力。記録するものを選ぶ */
+.due-pick { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.due-pick .due-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 選ばなかったものは、そうと分かるように薄くする */
+.due-pick:has(.check:not(:checked)) .due-t { color: var(--muted); text-decoration: line-through; }
+.due-pick:has(.check:not(:checked)) b { color: var(--muted); }
 
 .bg-fixed { margin: -2px 0 0; padding-top: 8px; border-top: 1px dashed var(--line); line-height: 1.5; }
 /* 「日常」が「日／常」に割れないように、語の途中では折らない */

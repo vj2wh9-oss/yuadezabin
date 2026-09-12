@@ -364,8 +364,10 @@
 
   /* ---------------- 固定費 ---------------- */
 
+  /* 今月ぶんの固定費の合計。解約したものと、今月だけ休むぶんは数えない */
   function monthlyFixed(list) {
-    return list.filter(function (r) { return r.active; })
+    var ym = U.today().slice(0, 7);
+    return list.filter(function (r) { return E.liveInMonth(r, ym); })
       .reduce(function (n, r) { return n + r.amount; }, 0);
   }
 
@@ -383,32 +385,75 @@
       ]),
       el('div', { class: 'muted small', text: names + '　合計 ' + D.yen(total) }),
       el('div', { class: 'row-wrap' }, [
-        ui.btn('まとめて記録', 'primary', function () {
-          var n = S.postRecurring(due);
-          ui.toast(n + '件を記録しました');
-        }, 'check'),
-        ui.btn('内訳を見る', 'ghost', function () { dueSheet(due); })
+        ui.btn('選んで記録', 'primary', function () { dueSheet(due); }, 'check')
       ])
     ]);
   }
 
+  /**
+   * まとめ入力。記録するものを選ぶ。
+   *
+   * 選ばなかったものは、その月だけ休みにする。
+   * 引き落としが無かった月まで催促され続けるのも、
+   * 払っていないものが固定費に数えられて予算が減るのも、どちらも困るため。
+   * 休みにするのはその月かぎりで、翌月からはまた出てくる。
+   */
   function dueSheet(due) {
+    var pick = {};
+    due.forEach(function (d, i) { pick[i] = true; });   // はじめは全部選んでおく
+
     var list = el('div', { class: 'fb-preview' });
-    due.forEach(function (d) {
-      list.appendChild(el('div', { class: 'fb-prow' }, [
-        el('span', { text: d.ym.replace('-', '年') + '月　' + d.name }),
-        el('b', { text: D.yen(d.amount) })
-      ]));
-    });
+    var foot = el('p', { class: 'muted small' });
+
+    function draw() {
+      U.clear(list);
+      due.forEach(function (d, i) {
+        list.appendChild(el('label', { class: 'fb-prow due-pick' }, [
+          el('input', {
+            type: 'checkbox', class: 'check', checked: !!pick[i],
+            onchange: function (e) { pick[i] = e.target.checked; draw(); }
+          }),
+          el('span', { class: 'due-t', text: d.ym.replace('-', '年') + '月　' + d.name }),
+          el('b', { text: D.yen(d.amount) })
+        ]));
+      });
+      var on = due.filter(function (_, i) { return pick[i]; });
+      var off = due.length - on.length;
+      foot.textContent = '記録する ' + on.length + '件（'
+        + D.yen(on.reduce(function (n, d) { return n + d.amount; }, 0)) + '）'
+        + (off ? '　／　選ばなかった ' + off + '件は、その月だけ休みにします' : '');
+    }
+    draw();
+
     var close = ui.sheet({
-      title: 'これから記録する固定費',
+      title: '固定費をまとめて記録',
       body: el('div', { class: 'form' }, [
-        list
+        el('p', { class: 'muted small', text:
+          '記録するものを選んでください。選ばなかったものは、その月だけ固定費に数えません'
+          + '（翌月からはまた出てきます）。' }),
+        list,
+        foot,
+        el('div', { class: 'row-wrap' }, [
+          ui.btn('すべて選ぶ', 'ghost tiny', function () {
+            due.forEach(function (_, i) { pick[i] = true; }); draw();
+          }),
+          ui.btn('すべて外す', 'ghost tiny', function () {
+            due.forEach(function (_, i) { pick[i] = false; }); draw();
+          })
+        ])
       ]),
       actions: [
         ui.btn('やめる', 'ghost', function () { close(); }),
         ui.btn('記録する', 'primary', function () {
-          var n = S.postRecurring(due); close(); ui.toast(n + '件を記録しました');
+          var on = due.filter(function (_, i) { return pick[i]; });
+          var off = due.filter(function (_, i) { return !pick[i]; });
+          var n = S.postRecurring(on);
+          var m = S.skipRecurring(off);
+          close();
+          ui.toast([
+            n ? n + '件を記録しました' : '',
+            m ? m + '件はその月を休みにしました' : ''
+          ].filter(Boolean).join('　') || '何も選ばれていません');
         })
       ]
     });
@@ -419,16 +464,23 @@
     if (!list.length) {
       box.appendChild(el('p', { class: 'muted small', text: '毎月きまって出るものを登録できます。' }));
     } else {
+      var nowYm = U.today().slice(0, 7);
       var rows = el('div', { class: 'fx-list' });
       list.forEach(function (r) {
+        // 解約して、もう出ていかなくなったものは薄く出す（記録は残す）
+        var ended = E.endedBy(r, nowYm);
         rows.appendChild(el('button', {
-          class: 'fx-row' + (r.active ? '' : ' off'),
+          class: 'fx-row' + (r.active && !ended ? '' : ' off'),
           onclick: function () { recurringSheet(r); }
         }, [
           el('div', { class: 'fx-main' }, [
             el('div', { class: 'row-title' }, [
               el('span', { text: r.name }),
-              r.active ? null : ui.chip('休止中', 'ghosty')
+              r.active ? null : ui.chip('休止中', 'ghosty'),
+              ended ? ui.chip(r.endYm.replace('-', '/') + ' に解約', 'ghosty') : null,
+              (!ended && r.endYm) ? ui.chip(r.endYm.replace('-', '/') + ' まで', 'warn') : null,
+              (!ended && (r.skipYm || []).indexOf(nowYm) >= 0)
+                ? ui.chip('今月は休み', 'ghosty') : null
             ]),
             el('div', { class: 'row-sub' }, [
               ui.chip('毎月' + r.day + '日', 'soft'),
@@ -943,6 +995,9 @@
     var firstYm = r ? r.startYm
       : (from && from.last ? U.addYm(String(from.last).slice(0, 7), 1) : U.today().slice(0, 7));
     var startIn = ui.input({ type: 'month', value: firstYm });
+    /* 契約を解除した月。入れておくと、その次の月から勝手に外れる。
+       解約の手続きをしたその場で入れて、あとは忘れられるように */
+    var endIn = ui.input({ type: 'month', value: v.endYm || '' });
     // 棚卸しのため。年契約の更新日や、解約できる日を入れておく
     var renewIn = ui.input({ type: 'date', value: v.renewOn || '' });
     var catOpts = cats.slice();
@@ -968,6 +1023,8 @@
         ui.field('支払先', vendorIn),
         ui.field('いつから', startIn,
           from ? '最後に出た月の翌月にしてあります。さかのぼるとその月ぶんも起こします' : ''),
+        ui.field('契約解除した月', endIn,
+          '入れると、その次の月から固定費に数えません（空なら続いています）'),
         ui.field('次の更新日', renewIn),
         el('p', { class: 'muted small', text: '年でいくら：'
           + D.yen(E.yearlyOf({ amount: U.num(amountIn.value, 0) || v.amount || 0 })) }),
@@ -990,7 +1047,7 @@
             book: bk, name: name, amount: U.num(amountIn.value, 0),
             category: catSel.value, day: U.num(dayIn.value, 1),
             vendor: vendorIn.value.trim(),
-            startYm: startIn.value, active: activeChk.checked,
+            startYm: startIn.value, endYm: endIn.value, active: activeChk.checked,
             renewOn: renewIn.value
           };
           // 支出から起こしたときは、案件と名義も引き継ぐ

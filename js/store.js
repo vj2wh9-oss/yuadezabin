@@ -166,6 +166,8 @@
     menus: {},
     // 実際に払った値段の控え { '<ならした名前>': {name, price, at} }
     prices: {},
+    // 作った料理の評価とメモ { '<ならした名前>': {name, stars, memo, at} }
+    dishNotes: {},
     // いま手元に置いてあるプロット（1つだけ）
     plot: null,
     // 貯金（貯蓄用の口座）。残高は銀行から読むか、手で入れる
@@ -318,6 +320,7 @@
     s.settings.logs = normalizeLogs(s.settings.logs);
     s.settings.menus = normalizeMenus(s.settings.menus);
     s.settings.prices = normalizePrices(s.settings.prices);
+    s.settings.dishNotes = normalizeDishNotes(s.settings.dishNotes);
     s.settings.savings = normalizeSavings(s.settings.savings);
     s.settings.plot = normalizePlot(s.settings.plot);
     s.settings.pantry = (s.settings.pantry || []).map(normalizePantry);
@@ -1134,6 +1137,16 @@
     r.issuerId = r.issuerId || '';
     r.startYm = /^\d{4}-\d{2}$/.test(String(r.startYm)) ? r.startYm : U.today().slice(0, 7);
     r.lastYm = /^\d{4}-\d{2}$/.test(String(r.lastYm)) ? r.lastYm : '';   // 最後に記録した月
+    /* 契約を解除した月。その月までは出ていき、次の月から数えない。
+       解約の手続きをした時点で入れておけば、あとは勝手に外れる */
+    r.endYm = /^\d{4}-\d{2}$/.test(String(r.endYm)) ? r.endYm : '';
+    /* その月だけ休むぶん。まとめ入力で選ばなかった月がここに入る。
+       解約とちがって、その月かぎり（翌月からはまた出る） */
+    r.skipYm = (Array.isArray(r.skipYm) ? r.skipYm : [])
+      .map(function (s) { return String(s || ''); })
+      .filter(function (s) { return /^\d{4}-\d{2}$/.test(s); })
+      .filter(function (s, i, a) { return a.indexOf(s) === i; })
+      .sort().slice(-60);
     r.active = r.active !== false;
     // 棚卸しのため。次に契約が更新される日と、最後に見直した月
     r.renewOn = U.isISO(r.renewOn) ? r.renewOn : '';
@@ -1714,6 +1727,80 @@
       .sort(function (a, b) { return U.cmp(String(b.at), String(a.at)); })
       .slice(0, Math.max(0, max || 60))
       .map(function (v) { return { name: v.name, price: v.price }; });
+  }
+
+  /* ---------------- 作った料理の評価とメモ ----------------
+
+     実際に作ったものを星5段階で評価し、ひとこと残しておく。
+     星2以下は「あまり出さない」ものとして、次から避けてもらう。
+     メモは、同じ料理がまた来たときに渡して活かしてもらう。
+
+     鍵は料理の名前。表記のゆれは値段の控えと同じならしかたでそろえる。 */
+
+  var DISH_MAX = 400;
+
+  function normalizeDishNotes(map) {
+    var out = {};
+    Object.keys(map || {}).slice(0, DISH_MAX).forEach(function (k) {
+      var key = priceKey(k);
+      var v = map[k] || {};
+      var stars = Math.min(5, Math.max(0, Math.round(U.num(v.stars, 0))));
+      var memo = String(v.memo || '').trim().slice(0, 200);
+      if (!key || (!stars && !memo)) return;
+      out[key] = {
+        name: String(v.name || k).trim().slice(0, 60),
+        stars: stars, memo: memo,
+        at: v.at || new Date().toISOString()
+      };
+    });
+    return out;
+  }
+
+  function dishNotes() { return state.settings.dishNotes || {}; }
+
+  /** その料理の評価とメモ。無ければ null */
+  function dishNote(name) { return dishNotes()[priceKey(name)] || null; }
+
+  /**
+   * 料理の評価とメモを残す。星0かつメモ空なら控えを消す。
+   * @param {string} name 料理の名前
+   * @param {object} v {stars, memo}
+   */
+  function setDishNote(name, v) {
+    var key = priceKey(name);
+    if (!key) return null;
+    var map = state.settings.dishNotes || (state.settings.dishNotes = {});
+    var stars = Math.min(5, Math.max(0, Math.round(U.num(v && v.stars, 0))));
+    var memo = String((v && v.memo) || '').trim().slice(0, 200);
+    if (!stars && !memo) delete map[key];
+    else {
+      map[key] = {
+        name: String(name).trim().slice(0, 60), stars: stars, memo: memo,
+        at: new Date().toISOString()
+      };
+    }
+    save();
+    return map[key] || null;
+  }
+
+  /** 星2以下の料理。次から避けてもらう */
+  function dislikedDishes(max) {
+    var map = dishNotes();
+    return Object.keys(map).filter(function (k) { return map[k].stars && map[k].stars <= 2; })
+      .sort(function (a, b) { return map[a].stars - map[b].stars; })
+      .slice(0, Math.max(0, max || 20))
+      .map(function (k) { return map[k].name; });
+  }
+
+  /** メモの付いている料理。同じものが来たときに活かしてもらう */
+  function dishHints(max) {
+    var map = dishNotes();
+    return Object.keys(map).filter(function (k) { return map[k].memo; })
+      .sort(function (a, b) { return U.cmp(String(map[b].at), String(map[a].at)); })
+      .slice(0, Math.max(0, max || 24))
+      .map(function (k) {
+        return { name: map[k].name, stars: map[k].stars, memo: map[k].memo };
+      });
   }
 
   function getMenu(date) { return (state.settings.menus || {})[date] || null; }
@@ -2362,6 +2449,40 @@
     });
     if (made) save();
     return made;
+  }
+
+  /**
+   * その月だけ、この固定費を休みにする。
+   * まとめ入力で選ばなかったぶんに使う。解約（endYm）とちがって、
+   * その月かぎりで、翌月からはまた出てくる。
+   *
+   * @param {Array<{recurringId, ym}>} jobs
+   * @returns {number} 休みにした数
+   */
+  function skipRecurring(jobs) {
+    var n = 0;
+    (jobs || []).forEach(function (j) {
+      var r = getRecurring(j.recurringId);
+      if (!r || !/^\d{4}-\d{2}$/.test(String(j.ym))) return;
+      r.skipYm = r.skipYm || [];
+      if (r.skipYm.indexOf(j.ym) >= 0) return;
+      r.skipYm.push(j.ym);
+      normalizeRecurring(r);
+      n++;
+    });
+    if (n) save();
+    return n;
+  }
+
+  /** その月の休みを取り消す（また出てくるようにする） */
+  function unskipRecurring(id, ym) {
+    var r = getRecurring(id);
+    if (!r) return false;
+    var i = (r.skipYm || []).indexOf(ym);
+    if (i < 0) return false;
+    r.skipYm.splice(i, 1);
+    save();
+    return true;
   }
 
   /**
@@ -3140,7 +3261,7 @@
     tags: tags, getTag: getTag, addTag: addTag, updateTag: updateTag,
     removeTag: removeTag, reorderTags: reorderTags, tagUseCount: tagUseCount,
     recurring: recurring, getRecurring: getRecurring, addRecurring: addRecurring,
-    updateRecurring: updateRecurring, removeRecurring: removeRecurring, postRecurring: postRecurring,
+    updateRecurring: updateRecurring, removeRecurring: removeRecurring, postRecurring: postRecurring, skipRecurring: skipRecurring, unskipRecurring: unskipRecurring,
     items: items, getItem: getItem, addItem: addItem, updateItem: updateItem, removeItem: removeItem,
     stockMoves: stockMoves, getMove: getMove, addMove: addMove, updateMove: updateMove, removeMove: removeMove,
     MOVE_KINDS: MOVE_KINDS,
@@ -3157,9 +3278,12 @@
     getLog: getLog, setLog: setLog, logDates: logDates, MOODS: MOODS,
     getMenu: getMenu, setMenu: setMenu, removeMenu: removeMenu,
     setShopGot: setShopGot, clearShopGot: clearShopGot,
+    dishNotes: dishNotes, dishNote: dishNote, setDishNote: setDishNote,
+    dislikedDishes: dislikedDishes, dishHints: dishHints,
     prices: prices, priceOf: priceOf, setPrice: setPrice,
     priceList: priceList, priceKey: priceKey,
     recentMenuNames: recentMenuNames, normalizeMenu: normalizeMenu,
+    normalizeDish: normalizeDish, DISH_ROLES: DISH_ROLES,
     pantry: pantry, getPantry: getPantry, addPantry: addPantry,
     updatePantry: updatePantry, removePantry: removePantry,
     leftovers: leftovers, getLeftover: getLeftover, addLeftover: addLeftover,

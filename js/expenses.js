@@ -107,9 +107,31 @@
   function fixedOfMonth(ym, book) {
     var U = DL.util;
     return (DL.store.settings.recurring || []).filter(function (r) {
-      return (!book || r.book === book) && r.active !== false
-        && String(r.startYm || '') <= ym;      // 始まる前の月には出ていかない
+      return (!book || r.book === book) && liveInMonth(r, ym);
     }).reduce(function (n, r) { return n + Math.max(0, U.num(r.amount, 0)); }, 0);
+  }
+
+  /**
+   * その月に出ていく固定費か。
+   *
+   *   ・止めているもの（active が false）は数えない
+   *   ・始まる前の月には出ていかない（startYm）
+   *   ・契約を解除した月までは出ていき、次の月から数えない（endYm）
+   *   ・その月だけ休むぶんは数えない（skipYm。まとめ入力で選ばなかった月）
+   *
+   * @param {object} r 固定費
+   * @param {string} ym 'YYYY-MM'
+   */
+  function liveInMonth(r, ym) {
+    if (!r || r.active === false) return false;
+    if (String(r.startYm || '') > ym) return false;
+    if (r.endYm && ym > r.endYm) return false;
+    return (r.skipYm || []).indexOf(ym) < 0;
+  }
+
+  /** 契約を解除して、もう出ていかなくなったか（一覧の見た目に使う） */
+  function endedBy(r, ym) {
+    return !!(r && r.endYm && ym > r.endYm);
   }
 
   /**
@@ -469,7 +491,8 @@
       if (U.cmp(ym, r.startYm) < 0) ym = r.startYm;
       // 何年もさかのぼって大量に作らないよう、24ヶ月ぶんで打ち切る
       for (var i = 0; i < 24 && U.cmp(ym, now) <= 0; i++) {
-        if (!recurringRecorded(r, ym, rows)) {
+        // 解約した先の月と、その月だけ休むぶんは催促しない
+        if (liveInMonth(r, ym) && !recurringRecorded(r, ym, rows)) {
           out.push({ recurringId: r.id, ym: ym, name: r.name, amount: r.amount, book: r.book });
         }
         ym = U.addYm(ym, 1);
@@ -544,7 +567,7 @@
     yearlyOf: yearlyOf, review: review, renewAlerts: renewAlerts,
     RECEIPT_FOLDER: RECEIPT_FOLDER, receiptFolder: receiptFolder,
     BOOKS: BOOKS, categories: categories, baseCategories: baseCategories, bookLabel: bookLabel,
-    total: total, isSupply: isSupply, dailyBudget: dailyBudget, budgetSeries: budgetSeries, fixedOfMonth: fixedOfMonth, byCategory: byCategory, byTag: byTag, byMonth: byMonth, shrink: shrink,
+    total: total, isSupply: isSupply, liveInMonth: liveInMonth, endedBy: endedBy, dailyBudget: dailyBudget, budgetSeries: budgetSeries, fixedOfMonth: fixedOfMonth, byCategory: byCategory, byTag: byTag, byMonth: byMonth, shrink: shrink,
     toCSV: toCSV, dueRecurring: dueRecurring, recurringRecorded: recurringRecorded,
     fixedCandidates: fixedCandidates
   };

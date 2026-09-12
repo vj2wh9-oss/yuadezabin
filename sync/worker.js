@@ -51,6 +51,8 @@
  *   GET    /v1/ocr/status  → { key, r2, model, strongModel, reasoning, maxTokens }（鍵は返さない）
  *   POST   /v1/ocr/receipt → 本文 {fileId} → { data:{store,date,total,items,…}, model, retried, usage }
  *   POST   /v1/menu        → 本文 {budget,slots,servings,genre,avoid,prices} → { data:{meals,shopping,total,note} }
+ *   POST   /v1/menu/dish   → 本文 {budget,slot,role,keep,shopping,…} → { data:{dish,shopping,total,note} }
+ *                             献立まるごとではなく、主菜・副菜など一品だけ出し直す
  *   POST   /v1/ocr/card    → 本文 {fileId} → { data:{company,contact,email,tel,address,…}, model, retried, usage }
  *                             R2 に置いた写真を読み、JSON だけ受け取る。
  *                             鍵は Worker の secret にだけ置き、アプリには渡さない
@@ -106,7 +108,7 @@ export default {
           plotWebhook: !!env.DISCORD_PLOT_WEBHOOK,
           menuWebhook: !!env.DISCORD_MENU_WEBHOOK
         },
-        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/menu/send', '/v1/reschedule', '/v1/bank/balance', '/v1/plot', '/v1/plot/send', '/v1/spend'],
+        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/menu/dish', '/v1/menu/send', '/v1/reschedule', '/v1/bank/balance', '/v1/plot', '/v1/plot/send', '/v1/spend'],
         // どの食事に対応しているか。deploy を忘れると古いままなのが分かる
         menuSlots: MENU_SLOTS,
         note: '各 /v1/... は Authorization: Bearer <合鍵> が必要です'
@@ -224,6 +226,10 @@ export default {
 
       if (url.pathname === '/v1/menu') {
         return menu(request, env, cors);
+      }
+
+      if (url.pathname === '/v1/menu/dish') {
+        return menuDish(request, env, cors);
       }
 
       if (url.pathname === '/v1/menu/send') {
@@ -618,16 +624,10 @@ const SLOT_JA = { breakfast: '朝食', lunch: '昼食', dinner: '夕飯' };
 /* 料理の系統。選ばれていなければ何も言わない（向こうの好きにしてもらう） */
 const GENRE_JA = { washoku: '和食', yoshoku: '洋食', chuka: '中華' };
 
-function menuPrompt(o) {
-  const slots = (o.slots || []).map((s) => SLOT_JA[s] || s).join('と');
-  const people = o.servings === 2 ? '成人男性2人分' : '成人男性1人分';
+/* 献立ぜんぶでも、一品の差し替えでも変わらない決まりごと。
+   one=true は「いまある献立の一品だけ」を頼むとき */
+function menuCommonLines(o, one) {
   const lines = [
-    '日本のスーパーで買える材料で、自炊の献立を考えてください。',
-    '予算は買い物の合計で ' + o.budget + ' 円まで。これを超えないでください。',
-    '作るのは ' + slots + '。量は' + people + 'です。',
-    '1食は、大きめの主菜を1品と、副菜を1品の、あわせて2品以上にしてください。'
-      + '予算と手間に余裕があれば汁物やごはんを足しても構いません。',
-    '副菜はもやし・豆腐・卵・きのこ・旬の野菜など、安く作れるもので構いません。',
     'お米はいつも家にあるので、買い物には入れないでください（ごはんは献立に入れて構いません）。',
     '塩・こしょう・しょうゆ・みそ・砂糖・みりん・酒・油などの基本の調味料も、'
       + '家にあるものとして買い物には入れないでください。',
@@ -646,12 +646,10 @@ function menuPrompt(o) {
   ];
   // 系統を選んであれば、そこにそろえてもらう
   if (GENRE_JA[o.genre]) {
-    lines.push('献立は' + GENRE_JA[o.genre] + 'でまとめてください。'
-      + '主菜も副菜も' + GENRE_JA[o.genre] + 'にそろえ、ほかの系統の料理は混ぜないでください。');
-  }
-  // 朝はそこまで作り込めないので、手早いものにしてもらう
-  if ((o.slots || []).indexOf('breakfast') >= 0) {
-    lines.push('朝食は10分ほどで作れる軽いものにしてください（主菜1品と副菜1品の決まりは、朝食には当てはめなくて構いません）。');
+    lines.push(one
+      ? 'この一品も' + GENRE_JA[o.genre] + 'にしてください。ほかの系統の料理は混ぜないでください。'
+      : '献立は' + GENRE_JA[o.genre] + 'でまとめてください。'
+        + '主菜も副菜も' + GENRE_JA[o.genre] + 'にそろえ、ほかの系統の料理は混ぜないでください。');
   }
   if (o.leftovers && o.leftovers.length) {
     lines.push('家に次の残り物があります。日もちしないので、できるだけ先に使い切ってください：'
@@ -661,8 +659,19 @@ function menuPrompt(o) {
     lines.push('残り物で足りるところは、新しく買わないでください。');
   }
   if (o.avoid && o.avoid.length) {
-    lines.push('次の献立は最近出したので、それとは別のものにしてください：'
+    lines.push((one ? 'この一品は、次のものとは別の料理にしてください：'
+      : '次の献立は最近出したので、それとは別のものにしてください：')
       + o.avoid.slice(0, 12).join('、'));
+  }
+  // 作ってみて口に合わなかったもの。避けきれないときも、頻度は落としてもらう
+  if (o.disliked && o.disliked.length) {
+    lines.push('次の料理はこの人の好みに合いませんでした。避けてください：'
+      + o.disliked.join('、'));
+  }
+  /* 前に作ったときのメモ。同じ料理を出すなら、ここを踏まえてもらう */
+  if (o.notes && o.notes.length) {
+    lines.push('この人が前に作ったときのメモです。同じ料理を出すときは必ず踏まえてください：'
+      + o.notes.map((x) => x.name + '（' + (x.stars ? '星' + x.stars + '・' : '') + x.memo + '）').join('、'));
   }
   if (o.season) lines.push('いまの季節は' + o.season + 'です。旬のものがあれば使ってください。');
   /* この人が実際に払った額。いつも行く店の値段そのものなので、
@@ -672,7 +681,117 @@ function menuPrompt(o) {
       + 'これらを使うときは、必ずこの値段で数えてください：'
       + o.prices.map((x) => x.name + ' ' + x.price + '円').join('、'));
   }
-  return lines.join('\n');
+  return lines;
+}
+
+function menuPrompt(o) {
+  const slots = (o.slots || []).map((s) => SLOT_JA[s] || s).join('と');
+  const people = o.servings === 2 ? '成人男性2人分' : '成人男性1人分';
+  const lines = [
+    '日本のスーパーで買える材料で、自炊の献立を考えてください。',
+    '予算は買い物の合計で ' + o.budget + ' 円まで。これを超えないでください。',
+    '作るのは ' + slots + '。量は' + people + 'です。',
+    '1食は、大きめの主菜を1品と、副菜を1品の、あわせて2品以上にしてください。'
+      + '予算と手間に余裕があれば汁物やごはんを足しても構いません。',
+    '副菜はもやし・豆腐・卵・きのこ・旬の野菜など、安く作れるもので構いません。'
+  ];
+  // 朝はそこまで作り込めないので、手早いものにしてもらう
+  if ((o.slots || []).indexOf('breakfast') >= 0) {
+    lines.push('朝食は10分ほどで作れる軽いものにしてください（主菜1品と副菜1品の決まりは、朝食には当てはめなくて構いません）。');
+  }
+  return lines.concat(menuCommonLines(o, false)).join('\n');
+}
+
+/* 一品だけ差し替えるときの頼みかた。
+   ほかの一品はそのままなので、それを伝えて重ならないようにしてもらう。
+   買い物は献立ぜんぶぶんを作り直してもらう（そのままの一品に要るものも含めて）。 */
+function dishPrompt(o) {
+  const people = o.servings === 2 ? '成人男性2人分' : '成人男性1人分';
+  const meal = SLOT_JA[o.slot] || '食事';
+  const lines = [
+    'いまある献立のうち、' + meal + 'の' + o.role + 'を1品だけ、別のものに差し替えます。',
+    o.old ? 'いまの' + o.role + 'は「' + o.old + '」です。これとは違う料理にしてください。'
+      : 'その' + o.role + 'を新しく1品考えてください。',
+    '量は' + people + 'です。'
+  ];
+  if (o.keep && o.keep.length) {
+    lines.push('同じ' + meal + 'の次の一品はそのまま残します：'
+      + o.keep.map((x) => (x.role ? x.role + '「' + x.name + '」' : '「' + x.name + '」')).join('、'));
+    lines.push('残る一品と、食材や味つけが重ならないようにしてください。');
+  }
+  if (o.role === '主菜') {
+    lines.push('主菜なので、肉か魚か卵を主にした、食べごたえのある一品にしてください。');
+  } else if (o.role === '副菜') {
+    lines.push('副菜なので、もやし・豆腐・卵・きのこ・旬の野菜など、安く作れる軽い一品で構いません。');
+  }
+  lines.push('買い物の合計は、献立ぜんぶで ' + o.budget + ' 円まで。これを超えないでください。');
+  if (o.shopping && o.shopping.length) {
+    lines.push('いまの買い物リストはこれです：'
+      + o.shopping.map((x) => x.name + (x.qty ? '（' + x.qty + '）' : '') + ' ' + x.price + '円').join('、'));
+    lines.push('差し替えたあとの買い物リストを、献立ぜんぶぶん shopping に作り直してください。'
+      + 'そのまま残る一品に要るものは、いまと同じ品名・同じ値段で残し、'
+      + '差し替える一品にだけ要るものを入れ替えてください。');
+  } else {
+    lines.push('この一品に要るものを shopping に書いてください。');
+  }
+  lines.push('差し替えたあとの、その食事ぜんぶの呼び名を name に書いてください'
+    + '（そのまま残る一品も含めた呼び名。例：鶏の照り焼き定食）。');
+  return lines.concat(menuCommonLines(o, true)).join('\n');
+}
+
+/* 一品ぶんの返り。dish は MENU_SCHEMA の一品と同じ形 */
+const DISH_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['dish', 'name', 'shopping', 'total', 'note'],
+  properties: {
+    dish: MENU_SCHEMA.properties.meals.items.properties.dishes.items,
+    name: { type: 'string', description: '差し替えたあとの、その食事の呼び名。例）鶏の照り焼き定食' },
+    shopping: MENU_SCHEMA.properties.shopping,
+    total: { type: 'number', description: '買い物の合計（円）。献立ぜんぶぶん' },
+    note: { type: 'string', description: 'ひとこと。無ければ空でよい' }
+  }
+};
+
+async function askDish(env, model, o) {
+  return askJson(env, model, dishPrompt(o), 'dish', DISH_SCHEMA,
+    Number(env.OPENAI_DISH_MAX_TOKENS || env.OPENAI_MENU_MAX_TOKENS || 3000));
+}
+
+/* 献立ぜんぶでも、一品の差し替えでも同じように受け取るところ */
+function menuOpts(body) {
+  return {
+    servings: Number(body.servings) === 2 ? 2 : 1,
+    // 知らない値は指定なし扱い（古いアプリからは そもそも来ない）
+    genre: GENRE_JA[String(body.genre || '')] ? String(body.genre) : '',
+    avoid: (Array.isArray(body.avoid) ? body.avoid : [])
+      .map((s) => String(s || '').slice(0, 40)).filter(Boolean),
+    // 家の残り物。先に使い切ってもらう
+    leftovers: (Array.isArray(body.leftovers) ? body.leftovers : []).slice(0, 12)
+      .map((x) => ({
+        name: String((x && x.name) || '').slice(0, 40),
+        qty: String((x && x.qty) || '').slice(0, 20),
+        until: /^\d{4}-\d{2}-\d{2}$/.test(String(x && x.until)) ? x.until : '',
+        kept: !!(x && x.kept)
+      })).filter((x) => x.name),
+    season: String(body.season || '').slice(0, 10),
+    // 口に合わなかった料理。避けてもらう
+    disliked: (Array.isArray(body.disliked) ? body.disliked : []).slice(0, 20)
+      .map((s) => String(s || '').slice(0, 40)).filter(Boolean),
+    // 前に作ったときのメモ
+    notes: (Array.isArray(body.notes) ? body.notes : []).slice(0, 24)
+      .map((x) => ({
+        name: String((x && x.name) || '').slice(0, 40),
+        stars: Math.min(5, Math.max(0, Math.round(Number(x && x.stars) || 0))),
+        memo: String((x && x.memo) || '').slice(0, 200)
+      })).filter((x) => x.name && x.memo),
+    // 実際に払った値段の控え。見当より、こちらを優先してもらう
+    prices: (Array.isArray(body.prices) ? body.prices : []).slice(0, 60)
+      .map((x) => ({
+        name: String((x && x.name) || '').slice(0, 40),
+        price: Math.max(0, Math.round(Number(x && x.price) || 0))
+      })).filter((x) => x.name && x.price)
+  };
 }
 
 async function menu(request, env, cors) {
@@ -690,30 +809,7 @@ async function menu(request, env, cors) {
   const slots = MENU_SLOTS.filter((s) => asked.indexOf(s) >= 0);
   if (!slots.length) return json({ error: 'no_slots' }, 400, cors);
 
-  const o = {
-    budget: Math.min(budget, 100000),
-    slots,
-    servings: Number(body.servings) === 2 ? 2 : 1,
-    // 知らない値は指定なし扱い（古いアプリからは そもそも来ない）
-    genre: GENRE_JA[String(body.genre || '')] ? String(body.genre) : '',
-    avoid: (Array.isArray(body.avoid) ? body.avoid : [])
-      .map((s) => String(s || '').slice(0, 40)).filter(Boolean),
-    // 家の残り物。先に使い切ってもらう
-    leftovers: (Array.isArray(body.leftovers) ? body.leftovers : []).slice(0, 12)
-      .map((x) => ({
-        name: String((x && x.name) || '').slice(0, 40),
-        qty: String((x && x.qty) || '').slice(0, 20),
-        until: /^\d{4}-\d{2}-\d{2}$/.test(String(x && x.until)) ? x.until : '',
-        kept: !!(x && x.kept)
-      })).filter((x) => x.name),
-    season: String(body.season || '').slice(0, 10),
-    // 実際に払った値段の控え。見当より、こちらを優先してもらう
-    prices: (Array.isArray(body.prices) ? body.prices : []).slice(0, 60)
-      .map((x) => ({
-        name: String((x && x.name) || '').slice(0, 40),
-        price: Math.max(0, Math.round(Number(x && x.price) || 0))
-      })).filter((x) => x.name && x.price)
-  };
+  const o = Object.assign(menuOpts(body), { budget: Math.min(budget, 100000), slots });
 
   const model = String(body.model || env.OPENAI_MENU_MODEL || env.OPENAI_MODEL || OCR_DEFAULTS.model);
   const pass = await askMenu(env, model, o);
@@ -726,6 +822,63 @@ async function menu(request, env, cors) {
     .map((s) => String(s || '').trim().slice(0, 40)).filter(Boolean);
   const matchModel = String(env.OPENAI_MATCH_MODEL || model);
   const match = await askMatch(env, matchModel, usedSeasonings(pass.data), have);
+
+  return json({ ok: true, data: pass.data, match: match, model: pass.model, usage: pass.usage },
+    200, cors);
+}
+
+/* ---- 一品だけ出し直す ----
+
+   献立をまるごと考え直すと、気に入っていた主菜まで変わってしまう。
+   主菜だけ・副菜だけ、と差し替えられるようにする。
+   買い物は献立ぜんぶぶんを作り直してもらう（そのままの一品のぶんも含めて）。 */
+
+const DISH_ROLES = ['主菜', '副菜', '汁物', '主食'];   // アプリ側の DISH_ROLES と同じ
+
+async function menuDish(request, env, cors) {
+  if (request.method !== 'POST') return json({ error: 'not_found' }, 404, cors);
+  if (!env.OPENAI_API_KEY) return json({ error: 'no_api_key' }, 503, cors);
+
+  let body;
+  try { body = await request.json(); } catch (e) { return json({ error: 'bad_json' }, 400, cors); }
+
+  const budget = Math.round(Number(body && body.budget) || 0);
+  if (!(budget > 0)) return json({ error: 'no_budget' }, 400, cors);
+
+  const role = DISH_ROLES.indexOf(String(body && body.role)) >= 0 ? String(body.role) : '';
+  if (!role) return json({ error: 'no_role' }, 400, cors);
+
+  const o = Object.assign(menuOpts(body), {
+    budget: Math.min(budget, 100000),
+    slot: MENU_SLOTS.indexOf(String(body.slot)) >= 0 ? String(body.slot) : 'dinner',
+    role,
+    // いま出ているその一品。これとは別のものにしてもらう
+    old: String(body.old || '').slice(0, 60),
+    // 同じ食事で、そのまま残す一品
+    keep: (Array.isArray(body.keep) ? body.keep : []).slice(0, 8)
+      .map((x) => ({
+        role: DISH_ROLES.indexOf(String(x && x.role)) >= 0 ? String(x.role) : '',
+        name: String((x && x.name) || '').slice(0, 60)
+      })).filter((x) => x.name),
+    // いまの買い物リスト。そのまま残る一品のぶんは、この値段のまま残してもらう
+    shopping: (Array.isArray(body.shopping) ? body.shopping : []).slice(0, 40)
+      .map((x) => ({
+        name: String((x && x.name) || '').slice(0, 60),
+        qty: String((x && x.qty) || '').slice(0, 24),
+        price: Math.max(0, Math.round(Number(x && x.price) || 0))
+      })).filter((x) => x.name)
+  });
+
+  const model = String(body.model || env.OPENAI_MENU_MODEL || env.OPENAI_MODEL || OCR_DEFAULTS.model);
+  const pass = await askDish(env, model, o);
+  if (!pass.ok) return json(pass.body, pass.status, cors);
+
+  // 新しい一品で使う調味料だけ、家にあるものと呼び方を突き合わせる
+  const have = (Array.isArray(body.pantry) ? body.pantry : []).slice(0, 60)
+    .map((s) => String(s || '').trim().slice(0, 40)).filter(Boolean);
+  const matchModel = String(env.OPENAI_MATCH_MODEL || model);
+  const match = await askMatch(env, matchModel,
+    usedSeasonings({ meals: [{ dishes: [pass.data && pass.data.dish] }] }), have);
 
   return json({ ok: true, data: pass.data, match: match, model: pass.model, usage: pass.usage },
     200, cors);

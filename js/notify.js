@@ -218,7 +218,8 @@
           // 同じ日に重なるものは1通にまとめる
           var byDate = {};
           list.forEach(function (r) {
-            if (U.cmp(ym, r.startYm) < 0) return;       // 始める前の月は数えない
+            // 始める前の月・解約したあとの月・その月だけ休むぶんは鳴らさない
+            if (!DL.expenses.liveInMonth(r, ym)) return;
             var date = U.clampDay(ym, r.day);
             (byDate[date] || (byDate[date] = [])).push(r);
           });

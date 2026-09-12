@@ -41,6 +41,7 @@
     if (k === 'discord_error') return 'Discord が断りました（' + (body.status || '') + '）';
     if (k === 'empty') return '送るものがありません';
     if (k === 'no_slots') return 'どの食事にするか選んでください';
+    if (k === 'no_role') return 'この一品は主菜・副菜のどちらか分からないので、出し直せません';
     if (k === 'openai_error') return 'OpenAI が断りました：' + (body.message || '');
     if (k === 'openai_unreachable') return 'OpenAI につながりませんでした';
     if (k === 'openai_empty') return 'OpenAI が中身を返しませんでした';
@@ -145,8 +146,12 @@
         servings: U.num(o.servings, 1) === 2 ? 2 : 1,
         // 選んでいなければ送らない（向こうで指定なしになる）
         genre: GENRE_LABEL[o.genre] ? o.genre : '',
-        // 同じものばかり出ないよう、最近のぶんを渡す
+        /* 同じものばかり出ないよう、最近のぶんを渡す。
+           星2以下を付けたものも、あまり出さないほうへ寄せる */
         avoid: (o.avoid || []).concat(S.recentMenuNames(14)).slice(0, 12),
+        disliked: S.dislikedDishes(20),
+        // 前に作ったときのメモ。同じ料理が来たら活かしてもらう
+        notes: S.dishHints(24),
         // 残り物は先に食べたいので渡す
         leftovers: useLeftovers(o.date),
         // 家にある調味料の名前。献立を作ったあとに、呼び方を突き合わせるためだけに使う
@@ -176,6 +181,84 @@
         var got = m.meals.map(function (x) { return x.slot; });
         m.missingSlots = slots.filter(function (s) { return got.indexOf(s) < 0; });
         return m;
+      });
+    }, function () {
+      throw new Error('通信できませんでした');
+    });
+  }
+
+  /**
+   * 献立のうち、一品だけ別のものに出し直してもらう。
+   *
+   * 献立をまるごと考え直すと、気に入っていた主菜まで変わってしまう。
+   * 主菜だけ・副菜だけ差し替えられるように、その一品ぶんだけ頼む。
+   * 買い物は献立ぜんぶぶんを組み直してもらう（そのまま残る一品のぶんも含めて）。
+   *
+   * @param {object} o {menu 献立, slot, dish 出し直す一品, genre, budget, date}
+   * @returns {Promise<object>} {dish, shopping, note, match}
+   */
+  function suggestDish(o) {
+    o = o || {};
+    if (!ready()) {
+      return Promise.reject(new Error('同期の接続先が未設定です。設定から先につないでください'));
+    }
+    var m = o.menu || {};
+    var d = o.dish || {};
+    if (!d.role) {
+      return Promise.reject(new Error('この一品は主菜・副菜のどちらか分からないので、出し直せません'));
+    }
+    var budget = Math.max(0, Math.round(U.num(o.budget || m.budget, 0)));
+    if (!budget) return Promise.reject(new Error('予算が決まっていません'));
+
+    // 同じ食事のうち、そのまま残す一品。食材や味が重ならないようにしてもらう
+    var meal = (m.meals || []).filter(function (x) { return x.slot === o.slot; })[0]
+      || { dishes: [] };
+    var keep = (meal.dishes || []).filter(function (x) { return x !== d; })
+      .map(function (x) { return { role: x.role, name: x.name }; });
+
+    return fetch(base() + '/v1/menu/dish', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer ' + conf().token,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        budget: budget,
+        slot: o.slot,
+        role: d.role,
+        old: d.name,
+        keep: keep,
+        // いまの買い物リスト。残る一品のぶんは、この値段のまま残してもらう
+        shopping: (m.shopping || []).map(function (x) {
+          return { name: x.name, qty: x.qty, price: x.price };
+        }),
+        servings: U.num(m.servings, 1) === 2 ? 2 : 1,
+        genre: GENRE_LABEL[o.genre] ? o.genre : '',
+        // いま出ている一品と、最近の献立は避ける
+        avoid: [d.name].concat(S.recentMenuNames(14)).slice(0, 12),
+        disliked: S.dislikedDishes(20),
+        notes: S.dishHints(24),
+        leftovers: useLeftovers(o.date),
+        pantry: S.pantry().map(function (x) { return x.name; }).filter(Boolean).slice(0, 60),
+        season: season(o.date),
+        prices: S.priceList(60)
+      })
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (b) {
+        if (!res.ok) throw new Error(reason(res.status, b));
+        var data = b.data || {};
+        // 控えてある値段があるものは、見当ではなくそちらを使う
+        if (Array.isArray(data.shopping)) data.shopping.forEach(useKnownPrice);
+        var dish = S.normalizeDish(data.dish);
+        if (!dish.name) throw new Error('一品を組み立てられませんでした');
+        return {
+          dish: dish,
+          // 差し替えたあとの、その食事の呼び名
+          name: String(data.name || '').trim().slice(0, 60),
+          shopping: Array.isArray(data.shopping) ? data.shopping : null,
+          note: String(data.note || ''),
+          match: b.match || {}
+        };
       });
     }, function () {
       throw new Error('通信できませんでした');
@@ -314,7 +397,7 @@
   DL.menu = {
     SLOTS: SLOTS, SLOT_LABEL: SLOT_LABEL,
     GENRES: GENRES, GENRE_LABEL: GENRE_LABEL,
-    ready: ready, suggest: suggest, send: send, namesOf: namesOf,
+    ready: ready, suggest: suggest, suggestDish: suggestDish, send: send, namesOf: namesOf,
     slotsLabel: slotsLabel, slotsJa: slotsJa, useKnownPrice: useKnownPrice,
     season: season,
     extras: extras, seasoningState: seasoningState, matcher: matcher, pantryMap: pantryMap,
