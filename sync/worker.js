@@ -50,7 +50,7 @@
  * レシートの読み取り（OpenAI）
  *   GET    /v1/ocr/status  → { key, r2, model, strongModel, reasoning, maxTokens }（鍵は返さない）
  *   POST   /v1/ocr/receipt → 本文 {fileId} → { data:{store,date,total,items,…}, model, retried, usage }
- *   POST   /v1/menu        → 本文 {budget,slots,servings,genre,avoid} → { data:{meals,shopping,total,note} }
+ *   POST   /v1/menu        → 本文 {budget,slots,servings,genre,avoid,prices} → { data:{meals,shopping,total,note} }
  *   POST   /v1/ocr/card    → 本文 {fileId} → { data:{company,contact,email,tel,address,…}, model, retried, usage }
  *                             R2 に置いた写真を読み、JSON だけ受け取る。
  *                             鍵は Worker の secret にだけ置き、アプリには渡さない
@@ -634,7 +634,12 @@ function menuPrompt(o) {
     'ただし使う調味料は、一品ごとに seasonings へ必ず分量まで書いてください'
       + '（大さじ1、小さじ1/2、100ml、ひとつまみ など）。「適量」は使わないでください。',
     '冷凍食品は使ってもよいですが、頼りすぎないでください（使うなら1品まで）。',
-    '値段はスーパーの並の売値（税込）で、買う単位（1パック・1袋など）で数えてください。',
+    /* 値段は「東京のふつうのスーパー」を目安にしてもらう。
+       生鮮は特売でぶれるので、特売ではない平常の棚値で見てもらう。
+       ここは見当でしかないので、実際に払った額の控えがあれば
+       アプリ側でそちらに置き替える（prices） */
+    '値段は東京都内のスーパー（ライフなど）の平常の店頭価格（税込）を目安に、'
+      + '特売やセールではない値段で、買う単位（1パック・1袋など）で数えてください。',
     '買ったものは使い切るか、余りの使い道を note に書いてください。',
     '手順は一品ごとに、家庭の台所でできる範囲で2〜5行。'
       + '手順の中でも材料と調味料の分量が分かるように書いてください。'
@@ -660,6 +665,13 @@ function menuPrompt(o) {
       + o.avoid.slice(0, 12).join('、'));
   }
   if (o.season) lines.push('いまの季節は' + o.season + 'です。旬のものがあれば使ってください。');
+  /* この人が実際に払った額。いつも行く店の値段そのものなので、
+     見当より優先してもらう（合計がそれで狂わないように） */
+  if (o.prices && o.prices.length) {
+    lines.push('次の品は、この人がいつも行く店で実際に払った値段です。'
+      + 'これらを使うときは、必ずこの値段で数えてください：'
+      + o.prices.map((x) => x.name + ' ' + x.price + '円').join('、'));
+  }
   return lines.join('\n');
 }
 
@@ -694,7 +706,13 @@ async function menu(request, env, cors) {
         until: /^\d{4}-\d{2}-\d{2}$/.test(String(x && x.until)) ? x.until : '',
         kept: !!(x && x.kept)
       })).filter((x) => x.name),
-    season: String(body.season || '').slice(0, 10)
+    season: String(body.season || '').slice(0, 10),
+    // 実際に払った値段の控え。見当より、こちらを優先してもらう
+    prices: (Array.isArray(body.prices) ? body.prices : []).slice(0, 60)
+      .map((x) => ({
+        name: String((x && x.name) || '').slice(0, 40),
+        price: Math.max(0, Math.round(Number(x && x.price) || 0))
+      })).filter((x) => x.name && x.price)
   };
 
   const model = String(body.model || env.OPENAI_MENU_MODEL || env.OPENAI_MODEL || OCR_DEFAULTS.model);

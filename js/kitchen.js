@@ -21,9 +21,9 @@
     ui.sheet({ title: '家にあるもの', body: body });
   }
 
-  /* 開いているのはどちらか。書き直しても畳み方は覚えておく。
+  /* 開いているのはどれか。書き直しても畳み方は覚えておく。
      調味料は数が増えるので、はじめは畳んでおく */
-  var opened = { pantry: false, leftover: true };
+  var opened = { pantry: false, leftover: true, price: false };
 
   function draw(body, refresh) {
     var today = U.today();
@@ -36,6 +36,47 @@
     body.appendChild(fold('leftover', '残り物', S.leftovers(), today, refresh,
       'ここにあるものから先に使います',
       'まだありません', '残り物を足す'));
+
+    body.appendChild(priceFold(refresh));
+  }
+
+  /* ---------------- 値段の控え ----------------
+
+     買い物リストの値段を押して入れた「実際に払った額」がたまるところ。
+     次に献立を頼むときにこれを渡すので、使うほど自分の店の値段に寄る。 */
+
+  function priceFold(refresh) {
+    var map = S.prices();
+    var keys = Object.keys(map).sort(function (a, b) {
+      return U.cmp(String(map[b].at), String(map[a].at));
+    });
+    var box = el('details', { class: 'kt-sec', open: opened.price });
+    box.addEventListener('toggle', function () { opened.price = box.open; });
+    box.appendChild(el('summary', {}, [
+      el('span', { class: 'kt-mark' }, ui.icon('chevronDown', 16)),
+      el('b', { text: '値段の控え' }),
+      ui.chip(keys.length + '点', 'ghosty')
+    ]));
+    box.appendChild(el('p', { class: 'muted small', text:
+      '買い物リストの値段を押して入れた、実際に払った額です。'
+      + '次からの献立は、この額で数えます。' }));
+
+    if (!keys.length) {
+      box.appendChild(ui.empty('まだありません。買い物リストの値段を押すと入れられます。'));
+      return box;
+    }
+    box.appendChild(el('div', { class: 'mn-list' }, keys.map(function (k) {
+      var v = map[k];
+      return el('div', { class: 'mn-item' }, [
+        el('span', { class: 'mn-item-n', text: v.name }),
+        el('b', { text: DL.docs.yen(v.price) }),
+        el('button', {
+          type: 'button', class: 'tp-pe-x', 'aria-label': v.name + 'の控えを消す',
+          onclick: function () { S.setPrice(v.name, 0); refresh(); }
+        }, ui.icon('close', 15))
+      ]);
+    })));
+    return box;
   }
 
   /* 畳めるひと組。閉じているときも、点数と期限切れの数は見えるようにする */

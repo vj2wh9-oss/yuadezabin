@@ -164,6 +164,8 @@
     logs: {},
     // 採用した献立 { 'YYYY-MM-DD': {meals, shopping, total, servings, note, at} }
     menus: {},
+    // 実際に払った値段の控え { '<ならした名前>': {name, price, at} }
+    prices: {},
     // いま手元に置いてあるプロット（1つだけ）
     plot: null,
     // 貯金（貯蓄用の口座）。残高は銀行から読むか、手で入れる
@@ -315,6 +317,7 @@
     s.settings.dutyLogDone = normalizeDutyLogDone(s.settings.dutyLogDone);
     s.settings.logs = normalizeLogs(s.settings.logs);
     s.settings.menus = normalizeMenus(s.settings.menus);
+    s.settings.prices = normalizePrices(s.settings.prices);
     s.settings.savings = normalizeSavings(s.settings.savings);
     s.settings.plot = normalizePlot(s.settings.plot);
     s.settings.pantry = (s.settings.pantry || []).map(normalizePantry);
@@ -1606,7 +1609,9 @@
       return {
         name: String(x.name || '').trim().slice(0, 60),
         qty: String(x.qty || '').trim().slice(0, 24),
-        price: Math.max(0, Math.round(U.num(x.price, 0)))
+        price: Math.max(0, Math.round(U.num(x.price, 0))),
+        // 買い物のときに付ける印。買い終わったものを消し込む
+        got: !!x.got
       };
     }).filter(function (x) { return x.name; });
 
@@ -1641,6 +1646,76 @@
     return out;
   }
 
+  /* ---------------- 買ったものの値段の控え ----------------
+
+     献立の値段は向こう（OpenAI）の見当なので、いつも行く店の実際とはずれる。
+     実際に払った額を控えておいて、次からはそれを使う。
+     使えば使うほど、自分の店の値段に寄っていく。
+
+     名前は表記のゆれをならして鍵にする（「豚バラ肉」「豚バラ」を同じに扱う）。 */
+
+  var PRICE_MAX = 400;      // 控えておく品数
+
+  /** 値段の控えの鍵。空白と括弧を落として、全角の数字はそろえる */
+  function priceKey(name) {
+    return String(name == null ? '' : name)
+      .replace(/[（(].*?[）)]/g, '')
+      .replace(/[\s　]/g, '')
+      .replace(/[Ａ-Ｚａ-ｚ０-９]/g, function (c) {
+        return String.fromCharCode(c.charCodeAt(0) - 0xfee0);
+      })
+      .toLowerCase()
+      .slice(0, 40);
+  }
+
+  function normalizePrices(map) {
+    var out = {};
+    Object.keys(map || {}).slice(0, PRICE_MAX).forEach(function (k) {
+      var key = priceKey(k);
+      var v = map[k] || {};
+      var price = Math.max(0, Math.round(U.num(v.price, 0)));
+      if (!key || !price) return;
+      out[key] = {
+        name: String(v.name || k).trim().slice(0, 60),
+        price: price,
+        at: v.at || new Date().toISOString()
+      };
+    });
+    return out;
+  }
+
+  function prices() { return state.settings.prices || {}; }
+
+  /** その品の、控えてある値段。無ければ 0 */
+  function priceOf(name) {
+    var v = prices()[priceKey(name)];
+    return v ? v.price : 0;
+  }
+
+  /**
+   * 実際に払った額を控える。0 を入れると控えを消す。
+   * @returns {number} 控えた額
+   */
+  function setPrice(name, price) {
+    var key = priceKey(name);
+    if (!key) return 0;
+    var map = state.settings.prices || (state.settings.prices = {});
+    var v = Math.max(0, Math.round(U.num(price, 0)));
+    if (v) map[key] = { name: String(name).trim().slice(0, 60), price: v, at: new Date().toISOString() };
+    else delete map[key];
+    save();
+    return v;
+  }
+
+  /** 献立を頼むときに渡すぶん。新しく控えたものから */
+  function priceList(max) {
+    var map = prices();
+    return Object.keys(map).map(function (k) { return map[k]; })
+      .sort(function (a, b) { return U.cmp(String(b.at), String(a.at)); })
+      .slice(0, Math.max(0, max || 60))
+      .map(function (v) { return { name: v.name, price: v.price }; });
+  }
+
   function getMenu(date) { return (state.settings.menus || {})[date] || null; }
 
   function setMenu(date, m) {
@@ -1653,6 +1728,32 @@
   }
 
   function removeMenu(date) { return setMenu(date, null); }
+
+  /**
+   * 買い物リストの印だけを付け外しする。
+   * 献立まるごと入れ直すのではなく、その1点だけを触る。
+   * @param {string} date
+   * @param {string} name 品の名前
+   * @param {boolean} on
+   */
+  function setShopGot(date, name, on) {
+    var m = getMenu(date);
+    if (!m) return null;
+    var hit = (m.shopping || []).filter(function (x) { return x.name === name; })[0];
+    if (!hit) return null;
+    hit.got = !!on;
+    save();
+    return m;
+  }
+
+  /** 買い物リストの印を、その日ぶんまとめて外す */
+  function clearShopGot(date) {
+    var m = getMenu(date);
+    if (!m) return null;
+    (m.shopping || []).forEach(function (x) { x.got = false; });
+    save();
+    return m;
+  }
 
   /** 最近出した献立の呼び名。同じものばかり出ないよう、次に渡す */
   function recentMenuNames(days) {
@@ -3055,6 +3156,9 @@
     putTimeblock: putTimeblock, removeTimeblock: removeTimeblock,
     getLog: getLog, setLog: setLog, logDates: logDates, MOODS: MOODS,
     getMenu: getMenu, setMenu: setMenu, removeMenu: removeMenu,
+    setShopGot: setShopGot, clearShopGot: clearShopGot,
+    prices: prices, priceOf: priceOf, setPrice: setPrice,
+    priceList: priceList, priceKey: priceKey,
     recentMenuNames: recentMenuNames, normalizeMenu: normalizeMenu,
     pantry: pantry, getPantry: getPantry, addPantry: addPantry,
     updatePantry: updatePantry, removePantry: removePantry,

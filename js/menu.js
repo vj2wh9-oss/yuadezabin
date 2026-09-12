@@ -82,6 +82,20 @@
     return (slots || []).map(function (s) { return SLOT_LABEL[s] || s; }).join('・');
   }
 
+  /**
+   * 買ったときの値段を控えてある品は、その額に置き換える。
+   * 向こうの値段はあくまで見当なので、実際に払った額のほうが正しい。
+   * @param {object} x 買うもの1点（その場で書き替える）
+   * @returns {boolean} 置き替えたか
+   */
+  function useKnownPrice(x) {
+    if (!x || !x.name) return false;
+    var known = S.priceOf(x.name);
+    if (!known || known === U.num(x.price, 0)) return false;
+    x.price = known;
+    return true;
+  }
+
   /* いまの季節。旬のものを使ってもらう手がかり */
   function season(date) {
     var m = U.num(String(date || U.today()).slice(5, 7), 0);
@@ -137,7 +151,9 @@
         leftovers: useLeftovers(o.date),
         // 家にある調味料の名前。献立を作ったあとに、呼び方を突き合わせるためだけに使う
         pantry: S.pantry().map(function (x) { return x.name; }).filter(Boolean).slice(0, 60),
-        season: season(o.date)
+        season: season(o.date),
+        // 実際に払った値段の控え。いつも行く店の値段に寄せてもらう
+        prices: S.priceList(60)
       })
     }).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (b) {
@@ -148,6 +164,8 @@
             + ' に未対応です。Cloudflare の Worker を新しくして deploy し直してください');
         }
         if (!res.ok) throw new Error(reason(res.status, b));
+        // 控えてある値段があるものは、見当ではなくそちらを使う
+        if (b.data && Array.isArray(b.data.shopping)) b.data.shopping.forEach(useKnownPrice);
         var m = S.normalizeMenu(Object.assign({}, b.data, {
           servings: U.num(o.servings, 1), budget: budget,
           // 呼び方の突き合わせ。この献立と一緒に残す
@@ -297,7 +315,7 @@
     SLOTS: SLOTS, SLOT_LABEL: SLOT_LABEL,
     GENRES: GENRES, GENRE_LABEL: GENRE_LABEL,
     ready: ready, suggest: suggest, send: send, namesOf: namesOf,
-    slotsLabel: slotsLabel, slotsJa: slotsJa,
+    slotsLabel: slotsLabel, slotsJa: slotsJa, useKnownPrice: useKnownPrice,
     season: season,
     extras: extras, seasoningState: seasoningState, matcher: matcher, pantryMap: pantryMap,
     useLeftovers: useLeftovers, key: key

@@ -2064,6 +2064,23 @@ a.tp-proj:active { color: var(--accent); }
 .mn-acts .btn.grow { flex: 1; min-width: 0; padding-left: 6px; padding-right: 6px; }
 .mn-item-n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mn-item b { flex: none; font-variant-numeric: tabular-nums; }
+
+/* 買い物リストの1行。印を付けて消し込む */
+.mn-buy { align-items: center; gap: 7px; padding: 3px 0; cursor: pointer; }
+.mn-chk { flex: none; width: 17px; height: 17px; margin: 0; accent-color: var(--accent); }
+/* 買い終わったものは、うすく・取り消し線で見分ける */
+.mn-buy.got .mn-item-n { color: var(--muted); text-decoration: line-through; }
+.mn-buy.got .mn-price { opacity: .55; }
+/* 値段は押すと直せる。押せると分かるように、うっすら囲う */
+.mn-price {
+  flex: none; font: inherit; padding: 2px 6px; cursor: pointer;
+  color: inherit; background: none;
+  border: 1px solid transparent; border-radius: var(--radius-s);
+}
+.mn-price:hover, .mn-price:active { border-color: var(--line2); }
+.mn-price b { font-variant-numeric: tabular-nums; }
+/* 実際に払った額を控えてあるものは、見当ではないと分かるようにする */
+.mn-price.known b { color: var(--ok); }
 .mn-foot { margin: 0; }
 .mn-foot.over { color: var(--danger); }
 

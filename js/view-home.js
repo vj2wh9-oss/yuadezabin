@@ -884,6 +884,91 @@
     return box;
   }
 
+  /* 買うものを開いたままにしておくか。印を付けるたびに描き直しが走るので、
+     ここで覚えていないと、1つ付けるたびに閉じてしまう */
+  var shopOpen = false;
+
+  /**
+   * 買い物リストの1行。印を付けて消し込み、値段は押すと直せる。
+   *
+   * 印は、その日の献立として採ってあれば保存する（画面を移っても残る）。
+   * まだ採っていない下書きのぶんは、その場かぎり（保存先が無いため）。
+   *
+   * @param {object} s 買うもの1点
+   * @param {object} m その献立
+   * @param {string} date
+   */
+  function shopRow(s, m, date) {
+    var yen = DL.docs.yen;
+    var saved = S.getMenu(date);
+    var live = !!(saved && saved.shopping.some(function (x) { return x.name === s.name; }));
+    // 控えてある額と同じなら、見当ではなく実際の値段だと分かるようにする
+    var known = S.priceOf(s.name) === s.price && s.price > 0;
+
+    var box = el('label', { class: 'mn-item mn-buy' + (s.got ? ' got' : '') }, [
+      el('input', {
+        type: 'checkbox', class: 'mn-chk', checked: !!s.got,
+        'aria-label': s.name + 'を買った',
+        onchange: function (e) {
+          var on = e.target.checked;
+          s.got = on;                              // 下書きでも見た目は変わる
+          box.classList.toggle('got', on);
+          if (live) S.setShopGot(date, s.name, on);   // 採ってあれば残す
+        }
+      }),
+      el('span', { class: 'mn-item-n', text: s.name }),
+      s.qty ? el('span', { class: 'muted small', text: s.qty }) : null,
+      /* 値段。押すと実際に払った額を入れられる。
+         入れた額は控えて、次の献立からはそちらを使う */
+      el('button', {
+        type: 'button', class: 'mn-price' + (known ? ' known' : ''),
+        'aria-label': s.name + 'の値段を直す',
+        onclick: function (e) {
+          e.preventDefault();
+          priceSheet(s, m, date, live);
+        }
+      }, el('b', { text: yen(s.price) }))
+    ]);
+    return box;
+  }
+
+  /* 実際に払った額を入れる。控えておいて、次の献立から使う */
+  function priceSheet(s, m, date, live) {
+    var yen = DL.docs.yen;
+    var known = S.priceOf(s.name);
+    var input = ui.input({ type: 'number', inputmode: 'numeric', min: 0, step: 10, value: s.price });
+    var close = ui.sheet({
+      title: s.name,
+      body: el('div', { class: 'form' }, [
+        ui.field('実際に払った額（円）', input,
+          known ? '前に控えたのは ' + yen(known) + ' です'
+            : '入れておくと、次の献立からこの値段で数えます'),
+        el('p', { class: 'muted small',
+          text: '献立の値段は見当なので、いつも行くお店とはずれます。'
+            + '買ったときの額を入れておくと、だんだん自分の店の値段に寄っていきます。' })
+      ]),
+      actions: [
+        ui.btn('キャンセル', 'ghost', function () { close(); }),
+        ui.btn('控える', 'primary', function () {
+          var v = Math.max(0, Math.round(U.num(input.value, 0)));
+          if (!v) { ui.toast('金額を入れてください', 'warn'); return; }
+          S.setPrice(s.name, v);        // 次からはこの値段
+          s.price = v;
+          // 採ってある献立なら、その献立の値段と合計も直す
+          if (live) {
+            var saved = S.getMenu(date);
+            var hit = saved.shopping.filter(function (x) { return x.name === s.name; })[0];
+            if (hit) { hit.price = v; S.setMenu(date, saved); }
+          }
+          close();
+          ui.toast('控えました');
+          DL.app.render();
+        })
+      ]
+    });
+    setTimeout(function () { input.focus(); input.select(); }, 120);
+  }
+
   /* 献立の中身。ホームでも日別画面でも同じものを出す */
   function menuBody(m, date) {
     var yen = DL.docs.yen;
@@ -915,20 +1000,22 @@
     });
 
     if ((m.shopping || []).length || extras.length) {
-      var sh = el('details', { class: 'mn-shop' });
+      var shop = m.shopping || [];
+      var gotN = shop.filter(function (s) { return s.got; }).length;
+      /* 開いたままにしておく。印を付けると保存で描き直しが走るので、
+         そのたびに閉じてしまわないよう、開いているかを覚えておく */
+      var sh = el('details', { class: 'mn-shop', open: shopOpen });
+      sh.addEventListener('toggle', function () { shopOpen = sh.open; });
       sh.appendChild(el('summary', {}, [
         el('b', { text: '買うもの' }),
-        ui.chip((m.shopping || []).length + '点', 'ghosty'),
+        ui.chip(gotN ? gotN + ' / ' + shop.length + '点' : shop.length + '点',
+          gotN && gotN >= shop.length ? 'ok' : 'ghosty'),
         extras.length ? ui.chip('調味料' + extras.length + '点', 'ghosty') : null,
         el('span', { class: 'mn-total', text: yen(m.total) })
       ]));
       var ul = el('div', { class: 'mn-list' });
-      (m.shopping || []).forEach(function (s) {
-        ul.appendChild(el('div', { class: 'mn-item' }, [
-          el('span', { class: 'mn-item-n', text: s.name }),
-          el('span', { class: 'muted small', text: s.qty }),
-          el('b', { text: yen(s.price) })
-        ]));
+      shop.forEach(function (s) {
+        ul.appendChild(shopRow(s, m, date));
       });
       extras.forEach(function (x) {
         ul.appendChild(el('div', { class: 'mn-item extra' }, [
