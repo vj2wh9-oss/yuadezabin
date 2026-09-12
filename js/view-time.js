@@ -548,37 +548,38 @@
     var nx = nextBlock(date, m, list);
     var next = nx ? nx.b : null;
 
+    /* 左右とも同じ組み。上に予定名、その下にその予定の時間。
+       名前を囲う四角は、下の「00:00〜00:00」と同じ幅に伸ばす
+       （中の入れ物を字の幅ぴったりにして、その中で引き伸ばす）。
+       @param {object} bl 帯
+       @param {boolean} [tomorrow] 翌日から持ってきたか */
+    function side(bl, tomorrow) {
+      return el('div', { class: 'tp-np' + (tomorrow === undefined ? '' : ' next') },
+        el('div', { class: 'tp-np-in' }, [
+          blockTag(bl),
+          el('div', { class: 'tp-np-r' }, [
+            tomorrow ? el('span', { class: 'tp-np-d', text: '翌日' }) : null,
+            el('span', { text: T.fmt(bl.start) + '〜' + T.fmt(bl.end) })
+          ])
+        ]));
+    }
+
     // 'empty' という名前は、空っぽの案内枠（.empty）と当たって縦並びになる
     var box = el('div', { class: 'tp-nowbar' + (b ? '' : ' is-empty') }, [
-      /* いま何時で、何をしていることになっているか */
-      el('div', { class: 'tp-np' }, [
-        el('div', { class: 'tp-np-h' }, [
-          el('b', { class: 'tp-nowtime', text: T.fmt(m) }),
-          b ? blockTag(b) : el('span', { class: 'tp-np-none', text: 'まだ書いていません' })
-        ]),
-        b ? el('div', { class: 'tp-np-r', text: T.fmt(b.start) + '〜' + T.fmt(b.end) }) : null
-      ]),
+      /* いま何をしていることになっているか */
+      b ? side(b) : el('div', { class: 'tp-np' },
+        el('span', { class: 'tp-np-none', text: 'まだ書いていません' })),
       /* 次へ流れていく印。押せるものではないので読み上げからは外す */
       next ? el('div', { class: 'tp-flow', 'aria-hidden': 'true' },
         [el('i'), el('i'), el('i')]) : null,
-      /* このあとの予定。翌日から持ってきたときは、そうと分かるようにする。
-         印は時刻の行に置く（名前の行に足すと、名前が削られてしまう） */
-      next ? el('div', { class: 'tp-np next' }, [
-        el('div', { class: 'tp-np-h' }, [
-          el('b', { class: 'tp-np-time', text: T.fmt(next.start) }),
-          blockTag(next)
-        ]),
-        el('div', { class: 'tp-np-r' }, [
-          nx.tomorrow ? el('span', { class: 'tp-np-d', text: '翌日' }) : null,
-          el('span', { text: T.fmt(next.start) + '〜' + T.fmt(next.end) })
-        ])
-      ]) : null
+      /* このあとの予定。翌日から持ってきたときは、そうと分かるようにする */
+      next ? side(next, !!nx.tomorrow) : null
       // 「ここを書く」は、すぐ下の「時間を足す」と同じことなので置かない
     ]);
 
-    /* 時計は進む。開きっぱなしでも合うように書き替える。
-       ふだんは時刻の字だけ差し替え、帯をまたいだときだけ描き直す
-       （毎分まるごと描き直すと、開いている画面がその都度ちらつく）。
+    /* 時間は進む。開きっぱなしでも合うように、帯をまたいだら描き直す。
+       出しているのは予定の名前と時間だけなので、
+       同じ帯のあいだは何もしなくてよい（毎分描き直すとちらつく）。
        画面が描き直されて消えたら、そこで見張るのをやめる */
     var wasId = b ? b.id : '';
     var tick = setInterval(function () {
@@ -586,9 +587,7 @@
       var now = nowMin(date);
       if (now === null) { clearInterval(tick); return; }
       var nb = T.ofDay(date).filter(function (x) { return now >= x.start && now < x.end; })[0];
-      if ((nb ? nb.id : '') !== wasId) { clearInterval(tick); DL.app.render(); return; }
-      var t = box.querySelector('.tp-nowtime');
-      if (t) t.textContent = T.fmt(now);
+      if ((nb ? nb.id : '') !== wasId) { clearInterval(tick); DL.app.render(); }
     }, 20000);
 
     return box;
@@ -972,8 +971,8 @@
      中に置くと描き直しのたびに0に戻り、勢いよく回したぶん何日も飛んでしまう */
   var lastHop = 0;
 
-  function goDay(date, delta) {
-    location.hash = '#/time/' + U.addDays(date, delta);
+  function goDay(path, date, delta) {
+    location.hash = '#/' + path + '/' + U.addDays(date, delta);
   }
 
   /**
@@ -990,8 +989,10 @@
    * @param {Element} root #view
    * @param {Element} pie 円グラフの入れ物（無ければホイールは掛けない）
    * @param {string} date いま見ている日
+   * @param {string} [path] 移る先の画面。既定は 'time'（日別画面からは 'day'）
    */
-  function attachDayNav(root, pie, date) {
+  function attachDayNav(root, pie, date, path) {
+    path = path || 'time';
     // 前の日ぶんの見張りを外す（重ねて掛けると1回のスワイプで何日も飛ぶ）
     if (root._dayNav) root._dayNav();
 
@@ -1006,7 +1007,7 @@
       var now = Date.now();
       if (now - lastHop < 260) return;    // 1回のホイールで何日も飛ばさない
       lastHop = now;
-      goDay(date, dy > 0 ? 1 : -1);
+      goDay(path, date, dy > 0 ? 1 : -1);
     }
 
     function onStart(e) {
@@ -1027,7 +1028,7 @@
       if (Math.abs(dx) < 45 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
       swiped = true;              // 直後のタップ（帯を押して開く）は無効にする
       lastHop = Date.now();
-      goDay(date, dx < 0 ? 1 : -1);
+      goDay(path, date, dx < 0 ? 1 : -1);
     }
 
     function onClick(e) {
@@ -1080,6 +1081,8 @@
   DL.views = DL.views || {};
   DL.views.time = {
     render: render, dayCard: dayCard, homeCard: homeCard,
-    pie: pie, bar: bar, blockSheet: blockSheet, offerPreset: offerPreset
+    pie: pie, bar: bar, blockSheet: blockSheet, offerPreset: offerPreset,
+    // 日別画面でも同じスワイプを使う
+    attachDayNav: attachDayNav
   };
 })(window.DL);

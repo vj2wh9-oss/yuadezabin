@@ -1825,24 +1825,22 @@ a.tp-proj:active { color: var(--accent); }
   background: var(--card2); border: 1px solid var(--line);
   border-left: 3px solid var(--danger);
 }
-.tp-np { display: flex; flex-direction: column; gap: 2px; flex: 1 1 0; min-width: 0; }
-.tp-np-h { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.tp-nowtime {
-  font-size: 19px; font-weight: 800; font-variant-numeric: tabular-nums;
-  color: var(--danger); flex: none; line-height: 1.1;
-}
-/* 次のほうの時刻は、いまの時刻と区別がつくように控えめに */
-.tp-np-time {
-  font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums;
-  color: var(--text); flex: none; line-height: 1.1;
+/* 左右それぞれ。中の入れ物を字の幅ぴったりにして、まん中に置く */
+.tp-np { display: flex; justify-content: center; flex: 1 1 0; min-width: 0; }
+/* 名前の四角と、その下の時間。四角は広いほう（たいていは時間）の幅に伸びる */
+.tp-np-in {
+  display: flex; flex-direction: column; align-items: stretch;
+  gap: 3px; min-width: 0; max-width: 100%;
 }
 .tp-np-t {
-  padding: 2px 7px; border-radius: var(--radius-s); font-size: 11.5px; font-weight: 600;
-  line-height: 1.5; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 3px 7px; border-radius: var(--radius-s); font-size: 12.5px; font-weight: 600;
+  line-height: 1.4; text-align: center;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .tp-np-r {
-  display: flex; align-items: center; gap: 4px;
-  font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums;
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+  font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 /* 次の予定を翌日から持ってきたときの印 */
 .tp-np-d {

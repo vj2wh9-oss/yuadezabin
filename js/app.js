@@ -354,8 +354,9 @@
     if (['settings', 'calendar', 'docs', 'doc', 'sales', 'search', 'onsite', 'log', 'logs', 'ideas', 'time', 'orders', 'crm'].indexOf(route.name) >= 0) { fab.hidden = true; return; }
     fab.hidden = false;
     fab.onclick = function () {
-      // 日常のカレンダーの日別画面では、ここが予定の追加口になる
-      if (route.name === 'day' && S.calMode() === 'life') {
+      /* 日別画面では、ここがその日の予定の追加口になる。
+         この画面は日常と案件の両方を出すので、どちらを見ていても同じにする */
+      if (route.name === 'day') {
         DL.views.events.form(null, { date: route.params.date || U.today() });
         return;
       }

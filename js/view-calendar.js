@@ -308,38 +308,41 @@
     return head;
   }
 
+  /**
+   * 日付を押したときの画面。
+   *
+   * ここは「その日に何があるか」を見るところなので、
+   * 日常のカレンダーを見ていても案件のカレンダーを見ていても、
+   * 日常の予定と案件の締切・ノルマを両方出す。
+   * 上のカレンダーの切り替えは、月表示でどちらを並べるかの話であって、
+   * その日に起きることが変わるわけではないため。
+   *
+   * 並びは
+   *   この日の予定（日常）→ 締切・イベント → この日のノルマ
+   *   → 1日の時間 → この日の勤務 → 献立 → 休業日 → 1日の記録
+   */
   function renderDay(root, params) {
     var date = U.isISO(params.date) ? params.date : U.today();
     var today = U.today();
-    var life = S.calMode() === 'life';
-    var isHoliday = !life && (S.settings.holidays || []).indexOf(date) >= 0;
+    var isHoliday = (S.settings.holidays || []).indexOf(date) >= 0;
     var wrap = el('div', { class: 'page' });
 
     wrap.appendChild(el('div', { class: 'daynav' }, [
       el('a', { class: 'iconbtn', href: '#/day/' + U.addDays(date, -1), 'aria-label': '前の日' }, ui.icon('chevronLeft', 20)),
       el('div', { class: 'daytitle' }, [
         dayTitle(date, isHoliday),
-        el('div', { class: 'today-sub', text: life ? dayRel(date, today) : U.untilLabel(date, today) })
+        el('div', { class: 'today-sub', text: dayRel(date, today) })
       ]),
       el('a', { class: 'iconbtn', href: '#/day/' + U.addDays(date, 1), 'aria-label': '次の日' }, ui.icon('chevronRight', 20))
     ]));
 
-    // 日常を見ているときは、案件の締切・ノルマ・休業日は出さない。
-    // 1日の時間の振り分けは案件と日常で分けないので、どちらにも同じものを出す。
-    // 1日の記録への入り口は、どちらもいちばん下に置く
-    if (life) {
-      // この日の予定 → 1日の時間 → この日の勤務 → 献立 の順に並べる
-      DL.views.events.dayView(wrap, date, { duty: false });
-      DL.views.time.dayCard(wrap, date);
-      DL.views.events.dutyBox(wrap, date);
-      menuCard(wrap, date);
-      wrap.appendChild(logLink(date));
-      root.appendChild(wrap);
-      return;
-    }
+    /* この日の予定（日常）。勤務は下のほうで別に出す */
+    DL.views.events.dayView(wrap, date, { duty: false });
 
     var marks = sc.dayMarks(date);
     if (marks.length) {
+      wrap.appendChild(ui.section('この日の締切・イベント',
+        ui.chip(marks.length + '件', 'soft')));
       var ml = el('div', { class: 'list' });
       marks.forEach(function (m) {
         ml.appendChild(el('a', { class: 'row deadline ' + (m.type === 'event' ? 'urgent' : 'soon'), href: '#/project/' + m.project.id }, [
@@ -381,8 +384,14 @@
       ui.btn('この日の実績を追加', 'ghost full', function () { pickTaskSheet(date); }, 'plus')
     ));
 
-    /* 1日の時間の振り分け（日常側と同じもの） */
+    /* 1日の時間の振り分け（案件と日常で分けない） */
     DL.views.time.dayCard(wrap, date);
+
+    /* この日の勤務（出社・リモート・泊まり） */
+    DL.views.events.dutyBox(wrap, date);
+
+    /* その日に採用した献立 */
+    menuCard(wrap, date);
 
     /* 休業日設定 */
     wrap.appendChild(el('div', { class: 'pad' }, [
@@ -400,6 +409,10 @@
     wrap.appendChild(logLink(date));
 
     root.appendChild(wrap);
+
+    /* 1日の時間の画面と同じく、左右スワイプで前後の日へ。
+       ホイールは円グラフの上だけ（ページのスクロールを奪わないため） */
+    DL.views.time.attachDayNav(root, wrap.querySelector('.tp-pie-wrap'), date, 'day');
   }
 
   /* その日に採用した献立。ホームで出したものが、ここに残る */
