@@ -520,6 +520,13 @@
       card.appendChild(bgLine('今日の予算', b.perDay, b.today, b.todayPct, false));
     }
 
+    /* 日用品・消耗品は今日ぶんに数えていない。
+       レシートを入れたのに支出が増えないと戸惑うので、そこは書いておく */
+    if (b.todaySupply > 0) {
+      card.appendChild(el('p', { class: 'muted small bg-supply', text:
+        '日用品・消耗品 ' + yen(b.todaySupply) + ' は今日ぶんに数えていません（明日から効きます）' }));
+    }
+
     if (b.noRoom) {
       // 使いすぎではなく、そもそも固定費で予算が埋まっている
       card.appendChild(el('div', { class: 'bg-day-note danger' }, [

@@ -46,6 +46,14 @@
     return (rows || []).reduce(function (s, x) { return s + U.num(x.amount, 0); }, 0);
   }
 
+  /* 日用品・消耗品の科目か。
+     もとからあるのは 日常の「日用品」と 事業の「画材・消耗品」だが、
+     自分で足した科目でも同じ言葉が入っていれば同じ扱いにする */
+  var SUPPLY = /日用品|消耗品/;
+
+  /** その1件が日用品・消耗品か */
+  function isSupply(x) { return SUPPLY.test(String((x && x.category) || '')); }
+
   /** 科目ごとの合計。多い順に並べる */
   function byCategory(rows) {
     var map = {};
@@ -121,6 +129,11 @@
    * 使った額を引いて、今日を含む残りの日数で割り直した「立て直しの
    * 1日予算」も出す。こちらを守れば、月の終わりにちょうど収まる。
    *
+   * 日用品・消耗品は、買ったその日だけ「今日使った額」に数えない。
+   * まとめ買いする性質のもので、買った日の食費まで締め上げても意味がない。
+   * ただし月の合計（spent・left）には初めから入っているし、
+   * 日が変われば「昨日までに使った額」に入って、立て直しの1日予算に効く。
+   *
    * @param {string} [date] 見たい日。既定は今日
    * @returns {object|null} 予算を決めていなければ null
    */
@@ -143,8 +156,13 @@
         && !x.recurringId;                            // 固定費ぶんは先に引いてある
     });
     var spent = total(rows);
-    var today = total(rows.filter(function (x) { return x.date === date; }));
-    var before = spent - today;                       // 昨日までに使った額
+    var todayRows = rows.filter(function (x) { return x.date === date; });
+    // 今日の買い物。日用品・消耗品は、その日のぶんとしては数えない
+    var today = total(todayRows.filter(function (x) { return !isSupply(x); }));
+    var todaySupply = total(todayRows.filter(isSupply));
+    /* 昨日までに使った額。引き算ではなく、日付で数え直す
+       （今日の日用品は spent には入っていて today には入っていないため） */
+    var before = total(rows.filter(function (x) { return String(x.date) < date; }));
 
     // 帳簿ごとの内訳。どちらで使っているかが見えるように
     var byBook = { work: 0, life: 0 };
@@ -165,6 +183,8 @@
       perDay: Math.round(perDay),
       restPerDay: Math.round(restPerDay),
       today: today,
+      // 今日買った日用品・消耗品。今日ぶんには数えていないので、断り書きに使う
+      todaySupply: todaySupply,
       // 今日あと使える額。ペースが崩れているときは、立て直しのほうを基準にする
       // （ふだんの1日予算を残りとして出すと、月末に足りなくなる）
       todayLeft: Math.max(0, Math.round((restPerDay < perDay ? restPerDay : perDay) - today)),
@@ -524,7 +544,7 @@
     yearlyOf: yearlyOf, review: review, renewAlerts: renewAlerts,
     RECEIPT_FOLDER: RECEIPT_FOLDER, receiptFolder: receiptFolder,
     BOOKS: BOOKS, categories: categories, baseCategories: baseCategories, bookLabel: bookLabel,
-    total: total, dailyBudget: dailyBudget, budgetSeries: budgetSeries, fixedOfMonth: fixedOfMonth, byCategory: byCategory, byTag: byTag, byMonth: byMonth, shrink: shrink,
+    total: total, isSupply: isSupply, dailyBudget: dailyBudget, budgetSeries: budgetSeries, fixedOfMonth: fixedOfMonth, byCategory: byCategory, byTag: byTag, byMonth: byMonth, shrink: shrink,
     toCSV: toCSV, dueRecurring: dueRecurring, recurringRecorded: recurringRecorded,
     fixedCandidates: fixedCandidates
   };

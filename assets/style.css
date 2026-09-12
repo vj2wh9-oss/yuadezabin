@@ -2124,6 +2124,9 @@ a.tp-proj:active { color: var(--accent); }
 /* 折れ線は予算と同じ枠の中。上の点線が棒のところとの区切りになる */
 .bg-chart { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
 
+/* 日用品・消耗品を今日ぶんから外したときの断り書き */
+.bg-supply { margin: -2px 0 0; }
+
 .bg-fixed { margin: -2px 0 0; padding-top: 8px; border-top: 1px dashed var(--line); line-height: 1.5; }
 /* 「日常」が「日／常」に割れないように、語の途中では折らない */
 .bg-fixed p { margin: 0; word-break: keep-all; overflow-wrap: break-word; }
