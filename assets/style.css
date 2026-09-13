@@ -779,6 +779,8 @@ a.alert-main { text-decoration: none; }
 .sr-row > .icon { color: var(--muted); flex: none; }
 .sr-row.dim { opacity: .6; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+/* 日付の欄はそれ自体が幅を持つので、2つ並べるとはみ出す。枠に収まるようにする */
+.grid2 > *, .grid2 .input { min-width: 0; }
 .grid3 { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: center; }
 .panel { background: var(--card2); border: 1px solid var(--line); border-radius: var(--radius-s); padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 
@@ -2134,6 +2136,16 @@ a.tp-proj:active { color: var(--accent); }
   padding: 5px 8px; border-radius: var(--radius-s);
   background: var(--card2); border-left: 2px solid var(--accent);
 }
+
+/* まとめて作るときの進み具合と、できたぶんの並び */
+.mn-batch-l { margin: 0 0 6px; font-size: 13px; }
+.mn-batch-log { max-height: 46vh; overflow-y: auto; margin-top: 8px; }
+.mn-batch-row { width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.mn-batch-row.bad { color: var(--muted); }
+.mn-batch-row.bad .chev { color: var(--warn); }
+.mn-batch-note { margin: 2px 0 0; }
+/* まとめ買いリストの値段。右端にそろえる */
+.mn-plan-p { margin-left: auto; font-variant-numeric: tabular-nums; }
 
 .mn-foot { margin: 0; }
 .mn-foot.over { color: var(--danger); }

@@ -117,7 +117,8 @@
       /* その予算で作れる献立（予算を決めているときだけ） */
       var mn = bg ? menuCard(today) : null;
       if (mn) {
-        wrap.appendChild(ui.section('今日の献立'));
+        // 見出しの右に「まとめて作る」「まとめ買い」の入口を出す
+        wrap.appendChild(ui.section('今日の献立', menuTools(today)));
         wrap.appendChild(mn);
       }
     }
@@ -661,6 +662,8 @@
           run(today, b, M.namesOf(saved));
         }, 'refresh'),
         M.ready() ? sendBtn(saved, today) : null,
+        // 別の日の「作るもの」として送る（コピーでも、移すのでも）
+        onlyIcon('calendar', '別の日へ送る', 'ghost', function () { sendToDay(saved, today); }),
         kitchenBtn(),
         onlyIcon('trash', '献立を外す', 'ghost', function () {
           ui.confirm('今日の献立を外します。', { okText: '外す' }).then(function (ok) {
@@ -718,6 +721,8 @@
         // 金額指定・貯金予算で出したものは、同じ額のまま考え直す
         run(today, b, DL.menu.namesOf(mDraft), mBudget);
       }),
+      // 今日ではなく、別の日の献立にする
+      ui.btn('別の日に', 'ghost', function () { sendToDay(mDraft, today, true); }),
       // 採用の前でも送れる（これで作る、と決める前に台所へ流したいので）
       sendBtn(mDraft, today),
       // 採用してあるものから考え直したときは、元に戻れるように
@@ -776,6 +781,430 @@
         ui.toast(e.message, 'danger');
       });
     }
+  }
+
+  /* ---------------- 別の日へ送る ----------------
+
+     作ったものを、その日だけのものにしない。
+     「これは明日にしよう」と決めたら、そのまま明日の献立にできる。 */
+
+  /**
+   * @param {object} m 献立
+   * @param {string} from いまぶら下がっている日
+   * @param {boolean} draft まだ採っていない下書きか
+   */
+  function sendToDay(m, from, draft) {
+    var dateIn = ui.input({ type: 'date', value: U.addDays(from, 1) });
+    // 下書きは今日にぶら下がっていないので、動かすも何もない
+    var move = el('input', { type: 'checkbox', class: 'check', checked: !draft });
+    var moveRow = draft ? null : el('label', { class: 'row-check' }, [move,
+      el('span', { text: U.fmtMD(from) + ' からは外す（移す）' })]);
+    var warn = el('p', { class: 'muted small' });
+
+    function refresh() {
+      var to = dateIn.value;
+      warn.textContent = !U.isISO(to) ? ''
+        : (to === from ? '同じ日です。'
+          : (S.getMenu(to) ? U.fmtMD(to) + ' にはすでに献立があります。置き替えます。' : ''));
+    }
+    dateIn.addEventListener('change', refresh);
+    dateIn.addEventListener('input', refresh);
+    refresh();
+
+    var close = ui.sheet({
+      title: '別の日へ送る',
+      body: el('div', { class: 'form' }, [
+        ui.field('いつの献立にするか', dateIn),
+        moveRow, warn,
+        el('p', { class: 'muted small',
+          text: '買い物の印は付け直しになります（送った先では、まだ買っていない扱い）。' })
+      ]),
+      actions: [
+        ui.btn('キャンセル', 'ghost', function () { close(); }),
+        ui.btn('送る', 'primary', function () {
+          var to = dateIn.value;
+          if (!U.isISO(to)) { ui.toast('日付を入れてください', 'warn'); return; }
+          if (to === from && !draft) { ui.toast('同じ日です', 'warn'); return; }
+          var copy = U.clone(m);
+          (copy.shopping || []).forEach(function (s) { s.got = false; });
+          S.setMenu(to, copy);
+          if (draft) mDraft = null;
+          else if (move.checked && to !== from) S.removeMenu(from);
+          close();
+          DL.app.render();
+          ui.toast(U.fmtMD(to) + ' の献立にしました');
+        })
+      ]
+    });
+  }
+
+  /* ---------------- 何日かぶん、まとめて作る ----------------
+
+     1日ずつ出していると、まとめ買いの計画が立たない。
+     期間を決めて、その日ごとの予算で1日ぶんずつ作り、各日にぶら下げる。
+     似たものが並ばないよう、前の日までに出たものを避けてもらう。 */
+
+  var bFrom = '', bTo = '';     // 前に決めた期間（次に開いたときの初期値）
+  var bMode = 'normal';         // normal＝通常予算 saving＝貯金予算 amount＝金額指定
+  var bAmount = 0;
+  var bSkip = true;             // すでに献立がある日は飛ばす
+  var BATCH_MAX = 14;           // 一度に作れる日数（1日ずつ聞くので、あまり長くしない）
+
+  /* 献立の見出しの右に置く入口 */
+  function menuTools(today) {
+    var box = el('div', { class: 'row-wrap' });
+    if (DL.menu.ready()) {
+      box.appendChild(ui.btn('まとめて作る', 'ghost tiny', function () { batchSheet(today); }, 'calendar'));
+    }
+    var plan = S.menuPlan();
+    if (plan && U.cmp(plan.to, today) >= 0 && S.menusIn(plan.from, plan.to).length) {
+      box.appendChild(ui.btn('まとめ買い', 'ghost tiny',
+        function () { planShopSheet(plan.from, plan.to); }, 'sales'));
+    }
+    return box.childNodes.length ? box : null;
+  }
+
+  /** その日の予算。mode に合わせて出す。作れないときは0 */
+  function budgetFor(date, mode, amount) {
+    if (mode === 'amount') return Math.max(0, Math.round(U.num(amount, 0)));
+    var b = DL.expenses.dailyBudget(date);
+    if (!b) return 0;
+    if (mode !== 'saving') return b.todayLeft;
+    var sv = savingLeft(date, b);
+    return sv ? Math.max(0, sv.left) : b.todayLeft;
+  }
+
+  function batchSheet(today) {
+    var fromIn = ui.input({ type: 'date', value: bFrom || U.addDays(today, 1) });
+    var toIn = ui.input({ type: 'date', value: bTo || U.addDays(today, 7) });
+    var amountIn = ui.input({ type: 'number', inputmode: 'numeric', min: 1, step: 100,
+      value: bAmount || budgetFor(today, 'normal') || 1000 });
+    var skip = el('input', { type: 'checkbox', class: 'check', checked: bSkip });
+
+    // 食事・人数・系統は、この場かぎりで選び直せるようにする（ホームのぶんは触らない）
+    var slots = mSlots.slice(), serv = mServ, genre = mGenre, mode = bMode;
+
+    var slotBox = el('div', { class: 'mn-pick' });
+    function drawSlots() {
+      U.clear(slotBox);
+      DL.menu.SLOTS.forEach(function (s) {
+        var on = slots.indexOf(s.value) >= 0;
+        slotBox.appendChild(ui.btn(s.label, 'ghost' + (on ? ' on' : ''), function () {
+          var i = slots.indexOf(s.value);
+          if (i >= 0) slots.splice(i, 1);
+          else slots.push(s.value);
+          if (!slots.length) slots.push(s.value);
+          drawSlots();
+        }));
+      });
+    }
+    drawSlots();
+
+    var amountField = ui.field('1日あたりの金額（円）', amountIn);
+    var note = el('p', { class: 'muted small mn-batch-note' });
+
+    function days() {
+      var out = [];
+      var a = fromIn.value, b = toIn.value;
+      if (!U.isISO(a) || !U.isISO(b) || U.cmp(a, b) > 0) return out;
+      for (var d = a; U.cmp(d, b) <= 0 && out.length <= BATCH_MAX; d = U.addDays(d, 1)) out.push(d);
+      return out;
+    }
+
+    function refresh() {
+      amountField.hidden = mode !== 'amount';
+      var list = days();
+      if (!list.length) { note.textContent = '日付の順が逆になっています。'; return; }
+      if (list.length > BATCH_MAX) {
+        note.textContent = '一度に作れるのは ' + BATCH_MAX + '日ぶんまでです。';
+        return;
+      }
+      var has = list.filter(function (d) { return S.getMenu(d); }).length;
+      var make = skip.checked ? list.length - has : list.length;
+      var sum = list.reduce(function (n, d) {
+        return n + budgetFor(d, mode, amountIn.value);
+      }, 0);
+      note.textContent = list.length + '日ぶん'
+        + (has ? '（うち ' + has + '日はもう献立があります）' : '') + '。'
+        + make + '日ぶんを作ります。予算はあわせて ' + DL.docs.yen(sum) + ' ほど。'
+        + '1日ずつ考えるので、' + Math.max(1, Math.round(make * 0.4)) + '分ほどかかります。';
+    }
+    [fromIn, toIn, amountIn].forEach(function (n) {
+      n.addEventListener('change', refresh);
+      n.addEventListener('input', refresh);
+    });
+    skip.addEventListener('change', refresh);
+
+    var body = el('div', { class: 'form' }, [
+      el('div', { class: 'grid2' }, [
+        ui.field('はじめの日', fromIn),
+        ui.field('終わりの日', toIn)
+      ]),
+      ui.field('予算のもと', ui.segmented([
+        { value: 'normal', label: '通常予算' },
+        { value: 'saving', label: '貯金予算' },
+        { value: 'amount', label: '金額指定' }
+      ], mode, function (v) { mode = v; refresh(); }),
+        '通常＝その日の使える額／貯金＝貯金ぶんを引いた額'),
+      amountField,
+      ui.field('どの食事', slotBox),
+      ui.field('人数', ui.segmented([{ value: 1, label: '1人分' }, { value: 2, label: '2人分' }],
+        serv, function (v) { serv = U.num(v, 1); })),
+      ui.field('系統', ui.segmented([{ value: '', label: '指定なし' }].concat(
+        DL.menu.GENRES.map(function (g) { return { value: g.value, label: g.label }; })
+      ), genre, function (v) { genre = v; })),
+      el('label', { class: 'row-check' }, [skip,
+        el('span', { text: 'すでに献立がある日は飛ばす' })]),
+      note,
+      el('p', { class: 'muted small',
+        text: '似たものが続かないよう、前の日までに出たものは避けて考えてもらいます。' })
+    ]);
+    refresh();
+
+    var close = ui.sheet({
+      title: 'まとめて作る',
+      body: body,
+      actions: [
+        ui.btn('キャンセル', 'ghost', function () { close(); }),
+        ui.btn('作りはじめる', 'primary', function () {
+          var list = days();
+          if (!list.length) { ui.toast('期間を確かめてください', 'warn'); return; }
+          if (list.length > BATCH_MAX) {
+            ui.toast('一度に作れるのは ' + BATCH_MAX + '日ぶんまでです', 'warn'); return;
+          }
+          if (mode === 'amount' && !(U.num(amountIn.value, 0) > 0)) {
+            ui.toast('金額を入れてください', 'warn'); return;
+          }
+          bFrom = fromIn.value; bTo = toIn.value; bMode = mode; bSkip = skip.checked;
+          bAmount = U.num(amountIn.value, 0);
+          close();
+          runBatch({
+            from: fromIn.value, to: toIn.value, mode: mode,
+            amount: U.num(amountIn.value, 0), skip: skip.checked,
+            slots: slots.slice(), serv: serv, genre: genre
+          });
+        })
+      ]
+    });
+  }
+
+  /* 実際に1日ずつ作っていくところ。進み具合を出しながら、順に頼む */
+  function runBatch(o) {
+    var all = [], d;
+    for (d = o.from; U.cmp(d, o.to) <= 0; d = U.addDays(d, 1)) all.push(d);
+    var days = o.skip ? all.filter(function (x) { return !S.getMenu(x); }) : all;
+
+    var made = [], failed = [], avoid = [], stop = false;
+    var line = el('p', { class: 'mn-batch-l' });
+    var bar = ui.progress(0);
+    var log = el('div', { class: 'list mn-batch-log' });
+    var stopBtn = ui.btn('やめる', 'ghost', function () {
+      stop = true;
+      line.textContent = 'この日ぶんが終わったら止めます…';
+    });
+    var shopBtn = ui.btn('まとめ買いリスト', 'ghost', function () {
+      planShopSheet(o.from, o.to);
+    }, 'sales');
+    var closeBtn = ui.btn('閉じる', 'primary', function () { close(); });
+    shopBtn.hidden = true;
+    closeBtn.hidden = true;
+
+    var close = ui.sheet({
+      title: 'まとめて作る',
+      body: el('div', { class: 'form' }, [line, bar, log]),
+      actions: [stopBtn, shopBtn, closeBtn]
+    });
+
+    if (!days.length) {
+      line.textContent = '作る日がありません（すでに献立がそろっています）。';
+      stopBtn.hidden = true; closeBtn.hidden = false;
+      return;
+    }
+    step(0);
+
+    function setBar(t) {
+      var i = bar.querySelector('i');
+      if (i) i.style.width = Math.round(Math.max(0, Math.min(1, t)) * 100) + '%';
+    }
+
+    function addLog(date, text, ok) {
+      log.appendChild(el('button', {
+        class: 'row mn-batch-row' + (ok ? '' : ' bad'),
+        onclick: function () { close(); location.hash = '#/day/' + date; }
+      }, [
+        el('div', { class: 'row-main' }, [
+          el('div', { class: 'row-title' }, [
+            ui.chip(U.fmtMDW(date), ok ? 'soft' : 'ghosty'),
+            el('span', { text: text })
+          ])
+        ]),
+        el('span', { class: 'chev' }, ui.icon(ok ? 'chevronRight' : 'alert', 16))
+      ]));
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function step(i) {
+      if (stop || i >= days.length) { done(); return; }
+      var date = days[i];
+      line.textContent = (i + 1) + ' / ' + days.length + '日目　'
+        + U.fmtMDW(date) + ' を考えています…';
+      setBar(i / days.length);
+
+      var budget = budgetFor(date, o.mode, o.amount);
+      if (!(budget > 0)) {
+        failed.push(date);
+        addLog(date, o.mode === 'saving' ? '貯金ぶんを引くと残りません' : '予算がありません', false);
+        step(i + 1);
+        return;
+      }
+      DL.menu.suggest({
+        budget: budget, slots: o.slots, servings: o.serv, genre: o.genre,
+        // 前の日までに出たものは避ける。似たものが並ばないように
+        avoid: avoid.slice(0, 12), date: date, variety: true
+      }).then(function (m) {
+        S.setMenu(date, m);
+        made.push(date);
+        namesIn(m).forEach(function (n) {
+          if (avoid.indexOf(n) < 0) avoid.unshift(n);
+        });
+        addLog(date, DL.menu.namesOf(m).join('・') + '　' + DL.docs.yen(m.total), true);
+        step(i + 1);
+      }).catch(function (e) {
+        failed.push(date);
+        addLog(date, e.message, false);
+        step(i + 1);
+      });
+    }
+
+    function done() {
+      setBar(1);
+      line.textContent = (stop ? 'やめました。' : '')
+        + made.length + '日ぶん作りました。'
+        + (failed.length ? '（' + failed.length + '日ぶんは作れませんでした）' : '');
+      if (made.length) S.setMenuPlan({ from: o.from, to: o.to });
+      stopBtn.hidden = true;
+      closeBtn.hidden = false;
+      shopBtn.hidden = !made.length;
+      DL.app.render();
+    }
+  }
+
+  /* まとめた買うものの「いくつ」。同じ言い方なら ×3、違えば足して並べる */
+  function qtyText(x) {
+    var qs = x.qty.filter(Boolean);
+    if (!qs.length) return x.n > 1 ? x.n + '日ぶん' : '';
+    var uniq = qs.filter(function (s, i, a) { return a.indexOf(s) === i; });
+    if (uniq.length === 1) return uniq[0] + (x.n > 1 ? ' ×' + x.n : '');
+    return qs.join('＋');
+  }
+
+  /* その献立に出てくる名前（献立の呼び名と、一品ずつの品名） */
+  function namesIn(m) {
+    var out = [];
+    ((m && m.meals) || []).forEach(function (x) {
+      if (x.name) out.push(x.name);
+      (x.dishes || []).forEach(function (d) { if (d.name) out.push(d.name); });
+    });
+    return out;
+  }
+
+  /* ---------------- まとめ買いリスト ----------------
+
+     期間ぶんの買い物を1つにまとめる。同じ品はまとめて、印はその日の献立へ書き戻す
+     （どの日のぶんかは、まとめても分かるようにしておく）。 */
+
+  function planShopSheet(from, to) {
+    // 印を付けるたびに数え直す。入れ物だけ先に作って、中身を差し替える
+    var host = el('div');
+    function redraw() {
+      U.clear(host);
+      host.appendChild(planShopBody(from, to, redraw));
+    }
+    redraw();
+    var close = ui.sheet({
+      title: 'まとめ買いリスト',
+      body: host,
+      actions: [ui.btn('閉じる', 'ghost', function () { close(); })]
+    });
+  }
+
+  function planShopBody(from, to, onChange) {
+    var yen = DL.docs.yen;
+    var box = el('div', { class: 'form' });
+    var list = S.menusIn(from, to);
+
+    box.appendChild(el('p', { class: 'muted small',
+      text: U.fmtMD(from) + '〜' + U.fmtMD(to) + ' の献立 ' + list.length + '日ぶん' }));
+    if (!list.length) {
+      box.appendChild(ui.empty('この期間に献立がありません。'));
+      return box;
+    }
+
+    // 同じ品をまとめる。名前のゆれは値段の控えと同じならしかたで見る
+    var map = {}, order = [];
+    list.forEach(function (o) {
+      (o.menu.shopping || []).forEach(function (s) {
+        var k = S.priceKey(s.name);
+        if (!map[k]) { map[k] = { name: s.name, qty: [], price: 0, n: 0, got: true, at: [] }; order.push(k); }
+        var it = map[k];
+        it.qty.push(s.qty || '');
+        it.price += U.num(s.price, 0);
+        it.n += 1;
+        it.at.push({ date: o.date, name: s.name });
+        if (!s.got) it.got = false;
+      });
+    });
+
+    var items = order.map(function (k) { return map[k]; });
+    var total = items.reduce(function (n, x) { return n + x.price; }, 0);
+    var gotN = items.filter(function (x) { return x.got; }).length;
+
+    box.appendChild(el('div', { class: 'card sum-grid' }, [
+      el('div', { class: 'sum-box big' }, [el('span', { text: '買うもの' }),
+        el('b', { text: gotN + ' / ' + items.length + '点' })]),
+      el('div', { class: 'sum-box' }, [el('span', { text: 'あわせて' }),
+        el('b', { text: yen(total) })])
+    ]));
+
+    var ul = el('div', { class: 'mn-list' });
+    items.forEach(function (x) {
+      var row = el('label', { class: 'mn-item mn-buy' + (x.got ? ' got' : '') }, [
+        el('input', {
+          type: 'checkbox', class: 'mn-chk', checked: x.got,
+          'aria-label': x.name + 'を買った',
+          onchange: function (e) {
+            var on = e.target.checked;
+            x.at.forEach(function (a) { S.setShopGot(a.date, a.name, on); });
+            if (onChange) onChange();
+          }
+        }),
+        el('span', { class: 'mn-item-n', text: x.name }),
+        el('span', { class: 'muted small', text: qtyText(x) }),
+        el('b', { class: 'mn-plan-p', text: yen(x.price) })
+      ]);
+      ul.appendChild(row);
+    });
+    box.appendChild(ul);
+
+    box.appendChild(ui.section('日ごと'));
+    var dl = el('div', { class: 'list' });
+    list.forEach(function (o) {
+      dl.appendChild(el('a', { class: 'row', href: '#/day/' + o.date }, [
+        el('div', { class: 'row-main' }, [
+          el('div', { class: 'row-title' }, [
+            ui.chip(U.fmtMDW(o.date), 'soft'),
+            el('span', { text: DL.menu.namesOf(o.menu).join('・') })
+          ]),
+          el('div', { class: 'row-sub' }, [
+            ui.chip(DL.menu.slotsLabel(o.menu) || '夕飯', 'ghosty'),
+            el('span', { class: 'muted small', text: yen(o.menu.total) })
+          ])
+        ]),
+        el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+      ]));
+    });
+    box.appendChild(dl);
+    return box;
   }
 
   /* 人数と、料理の系統。1行に並べる */

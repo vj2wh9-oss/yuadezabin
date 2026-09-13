@@ -146,7 +146,8 @@
   /**
    * 献立を考えてもらう。
    * @param {object} o {budget, slots:['breakfast','lunch','dinner'], servings:1|2,
-   *   genre:'washoku'|'yoshoku'|'chuka'|''（空は指定なし）, avoid:[名前], date}
+   *   genre:'washoku'|'yoshoku'|'chuka'|''（空は指定なし）, avoid:[名前], date,
+   *   variety:true で「何日かぶんのうちの1日」として、似たものを避けてもらう}
    * @returns {Promise<object>} 正規化した献立
    */
   function suggest(o) {
@@ -173,6 +174,8 @@
         servings: U.num(o.servings, 1) === 2 ? 2 : 1,
         // 選んでいなければ送らない（向こうで指定なしになる）
         genre: GENRE_LABEL[o.genre] ? o.genre : '',
+        // 何日かぶんをまとめて作っているとき。似たものが並ばないようにしてもらう
+        variety: !!o.variety,
         /* 同じものばかり出ないよう、最近のぶんを渡す。
            星2以下を付けたものも、あまり出さないほうへ寄せる */
         avoid: (o.avoid || []).concat(S.recentMenuNames(14)).slice(0, 12),

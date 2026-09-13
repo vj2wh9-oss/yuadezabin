@@ -701,6 +701,15 @@ function menuPrompt(o) {
       + '予算と手間に余裕があれば汁物やごはんを足しても構いません。',
     '副菜はもやし・豆腐・卵・きのこ・旬の野菜など、安く作れるもので構いません。'
   ];
+  /* 何日かぶんをまとめて作っているとき。名前を変えただけの
+     似たような献立が並ばないよう、はっきり別のものにしてもらう */
+  if (o.variety) {
+    lines.push('これは何日かぶんをまとめて考えているうちの、1日ぶんです。'
+      + '前の日までのものと、主菜の食材（肉・魚・卵・豆腐など）・調理のしかた'
+      + '（焼く・煮る・炒める・揚げる・和える）・味つけの方向（しょうゆ・みそ・塩・'
+      + 'トマト・カレー・中華だれなど）のどれもが重ならないように、'
+      + 'はっきり別のものにしてください。');
+  }
   // 朝はそこまで作り込めないので、手早いものにしてもらう
   if ((o.slots || []).indexOf('breakfast') >= 0) {
     lines.push('朝食は10分ほどで作れる軽いものにしてください（主菜1品と副菜1品の決まりは、朝食には当てはめなくて構いません）。');
@@ -819,7 +828,11 @@ async function menu(request, env, cors) {
   const slots = MENU_SLOTS.filter((s) => asked.indexOf(s) >= 0);
   if (!slots.length) return json({ error: 'no_slots' }, 400, cors);
 
-  const o = Object.assign(menuOpts(body), { budget: Math.min(budget, 100000), slots });
+  const o = Object.assign(menuOpts(body), {
+    budget: Math.min(budget, 100000), slots,
+    // 何日かぶんをまとめて作っているか（似たものが並ばないようにする）
+    variety: !!body.variety
+  });
 
   const model = String(body.model || env.OPENAI_MENU_MODEL || env.OPENAI_MODEL || OCR_DEFAULTS.model);
   const pass = await askMenu(env, model, o);

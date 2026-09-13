@@ -168,6 +168,8 @@
     logs: {},
     // 採用した献立 { 'YYYY-MM-DD': {meals, shopping, total, servings, note, at} }
     menus: {},
+    // まとめて作ったときの期間 {from,to}。まとめ買いリストを開くのに使う
+    menuPlan: null,
     // 実際に払った値段の控え { '<ならした名前>': {name, price, at} }
     prices: {},
     // 作った料理の評価とメモ { '<ならした名前>': {name, stars, memo, at} }
@@ -1841,6 +1843,32 @@
   function removeMenu(date) { return setMenu(date, null); }
 
   /**
+   * その期間の献立。日付の順で返す
+   * @param {string} from
+   * @param {string} to
+   * @returns {Array} [{date, menu}]
+   */
+  function menusIn(from, to) {
+    var map = state.settings.menus || {};
+    return Object.keys(map).filter(function (d) {
+      return U.isISO(d) && U.cmp(d, from) >= 0 && U.cmp(d, to) <= 0;
+    }).sort().map(function (d) { return { date: d, menu: map[d] }; });
+  }
+
+  /** まとめて作ったときの期間。まとめ買いリストの入口に使う */
+  function menuPlan() {
+    var p = state.settings.menuPlan || {};
+    return (U.isISO(p.from) && U.isISO(p.to)) ? { from: p.from, to: p.to } : null;
+  }
+
+  function setMenuPlan(o) {
+    if (!o || !U.isISO(o.from) || !U.isISO(o.to)) delete state.settings.menuPlan;
+    else state.settings.menuPlan = { from: o.from, to: o.to };
+    save();
+    return menuPlan();
+  }
+
+  /**
    * 買い物リストの印だけを付け外しする。
    * 献立まるごと入れ直すのではなく、その1点だけを触る。
    * @param {string} date
@@ -3303,6 +3331,7 @@
     putTimeblock: putTimeblock, removeTimeblock: removeTimeblock,
     getLog: getLog, setLog: setLog, logDates: logDates, MOODS: MOODS,
     getMenu: getMenu, setMenu: setMenu, removeMenu: removeMenu,
+    menusIn: menusIn, menuPlan: menuPlan, setMenuPlan: setMenuPlan,
     setShopGot: setShopGot, clearShopGot: clearShopGot,
     dishNotes: dishNotes, dishNote: dishNote, setDishNote: setDishNote,
     dislikedDishes: dislikedDishes, dishHints: dishHints,
