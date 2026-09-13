@@ -606,7 +606,8 @@
   var mServ = 1;             // 何人分
   var mGenre = '';           // 和食・洋食・中華。空なら指定なし
   var mDraft = null;         // まだ採用していない献立
-  var mBusy = false;
+  var mDate = '';            // その下書きは、どの日のぶんか
+  var mBusy = '';            // いま考えている日（空なら考えていない）
   var mFrom = '';            // どの献立に合わせて mSlots をそろえたか
   var mAmount = 0;           // 金額指定で入れた額。次に開いたときの初期値にする
   var mBudget = 0;           // いまの下書きを出したときの額（0 は今日あと使える額）
@@ -630,17 +631,27 @@
     });
   }
 
-  function menuCard(today) {
+  /**
+   * 献立の一枚。ホームでは今日、カレンダーの日別画面ではその日。
+   * どの日でも同じことができる（作る・考え直す・別の日へ送る・外す）。
+   * @param {string} date
+   */
+  function menuCard(date) {
     var M = DL.menu;
-    var b = DL.expenses.dailyBudget(today);
-    if (!b) return null;
+    var b = DL.expenses.dailyBudget(date);
+    var saved = S.getMenu(date);
+    // 予算も献立も無ければ、出すものが無い
+    if (!b && !saved) return null;
     var yen = DL.docs.yen;
-    var saved = S.getMenu(today);
+    var today = date;
+    // 下書きは日ごと。ほかの日の下書きは、この日には出さない
+    var draft = (mDraft && mDate === date) ? mDraft : null;
+    var busy = mBusy === date;
 
     var card = el('div', { class: 'card mn-card' });
 
     // すでに採用してあるなら、それを出す（考え直したものがあれば、そちらを先に見せる）
-    if (saved && !mDraft) {
+    if (saved && !draft) {
       /* 採用したあとでも食事は選び直せる。朝食を足して考え直す、ができるように。
          いま採用しているぶんに合わせておいて、押されたらそれを覚える */
       var slots = (saved.meals || []).map(function (m) { return m.slot; });
@@ -652,21 +663,21 @@
 
       card.appendChild(menuBody(saved, today));
       // 「再考案」でも食事・人数・系統を選び直せるようにしておく
-      if (M.ready()) {
+      if (M.ready() && b) {
         card.appendChild(slotPick());
         card.appendChild(servRow());
       }
       card.appendChild(el('div', { class: 'row-wrap mn-acts' }, [
-        ui.btn(mBusy ? '考えています…' : '再考案', 'ghost', function () {
+        b ? ui.btn(busy ? '考えています…' : '再考案', 'ghost', function () {
           mDraft = null;
           run(today, b, M.namesOf(saved));
-        }, 'refresh'),
+        }, 'refresh') : null,
         M.ready() ? sendBtn(saved, today) : null,
         // 別の日の「作るもの」として送る（コピーでも、移すのでも）
         onlyIcon('calendar', '別の日へ送る', 'ghost', function () { sendToDay(saved, today); }),
         kitchenBtn(),
         onlyIcon('trash', '献立を外す', 'ghost', function () {
-          ui.confirm('今日の献立を外します。', { okText: '外す' }).then(function (ok) {
+          ui.confirm(U.fmtMD(today) + ' の献立を外します。', { okText: '外す' }).then(function (ok) {
             if (!ok) return;
             S.removeMenu(today);
             ui.toast('外しました');
@@ -686,17 +697,17 @@
     card.appendChild(servRow());
 
     // まだ出していないとき
-    if (!mDraft) {
+    if (!draft) {
       var sv = savingLeft(today, b);
-      /* 通常出力＝今日あと使える金額いっぱい、金額指定＝入れた額、
+      /* 通常出力＝その日あと使える金額いっぱい、金額指定＝入れた額、
          貯金予算＝貯金ぶんを引いた額。並ぶので、この列は文字だけにする */
       card.appendChild(el('div', { class: 'row-wrap mn-acts' }, [
-        ui.btn(mBusy ? '考え中…' : '通常出力',
+        ui.btn(busy ? '考え中…' : '通常出力',
           'primary grow', function () { run(today, b, []); }),
         ui.btn('金額指定', 'ghost grow', function () { amountSheet(today, b); }),
         sv ? ui.btn('貯金予算', 'ghost grow', function () {
           if (sv.left <= 0) {
-            ui.toast('貯金ぶんを引くと、今日の食費が残りません（'
+            ui.toast('貯金ぶんを引くと、その日の食費が残りません（'
               + yen(-sv.left) + ' 足りません）', 'danger');
             return;
           }
@@ -707,24 +718,24 @@
       return card;
     }
 
-    card.appendChild(menuBody(mDraft, today, true));
+    card.appendChild(menuBody(draft, today, true));
     card.appendChild(el('div', { class: 'row-wrap mn-acts' }, [
       // 絵だけのボタンが並ぶので、この2つは文字だけにして幅を空ける
       ui.btn('これにする', 'primary', function () {
         // setMenu で描き直しが走るので、先に下書きを片づけてから保存する
-        var m = mDraft;
+        var m = draft;
         mDraft = null;
         S.setMenu(today, m);
-        ui.toast('今日の献立にしました');
+        ui.toast(U.fmtMD(today) + ' の献立にしました');
       }),
-      ui.btn(mBusy ? '考え中…' : '再考案', 'ghost', function () {
+      ui.btn(busy ? '考え中…' : '再考案', 'ghost', function () {
         // 金額指定・貯金予算で出したものは、同じ額のまま考え直す
-        run(today, b, DL.menu.namesOf(mDraft), mBudget);
+        run(today, b, DL.menu.namesOf(draft), mBudget);
       }),
-      // 今日ではなく、別の日の献立にする
-      ui.btn('別の日に', 'ghost', function () { sendToDay(mDraft, today, true); }),
+      // その日ではなく、別の日の献立にする
+      ui.btn('別の日に', 'ghost', function () { sendToDay(draft, today, true); }),
       // 採用の前でも送れる（これで作る、と決める前に台所へ流したいので）
-      sendBtn(mDraft, today),
+      sendBtn(draft, today),
       // 採用してあるものから考え直したときは、元に戻れるように
       saved ? onlyIcon('close', 'やめる', 'ghost', function () {
         mDraft = null;
@@ -760,15 +771,16 @@
     /* @param {number} [budget] 金額指定・貯金予算のときに渡す */
     function run(date, bd, avoid, budget) {
       if (mBusy) return;
-      mBusy = true;
+      mBusy = date;               // どの日ぶんを考えているか
       mBudget = budget || 0;      // 「再考案」でも同じ額のままにする
       DL.app.render();
       DL.menu.suggest({
-        budget: budget || bd.todayLeft, slots: mSlots.slice(), servings: mServ,
+        budget: budget || (bd ? bd.todayLeft : 0), slots: mSlots.slice(), servings: mServ,
         genre: mGenre, avoid: avoid, date: date
       }).then(function (m) {
-        mBusy = false;
+        mBusy = '';
         mDraft = m;
+        mDate = date;             // その日の下書きとして持つ
         DL.app.render();
         // 頼んだ食事が返ってこなかったら、たいてい Worker が古い
         if (m.missingSlots && m.missingSlots.length) {
@@ -776,7 +788,7 @@
             + ' が出せませんでした。Cloudflare の Worker を deploy し直してください', 'warn');
         }
       }).catch(function (e) {
-        mBusy = false;
+        mBusy = '';
         DL.app.render();
         ui.toast(e.message, 'danger');
       });
@@ -1719,6 +1731,8 @@
   DL.views = DL.views || {};
   DL.views.home = {
     render: render, quotaRow: quotaRow, deadlineRow: deadlineRow,
-    menuBody: menuBody      // 日別画面でも同じ中身を出す
+    menuBody: menuBody,     // 日別画面でも同じ中身を出す
+    // 献立の一枚と、その見出しの右に置く入口。日別画面でもそのまま使う
+    menuCard: menuCard, menuTools: menuTools
   };
 })(window.DL);

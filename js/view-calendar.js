@@ -415,21 +415,11 @@
     DL.views.time.attachDayNav(root, wrap.querySelector('.tp-pie-wrap'), date, 'day');
   }
 
-  /* その日に採用した献立。ホームで出したものが、ここに残る */
+  /* その日の献立。ホームと同じ一枚を出すので、この日ぶんをここで作れる */
   function menuCard(wrap, date) {
-    var m = S.getMenu(date);
-    if (!m) return;
-    wrap.appendChild(ui.section('献立',
-      el('span', { class: 'muted small', text: DL.menu.slotsLabel(m) })));
-    var card = el('div', { class: 'card mn-card' });
-    card.appendChild(DL.views.home.menuBody(m, date));
-    card.appendChild(ui.btn('この献立を外す', 'ghost full', function () {
-      ui.confirm(U.fmtYMDW(date) + ' の献立を外します。', { okText: '外す' }).then(function (ok) {
-        if (!ok) return;
-        S.removeMenu(date);
-        ui.toast('外しました');
-      });
-    }, 'trash'));
+    var card = DL.views.home.menuCard(date);
+    if (!card) return;
+    wrap.appendChild(ui.section('献立', DL.views.home.menuTools(date)));
     wrap.appendChild(card);
   }
 

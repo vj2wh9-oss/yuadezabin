@@ -1876,10 +1876,10 @@ a.tp-proj:active { color: var(--accent); }
 .tp-nowbar .btn { flex: none; }
 
 /* いまから次へ流れていく印。> → >> → >>> と順に明るくなる */
-.tp-flow { display: flex; align-items: center; gap: 1px; flex: none; color: var(--accent2); }
+.tp-flow { display: flex; align-items: center; gap: 2px; flex: none; color: var(--accent2); }
 .tp-flow i {
-  width: 9px; height: 9px; opacity: .2;
-  border-right: 2.5px solid currentColor; border-top: 2.5px solid currentColor;
+  width: 13px; height: 13px; opacity: .2;
+  border-right: 3px solid currentColor; border-top: 3px solid currentColor;
   transform: rotate(45deg); animation: tp-flow 1.5s linear infinite;
 }
 .tp-flow i:nth-child(2) { animation-delay: .2s; }
