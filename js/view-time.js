@@ -124,7 +124,8 @@
     /* まわりに置く名前。円を囲うように、その時刻の外側へ。
        ぶつかるときは1つ外の輪へ逃がす（縦にはそろえない） */
     var tags = place(list, {
-      cx: C, cy: CY, LR: LR, VW: VW, VH: VH, H: TAG_H, MAX: TAG_MAX, FS: FS
+      cx: C, cy: CY, LR: LR, VW: VW, VH: VH, H: TAG_H, MAX: TAG_MAX, FS: FS,
+      mode: opts.labels || (S.settings.pieLabels === 'radial' ? 'radial' : 'around')
     });
 
     // 線は名前より先に描く（名前が線の端を隠す）
@@ -133,14 +134,15 @@
       var b = o.b;
       var a = ang((b.start + b.end) / 2);
       var s2 = Math.sin(a), c2 = Math.cos(a);
+      // その時刻のふちから、名前まで真っすぐ1本（折らない）
+      var x1 = C + s2 * (R + 1), y1 = CY - c2 * (R + 1);
       var line = svgEl('line', {
         class: 'tp-lead', stroke: b.color,
-        x1: C + s2 * (R + 1), y1: CY - c2 * (R + 1),
-        x2: C + s2 * (o.rad - 1), y2: CY - c2 * (o.rad - 1)
+        x1: x1, y1: y1, x2: o.lx, y2: o.ly
       });
       svg.appendChild(line);
       marks.push({ line: line, at: ((b.start + b.end) / 2) / DAY,
-        len: Math.round(Math.abs(o.rad - 1 - R - 1) * 10) / 10 });
+        len: Math.round(Math.sqrt((o.lx - x1) * (o.lx - x1) + (o.ly - y1) * (o.ly - y1)) * 10) / 10 });
     });
     tags.forEach(function (o, i) {
       var b = o.b;
@@ -281,27 +283,111 @@
    * すでに置いたものとぶつかるときは、1つ外の輪へ逃がす。
    */
   function place(list, g) {
+    return g.mode === 'radial' ? placeRadial(list, g) : placeAround(list, g);
+  }
+
+  /* 名前の四角と、そこへ引く線の始まり（円のふち側）を1つぶん組む */
+  function tagOf(b, g) {
+    var text = fit(b.label, g.MAX - 7, g.FS);
+    return { b: b, text: text, w: Math.min(g.MAX, Math.round(textW(text, g.FS)) + 7) };
+  }
+
+  /* これまでの置き方。その時刻の真外に置いて、ぶつかれば1つ外の輪へ逃がす。
+     線は円に垂直に伸びる */
+  function placeRadial(list, g) {
     var out = [];
     list.forEach(function (b) {
-      var text = fit(b.label, g.MAX - 7, g.FS);
-      var w = Math.min(g.MAX, Math.round(textW(text, g.FS)) + 7);
+      var t = tagOf(b, g);
       var a = ang((b.start + b.end) / 2);
       var s = Math.sin(a), c = Math.cos(a);
       var best = null;
       for (var step = 0; step < 4; step++) {
         var rad = g.LR + step * (g.H + 4);
         var px = g.cx + s * rad, py = g.cy - c * rad;
+        var w = t.w;
         var x = s > 0.25 ? px : (s < -0.25 ? px - w : px - w / 2);
         var y = py - g.H / 2;
         x = Math.max(1, Math.min(g.VW - w - 1, x));
         y = Math.max(1, Math.min(g.VH - g.H - 1, y));
-        var box = { b: b, text: text, x: x, y: y, w: w, rad: rad };
+        var box = { b: b, text: t.text, x: x, y: y, w: w,
+          lx: g.cx + s * (rad - 1), ly: g.cy - c * (rad - 1) };
         if (!best) best = box;
         if (!bump(box, out, g.H)) { best = box; break; }
       }
       out.push(best);
     });
     return out;
+  }
+
+  /**
+   * 円を囲うように置く。
+   *
+   * 予定が混んでくると、その時刻の真外に置いただけでは名前どうしが縦に重なって、
+   * どれが先でどれが後か分からなくなる。そこで
+   *   ・0〜12時は右、12〜24時は左に振り分け（時計まわりの順は崩さない）
+   *   ・縦は重ならないところまで押しのける
+   *   ・横はその高さで円に触れるところまで寄せる（＝円を囲う形になる）
+   * とする。線はその時刻のふちから名前の内側へ、斜めの1本で引く。
+   */
+  function placeAround(list, g) {
+    var GAP = 2;
+    var lo = 1 + g.H / 2, hi = g.VH - 1 - g.H / 2;
+    var items = list.map(function (b) {
+      var t = tagOf(b, g);
+      var a = ang((b.start + b.end) / 2);
+      t.right = Math.sin(a) >= 0;
+      t.y = g.cy - Math.cos(a) * g.LR;      // まずはその時刻の真外
+      return t;
+    });
+
+    var out = [];
+    [true, false].forEach(function (side) {
+      var col = items.filter(function (o) { return o.right === side; });
+      // 上から順に。この順は時計まわりの順でもあるので、線どうしは交わらない
+      col.sort(function (p, q) { return p.y - q.y; });
+      spread(col, g.H + GAP, lo, hi);
+      col.forEach(function (o) {
+        var dy = o.y - g.cy;
+        // その高さで円のふちがどこまで来るか。円に沿って寄せる
+        var clear = Math.max(g.H, Math.sqrt(Math.max(0, g.LR * g.LR - dy * dy)));
+        var x = side ? g.cx + clear : g.cx - clear - o.w;
+        x = Math.max(1, Math.min(g.VW - o.w - 1, x));
+        out.push({ b: o.b, text: o.text, x: x, y: o.y - g.H / 2, w: o.w,
+          // 線は名前の内側の端（円に近いほう）へ
+          lx: side ? x : x + o.w, ly: o.y });
+      });
+    });
+    return out;
+  }
+
+  /**
+   * 縦に重ならないよう、上から順に押しのける。
+   * 入りきらないときは、置ける高さいっぱいに等間隔で分ける。
+   * @param {Array} col y（まん中）を持つもの。上から順に並んでいること
+   * @param {number} gap 最低これだけ離す
+   * @param {number} lo 置ける上端
+   * @param {number} hi 置ける下端
+   */
+  function spread(col, gap, lo, hi) {
+    var n = col.length, i;
+    if (!n) return;
+    if ((n - 1) * gap > hi - lo) {
+      // どうやっても重なる。せめて等間隔にして、順番だけは分かるようにする
+      var step = (hi - lo) / Math.max(1, n - 1);
+      col.forEach(function (o, k) { o.y = lo + step * k; });
+      return;
+    }
+    col.forEach(function (o) { o.y = Math.max(lo, Math.min(hi, o.y)); });
+    for (i = 1; i < n; i++) {
+      if (col[i].y - col[i - 1].y < gap) col[i].y = col[i - 1].y + gap;
+    }
+    // 下からあふれたら、上へ押し戻す
+    if (col[n - 1].y > hi) {
+      col[n - 1].y = hi;
+      for (i = n - 2; i >= 0; i--) {
+        if (col[i + 1].y - col[i].y < gap) col[i].y = col[i + 1].y - gap;
+      }
+    }
   }
 
   /* すでに置いたものと重なっているか */

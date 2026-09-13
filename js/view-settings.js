@@ -25,7 +25,14 @@
       ui.field('週のはじまり', ui.segmented(
         [{ value: '0', label: '日曜' }, { value: '1', label: '月曜' }],
         String(s.weekStart), function (v) { S.updateSettings({ weekStart: U.num(v, 0) }); }
-      ))
+      )),
+      /* 円グラフの予定名の並べ方。混んでくると重なるので囲う置き方を既定にしたが、
+         前の見た目のほうが好みなら戻せるようにしておく */
+      ui.field('1日の時間の予定名', ui.segmented(
+        [{ value: 'around', label: '円を囲う' }, { value: 'radial', label: 'これまで通り' }],
+        s.pieLabels === 'radial' ? 'radial' : 'around',
+        function (v) { S.updateSettings({ pieLabels: v }); DL.app.render(); }
+      ), '「円を囲う」は縦の重なりを避けて置き、線は斜めに伸びます')
     ]));
 
     /* 休業日はカレンダーの日別画面から指定する（ここには置かない） */
