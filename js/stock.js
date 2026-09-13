@@ -27,6 +27,46 @@
     return moveDef(m.kind).sign * U.num(m.qty, 0);
   }
 
+  /* ---------------- 余部 ----------------
+
+     印刷所が発注ぶんに足してくれる端数（+10部前後）。
+     もらいものなので原価は0。在庫を減らすときは、まずここから減らす。
+     動き1件ごとに「そのうち何部が余部か」を持たせて数える。 */
+
+  var EXTRA_SUFFIX = '（余部）';
+
+  /** 余部ぶんの呼び名。「夏の本（余部）」 */
+  function extraTitle(item) {
+    return String((item && item.title) || '') + EXTRA_SUFFIX;
+  }
+
+  /** その動きで余部がいくつ増えるか（減るときは負の数） */
+  function extraDelta(m) {
+    return moveDef(m.kind).sign * U.num(m.extra, 0);
+  }
+
+  /**
+   * いま残っている余部。
+   * @param {string} itemId
+   * @param {string} [exceptId] この動きは数えない（その記録を直しているとき）
+   */
+  function extraLeft(itemId, exceptId) {
+    return S.stockMoves({ itemId: itemId }).reduce(function (n, m) {
+      return m.id === exceptId ? n : n + extraDelta(m);
+    }, 0);
+  }
+
+  /**
+   * これから減らす数のうち、余部から出せるぶん。
+   * 余部より多く出すときは、足りないぶんが本体から出る。
+   * @param {string} itemId
+   * @param {number} qty 減らす数（正の数）
+   * @param {string} [exceptId] 直している記録
+   */
+  function takeExtra(itemId, qty, exceptId) {
+    return Math.max(0, Math.min(Math.max(0, U.num(qty, 0)), extraLeft(itemId, exceptId)));
+  }
+
   /** その動きの金額。頒布だけが売上になる（単価を書いていなければ頒布価格） */
   function money(m, item) {
     if (m.kind !== 'sale') return 0;
@@ -43,20 +83,24 @@
     q = q || {};
     var all = S.stockMoves({ itemId: item.id });
     var out = {
-      item: item, left: 0,
-      added: 0, sold: 0, gift: 0, loss: 0, adjust: 0,
+      item: item, left: 0, extraLeft: 0,
+      added: 0, sold: 0, gift: 0, loss: 0, adjust: 0, fromExtra: 0,
       revenue: 0, cost: 0, profit: 0, moves: all.length
     };
     all.forEach(function (m) {
       out.left += delta(m);
+      out.extraLeft += extraDelta(m);
       // 年で絞るのは「その年にいくら頒布したか」の集計だけ
       if (q.year && m.date.slice(0, 4) !== String(q.year)) return;
       if (m.kind === 'adjust') out.adjust += U.num(m.qty, 0);
       else out[m.kind === 'in' ? 'added' : m.kind === 'sale' ? 'sold' : m.kind] += U.num(m.qty, 0);
+      // 頒布・献本のうち、余部から出したぶん（原価に乗せない）
+      if (m.kind === 'sale' || m.kind === 'gift') out.fromExtra += U.num(m.extra, 0);
       out.revenue += money(m, item);
     });
-    // 原価は「出た数」ぶん。刷ったぶん全部ではなく、頒布と献本に乗せる
-    out.cost = (out.sold + out.gift) * U.num(item.unitCost, 0);
+    /* 原価は「出た数」ぶん。刷ったぶん全部ではなく、頒布と献本に乗せる。
+       余部はもらいものなので、そこから出たぶんは原価に数えない */
+    out.cost = Math.max(0, out.sold + out.gift - out.fromExtra) * U.num(item.unitCost, 0);
     out.profit = out.revenue - out.cost;
     return out;
   }
@@ -69,15 +113,17 @@
 
   /** 合計（在庫画面の上に出す） */
   function totals(list) {
-    var out = { titles: list.length, left: 0, sold: 0, revenue: 0, cost: 0, profit: 0, stockValue: 0 };
+    var out = { titles: list.length, left: 0, extraLeft: 0, sold: 0,
+      revenue: 0, cost: 0, profit: 0, stockValue: 0 };
     list.forEach(function (s) {
       out.left += s.left;
+      out.extraLeft += Math.max(0, s.extraLeft);
       out.sold += s.sold;
       out.revenue += s.revenue;
       out.cost += s.cost;
       out.profit += s.profit;
-      // 残っているぶんの原価（まだ回収できていない金額）
-      out.stockValue += Math.max(0, s.left) * U.num(s.item.unitCost, 0);
+      // 残っているぶんの原価（まだ回収できていない金額）。余部はもらいものなので数えない
+      out.stockValue += Math.max(0, s.left - Math.max(0, s.extraLeft)) * U.num(s.item.unitCost, 0);
     });
     return out;
   }
@@ -100,7 +146,8 @@
       line.revenue += money(m, item);
       out.sold += U.num(m.qty, 0);
       out.revenue += money(m, item);
-      out.cost += U.num(m.qty, 0) * U.num(item.unitCost, 0);
+      // 余部から出したぶんはもらいものなので、原価には乗せない
+      out.cost += Math.max(0, U.num(m.qty, 0) - U.num(m.extra, 0)) * U.num(item.unitCost, 0);
     });
     out.lines = Object.keys(byItem).map(function (k) { return byItem[k]; })
       .sort(function (a, b) { return b.revenue - a.revenue; });
@@ -128,6 +175,8 @@
     MOVES: MOVES, KIND_LABEL: KIND_LABEL,
     moveDef: moveDef, moveLabel: moveLabel, kindLabel: kindLabel,
     delta: delta, money: money,
+    extraDelta: extraDelta, extraLeft: extraLeft, takeExtra: takeExtra,
+    EXTRA_SUFFIX: EXTRA_SUFFIX, extraTitle: extraTitle,
     summary: summary, all: all, totals: totals,
     eventSummary: eventSummary, salesOf: salesOf
   };

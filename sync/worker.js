@@ -631,6 +631,12 @@ function menuCommonLines(o, one) {
     'お米はいつも家にあるので、買い物には入れないでください（ごはんは献立に入れて構いません）。',
     '塩・こしょう・しょうゆ・みそ・砂糖・みりん・酒・油などの基本の調味料も、'
       + '家にあるものとして買い物には入れないでください。',
+    /* 基本の調味料だけでは足りない。この人が家に持っているものは
+       名指しで伝えて、買い物に入らないようにする */
+    (o.pantry && o.pantry.length)
+      ? '次の調味料も家にあります。使うのは構いませんが、買い物（shopping）には'
+        + '絶対に入れないでください：' + o.pantry.join('、')
+      : null,
     'ただし使う調味料は、一品ごとに seasonings へ必ず分量まで書いてください'
       + '（大さじ1、小さじ1/2、100ml、ひとつまみ など）。「適量」は使わないでください。',
     '冷凍食品は使ってもよいですが、頼りすぎないでください（使うなら1品まで）。',
@@ -681,7 +687,7 @@ function menuCommonLines(o, one) {
       + 'これらを使うときは、必ずこの値段で数えてください：'
       + o.prices.map((x) => x.name + ' ' + x.price + '円').join('、'));
   }
-  return lines;
+  return lines.filter(Boolean);      // 出番の無かった行は落とす
 }
 
 function menuPrompt(o) {
@@ -790,7 +796,11 @@ function menuOpts(body) {
       .map((x) => ({
         name: String((x && x.name) || '').slice(0, 40),
         price: Math.max(0, Math.round(Number(x && x.price) || 0))
-      })).filter((x) => x.name && x.price)
+      })).filter((x) => x.name && x.price),
+    /* 家にある調味料。買い物に入れないよう先に伝える。
+       できたあとの呼び方の突き合わせにも、そのまま使う */
+    pantry: (Array.isArray(body.pantry) ? body.pantry : []).slice(0, 60)
+      .map((s) => String(s || '').trim().slice(0, 40)).filter(Boolean)
   };
 }
 
@@ -816,12 +826,10 @@ async function menu(request, env, cors) {
   if (!pass.ok) return json(pass.body, pass.status, cors);
 
   // 献立ができてから、家にある調味料と呼び方を突き合わせる。
-  // ここで初めて家の在庫を見るので、献立の中身には影響しない。
+  // 買うものの名前も見て、家にあるものが混ざっていたらアプリ側で外せるようにする。
   // 失敗しても献立は返す（アプリ側が言い換え表で当てる）
-  const have = (Array.isArray(body.pantry) ? body.pantry : []).slice(0, 60)
-    .map((s) => String(s || '').trim().slice(0, 40)).filter(Boolean);
   const matchModel = String(env.OPENAI_MATCH_MODEL || model);
-  const match = await askMatch(env, matchModel, usedSeasonings(pass.data), have);
+  const match = await askMatch(env, matchModel, usedSeasonings(pass.data), o.pantry);
 
   return json({ ok: true, data: pass.data, match: match, model: pass.model, usage: pass.usage },
     200, cors);
@@ -873,12 +881,12 @@ async function menuDish(request, env, cors) {
   const pass = await askDish(env, model, o);
   if (!pass.ok) return json(pass.body, pass.status, cors);
 
-  // 新しい一品で使う調味料だけ、家にあるものと呼び方を突き合わせる
-  const have = (Array.isArray(body.pantry) ? body.pantry : []).slice(0, 60)
-    .map((s) => String(s || '').trim().slice(0, 40)).filter(Boolean);
+  // 新しい一品で使う調味料と、組み直した買うものを、家にあるものと突き合わせる
   const matchModel = String(env.OPENAI_MATCH_MODEL || model);
-  const match = await askMatch(env, matchModel,
-    usedSeasonings({ meals: [{ dishes: [pass.data && pass.data.dish] }] }), have);
+  const match = await askMatch(env, matchModel, usedSeasonings({
+    meals: [{ dishes: [pass.data && pass.data.dish] }],
+    shopping: pass.data && pass.data.shopping
+  }), o.pantry);
 
   return json({ ok: true, data: pass.data, match: match, model: pass.model, usage: pass.usage },
     200, cors);
@@ -984,7 +992,7 @@ const MATCH_SCHEMA = {
 
 function matchPrompt(used, have) {
   return [
-    '料理で使う調味料の名前を、家にある調味料の名前と突き合わせてください。',
+    '料理で使うもの（調味料や材料）の名前を、家にある調味料の名前と突き合わせてください。',
     '呼び方が違っても中身が同じものは、同じものとして結び付けてください'
       + '（例：「しょうが(チューブ)」と「おろししょうが」、「醤油」と「しょうゆ」、'
       + '「顆粒だし」と「ほんだし」）。',
@@ -992,9 +1000,9 @@ function matchPrompt(used, have) {
       + '（例：「ごま油」と「サラダ油」、「しょうゆ」と「めんつゆ」、「酢」と「ポン酢」、'
       + '「砂糖」と「黒糖」、「バター」と「マーガリン」）。',
     '家にある中に同じものが無ければ、have は空文字にしてください。',
-    '名前は渡した字のまま返し、使う調味料はひとつ残らず返してください。',
+    '名前は渡した字のまま返し、渡したものはひとつ残らず返してください。',
     '',
-    '【使う調味料】' + used.join('、'),
+    '【使うもの】' + used.join('、'),
     '【家にある調味料】' + (have.length ? have.join('、') : 'なし')
   ].join('\n');
 }
@@ -1019,17 +1027,21 @@ async function askMatch(env, model, used, have) {
   return out;
 }
 
-/* 献立で使う調味料の名前を、重複なく取り出す */
+/* 献立で使う調味料の名前を、重複なく取り出す。
+   買うものの名前も一緒に見る（家にある調味料が買い物に混ざっていたら、
+   アプリ側がこの突き合わせを見て外せるように） */
 function usedSeasonings(data) {
   const out = [];
+  const add = (v) => {
+    const n = String(v || '').trim();
+    if (n && out.indexOf(n) < 0) out.push(n);
+  };
   ((data && data.meals) || []).forEach((m) => {
     ((m && m.dishes) || []).forEach((d) => {
-      ((d && d.seasonings) || []).forEach((s) => {
-        const n = String((s && s.name) || '').trim();
-        if (n && out.indexOf(n) < 0) out.push(n);
-      });
+      ((d && d.seasonings) || []).forEach((s) => add(s && s.name));
     });
   });
+  ((data && data.shopping) || []).forEach((s) => add(s && s.name));
   return out;
 }
 

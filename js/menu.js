@@ -97,6 +97,33 @@
     return true;
   }
 
+  /**
+   * 家にある調味料が買い物に混ざっていたら外す。
+   *
+   * 頼むときに「家にあるものは入れないで」と伝えてはいるが、
+   * 呼び方が違う（ごま油／胡麻油）と、そのまま入ってくることがある。
+   * 期限の切れたものは買い直すので、外さない。
+   *
+   * @param {object} data 向こうから来た中身（その場で書き替える）
+   * @param {object} match 向こうが突き合わせた呼び方
+   * @param {string} [date]
+   * @returns {Array} 外した品の名前
+   */
+  function dropOwned(data, match, date) {
+    if (!data || !Array.isArray(data.shopping)) return [];
+    var find = matcher({ match: match || {} });
+    var out = [];
+    data.shopping = data.shopping.filter(function (x) {
+      var own = find(x && x.name);
+      if (!own || S.foodExpired(own, date)) return true;
+      out.push(x.name);
+      return false;
+    });
+    // 外したぶん、合計も下がる
+    data.total = data.shopping.reduce(function (n, x) { return n + U.num(x.price, 0); }, 0);
+    return out;
+  }
+
   /* いまの季節。旬のものを使ってもらう手がかり */
   function season(date) {
     var m = U.num(String(date || U.today()).slice(5, 7), 0);
@@ -169,6 +196,8 @@
             + ' に未対応です。Cloudflare の Worker を新しくして deploy し直してください');
         }
         if (!res.ok) throw new Error(reason(res.status, b));
+        // 家にある調味料が混ざっていたら、買い物から外す
+        var owned = dropOwned(b.data, b.match, o.date);
         // 控えてある値段があるものは、見当ではなくそちらを使う
         if (b.data && Array.isArray(b.data.shopping)) b.data.shopping.forEach(useKnownPrice);
         var m = S.normalizeMenu(Object.assign({}, b.data, {
@@ -177,6 +206,8 @@
           match: b.match || {}
         }));
         if (!m.meals.length) throw new Error('献立を組み立てられませんでした');
+        // 家にあるので買い物から外したもの（下書きのあいだだけ断りを出す）
+        m.dropped = owned;
         // 頼んだのに返ってこなかった食事。古い Worker は知らない食事を黙って落とす
         var got = m.meals.map(function (x) { return x.slot; });
         m.missingSlots = slots.filter(function (s) { return got.indexOf(s) < 0; });
@@ -247,6 +278,8 @@
       return res.json().catch(function () { return {}; }).then(function (b) {
         if (!res.ok) throw new Error(reason(res.status, b));
         var data = b.data || {};
+        // 家にある調味料が混ざっていたら、買い物から外す
+        var owned = dropOwned(data, b.match, o.date);
         // 控えてある値段があるものは、見当ではなくそちらを使う
         if (Array.isArray(data.shopping)) data.shopping.forEach(useKnownPrice);
         var dish = S.normalizeDish(data.dish);
@@ -255,6 +288,7 @@
           dish: dish,
           // 差し替えたあとの、その食事の呼び名
           name: String(data.name || '').trim().slice(0, 60),
+          dropped: owned,
           shopping: Array.isArray(data.shopping) ? data.shopping : null,
           note: String(data.note || ''),
           match: b.match || {}
@@ -401,6 +435,7 @@
     slotsLabel: slotsLabel, slotsJa: slotsJa, useKnownPrice: useKnownPrice,
     season: season,
     extras: extras, seasoningState: seasoningState, matcher: matcher, pantryMap: pantryMap,
+    dropOwned: dropOwned,
     useLeftovers: useLeftovers, key: key
   };
 })(window.DL);

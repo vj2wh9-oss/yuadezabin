@@ -262,6 +262,12 @@
       if (!x.logo) x.logo = src.logo || '';
       if (!x.seal) x.seal = src.seal || '';
     });
+    // 頒布物の表紙も同じように戻す
+    var byItem = {};
+    (source.settings && source.settings.items || []).forEach(function (x) { byItem[x.id] = x; });
+    (target.settings && target.settings.items || []).forEach(function (x) {
+      if (!x.cover && byItem[x.id]) x.cover = byItem[x.id].cover || '';
+    });
     delete target.compact;
     return target;
   }
@@ -1200,6 +1206,10 @@
     x.projectId = x.projectId || '';   // どのイベントで出したものか
     x.memo = String(x.memo || '').slice(0, 300);
     x.archived = !!x.archived;         // 頒布を終えたもの（一覧では畳む）
+    /* 表紙などの画像。縮めた dataURL をそのまま持つ（名義のロゴと同じやり方）。
+       画像でないものは持たない */
+    var cover = String(x.cover || '');
+    x.cover = /^data:image\//.test(cover) ? cover.slice(0, 400000) : '';
     x.createdAt = x.createdAt || new Date().toISOString();
     return x;
   }
@@ -1213,6 +1223,16 @@
     // 補正だけは減らす向きも許す（棚卸しで数が合わなかったとき）
     var qty = Math.round(U.num(m.qty, 0));
     m.qty = m.kind === 'adjust' ? qty : Math.max(0, qty);
+    /* このうち何部が余部か。
+       入庫なら「印刷所が足してくれたぶん」、出ていくなら「余部から出したぶん」。
+       余部は原価0で数え、減らすときは先にここから減る。 */
+    var ex = Math.round(U.num(m.extra, 0));
+    if (m.kind === 'adjust') {
+      // 棚卸しは「数はそのままで、余部の数だけ直す」こともある（数と切り離す）
+      m.extra = Math.max(-99999, Math.min(99999, ex));
+    } else {
+      m.extra = Math.max(0, Math.min(ex, m.qty));
+    }
     m.price = Math.max(0, Math.round(U.num(m.price, 0)));   // 0＝頒布物の価格を使う
     m.place = String(m.place || '').slice(0, 60);           // 即売会名・通販など
     m.projectId = m.projectId || '';
@@ -2717,6 +2737,8 @@
   function compact(s) {
     var c = U.clone(s);
     (c.settings.issuers || []).forEach(function (x) { x.logo = ''; x.seal = ''; });
+    // 頒布物の表紙も、控えには残さない（本体は IndexedDB にある）
+    (c.settings.items || []).forEach(function (x) { x.cover = ''; });
     c.compact = true;
     return c;
   }

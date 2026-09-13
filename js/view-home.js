@@ -936,7 +936,10 @@
       if (ctx.draft) mDraft = next;
       else S.setMenu(date, next);      // 保存で描き直しが走る
       DL.app.render();
-      ui.toast(d.role + 'を「' + r.dish.name + '」にしました');
+      ui.toast(d.role + 'を「' + r.dish.name + '」にしました'
+        // 家にある調味料が買い物に混ざっていたら、外したことを断っておく
+        + ((r.dropped || []).length
+          ? '（' + r.dropped.join('・') + 'は家にあるので外しました）' : ''));
     }).catch(function (e) {
       mRedo = '';
       DL.app.render();
@@ -1191,6 +1194,11 @@
       if (extras.length) {
         ul.appendChild(el('p', { class: 'muted small mn-extra-note',
           text: '調味料 ' + extras.length + '点は、予算には数えていません。' }));
+      }
+      // 家にあるので買い物から外したもの。黙って消すと数が合わなく見える
+      if ((m.dropped || []).length) {
+        ul.appendChild(el('p', { class: 'muted small mn-extra-note',
+          text: m.dropped.join('・') + ' は家にあるので、買い物から外しました。' }));
       }
       sh.appendChild(ul);
       box.appendChild(sh);

@@ -146,6 +146,8 @@
       onclick: function () { add(x, left); }
     }, [
       n ? el('span', { class: 'onsite-badge', text: String(n) }) : null,
+      // 表紙があれば、名前の上に出す（手に取るものと見比べやすい）
+      x.cover ? el('img', { class: 'onsite-cover', src: x.cover, alt: '' }) : null,
       el('b', { class: 'onsite-name', text: x.title }),
       el('span', { class: 'onsite-price', text: D.yen(x.price) }),
       el('span', { class: 'onsite-left' + (left <= 0 ? ' none' : ''), text: '残 ' + left })
@@ -255,8 +257,11 @@
     ids.forEach(function (id) {
       var x = S.getItem(id);
       if (!x) return;
+      var qty = U.num(tray[id], 0);
       S.addMove({
-        itemId: id, date: U.today(), kind: 'sale', qty: U.num(tray[id], 0),
+        itemId: id, date: U.today(), kind: 'sale', qty: qty,
+        // 余部があれば、そこから先に出す（原価0で数える）
+        extra: K.takeExtra(id, qty),
         price: U.num(x.price, 0), projectId: p.id, place: place, saleId: saleId
       });
     });
