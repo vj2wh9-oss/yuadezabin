@@ -93,6 +93,10 @@
   }
 
   /** 月ごとの合計。1〜12月ぶんを必ず返す */
+  /* 描き直しのたびに何度も聞かれるので、月ごとに一度だけ数えて取っておく。
+     記録が変われば savedAt も変わるので、そのときは数え直しになる */
+  var fxCache = {};
+
   /**
    * その月に出ていく固定費。事業と日常の両方をまとめて数える。
    * 予算は事業と日常を合わせた1本なので、固定費も合わせて見る。
@@ -105,10 +109,72 @@
    * @returns {number}
    */
   function fixedOfMonth(ym, book) {
-    var U = DL.util;
-    return (DL.store.settings.recurring || []).filter(function (r) {
-      return (!book || r.book === book) && liveInMonth(r, ym);
-    }).reduce(function (n, r) { return n + Math.max(0, U.num(r.amount, 0)); }, 0);
+    var d = fixedDetail(ym);
+    return book === 'work' ? d.work : book === 'life' ? d.life : d.total;
+  }
+
+  /**
+   * その月の固定費を、記録と突き合わせて数える。
+   *
+   * 固定費は「月のはじめに取りのけておくもの」なので、その支払いの記録を
+   * 日々の使いぶんにも数えると二重になる。家賃が出た日だけ1日の予算が
+   * 吹き飛んで見えるのは、これが外れていないため。
+   *
+   * 外す相手は、固定費から起こした記録（recurringId 付き）だけでは足りない。
+   * レシートから手で入れた家賃や通信費も、固定費の催促（recurringRecorded）と
+   * 同じ見方――同じ帳簿・同じ科目・同じ支払先――で固定費ぶんとみなす。
+   *
+   * 額は「記録があれば記録どおり、まだ無ければ出ていく予定の額」。
+   * こうしておけば、予定より高い月でも、取りのける額と外す記録が必ず釣り合う。
+   *
+   * @param {string} ym 'YYYY-MM'
+   * @returns {{work:number, life:number, total:number, isFixed:function(object):boolean}}
+   */
+  function fixedDetail(ym) {
+    var U = DL.util, S = DL.store;
+    var key = ym + '|' + (S.settings.expenses || []).length
+      + '|' + (S.settings.recurring || []).length + '|' + (S.state && S.state.savedAt);
+    if (fxCache[key]) return fxCache[key];
+
+    var rows = (S.settings.expenses || []).filter(function (x) {
+      return String(x.date).slice(0, 7) === ym;
+    });
+    var mark = {};                    // 固定費ぶんとして数えた記録
+    var sum = { work: 0, life: 0 };
+
+    (S.settings.recurring || []).forEach(function (r) {
+      if (!liveInMonth(r, ym)) return;
+      var mine = rows.filter(function (x) {
+        if (x.recurringId) return x.recurringId === r.id;
+        if (mark[x.id]) return false;                  // ほかの固定費で数えたもの
+        return x.book === r.book && x.category === r.category
+          && sameName(x.vendor, r.vendor || r.name);
+      });
+      mine.forEach(function (x) { mark[x.id] = true; });
+      var amount = mine.length ? total(mine) : Math.max(0, U.num(r.amount, 0));
+      sum[r.book === 'life' ? 'life' : 'work'] += amount;
+    });
+
+    // 消した固定費から起こした記録も、固定費ぶんとして扱う（宙に浮かせない）
+    rows.forEach(function (x) {
+      if (!x.recurringId || mark[x.id]) return;
+      mark[x.id] = true;
+      sum[x.book === 'life' ? 'life' : 'work'] += Math.max(0, U.num(x.amount, 0));
+    });
+
+    var out = {
+      work: Math.round(sum.work), life: Math.round(sum.life),
+      total: Math.round(sum.work + sum.life),
+      isFixed: function (x) { return !!(x && mark[x.id]); }
+    };
+    if (Object.keys(fxCache).length > 24) fxCache = {};
+    fxCache[key] = out;
+    return out;
+  }
+
+  /** この支出は固定費ぶんか（一覧に印を付けるのに使う） */
+  function isFixedExpense(x) {
+    return !!x && fixedDetail(String(x.date).slice(0, 7)).isFixed(x);
   }
 
   /**
@@ -143,8 +209,9 @@
    * 家賃や通信費のような固定費は、日割りにしても意味がない。
    * 27日に家賃が出た日だけ予算が吹き飛んで見えても、何の役にも立たない。
    * そこで月の予算からは固定費を先に取りのけ、残った「自由に使える額」を
-   * 日割りにする。使った額のほうも、固定費から起こした記録は数えない
-   * （先に引いてあるので、数えると二重になる）。
+   * 日割りにする。使った額のほうも、固定費ぶんの記録は数えない
+   * （先に引いてあるので、数えると二重になる）。固定費から起こした記録も、
+   * レシートから手で入れた家賃や通信費も、同じように外す（fixedDetail）。
    *
    * 基準は「（月の予算 − 固定費）÷ その月の日数」。ただし月の途中で
    * 使いすぎていると、この基準を守っても収まらない。そこで、いま時点で
@@ -170,12 +237,13 @@
     // その月の日数（翌月の0日＝今月の末日）
     var days = new Date(U.num(ym.slice(0, 4), 2000), U.num(ym.slice(5, 7), 1), 0).getDate();
 
-    var fixed = fixedOfMonth(ym);                     // 事業＋日常
+    var fx = fixedDetail(ym);                         // 事業＋日常
+    var fixed = fx.total;
     var budget = Math.max(0, month - fixed);          // 日割りにできる額
 
     var rows = (S.settings.expenses || []).filter(function (x) {
       return String(x.date).slice(0, 7) === ym        // 事業も日常も、まとめて数える
-        && !x.recurringId;                            // 固定費ぶんは先に引いてある
+        && !fx.isFixed(x);                            // 固定費ぶんは先に引いてある
     });
     var spent = total(rows);
     var todayRows = rows.filter(function (x) { return x.date === date; });
@@ -199,7 +267,9 @@
 
     return {
       month: month, fixed: fixed,
-      fixedWork: fixedOfMonth(ym, 'work'), fixedLife: fixedOfMonth(ym, 'life'),
+      fixedWork: fx.work, fixedLife: fx.life,
+      // 固定費ぶんの記録か（折れ線や節約実績でも同じ見方をするため）
+      isFixed: fx.isFixed,
       spentWork: byBook.work, spentLife: byBook.life,
       budget: budget, days: days, day: day, rest: rest,
       perDay: Math.round(perDay),
@@ -254,10 +324,10 @@
     var pl = DL.bank && DL.bank.plan ? DL.bank.plan(date) : null;
     var savePerDay = (pl && !pl.done) ? Math.max(0, pl.perDay) : 0;
 
-    // 日ごとの支出（固定費から起こしたものは、先に引いてあるので数えない）
+    // 日ごとの支出（固定費ぶんは、先に引いてあるので数えない）
     var byDay = {};
     (S.settings.expenses || []).forEach(function (x) {
-      if (String(x.date).slice(0, 7) !== ym || x.recurringId) return;
+      if (String(x.date).slice(0, 7) !== ym || b.isFixed(x)) return;
       byDay[x.date] = (byDay[x.date] || 0) + U.num(x.amount, 0);
     });
 
@@ -305,10 +375,10 @@
     date = U.isISO(date) ? date : U.today();
     var ym = date.slice(0, 7);
 
-    // 日ごとの支出（固定費から起こしたものは、先に引いてあるので数えない）
+    // 日ごとの支出（固定費ぶんは、先に引いてあるので数えない）
     var byDay = {};
     (S.settings.expenses || []).forEach(function (x) {
-      if (String(x.date).slice(0, 7) !== ym || x.recurringId) return;
+      if (String(x.date).slice(0, 7) !== ym || b.isFixed(x)) return;
       if (String(x.date) > date) return;                 // 先の日付のぶんは、まだ数えない
       byDay[x.date] = (byDay[x.date] || 0) + U.num(x.amount, 0);
     });
@@ -622,7 +692,7 @@
     yearlyOf: yearlyOf, review: review, renewAlerts: renewAlerts,
     RECEIPT_FOLDER: RECEIPT_FOLDER, receiptFolder: receiptFolder,
     BOOKS: BOOKS, categories: categories, baseCategories: baseCategories, bookLabel: bookLabel,
-    total: total, isSupply: isSupply, liveInMonth: liveInMonth, endedBy: endedBy, dailyBudget: dailyBudget, budgetSeries: budgetSeries, savingRecord: savingRecord, fixedOfMonth: fixedOfMonth, byCategory: byCategory, byTag: byTag, byMonth: byMonth, shrink: shrink,
+    total: total, isSupply: isSupply, liveInMonth: liveInMonth, endedBy: endedBy, dailyBudget: dailyBudget, budgetSeries: budgetSeries, savingRecord: savingRecord, fixedOfMonth: fixedOfMonth, fixedDetail: fixedDetail, isFixedExpense: isFixedExpense, byCategory: byCategory, byTag: byTag, byMonth: byMonth, shrink: shrink,
     toCSV: toCSV, dueRecurring: dueRecurring, recurringRecorded: recurringRecorded,
     fixedCandidates: fixedCandidates
   };

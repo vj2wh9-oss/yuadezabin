@@ -202,6 +202,8 @@
     var lines = [];
     if (b.fixed > 0) {
       lines.push('うち固定費 ' + D.yen(b.fixed) + '。自由に使えるのは ' + D.yen(b.budget) + ' です');
+      // 固定費は月のはじめに取りのけてある。支払った日にもう一度引くと二重になる
+      lines.push('固定費は先に取りのけてあるので、支払った日の「今日あと使える額」からは引きません');
     }
     if (b.spent > 0) {
       lines.push('そのほかに使ったぶん　事業 ' + D.yen(b.spentWork)
@@ -1155,6 +1157,8 @@
 
   function expenseRow(x) {
     var p = (x.book !== 'life' && x.projectId) ? S.getProject(x.projectId) : null;
+    // 固定費ぶんは、1日の予算から引いていない。その印を出しておく
+    var isFixed = E.isFixedExpense(x);
     var issuer = (x.book !== 'life' && x.issuerId) ? S.getIssuer(x.issuerId) : null;
     var shot = el('span', { class: 'ex-shot' + (x.fileId ? '' : ' none') },
       x.fileId ? ui.icon('receipt', 18) : ui.icon('receipt', 16));
@@ -1170,6 +1174,7 @@
         el('div', { class: 'row-sub' }, [
           ui.chip(U.fmtMD(x.date), 'soft'),
           ui.chip(x.category, 'ghosty'),
+          isFixed ? ui.chip('固定費', 'ok') : null,
           p ? ui.chip(p.title, 'ghosty') : null,
           issuer ? ui.chip(issuer.name || '名義', 'ghosty') : null,
           // レシートから読み取った品目があれば、件数だけ添える（中身は開けば見える）
@@ -1588,12 +1593,16 @@
         ui.block('レシート', shotBox),
         itemsWrap,
         // 毎月きまって出るものなら、この記録をもとに固定費にできる
-        (!isNew && !x.recurringId) ? ui.btn('これを固定費にする', 'ghost full mt', function () {
+        (!isNew && !x.recurringId && !E.isFixedExpense(x)) ? ui.btn('これを固定費にする', 'ghost full mt', function () {
           close();
           recurringSheet(null, fixedFrom(x));
         }, 'refresh') : null,
         (!isNew && x.recurringId) ? el('p', { class: 'muted small',
-          text: 'これは固定費から起こした記録です。' }) : null,
+          text: 'これは固定費から起こした記録です。1日に使えるお金からは引いていません'
+            + '（月の予算から先に取りのけてあります）。' }) : null,
+        (!isNew && !x.recurringId && E.isFixedExpense(x)) ? el('p', { class: 'muted small',
+          text: '同じ支払先・同じ科目の固定費があるので、これは固定費ぶんとして扱います。'
+            + '1日に使えるお金からは引いていません。' }) : null,
         !isNew ? ui.btn('この経費を削除', 'danger full mt', function () { removeThis(); }, 'trash') : null
       ]),
       actions: [
