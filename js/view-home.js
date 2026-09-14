@@ -551,6 +551,8 @@
     /* 貯金と節約目標も、お金の話としてこの1枚にまとめる。
        中身（進み具合・アドバイス）は経理と節約目標で見る */
     var line;
+    // 毎日の残りをためた「節約実績」。使いすぎた日はそのぶん引いてある
+    if ((line = savedLine(today))) card.appendChild(line);
     if ((line = savingsLine())) card.appendChild(line);
     if ((line = planLine(today))) card.appendChild(line);
 
@@ -562,6 +564,74 @@
     ]));
 
     return card;
+  }
+
+  /* ---------------- 今月の節約実績 ----------------
+
+     「本日使える金額」の残りを、毎日ためていったもの。
+     使いすぎた日はその日ぶんがマイナスになり、実績から引かれる。
+     月が変われば0から数え直す（1日ぶんの予算も、その月のもので数える）。 */
+
+  function savedLine(today) {
+    var r = DL.expenses.savingRecord(today);
+    if (!r) return null;
+    var yen = DL.docs.yen;
+    var minus = r.saved < 0;
+    return el('button', {
+      type: 'button', class: 'mo-line',
+      onclick: function () { savedSheet(today); }
+    }, [
+      el('span', { class: 'mo-k', text: '今月の節約' }),
+      el('b', { class: minus ? 'over' : 'save',
+        text: (minus ? '-' : '+') + yen(Math.abs(r.saved)) }),
+      el('span', { class: 'mo-s' + (r.today < 0 ? ' over' : ''),
+        text: '今日 ' + (r.today < 0 ? '-' : '+') + yen(Math.abs(r.today)) }),
+      el('span', { class: 'chev' }, ui.icon('chevronRight', 15))
+    ]);
+  }
+
+  /* 日ごとの積み上げ。どの日でためて、どの日で使いすぎたかを見る */
+  function savedSheet(today) {
+    var r = DL.expenses.savingRecord(today);
+    if (!r) return;
+    var yen = DL.docs.yen;
+    var minus = r.saved < 0;
+
+    var list = el('div', { class: 'sv-days' });
+    r.rows.slice().reverse().forEach(function (x) {
+      var neg = x.saved < 0;
+      list.appendChild(el('div', { class: 'sv-day' + (neg ? ' over' : '') + (x.date === today ? ' now' : '') }, [
+        el('span', { class: 'sv-day-d', text: U.fmtMD(x.date) + (x.date === today ? '（今日）' : '') }),
+        el('span', { class: 'muted small', text: '支出 ' + yen(x.spent) }),
+        el('b', { text: (neg ? '-' : '+') + yen(Math.abs(x.saved)) })
+      ]));
+    });
+
+    var close = ui.sheet({
+      title: '今月の節約実績',
+      body: el('div', { class: 'form' }, [
+        el('div', { class: 'card sum-grid' }, [
+          el('div', { class: 'sum-box big' + (minus ? ' warn' : ' ok') }, [
+            el('span', { text: r.ym.replace('-', '年') + '月' }),
+            el('b', { text: (minus ? '-' : '+') + yen(Math.abs(r.saved)) })
+          ]),
+          el('div', { class: 'sum-box' }, [el('span', { text: 'ためた日' }),
+            el('b', { text: r.goodDays + '日' })]),
+          el('div', { class: 'sum-box' }, [el('span', { text: '使いすぎた日' }),
+            el('b', { text: r.badDays + '日' })])
+        ]),
+        el('p', { class: 'muted small', text:
+          '1日の予算 ' + yen(r.perDay) + ' × ' + r.day + '日 − 使った額 ' + yen(r.spent)
+          + '　＝　' + (minus ? '-' : '') + yen(Math.abs(r.saved)) }),
+        el('p', { class: 'muted small', text:
+          '毎日の「本日使える金額」の残りをためたものです。使いすぎた日はそのぶん引いています。'
+          + '今日ぶん（' + (r.today < 0 ? '-' : '+') + yen(Math.abs(r.today)) + '）はまだ動きます。' }),
+        ui.section('日ごと'),
+        list,
+        el('p', { class: 'muted small', text: '月が変わると、また0から数え直します。' })
+      ]),
+      actions: [ui.btn('閉じる', 'ghost', function () { close(); })]
+    });
   }
 
   /* 貯金。残高と、目標までの残り。押すと経理へ */

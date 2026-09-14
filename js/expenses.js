@@ -284,6 +284,61 @@
     };
   }
 
+  /**
+   * 今月の節約実績。
+   *
+   * 「本日使える金額」は 1日ぶんの予算から、その日に使ったぶんを引いたもの。
+   * その残りを毎日ためていったのが節約実績で、使いすぎた日はマイナスとして引く。
+   * つまり（経った日数 × 1日ぶんの予算）−（今月ここまでに使った額）。
+   * 月が変われば、また0から数え直す（1日ぶんの予算もその月のもので数える）。
+   *
+   * 固定費は日割りにしても意味がないので、dailyBudget と同じく
+   * 予算からも支出からも先に取りのけてある。
+   *
+   * @param {string} [date] 見たい日。既定は今日
+   * @returns {object|null} 予算を決めていなければ null
+   */
+  function savingRecord(date) {
+    var S = DL.store, U = DL.util;
+    var b = dailyBudget(date);
+    if (!b) return null;
+    date = U.isISO(date) ? date : U.today();
+    var ym = date.slice(0, 7);
+
+    // 日ごとの支出（固定費から起こしたものは、先に引いてあるので数えない）
+    var byDay = {};
+    (S.settings.expenses || []).forEach(function (x) {
+      if (String(x.date).slice(0, 7) !== ym || x.recurringId) return;
+      if (String(x.date) > date) return;                 // 先の日付のぶんは、まだ数えない
+      byDay[x.date] = (byDay[x.date] || 0) + U.num(x.amount, 0);
+    });
+
+    var perDay = b.perDay;
+    var rows = [], saved = 0;
+    for (var d = 1; d <= b.day; d++) {
+      var iso = ym + '-' + (d < 10 ? '0' : '') + d;
+      var spent = Math.round(byDay[iso] || 0);
+      var day = Math.round(perDay - spent);              // その日の節約ぶん（マイナスもある）
+      saved += day;
+      rows.push({ d: d, date: iso, spent: spent, saved: day });
+    }
+    var todayRow = rows[rows.length - 1] || { spent: 0, saved: Math.round(perDay) };
+    return {
+      ym: ym, day: b.day, days: b.days,
+      perDay: perDay,
+      // 今日を含む、ここまでの合計
+      saved: saved,
+      // 今日ぶんはまだ動く。分けて見せられるように、別にも出しておく
+      today: todayRow.saved,
+      until: saved - todayRow.saved,
+      spent: rows.reduce(function (n, x) { return n + x.spent; }, 0),
+      // ためられた日と、使いすぎた日
+      goodDays: rows.filter(function (x) { return x.saved > 0; }).length,
+      badDays: rows.filter(function (x) { return x.saved < 0; }).length,
+      rows: rows
+    };
+  }
+
   function byMonth(rows, year) {
     var out = [];
     for (var m = 1; m <= 12; m++) {
@@ -567,7 +622,7 @@
     yearlyOf: yearlyOf, review: review, renewAlerts: renewAlerts,
     RECEIPT_FOLDER: RECEIPT_FOLDER, receiptFolder: receiptFolder,
     BOOKS: BOOKS, categories: categories, baseCategories: baseCategories, bookLabel: bookLabel,
-    total: total, isSupply: isSupply, liveInMonth: liveInMonth, endedBy: endedBy, dailyBudget: dailyBudget, budgetSeries: budgetSeries, fixedOfMonth: fixedOfMonth, byCategory: byCategory, byTag: byTag, byMonth: byMonth, shrink: shrink,
+    total: total, isSupply: isSupply, liveInMonth: liveInMonth, endedBy: endedBy, dailyBudget: dailyBudget, budgetSeries: budgetSeries, savingRecord: savingRecord, fixedOfMonth: fixedOfMonth, byCategory: byCategory, byTag: byTag, byMonth: byMonth, shrink: shrink,
     toCSV: toCSV, dueRecurring: dueRecurring, recurringRecorded: recurringRecorded,
     fixedCandidates: fixedCandidates
   };

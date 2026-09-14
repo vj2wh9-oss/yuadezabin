@@ -2026,6 +2026,19 @@ a.tp-proj:active { color: var(--accent); }
 }
 .mo-u { font-size: 11px; color: var(--muted); margin-left: -4px; }
 .mo-s.ok { color: var(--ok); }
+/* 節約実績。ためたぶんは青、使いすぎたぶんは赤 */
+.mo-line b.over { color: var(--danger); }
+.mo-s.over { color: var(--danger); }
+/* 日ごとの積み上げ（節約実績のシート） */
+.sv-days { display: flex; flex-direction: column; }
+.sv-day {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 7px 0; border-top: 1px solid var(--line); font-size: 13px;
+}
+.sv-day-d { flex: none; width: 7em; white-space: nowrap; color: var(--muted); font-size: 12px; }
+.sv-day b { margin-left: auto; color: var(--accent2); font-variant-numeric: tabular-nums; }
+.sv-day.over b { color: var(--danger); }
+.sv-day.now { font-weight: 700; }
 .mo-line .chev { flex: none; display: flex; align-items: center; color: var(--muted); }
 .mo-line:active { opacity: .7; }
 

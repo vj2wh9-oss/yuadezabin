@@ -468,8 +468,15 @@
     });
   }
 
-  /* 撮った日ごとに番号を振り直す。すでにそろっているものの番号は使わない */
+  /**
+   * 日ごとに番号を振り直す。すでにそろっているものの番号は使わない。
+   * 日付は、その写真を付けた経費の日付（分かれば）。無ければ撮った日。
+   */
   function renamePlan(all) {
+    var byFile = {};
+    (S.settings.expenses || []).forEach(function (x) {
+      if (x.fileId && U.isISO(x.date)) byFile[x.fileId] = x.date;
+    });
     var targets = renamable(all).slice().sort(function (a, b) {
       return String(a.uploadedAt).localeCompare(String(b.uploadedAt));
     });
@@ -477,7 +484,7 @@
     var taken = (all || []).filter(function (f) { return F.RECEIPT_NAME.test(String(f.name || '')); })
       .map(function (f) { return { name: f.name }; });
     return targets.map(function (f) {
-      var date = String(f.uploadedAt || '').slice(0, 10);
+      var date = byFile[f.id] || String(f.uploadedAt || '').slice(0, 10);
       var name = F.receiptName(U.isISO(date) ? date : U.today(), taken);
       taken.push({ name: name });
       return { file: f, name: name };

@@ -1653,12 +1653,15 @@
       };
 
       if (!picked) { commit(data); return; }
-      // 写真は共有ファイルへ。名前は日付と支払先から作る
+      /* 写真は共有ファイルへ。名前は YYYYMMDD_00.jpg でそろえる
+         （その日の2枚目からは 01, 02…。番号はサーバーにあるものを見て決める） */
       ui.toast('レシートを送っています…');
       var folder = RECEIPT_FOLDER[bk] || RECEIPT_FOLDER.work;
-      var name = data.date + (data.vendor ? '_' + data.vendor.replace(/[\\\/:*?"<>|]/g, '_') : '') + '.jpg';
-      var file = new File([picked], name, { type: picked.type || 'image/jpeg' });
-      F.upload(file, { folder: folder, projectId: data.projectId })
+      F.nextReceiptName(data.date)
+        .then(function (name) {
+          var file = new File([picked], name, { type: picked.type || 'image/jpeg' });
+          return F.upload(file, { folder: folder, projectId: data.projectId });
+        })
         .then(function (r) {
           if (r && r.id) {
             S.setFileFolder(r.id, S.ensureFolderPath(folder));
