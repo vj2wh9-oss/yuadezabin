@@ -435,6 +435,51 @@
     return out;
   }
 
+  /* ---------------- 1日の時間に付けた知らせ ----------------
+
+     円グラフの予定ごとに「始まるとき」「終わるとき」を選べる。
+     設定の決まりごととは別の道で、印が付いていれば いつも作る。 */
+
+  /** その日の0時から何分後か、を世界時の文字列にする（24時を超えたら翌日） */
+  function atMin(date, min) {
+    if (!U.isISO(date)) return null;
+    var d = U.parse(date);
+    d.setHours(0, Math.max(0, Math.round(U.num(min, 0))), 0, 0);
+    return d.toISOString();
+  }
+
+  function blockReminders(from, to) {
+    var T = DL.timeblocks;
+    var out = [];
+    U.rangeDays(from, to).forEach(function (date) {
+      S.timeblocks(date).forEach(function (b) {
+        var span = T.fmtDay(b.start) + '〜' + T.fmtDay(b.end);
+        var body = span + (b.memo ? '　' + b.memo : '');
+        if (b.notifyStart) {
+          out.push({
+            id: 'tb|' + date + '|' + b.id + '|s',
+            at: atMin(date, b.start),
+            title: 'はじまり　' + b.label,
+            body: body,
+            tag: 'tb-' + b.id + '-s',
+            url: '#/day/' + date
+          });
+        }
+        if (b.notifyEnd) {
+          out.push({
+            id: 'tb|' + date + '|' + b.id + '|e',
+            at: atMin(date, b.end),
+            title: 'おわり　' + b.label,
+            body: body,
+            tag: 'tb-' + b.id + '-e',
+            url: '#/day/' + date
+          });
+        }
+      });
+    });
+    return out.filter(function (x) { return x.at; });
+  }
+
   /* ---------------- 予定表を組む ---------------- */
 
   /**
@@ -462,6 +507,11 @@
     var made2;
     try { made2 = eventReminders(start, end); } catch (e) { made2 = []; }
     made2.forEach(function (x) { if (x && x.at > now) out.push(x); });
+
+    // 1日の時間に付けた「始まり・終わり」の知らせ。これも決まりごととは別の道
+    var made3;
+    try { made3 = blockReminders(start, end); } catch (e) { made3 = []; }
+    made3.forEach(function (x) { if (x && x.at > now) out.push(x); });
 
     // 同じ id は1つに。時刻の早い順
     var by = {};
@@ -625,6 +675,6 @@
     KINDS: KINDS, build: build, rules: rules, settings: settings, defaultRules: defaultRules,
     status: status, supported: supported, standalone: standalone,
     enable: enable, disable: disable, sync: sync, state: state, testSend: testSend,
-    atLocal: atLocal, eventReminders: eventReminders
+    atLocal: atLocal, eventReminders: eventReminders, blockReminders: blockReminders
   };
 })(window.DL);

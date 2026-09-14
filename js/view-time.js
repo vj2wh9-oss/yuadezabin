@@ -720,6 +720,8 @@
         el('span', { class: 'tp-row-t', text: T.fmt(b.start) + '〜' + T.fmt(b.end) }),
         el('span', { class: 'tp-row-k' }, [
           el('span', { text: b.label + (b.memo ? '　' + b.memo : '') }),
+          // 始まり・終わりに知らせるようにしてあれば、ベルを添える
+          bellMark(b),
           /* どの案件に使ったかは、名前の下に小さく添える。
              複数を並行して進めた帯は、案件ごとの実時間も出す */
           projLine(T.blockProjects(b))
@@ -731,6 +733,16 @@
     }));
     markNow(box, date);
     return box;
+  }
+
+  /* 知らせを付けてある帯の印。どちらを知らせるかも分かるようにする */
+  function bellMark(b) {
+    if (!b.notifyStart && !b.notifyEnd) return null;
+    var what = b.notifyStart && b.notifyEnd ? '始まりと終わり'
+      : b.notifyStart ? '始まり' : '終わり';
+    return el('span', {
+      class: 'tp-bell', title: what + 'に知らせます', 'aria-label': what + 'に知らせます'
+    }, [ui.icon('bell', 13), el('span', { text: what })]);
   }
 
   /* いまの時刻が入っている行に印をつける。
@@ -775,6 +787,29 @@
         return { projectId: x.projectId, min: x.min };
       }) : []
     };
+
+    /* 始まるとき・終わるときの知らせ。予定ごとに決める */
+    var noteStart = el('input', { type: 'checkbox', class: 'check',
+      checked: !!(cur && cur.notifyStart) });
+    var noteEnd = el('input', { type: 'checkbox', class: 'check',
+      checked: !!(cur && cur.notifyEnd) });
+    var noteHint = el('p', { class: 'muted small' });
+    function showNoteHint() {
+      // 通知そのものが入になっていなければ、その旨を添える
+      var on = !!(DL.notify && DL.notify.settings().enabled && DL.notify.status().ok);
+      noteHint.textContent = (noteStart.checked || noteEnd.checked)
+        ? (on ? 'その時刻に、この端末へ知らせます。'
+          : '通知がまだ入になっていません。設定の「通知」から入にしてください。')
+        : '';
+    }
+    noteStart.addEventListener('change', showNoteHint);
+    noteEnd.addEventListener('change', showNoteHint);
+    showNoteHint();
+    var noteBox = el('div', { class: 'tp-notify' }, [
+      el('label', { class: 'row-check' }, [noteStart, el('span', { text: '始まるときに知らせる' })]),
+      el('label', { class: 'row-check' }, [noteEnd, el('span', { text: '終わるときに知らせる' })]),
+      noteHint
+    ]);
 
     var startIn = ui.input({ value: T.fmt(v.start), inputmode: 'numeric', placeholder: '8:00' });
     var endIn = ui.input({ value: T.fmt(v.end), inputmode: 'numeric', placeholder: '16:30' });
@@ -973,12 +1008,14 @@
           ui.field('終わり', endIn)
         ]),
         note,
+        ui.block('知らせ', noteBox),
         ui.block('案件', projBox),
         ui.field('メモ', memoIn),
         !isNew ? ui.btn('この時間を消す', 'danger full mt', function () {
           S.removeTimeblock(cur && src ? b.date : date, v.id);
           close();
           ui.toast('消しました');
+          resync();
         }, 'trash') : null
       ]),
       actions: [
@@ -997,13 +1034,22 @@
           }
           S.putTimeblock(src ? b.date : date, {
             id: v.id, label: name, start: s, end: e,
-            memo: memoIn.value, projects: v.projects
+            memo: memoIn.value, projects: v.projects,
+            notifyStart: noteStart.checked, notifyEnd: noteEnd.checked
           });
           close();
           ui.toast(isNew ? '足しました' : '直しました');
+          resync();     // 知らせの予定を預け直す
         })
       ]
     });
+  }
+
+  /* 知らせを付け外ししたら、送る予定を預け直す。
+     つながらないときは次の機会に（画面を移るたびにも預け直している） */
+  function resync() {
+    if (!DL.notify || !DL.notify.settings().enabled) return;
+    DL.notify.sync().catch(function () { /* 次の機会に */ });
   }
 
   /* 空いているところの先頭。足すときの初期値に使う */

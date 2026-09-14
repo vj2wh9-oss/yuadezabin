@@ -1757,6 +1757,13 @@ a.alert-main { text-decoration: none; }
   flex: 1; min-width: 0; overflow: hidden;
   display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
 }
+/* 知らせを付けた帯の印 */
+.tp-bell {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 10.5px; color: var(--accent2);
+}
+/* 知らせのチェック2つ。左にそろえて縦に並べる */
+.tp-notify { display: flex; flex-direction: column; gap: 4px; }
 .tp-row-k > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* どの案件に使ったか。名前の下に小さく */
 .tp-row-p { font-size: 10.5px; color: var(--accent); }
@@ -2146,6 +2153,13 @@ a.tp-proj:active { color: var(--accent); }
 .mn-batch-note { margin: 2px 0 0; }
 /* まとめ買いリストの値段。右端にそろえる */
 .mn-plan-p { margin-left: auto; font-variant-numeric: tabular-nums; }
+/* ホームの買い物リストの頭（期間・点数・合計） */
+.mn-plan-head {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding-bottom: 6px; border-bottom: 1px dashed var(--line2);
+}
+/* 自分で足したぶんは、献立から来たものと見分けが付くようにする */
+.mn-item.mine .mn-item-n { text-decoration: underline dotted; text-underline-offset: 3px; }
 
 .mn-foot { margin: 0; }
 .mn-foot.over { color: var(--danger); }

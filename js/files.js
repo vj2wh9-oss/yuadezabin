@@ -133,6 +133,57 @@
       .catch(function (e) { throw asError(e); });
   }
 
+  /**
+   * 名前を付け直す。中身はそのまま（サーバー側で入れ直す）
+   * @param {string} id
+   * @param {string} name
+   */
+  function rename(id, name) {
+    if (!ready()) return Promise.reject(appError('同期の接続先が未設定です'));
+    return fetch(base() + '/v1/files/' + id, {
+      method: 'PATCH',
+      headers: Object.assign({ 'x-file-name': encodeURIComponent(name) }, auth())
+    }).then(function (res) {
+      return res.json().catch(function () { return null; }).then(function (body) {
+        if (!res.ok) {
+          // 名前だけ付け直す口は、あとから足したもの
+          if (res.status === 404 && (!body || !body.error)) {
+            throw appError('サーバー側が名前の付け直しに未対応です。'
+              + 'Cloudflare の Worker を最新のコードにして deploy し直してください');
+          }
+          throw appError(errText(res.status, body));
+        }
+        return body || { ok: true };
+      });
+    }).catch(function (e) { throw asError(e); });
+  }
+
+  /* ---------------- レシート写真の名前 ----------------
+
+     撮ったままの名前（IMG_0001.jpg など）だとどの日のものか分からないので、
+     YYYYMMDD_00.jpg でそろえる。同じ日の2枚目からは 01, 02… と続ける。 */
+
+  var RECEIPT_NAME = /^(\d{8})_(\d{2,})\.jpe?g$/i;
+
+  /** その日の何番目かを決めて、名前にする */
+  function receiptName(date, list) {
+    var ymd = String(date || '').replace(/-/g, '').slice(0, 8);
+    if (!/^\d{8}$/.test(ymd)) ymd = U.today().replace(/-/g, '');
+    var next = 0;
+    (list || []).forEach(function (f) {
+      var m = RECEIPT_NAME.exec(String((f && f.name) || ''));
+      if (m && m[1] === ymd) next = Math.max(next, U.num(m[2], 0) + 1);
+    });
+    return ymd + '_' + (next < 10 ? '0' + next : String(next)) + '.jpg';
+  }
+
+  /** サーバーにあるものを見て、次の名前を決める（見られなければ 00 から） */
+  function nextReceiptName(date) {
+    return list().then(function (b) {
+      return receiptName(date, (b && b.files) || []);
+    }).catch(function () { return receiptName(date, []); });
+  }
+
   function remove(id) {
     return fetch(base() + '/v1/files/' + id, { method: 'DELETE', headers: auth() })
       .then(function (res) {
@@ -177,7 +228,8 @@
 
   DL.files = {
     MAX_BYTES: MAX_BYTES,
-    ready: ready, list: list, upload: upload, download: download,
+    ready: ready, list: list, upload: upload, download: download, rename: rename,
+    RECEIPT_NAME: RECEIPT_NAME, receiptName: receiptName, nextReceiptName: nextReceiptName,
     fetchBytes: fetchBytes, remove: remove, downloadAll: downloadAll, saveBlob: saveBlob
   };
 })(window.DL);

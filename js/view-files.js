@@ -86,6 +86,11 @@
         el('span', { class: 'muted small', text: all.length + '件・' + size(cache.total) }),
         el('div', { class: 'row-wrap' }, [
           ui.btn('すべてZIPで保存', 'ghost tiny', function () { backupAll(all); }, 'arrowDown'),
+          // 撮ったままの名前のレシートを、YYYYMMDD_00.jpg にそろえ直す
+          renamable(all).length
+            ? ui.btn('レシートの名前をそろえる', 'ghost tiny',
+              function () { fixReceiptNames(all); }, 'edit')
+            : null,
           ui.btn('読み込み直す', 'ghost tiny', function () { load(true); }, 'refresh')
         ])
       ]));
@@ -441,6 +446,79 @@
         item('folder', '色を変える', function () { close(); colorFolder(f); }),
         item('trash', '削除する', function () { close(); deleteFolder(f, count); })
       ])
+    });
+  }
+
+  /* ---------------- レシートの名前をそろえる ----------------
+
+     撮ったままの名前（IMG_0001.jpg など）だと、どの日のものか分からない。
+     レシートの置き場に入っている写真を、撮った日ごとに YYYYMMDD_00.jpg へ付け直す。 */
+
+  /** レシートの置き場に入っている、名前がそろっていない写真 */
+  function renamable(all) {
+    var folders = Object.keys(DL.expenses.RECEIPT_FOLDER).map(function (k) {
+      return DL.expenses.RECEIPT_FOLDER[k];
+    });
+    return (all || []).filter(function (f) {
+      if (!/^image\//.test(f.type || '')) return false;
+      // 置き場所は、アプリ側の記録（フォルダ）と、置いたときのフォルダ名の両方で見る
+      var path = S.folderPath(S.fileFolder(f.id)) || f.folder || '';
+      if (folders.indexOf(String(path).split('/')[0]) < 0) return false;
+      return !F.RECEIPT_NAME.test(String(f.name || ''));
+    });
+  }
+
+  /* 撮った日ごとに番号を振り直す。すでにそろっているものの番号は使わない */
+  function renamePlan(all) {
+    var targets = renamable(all).slice().sort(function (a, b) {
+      return String(a.uploadedAt).localeCompare(String(b.uploadedAt));
+    });
+    // その日にすでにある名前（そろっているもの）から続ける
+    var taken = (all || []).filter(function (f) { return F.RECEIPT_NAME.test(String(f.name || '')); })
+      .map(function (f) { return { name: f.name }; });
+    return targets.map(function (f) {
+      var date = String(f.uploadedAt || '').slice(0, 10);
+      var name = F.receiptName(U.isISO(date) ? date : U.today(), taken);
+      taken.push({ name: name });
+      return { file: f, name: name };
+    });
+  }
+
+  function fixReceiptNames(all) {
+    var plan = renamePlan(all);
+    if (!plan.length) { ui.toast('そろえるものはありません'); return; }
+    ui.confirm('レシートの写真 ' + plan.length + '件の名前を、撮った日ごとに\n'
+      + plan[0].name + ' のかたちへ付け直します。', { okText: 'そろえる' }).then(function (ok) {
+      if (!ok) return;
+      var done = 0, bad = 0;
+      var line = el('p', { class: 'muted small', text: '0 / ' + plan.length + '件' });
+      var bar = ui.progress(0);
+      var closeBtn = ui.btn('閉じる', 'primary', function () { close(); });
+      closeBtn.hidden = true;
+      var close = ui.sheet({
+        title: 'レシートの名前をそろえる',
+        body: el('div', { class: 'form' }, [line, bar]),
+        actions: [closeBtn]
+      });
+
+      step(0);
+      function step(i) {
+        if (i >= plan.length) {
+          line.textContent = done + '件をそろえました。'
+            + (bad ? '（' + bad + '件は直せませんでした）' : '');
+          closeBtn.hidden = false;
+          load(true);
+          return;
+        }
+        var o = plan[i];
+        line.textContent = (i + 1) + ' / ' + plan.length + '件　' + o.name;
+        var n = bar.querySelector('i');
+        if (n) n.style.width = Math.round(i / plan.length * 100) + '%';
+        F.rename(o.file.id, o.name).then(function () { done++; }, function (e) {
+          bad++;
+          if (bad === 1) ui.toast(e.message, 'danger');
+        }).then(function () { step(i + 1); });
+      }
     });
   }
 

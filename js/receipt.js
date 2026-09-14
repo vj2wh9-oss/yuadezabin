@@ -82,7 +82,18 @@
         var folder = opts.folder !== undefined ? opts.folder
           : k.folder !== null ? k.folder
             : DL.expenses.receiptFolder(opts.book);
-        return F.upload(c.file, { folder: folder, projectId: opts.projectId || '' })
+        /* レシートは YYYYMMDD_00.jpg でそろえる（名刺は名前をいじらない）。
+           番号はサーバーにあるものを見て、その日の続きから */
+        return ((opts.kind || 'receipt') === 'receipt'
+          ? F.nextReceiptName(U.today()).then(function (name) {
+            c.file = new File([c.file], name, { type: c.file.type || 'image/jpeg' });
+            return c;
+          }).catch(function () { return c; })
+          : Promise.resolve(c)
+        ).then(function (c2) {
+          c = c2;
+          return F.upload(c.file, { folder: folder, projectId: opts.projectId || '' });
+        })
           .then(function (up) {
             // アプリ側にも置き場所を覚えさせる。これをしないと
             // ファイル画面でフォルダの外に出てしまう

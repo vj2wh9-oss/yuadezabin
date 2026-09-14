@@ -170,6 +170,8 @@
     menus: {},
     // まとめて作ったときの期間 {from,to}。まとめ買いリストを開くのに使う
     menuPlan: null,
+    // 自分で足した買うもの（献立とは別に、ホームの買い物リストへ出す）
+    shopping: [],          // [{id,name,qty,price,got,at}]
     // 実際に払った値段の控え { '<ならした名前>': {name, price, at} }
     prices: {},
     // 作った料理の評価とメモ { '<ならした名前>': {name, stars, memo, at} }
@@ -331,6 +333,8 @@
     s.settings.dutyLogDone = normalizeDutyLogDone(s.settings.dutyLogDone);
     s.settings.logs = normalizeLogs(s.settings.logs);
     s.settings.menus = normalizeMenus(s.settings.menus);
+    s.settings.shopping = (s.settings.shopping || []).map(normalizeShopItem)
+      .filter(function (x) { return x.name; });
     s.settings.prices = normalizePrices(s.settings.prices);
     s.settings.dishNotes = normalizeDishNotes(s.settings.dishNotes);
     s.settings.savings = normalizeSavings(s.settings.savings);
@@ -1855,6 +1859,55 @@
     }).sort().map(function (d) { return { date: d, menu: map[d] }; });
   }
 
+  /* ---------------- 自分で足す買うもの ----------------
+
+     献立から出てくるものだけが買い物ではない。
+     ティッシュや調味料の買い足しなど、自分で足したぶんもここに持つ。 */
+
+  function normalizeShopItem(x) {
+    x = x || {};
+    x.id = x.id || U.uid();
+    x.name = String(x.name || '').trim().slice(0, 60);
+    x.qty = String(x.qty || '').trim().slice(0, 24);
+    x.price = Math.max(0, Math.round(U.num(x.price, 0)));
+    x.got = !!x.got;
+    x.at = x.at || new Date().toISOString();
+    return x;
+  }
+
+  /** 自分で足した買うもの。足した順 */
+  function shopItems() { return (state.settings.shopping || []).slice(); }
+
+  function addShopItem(data) {
+    var x = normalizeShopItem(Object.assign({ id: U.uid() }, data));
+    if (!x.name) return null;
+    state.settings.shopping = (state.settings.shopping || []).concat([x]).slice(-200);
+    save();
+    return x;
+  }
+
+  function updateShopItem(id, patch) {
+    var x = (state.settings.shopping || []).filter(function (o) { return o.id === id; })[0];
+    if (!x) return null;
+    Object.assign(x, patch);
+    normalizeShopItem(x);
+    save();
+    return x;
+  }
+
+  function removeShopItem(id) {
+    state.settings.shopping = (state.settings.shopping || [])
+      .filter(function (o) { return o.id !== id; });
+    save();
+  }
+
+  /** 買ったものを片づける（印の付いたものを消す） */
+  function clearGotShopItems() {
+    state.settings.shopping = (state.settings.shopping || [])
+      .filter(function (o) { return !o.got; });
+    save();
+  }
+
   /** まとめて作ったときの期間。まとめ買いリストの入口に使う */
   function menuPlan() {
     var p = state.settings.menuPlan || {};
@@ -2260,6 +2313,9 @@
       start: start,
       end: end,
       memo: String(b.memo || '').trim().slice(0, 40),
+      // 始まるとき・終わるときに知らせるか（円グラフの予定ごとに決める）
+      notifyStart: !!b.notifyStart,
+      notifyEnd: !!b.notifyEnd,
       projects: projects,
       /* 前の作りとの行き来のために、先頭の案件を残しておく
          （古い版のアプリが同期の中身を読んでも、1件目までは分かる） */
@@ -3332,6 +3388,8 @@
     getLog: getLog, setLog: setLog, logDates: logDates, MOODS: MOODS,
     getMenu: getMenu, setMenu: setMenu, removeMenu: removeMenu,
     menusIn: menusIn, menuPlan: menuPlan, setMenuPlan: setMenuPlan,
+    shopItems: shopItems, addShopItem: addShopItem, updateShopItem: updateShopItem,
+    removeShopItem: removeShopItem, clearGotShopItems: clearGotShopItems,
     setShopGot: setShopGot, clearShopGot: clearShopGot,
     dishNotes: dishNotes, dishNote: dishNote, setDishNote: setDishNote,
     dislikedDishes: dislikedDishes, dishHints: dishHints,

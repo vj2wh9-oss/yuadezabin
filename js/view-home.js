@@ -113,14 +113,15 @@
       wrap.appendChild(ui.section('お金'));
       if (dueSv) wrap.appendChild(dueSv);
       if (bg) wrap.appendChild(bg);
+    }
 
-      /* その予算で作れる献立（予算を決めているときだけ） */
-      var mn = bg ? menuCard(today) : null;
-      if (mn) {
-        // 見出しの右に「まとめて作る」「まとめ買い」の入口を出す
-        wrap.appendChild(ui.section('今日の献立', menuTools(today)));
-        wrap.appendChild(mn);
-      }
+    /* 買い物リスト。献立はカレンダーの日付ごとに作るものにして、
+       ホームには「何を買うか」だけを出す（自分で足したぶんも一緒に） */
+    var sp = shopCard(today);
+    if (sp) {
+      wrap.appendChild(ui.section('買い物リスト',
+        ui.btn('品を足す', 'ghost tiny', function () { shopItemSheet(null); }, 'plus')));
+      wrap.appendChild(sp);
     }
 
     /* プロット相談。中身はシートで開く（ホームは入口だけ） */
@@ -793,6 +794,166 @@
         ui.toast(e.message, 'danger');
       });
     }
+  }
+
+  /* ---------------- ホームの買い物リスト ----------------
+
+     献立はカレンダーの日付ごとに作る。ホームに出すのは「何を買うか」だけ。
+     これからの日の献立ぶんをまとめて出し、自分で足したものも同じ並びに置く。 */
+
+  var SHOP_DAYS = 6;         // 何日先ぶんの献立まで見るか（今日を入れて7日）
+
+  /** ホームに出す期間。まとめて作ってあれば、その終わりまで伸ばす */
+  function shopRange(today) {
+    var to = U.addDays(today, SHOP_DAYS);
+    var plan = S.menuPlan();
+    if (plan && U.cmp(plan.to, to) > 0) to = plan.to;
+    return { from: today, to: to };
+  }
+
+  function shopCard(today) {
+    var yen = DL.docs.yen;
+    var r = shopRange(today);
+    var menus = S.menusIn(r.from, r.to);
+    var free = S.shopItems();
+    if (!menus.length && !free.length) return null;
+
+    var card = el('div', { class: 'card mn-card' });
+    var items = mergedShop(menus);
+    var all = items.length + free.length;
+    var gotN = items.filter(function (x) { return x.got; }).length
+      + free.filter(function (x) { return x.got; }).length;
+    var total = items.reduce(function (n, x) { return n + x.price; }, 0)
+      + free.reduce(function (n, x) { return n + U.num(x.price, 0); }, 0);
+
+    card.appendChild(el('div', { class: 'mn-plan-head' }, [
+      el('span', { class: 'muted small', text: menus.length
+        ? U.fmtMD(r.from) + '〜' + U.fmtMD(r.to) + ' の献立 ' + menus.length + '日ぶん'
+        : '自分で足したぶん' }),
+      ui.chip(gotN + ' / ' + all + '点', gotN && gotN >= all ? 'ok' : 'ghosty'),
+      el('b', { class: 'mn-plan-p', text: yen(total) })
+    ]));
+
+    var ul = el('div', { class: 'mn-list' });
+    items.forEach(function (x) { ul.appendChild(planRowOf(x)); });
+    free.forEach(function (x) { ul.appendChild(freeRow(x)); });
+    card.appendChild(ul);
+
+    card.appendChild(el('div', { class: 'row-wrap mn-acts' }, [
+      ui.btn('品を足す', 'ghost', function () { shopItemSheet(null); }, 'plus'),
+      menus.length ? ui.btn('献立ごとに見る', 'ghost', function () {
+        planShopSheet(r.from, r.to);
+      }, 'books') : null,
+      gotN ? ui.btn('買ったぶんを片づける', 'ghost', function () { tidyShop(r); }, 'check') : null
+    ]));
+    return card;
+
+    /* 献立から来た1行。印はその日の献立へ書き戻す */
+    function planRowOf(x) {
+      var box = el('label', { class: 'mn-item mn-buy' + (x.got ? ' got' : '') }, [
+        el('input', {
+          type: 'checkbox', class: 'mn-chk', checked: x.got,
+          'aria-label': x.name + 'を買った',
+          onchange: function (e) {
+            var on = e.target.checked;
+            x.at.forEach(function (a) { S.setShopGot(a.date, a.name, on); });
+          }
+        }),
+        el('span', { class: 'mn-item-n', text: x.name }),
+        el('span', { class: 'muted small', text: qtyText(x) }),
+        el('b', { class: 'mn-plan-p', text: yen(x.price) })
+      ]);
+      return box;
+    }
+
+    /* 自分で足した1行。押すと直せる */
+    function freeRow(x) {
+      return el('label', { class: 'mn-item mn-buy mine' + (x.got ? ' got' : '') }, [
+        el('input', {
+          type: 'checkbox', class: 'mn-chk', checked: x.got,
+          'aria-label': x.name + 'を買った',
+          onchange: function (e) { S.updateShopItem(x.id, { got: e.target.checked }); }
+        }),
+        el('span', { class: 'mn-item-n', text: x.name }),
+        x.qty ? el('span', { class: 'muted small', text: x.qty }) : null,
+        el('button', {
+          type: 'button', class: 'mn-price',
+          'aria-label': x.name + 'を直す',
+          onclick: function (e) { e.preventDefault(); shopItemSheet(x); }
+        }, el('b', { text: x.price ? yen(x.price) : '—' }))
+      ]);
+    }
+  }
+
+  /* 献立の買い物を、同じ品でまとめる（まとめ買いリストと同じまとめ方） */
+  function mergedShop(list) {
+    var map = {}, order = [];
+    list.forEach(function (o) {
+      (o.menu.shopping || []).forEach(function (s) {
+        var k = S.priceKey(s.name);
+        if (!map[k]) {
+          map[k] = { name: s.name, qty: [], price: 0, n: 0, got: true, at: [] };
+          order.push(k);
+        }
+        var it = map[k];
+        it.qty.push(s.qty || '');
+        it.price += U.num(s.price, 0);
+        it.n += 1;
+        it.at.push({ date: o.date, name: s.name });
+        if (!s.got) it.got = false;
+      });
+    });
+    return order.map(function (k) { return map[k]; });
+  }
+
+  /* 買ったぶんを片づける。自分で足したぶんは消し、献立ぶんは印だけ外す */
+  function tidyShop(r) {
+    ui.confirm('買ったものを片づけます。\n自分で足したぶんは消して、'
+      + '献立ぶんは印だけ外します。', { okText: '片づける' }).then(function (ok) {
+      if (!ok) return;
+      S.clearGotShopItems();
+      S.menusIn(r.from, r.to).forEach(function (o) { S.clearShopGot(o.date); });
+      ui.toast('片づけました');
+    });
+  }
+
+  /**
+   * 自分で足す品の入力。
+   * @param {object} [x] 直すとき
+   */
+  function shopItemSheet(x) {
+    var nameIn = ui.input({ value: x ? x.name : '', maxlength: 60, placeholder: '例）ティッシュ' });
+    var qtyIn = ui.input({ value: x ? x.qty : '', maxlength: 24, placeholder: '例）5箱' });
+    var priceIn = ui.input({ type: 'number', inputmode: 'numeric', min: 0, step: 10,
+      value: x && x.price ? x.price : '', placeholder: '任意' });
+    var close = ui.sheet({
+      title: x ? '買うものを直す' : '買うものを足す',
+      body: el('div', { class: 'form' }, [
+        ui.field('品名', nameIn),
+        el('div', { class: 'grid2' }, [
+          ui.field('いくつ', qtyIn),
+          ui.field('値段（円）', priceIn)
+        ]),
+        x ? ui.btn('この品を消す', 'danger full mt', function () {
+          S.removeShopItem(x.id);
+          close();
+          ui.toast('消しました');
+        }, 'trash') : null
+      ]),
+      actions: [
+        ui.btn('キャンセル', 'ghost', function () { close(); }),
+        ui.btn(x ? '保存' : '足す', 'primary', function () {
+          var name = nameIn.value.trim();
+          if (!name) { ui.toast('品名を入れてください', 'warn'); return; }
+          var data = { name: name, qty: qtyIn.value.trim(), price: U.num(priceIn.value, 0) };
+          if (x) S.updateShopItem(x.id, data);
+          else S.addShopItem(data);
+          close();
+          ui.toast(x ? '直しました' : '足しました');
+        })
+      ]
+    });
+    setTimeout(function () { nameIn.focus(); }, 120);
   }
 
   /* ---------------- 別の日へ送る ----------------

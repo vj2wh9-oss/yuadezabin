@@ -120,6 +120,8 @@
       out.push({
         id: b.id, label: b.label, color: colorAt(start), memo: b.memo,
         projectId: b.projectId || '', projects: blockProjects(b), span: b.end - b.start,
+        // 始まり・終わりの知らせ。印が付いているかは、この日の画面でも出す
+        notifyStart: !!b.notifyStart, notifyEnd: !!b.notifyEnd,
         start: start, end: Math.min(DAY, b.end - DAY),
         date: prev, carry: true, over: false
       });
@@ -129,6 +131,7 @@
       out.push({
         id: b.id, label: b.label, color: colorAt(b.start), memo: b.memo,
         projectId: b.projectId || '', projects: blockProjects(b), span: b.end - b.start,
+        notifyStart: !!b.notifyStart, notifyEnd: !!b.notifyEnd,
         start: b.start, end: Math.min(DAY, b.end),
         date: date, carry: false, over: b.end > DAY
       });

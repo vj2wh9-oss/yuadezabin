@@ -2545,6 +2545,28 @@ async function files(request, env, cors, url, id) {
       return json({ ok: true, id: rest, size: obj.size }, 200, cors);
     }
 
+    /* 名前だけ付け直す。R2 はメタ情報だけの書き替えができないので、
+       中身をそのまま入れ直す（Worker のメモリには溜めず、流したまま渡す） */
+    if (request.method === 'PATCH') {
+      const cur = await env.FILES.get(key);
+      if (!cur) return json({ error: 'not_found' }, 404, cors);
+      const m = cur.customMetadata || {};
+      const name = request.headers.get('x-file-name');
+      const folder = request.headers.get('x-file-folder');
+      const meta = {
+        name: name === null ? (m.name || rest) : name,       // URLエンコード済みで受け取る
+        folder: folder === null ? (m.folder || '') : folder,
+        projectId: m.projectId || '',
+        by: m.by || '',
+        uploadedAt: m.uploadedAt || new Date().toISOString()  // 撮った日は変えない
+      };
+      const put = await env.FILES.put(key, cur.body, {
+        httpMetadata: cur.httpMetadata, customMetadata: meta
+      });
+      if (!put) return json({ error: 'rename_failed' }, 500, cors);
+      return json({ ok: true, id: rest, name: decodeURIComponent(meta.name) }, 200, cors);
+    }
+
     // 取り出し
     if (request.method === 'GET') {
       const obj = await env.FILES.get(key);
