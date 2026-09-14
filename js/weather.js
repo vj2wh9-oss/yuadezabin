@@ -313,6 +313,7 @@
      この23時をそのまま出すと、外は降っているのにホームだけ晴れの記号になる。
      前後を見て、降っている最中なら降っているほうの記号を採る。 */
 
+  var HOUR = 3600000;    // 1時間（ミリ秒）
   var WET = 51;          // これ以上の記号は、何かしら降っている
   var WET_POP = 50;      // 降水確率がこれ以上なら「降り止みの隙間」とみなす
   var WET_SPAN = 2;      // 何時間前後まで見るか
@@ -418,18 +419,62 @@
     var first = null, max = 0, n = 0;
     c.hours.forEach(function (h) {
       var ms = stamp(h.time);
-      if (isNaN(ms) || ms < from || ms > to) return;
+      /* 1時間ぶんの予報は「その時刻から1時間」を指す。
+         少しでも重なっていれば数える。中に入っているものだけを数えると、
+         20:10〜20:40 のような短い予定が、20時の予報を素通りしてしまう */
+      if (isNaN(ms) || ms >= to || ms + HOUR <= from) return;
       var p = U.num(h.pop, 0);
       if (!isWet(h.code) && p < p0) return;
       n++;
       if (p > max) max = p;
       if (!first || ms < stamp(first.time)) first = h;
     });
-    if (!first) return null;
+    if (first) {
+      return {
+        time: first.time, at: stamp(first.time), code: first.code,
+        pop: max, hours: n, label: codeInfo(first.code).label, now: false
+      };
+    }
+    /* 予報が晴れでも、いま実際に降っていることがある（現況は予報より新しい）。
+       見ている時間の中に「いま」が入っているなら、そちらを信じる */
+    // 現況も「いまの1時間ぶん」として見る。予定が少し先でも、同じ1時間なら効く
+    var h0 = hourTop(Date.now());
+    if (h0 >= to || h0 + HOUR <= from) return null;
+    var cur = current();
+    if (!cur) return null;
+    var live = ageMin() !== null && ageMin() < FRESH_MIN;
+    var mm = live ? num1((c.now || {}).rain) : null;      // 取りたてなら、実際に降った量
+    var p1 = U.num(cur.pop, 0);
+    var wet = isWet(cur.code);
+    if (!wet && p1 < p0 && !(mm > 0)) return null;
     return {
-      time: first.time, at: stamp(first.time), code: first.code,
-      pop: max, hours: n, label: codeInfo(first.code).label
+      time: nowStamp(), at: Date.now(), code: cur.code,
+      pop: Math.max(p1, wet || mm > 0 ? p0 : 0), hours: 1,
+      // 量だけで分かったときは、記号が晴れでも「雨」と言う
+      label: wet ? codeInfo(cur.code).label : (mm > 0 ? '雨' : codeInfo(cur.code).label),
+      mm: mm, now: true
     };
+  }
+
+  /** 予報を取ってから何分たったか（取っていなければ null） */
+  function ageMin() {
+    var c = cache();
+    if (!c || !c.at) return null;
+    return Math.max(0, Math.round((Date.now() - new Date(c.at).getTime()) / 60000));
+  }
+
+  /* その時刻が入っている「時」の頭（00分）。1時間ぶんの予報と突き合わせるのに使う */
+  function hourTop(ms) {
+    var d = new Date(ms);
+    d.setMinutes(0, 0, 0);
+    return d.getTime();
+  }
+
+  /* いまの時刻を、予報と同じ「YYYY-MM-DDTHH:MM」の形で */
+  function nowStamp() {
+    var d = new Date();
+    var p = function (n) { return (n < 10 ? '0' : '') + n; };
+    return U.today() + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
   }
 
   /** その間ぜんぶの予報を持っているか（持っていなければ「雨は無し」とは言えない） */
@@ -438,7 +483,7 @@
     if (!c || !(c.hours || []).length) return false;
     var head = stamp(c.hours[0].time);
     var last = stamp(c.hours[c.hours.length - 1].time);
-    return !isNaN(head) && !isNaN(last) && head <= from && last + 3600000 >= to;
+    return !isNaN(head) && !isNaN(last) && head <= from && last + HOUR >= to;
   }
 
   function fetchJSON(url) {
@@ -453,7 +498,7 @@
     load: load, cache: cache, dayOf: dayOf, noonOf: noonOf, codeInfo: codeInfo,
     nearHour: nearHour, hoursOf: hoursOf, isNight: isNight, stamp: stamp, current: current,
     isWet: isWet, wetAround: wetAround, WET_POP: WET_POP,
-    rainBetween: rainBetween, covers: covers,
+    rainBetween: rainBetween, covers: covers, ageMin: ageMin,
     windDir: windDir, FRESH_MIN: FRESH_MIN
   };
 })(window.DL);

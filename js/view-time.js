@@ -753,6 +753,36 @@
     return out.length ? el('span', { class: 'tp-bells' }, out) : null;
   }
 
+  /* ---------------- 予報の取り直し ----------------
+
+     雨の知らせをここで決めるので、古い予報のまま「雨はありません」と
+     言ってしまわないように、画面を開いたら取り直しておく。
+     取りに行っている間と、そのあとしばらくは叩かない。 */
+
+  var wxBusy = false, wxLast = 0, wxWaiting = [];
+
+  function freshenWeather(done) {
+    var W = DL.weather;
+    if (!W || !W.place()) { if (done) done(); return; }
+    if (done) wxWaiting.push(done);
+    var age = W.ageMin();
+    var stale = age === null || age >= W.FRESH_MIN;
+    if (!stale || wxBusy || Date.now() - wxLast < 120000) { flushWx(); return; }
+    wxBusy = true;
+    wxLast = Date.now();
+    W.load().then(function () {
+      wxBusy = false;
+      flushWx();
+      DL.app.render();
+    }).catch(function () { wxBusy = false; flushWx(); });
+  }
+
+  function flushWx() {
+    var list = wxWaiting;
+    wxWaiting = [];
+    list.forEach(function (f) { try { f(); } catch (e) { /* もう閉じた画面 */ } });
+  }
+
   /* その日の「0時からの分」を、この端末の時刻（ミリ秒）に直す。
      24時を超える値はそのまま翌日になる */
   function atMs(date, min) {
@@ -823,7 +853,8 @@
         : '';
       rainHint.textContent = noteRain.checked ? rainNow() : '';
     }
-    /* いまの予報で、この時間に雨があるか。入れたその場で確かめられるように出す */
+    /* いまの予報で、この時間に雨があるか。入れたその場で確かめられるように出す。
+       予報がいつのものかも書き添える（古い見立てのまま迷わないように） */
     function rainNow() {
       var W = DL.weather;
       if (!W || !W.place()) return '天気の地点がまだ登録されていません（設定の「天気」から）。';
@@ -831,14 +862,20 @@
       if (s === null || e === null || e <= s) return '';
       var from = atMs(date, s), to = atMs(date, e);
       var r = W.rainBetween(from, to, DL.notify ? DL.notify.rainPop() : W.WET_POP);
+      var age = W.ageMin();
+      // どこの予報を見ているか・いつ取ったものかも添える（違っていたら気づけるように）
+      var head = (W.place().name || '登録した地点') + '　';
+      var tail = age === null ? '' : '（予報は' + (age < 1 ? 'たったいま' : age + '分前') + 'のもの）';
       if (r) {
-        return 'いまの予報では ' + String(r.time).slice(11, 16) + 'ごろから'
-          + r.label + '（降水確率 ' + Math.round(r.pop) + '%）。'
-          + T.fmtDay(Math.max(0, s - 10)) + ' に知らせます。';
+        var what = r.now
+          ? 'いま' + r.label + 'が降っています'
+          : String(r.time).slice(11, 16) + 'ごろから' + r.label
+            + '（降水確率 ' + Math.round(r.pop) + '%）';
+        return head + what + '。' + T.fmtDay(Math.max(0, s - 10)) + ' に知らせます。' + tail;
       }
       return W.covers(from, to)
-        ? 'いまの予報では、この時間に雨はありません。降る予報に変わったら知らせます。'
-        : 'この時間の予報はまだ届いていません（3日先まで）。届いてから見に行きます。';
+        ? head + 'この時間に雨の予報はありません。降る予報に変わったら知らせます。' + tail
+        : head + 'この時間の予報はまだ届いていません（3日先まで）。届いてから見に行きます。';
     }
     noteStart.addEventListener('change', showNoteHint);
     noteEnd.addEventListener('change', showNoteHint);
@@ -903,6 +940,8 @@
     startIn.addEventListener('input', showNoteHint);
     endIn.addEventListener('input', showNoteHint);
     showNoteHint();
+    // 予報が古ければ取り直して、届いたら見立てを書き直す
+    freshenWeather(showNoteHint);
 
     /* ---- 案件と実時間 ----
 
@@ -1232,6 +1271,8 @@
   function render(root, params) {
     var date = U.isISO(params.date) ? params.date : U.today();
     var wrap = el('div', { class: 'page' });
+    // 雨の知らせをここで決めるので、予報が古ければ取り直しておく
+    freshenWeather();
 
     wrap.appendChild(el('div', { class: 'daynav' }, [
       el('a', { class: 'iconbtn', href: '#/time/' + U.addDays(date, -1), 'aria-label': '前の日' }, ui.icon('chevronLeft', 20)),
