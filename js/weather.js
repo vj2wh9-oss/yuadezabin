@@ -167,6 +167,8 @@
       S.updateSettings({ weatherCache: data }, { quiet: true });
       // 今日の正午の天気を、1日の記録に写しておく（記録の画面を開かない日のため）
       if (DL.daylog) DL.daylog.keepWeather(U.today());
+      // 予報が新しくなったら、雨の知らせも作り直して預け直す
+      if (DL.notify) DL.notify.sync().catch(function () { /* つながらないときは次の機会に */ });
       return data;
     }).catch(function () {
       busy = null;
@@ -393,6 +395,52 @@
     return { code: U.num(code, -1), max: round1(d.max), min: round1(d.min) };
   }
 
+  /* ---------------- 出かける前の雨 ----------------
+
+     「この時間からこの時間までに、雨（雪）の予報があるか」を1つに答える。
+     出かける前の知らせと、予定ごとの知らせの、どちらもこれを使う。
+
+     記号だけを見ると、降水確率9割の雨の中でも「たまたま降っていない1時間」を
+     晴れと読んでしまう（降り止みの隙間。上の wetAround と同じ話）。
+     そこで、記号が降っていなくても降水確率がしきい値を超えていれば雨とみなす。 */
+
+  /**
+   * @param {number} from ミリ秒（この時刻から）
+   * @param {number} to ミリ秒（この時刻まで）
+   * @param {number} [need] 雨とみなす降水確率（%）。既定は WET_POP
+   * @returns {{time:string,at:number,code:number,pop:number,label:string,hours:number}|null}
+   *   いちばん早く降り出す時間。pop はその間の最大の降水確率、hours は降る時間数
+   */
+  function rainBetween(from, to, need) {
+    var c = cache();
+    if (!c || !(c.hours || []).length || !(from < to)) return null;
+    var p0 = Math.max(1, Math.min(100, U.num(need, WET_POP)));
+    var first = null, max = 0, n = 0;
+    c.hours.forEach(function (h) {
+      var ms = stamp(h.time);
+      if (isNaN(ms) || ms < from || ms > to) return;
+      var p = U.num(h.pop, 0);
+      if (!isWet(h.code) && p < p0) return;
+      n++;
+      if (p > max) max = p;
+      if (!first || ms < stamp(first.time)) first = h;
+    });
+    if (!first) return null;
+    return {
+      time: first.time, at: stamp(first.time), code: first.code,
+      pop: max, hours: n, label: codeInfo(first.code).label
+    };
+  }
+
+  /** その間ぜんぶの予報を持っているか（持っていなければ「雨は無し」とは言えない） */
+  function covers(from, to) {
+    var c = cache();
+    if (!c || !(c.hours || []).length) return false;
+    var head = stamp(c.hours[0].time);
+    var last = stamp(c.hours[c.hours.length - 1].time);
+    return !isNaN(head) && !isNaN(last) && head <= from && last + 3600000 >= to;
+  }
+
   function fetchJSON(url) {
     return fetch(url, { cache: 'no-store' }).then(function (res) {
       if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -405,6 +453,7 @@
     load: load, cache: cache, dayOf: dayOf, noonOf: noonOf, codeInfo: codeInfo,
     nearHour: nearHour, hoursOf: hoursOf, isNight: isNight, stamp: stamp, current: current,
     isWet: isWet, wetAround: wetAround, WET_POP: WET_POP,
+    rainBetween: rainBetween, covers: covers,
     windDir: windDir, FRESH_MIN: FRESH_MIN
   };
 })(window.DL);

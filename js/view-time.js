@@ -735,14 +735,30 @@
     return box;
   }
 
-  /* 知らせを付けてある帯の印。どちらを知らせるかも分かるようにする */
+  /* 知らせを付けてある帯の印。どれを知らせるかも分かるようにする */
   function bellMark(b) {
-    if (!b.notifyStart && !b.notifyEnd) return null;
-    var what = b.notifyStart && b.notifyEnd ? '始まりと終わり'
-      : b.notifyStart ? '始まり' : '終わり';
-    return el('span', {
-      class: 'tp-bell', title: what + 'に知らせます', 'aria-label': what + 'に知らせます'
-    }, [ui.icon('bell', 13), el('span', { text: what })]);
+    var out = [];
+    if (b.notifyStart || b.notifyEnd) {
+      var what = b.notifyStart && b.notifyEnd ? '始まりと終わり'
+        : b.notifyStart ? '始まり' : '終わり';
+      out.push(el('span', {
+        class: 'tp-bell', title: what + 'に知らせます', 'aria-label': what + 'に知らせます'
+      }, [ui.icon('bell', 13), el('span', { text: what })]));
+    }
+    if (b.notifyRain) {
+      out.push(el('span', {
+        class: 'tp-bell rain', title: '雨なら10分前に知らせます', 'aria-label': '雨なら10分前に知らせます'
+      }, [ui.icon('wRain', 13), el('span', { text: '雨' })]));
+    }
+    return out.length ? el('span', { class: 'tp-bells' }, out) : null;
+  }
+
+  /* その日の「0時からの分」を、この端末の時刻（ミリ秒）に直す。
+     24時を超える値はそのまま翌日になる */
+  function atMs(date, min) {
+    var d = U.parse(date);
+    d.setHours(0, Math.max(0, Math.round(U.num(min, 0))), 0, 0);
+    return d.getTime();
   }
 
   /* いまの時刻が入っている行に印をつける。
@@ -793,22 +809,45 @@
       checked: !!(cur && cur.notifyStart) });
     var noteEnd = el('input', { type: 'checkbox', class: 'check',
       checked: !!(cur && cur.notifyEnd) });
+    // 天気の知らせ。この予定の間に雨があるときだけ、始まりの10分前に出す
+    var noteRain = el('input', { type: 'checkbox', class: 'check',
+      checked: !!(cur && cur.notifyRain) });
     var noteHint = el('p', { class: 'muted small' });
+    var rainHint = el('p', { class: 'muted small' });
     function showNoteHint() {
       // 通知そのものが入になっていなければ、その旨を添える
       var on = !!(DL.notify && DL.notify.settings().enabled && DL.notify.status().ok);
-      noteHint.textContent = (noteStart.checked || noteEnd.checked)
+      noteHint.textContent = (noteStart.checked || noteEnd.checked || noteRain.checked)
         ? (on ? 'その時刻に、この端末へ知らせます。'
           : '通知がまだ入になっていません。設定の「通知」から入にしてください。')
         : '';
+      rainHint.textContent = noteRain.checked ? rainNow() : '';
+    }
+    /* いまの予報で、この時間に雨があるか。入れたその場で確かめられるように出す */
+    function rainNow() {
+      var W = DL.weather;
+      if (!W || !W.place()) return '天気の地点がまだ登録されていません（設定の「天気」から）。';
+      var s = T.parse(startIn.value), e = T.parse(endIn.value);
+      if (s === null || e === null || e <= s) return '';
+      var from = atMs(date, s), to = atMs(date, e);
+      var r = W.rainBetween(from, to, DL.notify ? DL.notify.rainPop() : W.WET_POP);
+      if (r) {
+        return 'いまの予報では ' + String(r.time).slice(11, 16) + 'ごろから'
+          + r.label + '（降水確率 ' + Math.round(r.pop) + '%）。'
+          + T.fmtDay(Math.max(0, s - 10)) + ' に知らせます。';
+      }
+      return W.covers(from, to)
+        ? 'いまの予報では、この時間に雨はありません。降る予報に変わったら知らせます。'
+        : 'この時間の予報はまだ届いていません（3日先まで）。届いてから見に行きます。';
     }
     noteStart.addEventListener('change', showNoteHint);
     noteEnd.addEventListener('change', showNoteHint);
-    showNoteHint();
+    noteRain.addEventListener('change', showNoteHint);
     var noteBox = el('div', { class: 'tp-notify' }, [
       el('label', { class: 'row-check' }, [noteStart, el('span', { text: '始まるときに知らせる' })]),
       el('label', { class: 'row-check' }, [noteEnd, el('span', { text: '終わるときに知らせる' })]),
-      noteHint
+      el('label', { class: 'row-check' }, [noteRain, el('span', { text: '雨なら10分前に知らせる' })]),
+      noteHint, rainHint
     ]);
 
     var startIn = ui.input({ value: T.fmt(v.start), inputmode: 'numeric', placeholder: '8:00' });
@@ -860,6 +899,10 @@
     startIn.addEventListener('input', showLen);
     endIn.addEventListener('input', showLen);
     showLen();
+    // 雨の見立ては始まり・終わりの時刻で変わるので、ここまで組んでから出す
+    startIn.addEventListener('input', showNoteHint);
+    endIn.addEventListener('input', showNoteHint);
+    showNoteHint();
 
     /* ---- 案件と実時間 ----
 
@@ -1035,7 +1078,8 @@
           S.putTimeblock(src ? b.date : date, {
             id: v.id, label: name, start: s, end: e,
             memo: memoIn.value, projects: v.projects,
-            notifyStart: noteStart.checked, notifyEnd: noteEnd.checked
+            notifyStart: noteStart.checked, notifyEnd: noteEnd.checked,
+            notifyRain: noteRain.checked
           });
           close();
           ui.toast(isNew ? '足しました' : '直しました');

@@ -22,6 +22,13 @@
   var MAX_ITEMS = 400;
   var DIGEST_DAYS = 7;       // 「気になること」を先に作っておく日数
 
+  /* 出かける前の雨の知らせ */
+  var OFFICE_TIME = '06:20';  // 出社の日に知らせる時刻
+  var STAY_TIME = '14:20';    // 泊まり勤務の日に知らせる時刻
+  var STAY_UNTIL = '10:00';   // 泊まり勤務は、翌日のこの時刻まで見る
+  var RAIN_POP = 50;          // 記号が降っていなくても、これ以上の降水確率なら雨とみなす
+  var RAIN_LEAD = 10;         // 予定に付けた雨の知らせは、何分前に出すか
+
   /* ---------------- 種別ごとの作り方 ----------------
      足すときはここに1つ書く。設定画面と予定表づくりが自動でついてくる。 */
 
@@ -99,6 +106,26 @@
         });
         return out;
       }
+    },
+
+    /* 出かける前の雨 */
+    rain: {
+      label: '出かける前の雨',
+      note: '出かける少し前に、雨（雪）の予報があれば知らせます。'
+        + '知らせる時刻は勤務の種別で変わり、リモートワークの日は出しません。'
+        + '天気の地点を登録しておいてください',
+      whens: [{ value: 'duty', label: '勤務ごとの時刻' }],
+      noTime: true,
+      times: [
+        { key: 'officeTime', short: '出社', def: OFFICE_TIME,
+          label: '出社の日に知らせる時刻', hint: 'この時刻から、その日のうちに雨があれば知らせます' },
+        { key: 'stayTime', short: '泊まり', def: STAY_TIME,
+          label: '泊まり勤務の日に知らせる時刻', hint: 'この時刻から、翌日の ' + STAY_UNTIL + ' までを見ます' }
+      ],
+      numbers: [
+        { key: 'pop', label: '雨とみなす降水確率（%）', min: 10, max: 100, def: RAIN_POP }
+      ],
+      build: function (rule, from, to) { return rainReminders(rule, from, to); }
     },
 
     /* 案件の締切 */
@@ -448,13 +475,83 @@
     return d.toISOString();
   }
 
+  /* ---------------- 出かける前の雨 ----------------
+
+     予報は3日ぶんしか無いので、作れるのもその範囲まで。
+     アプリを開いて予報を取り直すたびに作り直して預け直すので
+     （weather.load → notify.sync）、出かける前には新しい見立てになる。
+
+     見る範囲は「知らせる時刻から、帰ってくるまで」。
+       出社　　　その日のうち（23:59 まで）
+       泊まり　　翌日の 10:00 まで
+       リモート　出かけないので知らせない */
+
+  function rainReminders(rule, from, to) {
+    var W = DL.weather;
+    if (!W || !W.place()) return [];
+    var pop = Math.max(1, Math.min(100, U.num(rule.pop, RAIN_POP)));
+    var out = [];
+    U.rangeDays(from, to).forEach(function (date) {
+      var duty = S.duty(date);
+      if (duty !== 'office' && duty !== 'stay') return;
+      var stay = duty === 'stay';
+      var at = atLocal(date, (stay ? rule.stayTime : rule.officeTime)
+        || (stay ? STAY_TIME : OFFICE_TIME), 0);
+      var till = stay ? atLocal(U.addDays(date, 1), STAY_UNTIL, 0) : atLocal(date, '23:59', 0);
+      if (!at || !till) return;
+      var r = W.rainBetween(ms(at), ms(till), pop);
+      if (!r) return;
+      out.push({
+        id: 'rain|' + rule.id + '|' + date,
+        at: at,
+        title: '傘を持って　' + (S.dutyLabel(duty) || 'おでかけ'),
+        body: rainBody(r, date),
+        tag: 'rain-' + date,
+        url: '#/day/' + date
+      });
+    });
+    return out;
+  }
+
+  function ms(iso) { return new Date(iso).getTime(); }
+
+  /** 「7時ごろから 雨（降水確率80%・3時間）」。日をまたぐときは日付も添える */
+  function rainBody(r, date) {
+    var day = String(r.time).slice(0, 10);
+    var head = (day === date ? '' : U.fmtMD(day) + ' ') + String(r.time).slice(11, 16);
+    return head + 'ごろから' + r.label
+      + '（降水確率 ' + Math.round(r.pop) + '%・' + r.hours + '時間）';
+  }
+
+  /** 雨とみなす降水確率。決まりごとに入れた値をそろって使う */
+  function rainPop() {
+    var r = rules().filter(function (x) { return x.kind === 'rain' && x.active !== false; })[0];
+    return r ? Math.max(1, Math.min(100, U.num(r.pop, RAIN_POP))) : RAIN_POP;
+  }
+
   function blockReminders(from, to) {
     var T = DL.timeblocks;
+    var W = DL.weather;
+    var pop = rainPop();
     var out = [];
     U.rangeDays(from, to).forEach(function (date) {
       S.timeblocks(date).forEach(function (b) {
         var span = T.fmtDay(b.start) + '〜' + T.fmtDay(b.end);
         var body = span + (b.memo ? '　' + b.memo : '');
+        // 天気の知らせ。予報に雨があるときだけ、始まりの10分前に出す
+        if (b.notifyRain && W && W.place()) {
+          var r = W.rainBetween(ms(atMin(date, b.start)), ms(atMin(date, b.end)), pop);
+          if (r) {
+            out.push({
+              id: 'tb|' + date + '|' + b.id + '|r',
+              at: atMin(date, b.start - RAIN_LEAD),
+              title: '傘を持って　' + b.label,
+              body: span + '　' + rainBody(r, date),
+              tag: 'tb-' + b.id + '-r',
+              url: '#/day/' + date
+            });
+          }
+        }
         if (b.notifyStart) {
           out.push({
             id: 'tb|' + date + '|' + b.id + '|s',
@@ -533,7 +630,9 @@
     return [
       { id: U.uid(), kind: 'lifeEvent', active: true, when: 'beforeDay', time: '20:00', importantOnly: false },
       { id: U.uid(), kind: 'lifeEvent', active: true, when: 'onDay', time: '08:00', importantOnly: false },
-      { id: U.uid(), kind: 'todo', active: true, when: 'onDay', time: '08:00' }
+      { id: U.uid(), kind: 'todo', active: true, when: 'onDay', time: '08:00' },
+      { id: U.uid(), kind: 'rain', active: true, when: 'duty',
+        officeTime: OFFICE_TIME, stayTime: STAY_TIME, pop: RAIN_POP }
     ];
   }
 
@@ -675,6 +774,8 @@
     KINDS: KINDS, build: build, rules: rules, settings: settings, defaultRules: defaultRules,
     status: status, supported: supported, standalone: standalone,
     enable: enable, disable: disable, sync: sync, state: state, testSend: testSend,
-    atLocal: atLocal, eventReminders: eventReminders, blockReminders: blockReminders
+    atLocal: atLocal, eventReminders: eventReminders, blockReminders: blockReminders,
+    rainReminders: rainReminders, rainPop: rainPop, RAIN_LEAD: RAIN_LEAD,
+    OFFICE_TIME: OFFICE_TIME, STAY_TIME: STAY_TIME, STAY_UNTIL: STAY_UNTIL
   };
 })(window.DL);

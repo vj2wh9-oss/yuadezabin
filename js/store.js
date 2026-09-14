@@ -329,6 +329,17 @@
       });
       s.settings.stayHolidayInit = true;
     }
+    /* 出かける前の雨の知らせ。頼まれて作った決まりごとなので、
+       もう通知を使っている人にも一度だけ入れておく（あとは設定から変えられる） */
+    if (!s.settings.rainRuleInit) {
+      var nf = s.settings.notify;
+      if (nf && nf.rules && nf.rules.length
+        && !nf.rules.filter(function (r) { return r.kind === 'rain'; }).length) {
+        nf.rules.push({ id: U.uid(), kind: 'rain', active: true, when: 'duty',
+          officeTime: '06:20', stayTime: '14:20', pop: 50 });
+      }
+      s.settings.rainRuleInit = true;
+    }
     s.settings.eventDone = normalizeEventDone(s.settings.eventDone);
     s.settings.dutyLogDone = normalizeDutyLogDone(s.settings.dutyLogDone);
     s.settings.logs = normalizeLogs(s.settings.logs);
@@ -2348,6 +2359,8 @@
       // 始まるとき・終わるときに知らせるか（円グラフの予定ごとに決める）
       notifyStart: !!b.notifyStart,
       notifyEnd: !!b.notifyEnd,
+      // 始まる前に、その間の雨を知らせるか
+      notifyRain: !!b.notifyRain,
       projects: projects,
       /* 前の作りとの行き来のために、先頭の案件を残しておく
          （古い版のアプリが同期の中身を読んでも、1件目までは分かる） */

@@ -1353,6 +1353,12 @@
 
   function ruleText(r) {
     var k = DL.notify.KINDS[r.kind] || {};
+    // 勤務ごとに時刻が変わるもの（出かける前の雨）は、その並びをそのまま出す
+    if ((k.times || []).length) {
+      return k.times.map(function (t) {
+        return (t.short || t.label) + ' ' + (r[t.key] || t.def);
+      }).join('／');
+    }
     if (r.when === 'beforeMin') return '開始の' + r.minutes + '分前';
     // 日数を使う種別（締切・入金など）は「◯日前」、そうでなければ「前日」
     if (r.when === 'beforeDay') return (k.days ? r.days + '日前の ' : '前日の ') + r.time;
@@ -1389,6 +1395,8 @@
     var timeIn = ui.input({ type: 'time', value: v.time });
     var daysIn = ui.input({ type: 'number', min: 1, max: 60, value: v.days });
     var minIn = ui.input({ type: 'number', min: 5, max: 720, step: 5, value: v.minutes });
+    // 種別ごとの時刻（勤務の種別ごとに知らせる時刻を変えるときなど）
+    var timeIns = {};
     var impIn = el('input', { type: 'checkbox', checked: !!v.importantOnly });
     // 種別ごとの数字（在庫のしきい値など）。使う種別だけが出す
     var numIns = {};
@@ -1403,7 +1411,10 @@
       if (opts.map(function (o) { return o.value; }).indexOf(when) < 0) {
         when = opts.length ? opts[0].value : 'onDay';
       }
-      whenWrap.appendChild(ui.field('鳴らし方', ui.segmented(opts, when, function (val) { when = val; draw(); })));
+      // 選びようが1つしか無い種別では、選び口そのものを出さない
+      if (opts.length > 1) {
+        whenWrap.appendChild(ui.field('鳴らし方', ui.segmented(opts, when, function (val) { when = val; draw(); })));
+      }
 
       if (when === 'beforeMin') {
         whenWrap.appendChild(ui.field('何分前', minIn, '時刻を決めた予定にだけ効きます'));
@@ -1412,8 +1423,13 @@
         if (k.days && (when === 'beforeDay' || when === 'afterDay')) {
           whenWrap.appendChild(ui.field(when === 'afterDay' ? '何日後' : '何日前', daysIn));
         }
-        whenWrap.appendChild(ui.field('時刻', timeIn));
+        if (!k.noTime) whenWrap.appendChild(ui.field('時刻', timeIn));
       }
+
+      (k.times || []).forEach(function (t) {
+        if (!timeIns[t.key]) timeIns[t.key] = ui.input({ type: 'time', value: v[t.key] || t.def });
+        whenWrap.appendChild(ui.field(t.label, timeIns[t.key], t.hint));
+      });
 
       (k.numbers || []).forEach(function (n) {
         if (!numIns[n.key]) {
@@ -1454,9 +1470,12 @@
             time: timeIn.value || '08:00', days: U.num(daysIn.value, 3),
             minutes: U.num(minIn.value, 30), importantOnly: impIn.checked
           };
-          // 種別ごとの数字も持たせる
+          // 種別ごとの数字と時刻も持たせる
           ((N.KINDS[kindSel.value] || {}).numbers || []).forEach(function (n) {
             next[n.key] = numIns[n.key] ? U.num(numIns[n.key].value, n.def) : n.def;
+          });
+          ((N.KINDS[kindSel.value] || {}).times || []).forEach(function (t) {
+            next[t.key] = (timeIns[t.key] && timeIns[t.key].value) || t.def;
           });
           var rules = DL.notify.rules().filter(function (x) { return x.id !== v.id; });
           rules.push(next);

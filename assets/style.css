@@ -1762,8 +1762,13 @@ a.alert-main { text-decoration: none; }
   display: inline-flex; align-items: center; gap: 3px;
   font-size: 10.5px; color: var(--accent2);
 }
-/* 知らせのチェック2つ。左にそろえて縦に並べる */
+/* 雨の知らせは、鐘ではなく雨の色（水色）で分ける */
+.tp-bell.rain { color: var(--sky); }
+/* 印が2つ並ぶときは、横に並べて折り返す */
+.tp-bells { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* 知らせのチェック。左にそろえて縦に並べる */
 .tp-notify { display: flex; flex-direction: column; gap: 4px; }
+.tp-notify p { margin: 2px 0 0; }
 .tp-row-k > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* どの案件に使ったか。名前の下に小さく */
 .tp-row-p { font-size: 10.5px; color: var(--accent); }
