@@ -28,6 +28,7 @@
     if (name === 'docs') params.id = parts[1];
     if (name === 'doc') { params.id = parts[1]; params.docId = parts[2]; }
     if (name === 'onsite') params.id = parts[1];
+    if (name === 'pages') params.id = parts[1];
     if (name === 'day') params.date = parts[1];
     if (name === 'log') params.date = parts[1];
     if (name === 'time') params.date = parts[1];
@@ -54,13 +55,13 @@
       home: 'METEO365', calendar: 'カレンダー', projects: '案件',
       settings: '設定', day: '日別', project: '案件の詳細',
       docs: '書類', doc: '書類', sales: '売上', files: 'ファイル', books: '経理',
-      search: '検索', stock: '頒布と在庫', onsite: '当日モード',
+      search: '検索', stock: '頒布と在庫', onsite: '当日モード', pages: '原稿のページ',
       log: '1日の記録', logs: '記録', ideas: 'ひらめきメモ', time: '1日の時間', orders: '発注',
       crm: '顧客管理'
     };
     setTitle(titles[route.name] || 'METEO365');
 
-    var tab = { home: 'home', calendar: 'calendar', day: 'calendar', log: 'calendar', logs: 'calendar', time: 'calendar', projects: 'projects', project: 'projects', docs: 'projects', doc: 'projects', crm: 'projects', sales: 'sales', stock: 'sales', onsite: 'sales', books: 'books', files: 'files' }[route.name];
+    var tab = { home: 'home', calendar: 'calendar', day: 'calendar', log: 'calendar', logs: 'calendar', time: 'calendar', projects: 'projects', project: 'projects', pages: 'projects', docs: 'projects', doc: 'projects', crm: 'projects', sales: 'sales', stock: 'sales', onsite: 'sales', books: 'books', files: 'files' }[route.name];
     U.$$('.tab').forEach(function (t) { t.classList.toggle('on', t.dataset.tab === tab); });
     // 設定は下のタブから外し、題名の右の歯車から開く。
     // 歯車を出すのはホームだけにして、ほかのタブでは邪魔をしない
@@ -83,7 +84,7 @@
     if (onCal) drawModeBtn(life);
 
     // 売上は下のタブから直接開くので、戻るボタンは要らない
-    var showBack = ['project', 'day', 'docs', 'doc', 'search', 'stock', 'onsite', 'log', 'logs', 'ideas', 'time', 'orders', 'crm'].indexOf(route.name) >= 0;
+    var showBack = ['project', 'pages', 'day', 'docs', 'doc', 'search', 'stock', 'onsite', 'log', 'logs', 'ideas', 'time', 'orders', 'crm'].indexOf(route.name) >= 0;
     backBtn.hidden = !showBack;
 
     // 画面が切り替わった瞬間を、同期のきっかけにする
@@ -126,6 +127,7 @@
       case 'day': DL.views.calendar.renderDay(view, route.params); break;
       case 'projects': DL.views.projects.render(view); break;
       case 'project': DL.views.detail.render(view, route.params); break;
+      case 'pages': DL.views.pages.render(view, route.params); break;
       case 'docs': DL.views.doc.renderList(view, route.params); break;
       case 'doc': DL.views.doc.renderDoc(view, route.params); break;
       case 'sales': DL.views.sales.render(view); break;

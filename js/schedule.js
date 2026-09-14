@@ -123,6 +123,7 @@
 
     return {
       plan: plan, total: total, done: done, remaining: remaining,
+      shouldBeDone: shouldBeDone,
       behind: behind, remainingDays: left.length, perDay: perDay,
       overdue: U.isISO(task.end) && U.cmp(task.end, today) < 0 && remaining > 0 && !task.done,
       todayQty: plan.byDate[today] || 0
@@ -356,6 +357,23 @@
   }
 
   function unit(task) { return DL.store.UNIT_LABEL[task.unit] || ''; }
+
+  /**
+   * ページ管理表の列になる工程。
+   * 1ページ（1枚）ずつ数えるもの＝ページ／枚 単位のタスクだけを並べる。
+   */
+  function pageTasks(project) {
+    return (project.tasks || []).filter(function (t) {
+      return t.unit === 'page' || t.unit === 'cut';
+    });
+  }
+
+  /* ページ管理表の単位の呼び名（ページ／枚） */
+  function pageWord(project) {
+    var ts = pageTasks(project);
+    var cut = ts.length && ts.every(function (t) { return t.unit === 'cut'; });
+    return cut ? '枚' : 'ページ';
+  }
 
   /**
    * タスクの期間を自動割り当てする。
@@ -691,6 +709,7 @@
     taskPlan: taskPlan, taskDone: taskDone, taskTotal: taskTotal, taskPct: taskPct,
     rangeText: rangeText, UNIT_RANGE: UNIT_RANGE,
     taskIsComplete: taskIsComplete, taskPace: taskPace, unit: unit,
+    pageTasks: pageTasks, pageWord: pageWord,
     projectProgress: projectProgress, projectStatus: projectStatus, STATUS_LABEL: STATUS_LABEL,
     deadlineLabel: deadlineLabel, deadlineShort: deadlineShort,
     dayEntries: dayEntries, dayMarks: dayMarks, timeline: timeline,

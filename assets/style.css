@@ -2333,3 +2333,88 @@ a.tp-proj:active { color: var(--accent); }
 .sv-after-v { display: inline-flex; align-items: baseline; gap: 2px; }
 .sv-after-v b { font-size: 17px; font-variant-numeric: tabular-nums; }
 .sv-after-v b.save { color: var(--accent2); }
+
+/* ---------------- 原稿のページ管理表 ----------------
+   1ページごとに、どの工程まで終わったかをマス目で持つ。
+   iPhone の幅に4〜6工程が並ぶよう、マスは小さめ・押せる大きさを保つ。 */
+.pg-page { display: flex; flex-direction: column; gap: 10px; }
+.pg-title {
+  display: flex; align-items: center; gap: 8px; font-size: 14.5px; font-weight: 700;
+  color: inherit; text-decoration: none;
+}
+.pg-title .dot { width: 10px; height: 10px; flex: none; }
+.pg-title > span:nth-child(2) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-total {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  background: var(--card2); border: 1px solid var(--line); border-radius: var(--radius-s);
+  padding: 7px 9px; cursor: pointer; color: inherit;
+}
+.pg-total b { flex: 1; font-size: 14px; font-variant-numeric: tabular-nums; }
+.pg-total .chev { color: var(--muted); display: inline-flex; }
+
+/* 工程ごとのまとめ */
+.pg-sum { display: flex; flex-direction: column; gap: 0; padding: 0; }
+.pg-sum-row {
+  display: flex; flex-direction: column; gap: 5px; width: 100%; text-align: left;
+  background: transparent; border: 0; border-bottom: 1px solid var(--line);
+  padding: 9px 12px; cursor: pointer; color: inherit; font: inherit;
+}
+.pg-sum-row:last-child { border-bottom: 0; }
+.pg-sum-row:active { background: var(--card2); }
+.pg-sum-row.done b { color: var(--ok); }
+.pg-sum-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pg-sum-head b { font-size: 13.5px; }
+.pg-sum-n { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+
+.pg-filter .seg { padding: 8px 2px; font-size: 12px; white-space: nowrap; }
+
+/* 表そのもの。工程が多くて収まらないときだけ、横に送れるようにする。
+   （横送りにすると見出しを上に貼り付けられなくなるので、収まるうちはしない） */
+.pg-wrap.scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.pg-table { --cols: 4; min-width: 100%; display: flex; flex-direction: column; }
+.pg-head, .pg-row {
+  display: grid; grid-template-columns: 42px repeat(var(--cols), minmax(46px, 1fr));
+  gap: 3px; align-items: stretch;
+}
+.pg-head {
+  position: sticky; top: calc(var(--bar-h) + env(safe-area-inset-top)); z-index: 3;
+  background: var(--bg); padding: 4px 0 5px; border-bottom: 1px solid var(--line);
+}
+/* 上に貼り付く見出しのぶん、行を送る位置を下げておく（1行目が隠れないように） */
+.pg-row { padding: 3px 0; scroll-margin-top: calc(var(--bar-h) + env(safe-area-inset-top) + 58px); }
+.pg-cap { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 11px; }
+.pg-col {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  background: var(--card2); border: 1px solid var(--line); border-radius: var(--radius-s);
+  padding: 4px 2px; cursor: pointer; color: inherit; font: inherit; min-height: 38px;
+}
+.pg-col-name { font-size: 11px; font-weight: 700; line-height: 1.2; text-align: center; word-break: break-all; }
+.pg-col-n { font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.pg-no {
+  display: flex; align-items: center; justify-content: center; gap: 1px;
+  background: transparent; border: 0; color: var(--muted); cursor: pointer;
+  font-variant-numeric: tabular-nums; font-size: 12.5px; padding: 0;
+}
+.pg-no b { font-weight: 700; }
+.pg-no.has-note { color: var(--accent2); }
+.pg-no .icon { flex: none; }
+
+.pg-cell {
+  min-height: 34px; display: flex; align-items: center; justify-content: center;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-s);
+  cursor: pointer; color: var(--accent-ink); padding: 0;
+}
+.pg-cell:active { opacity: .7; }
+/* 済み：案件の色で塗る（色は要素側で指定する） */
+.pg-cell.on { border-color: transparent; }
+/* 昨日までに終えているはずのところ */
+.pg-cell.late { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, var(--card)); }
+/* 今日のノルマに入っているところ */
+.pg-cell.now { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--card)); }
+
+.pg-toggles { display: flex; flex-wrap: wrap; gap: 6px; }
+.pg-toggles .btn.on { border-color: var(--accent); color: var(--accent); }
+/* まだのものは、印（レ点）だけ隠す（幅が動かないように場所は取っておく） */
+.pg-toggles .btn:not(.on) > svg { visibility: hidden; }
+.pg-help { margin: 0; }

@@ -375,6 +375,7 @@
     var oldIdx = OLD_PALETTE.indexOf(p.color);
     if (oldIdx >= 0) p.color = PALETTE[oldIdx];   // 旧配色は青系へ置き換える
     p.tasks = (p.tasks || []).map(normalizeTask);
+    p.pages = normalizePages(p.pages);   // 原稿のページ管理表
     p.printings = p.printings || [];
     delete p.offDays;                   // 曜日単位の休みは廃止した
     p.holidays = p.holidays || [];
@@ -414,6 +415,37 @@
     t.done = !!t.done;
     t.note = t.note || '';
     return t;
+  }
+
+  /* ------- 原稿のページ管理表 -------
+
+     1ページごとに、どの工程まで終わったかを持つ。
+     marks は 工程ID → { ページ番号: 印を付けた日 }。
+     日付を覚えておくのは、印を外したときに、足した日の実績から引くため。
+     notes は ページ番号 → メモ（「このコマ描き直す」など）。 */
+  var MAX_PAGES = 999;
+
+  function normalizePages(g) {
+    g = g || {};
+    var marks = {};
+    Object.keys(g.marks || {}).forEach(function (tid) {
+      var src = g.marks[tid] || {}, out = {};
+      Object.keys(src).forEach(function (k) {
+        var n = Math.round(U.num(k, 0));
+        if (n >= 1 && n <= MAX_PAGES) out[n] = U.isISO(src[k]) ? src[k] : '';
+      });
+      if (Object.keys(out).length) marks[tid] = out;
+    });
+    var notes = {};
+    Object.keys(g.notes || {}).forEach(function (k) {
+      var n = Math.round(U.num(k, 0));
+      var s = String(g.notes[k] || '').trim().slice(0, 200);
+      if (n >= 1 && n <= MAX_PAGES && s) notes[n] = s;
+    });
+    return {
+      total: Math.max(0, Math.min(MAX_PAGES, Math.round(U.num(g.total, 0)))),
+      marks: marks, notes: notes
+    };
   }
 
   function normalizeIssuer(x) {
@@ -2913,6 +2945,7 @@
     var p = getProject(pid);
     if (!p) return;
     p.tasks = p.tasks.filter(function (t) { return t.id !== tid; });
+    if (p.pages) delete p.pages.marks[tid];   // ページ管理表の印も一緒に消す
     save();
   }
 
@@ -2939,6 +2972,117 @@
     var t = getTask(pid, tid);
     if (!t) return;
     setProgress(pid, tid, date, Math.max(0, U.num(t.progress[date], 0) + delta));
+  }
+
+  /* ---------------- 原稿のページ管理表 ----------------
+
+     表に印を付けると、その日の実績（progress）にも1つぶん足す。
+     こうしておけば、いまの遅れ判定も1日のノルマも、そのまま今までどおり動く。
+     印を外したときは、付けた日から引く（記録が後ろにずれないように）。 */
+
+  // 総ページ数。入っていなければ案件の数量（本文ページ数）を使う
+  function pageTotal(p) {
+    if (!p) return 0;
+    return U.num((p.pages || {}).total, 0) || Math.max(0, Math.round(U.num(p.qty, 0)));
+  }
+
+  function setPageTotal(pid, n) {
+    var p = getProject(pid);
+    if (!p) return;
+    p.pages.total = Math.max(0, Math.min(MAX_PAGES, Math.round(U.num(n, 0))));
+    save();
+  }
+
+  // その工程で印の付いているページ番号（小さい順）
+  function markedPages(p, tid) {
+    var m = (p && p.pages ? p.pages.marks[tid] : null) || {};
+    return Object.keys(m).map(function (k) { return U.num(k, 0); })
+      .sort(function (a, b) { return a - b; });
+  }
+
+  function isPageMarked(p, tid, page) {
+    var m = (p && p.pages ? p.pages.marks[tid] : null) || {};
+    return m[Math.round(U.num(page, 0))] !== undefined;
+  }
+
+  function addProgress(t, date, delta) {
+    var q = Math.max(0, U.num(t.progress[date], 0) + delta);
+    if (q > 0) t.progress[date] = q;
+    else delete t.progress[date];
+  }
+
+  /**
+   * 複数ページの印をまとめて付け外しする。
+   * @param {string[]|number[]} pages ページ番号
+   * @param {boolean} on 付けるなら true
+   * @returns {number} 実際に変わった数
+   */
+  function markPages(pid, tid, pages, on, date) {
+    var p = getProject(pid), t = getTask(pid, tid);
+    if (!p || !t) return 0;
+    var d = U.isISO(date) ? date : U.today();
+    var m = p.pages.marks[tid] = p.pages.marks[tid] || {};
+    var n = 0;
+    (pages || []).forEach(function (page) {
+      page = Math.round(U.num(page, 0));
+      if (page < 1 || page > MAX_PAGES) return;
+      var had = m[page] !== undefined;
+      if (!!on === had) return;
+      if (on) {
+        m[page] = d;
+        addProgress(t, d, 1);
+      } else {
+        var when = U.isISO(m[page]) ? m[page] : d;
+        delete m[page];
+        addProgress(t, when, -1);
+      }
+      n++;
+    });
+    if (n) save();
+    return n;
+  }
+
+  function setPageMark(pid, tid, page, on, date) {
+    return markPages(pid, tid, [page], on, date);
+  }
+
+  function togglePageMark(pid, tid, page, date) {
+    var p = getProject(pid);
+    if (!p) return 0;
+    return setPageMark(pid, tid, page, !isPageMarked(p, tid, page), date);
+  }
+
+  function setPageNote(pid, page, text) {
+    var p = getProject(pid);
+    if (!p) return;
+    page = Math.round(U.num(page, 0));
+    if (page < 1 || page > MAX_PAGES) return;
+    var s = String(text || '').trim().slice(0, 200);
+    if (s) p.pages.notes[page] = s;
+    else delete p.pages.notes[page];
+    save();
+  }
+
+  /**
+   * その工程の実績を、ページ管理表の印だけから数え直す。
+   * 表と実績がずれたとき（手で実績を直したあとなど）に、表を正とそろえるための道。
+   */
+  function syncProgressFromPages(pid, tid) {
+    var p = getProject(pid), t = getTask(pid, tid);
+    if (!p || !t) return 0;
+    var m = (p.pages.marks[tid] || {});
+    var next = {};
+    Object.keys(m).forEach(function (page) {
+      var d = U.isISO(m[page]) ? m[page] : U.today();
+      next[d] = (next[d] || 0) + 1;
+    });
+    t.progress = next;
+    save();
+    return Object.keys(m).length;
+  }
+
+  function pageNote(p, page) {
+    return (p && p.pages ? p.pages.notes[Math.round(U.num(page, 0))] : '') || '';
   }
 
   // テンプレートからタスクを生成
@@ -3345,6 +3489,11 @@
     createProject: createProject, updateProject: updateProject, removeProject: removeProject,
     addTask: addTask, getTask: getTask, updateTask: updateTask, removeTask: removeTask,
     moveTask: moveTask, setProgress: setProgress, bumpProgress: bumpProgress,
+    MAX_PAGES: MAX_PAGES, pageTotal: pageTotal, setPageTotal: setPageTotal,
+    markedPages: markedPages, isPageMarked: isPageMarked, markPages: markPages,
+    setPageMark: setPageMark, togglePageMark: togglePageMark,
+    setPageNote: setPageNote, pageNote: pageNote,
+    syncProgressFromPages: syncProgressFromPages,
     issuers: issuers, getIssuer: getIssuer, addIssuer: addIssuer,
     updateIssuer: updateIssuer, removeIssuer: removeIssuer, issuerColor: issuerColor,
     scopeId: scopeId, scopeIssuer: scopeIssuer, setScope: setScope,

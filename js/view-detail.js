@@ -181,6 +181,10 @@
       wrap.appendChild(spent);
     }
 
+    /* ---- 原稿のページ管理表 ---- */
+    var pgEntry = pagesEntry(p, today);
+    if (pgEntry) wrap.appendChild(pgEntry);
+
     /* ---- タスク ---- */
     wrap.appendChild(ui.section('タスク', el('span', { class: 'muted small', text: prog.doneTasks + ' / ' + prog.total + ' 完了' })));
     if (!(p.tasks || []).length) {
@@ -225,6 +229,35 @@
     ]));
 
     root.appendChild(wrap);
+  }
+
+  /* ---------------- 原稿のページ管理表への入口 ----------------
+
+     ページ（枚）で数える工程があるときだけ出す。
+     どの工程がどこまで進んだかを、ここで一目で分かるようにしておく。 */
+
+  function pagesEntry(p, today) {
+    var tasks = sc.pageTasks(p);
+    if (!tasks.length) return null;
+    var total = S.pageTotal(p);
+    var word = sc.pageWord(p);
+
+    var chips = total ? tasks.slice(0, 4).map(function (t) {
+      var n = S.markedPages(p, t.id).length;
+      var behind = Math.max(0, Math.min(total, Math.round(sc.taskPace(p, t, today).shouldBeDone)) - n);
+      return ui.chip(t.name + ' ' + n + '/' + total, n >= total ? 'ok' : behind ? 'danger' : 'ghosty');
+    }) : [ui.chip('総' + word + '数を入れると使えます', 'warn')];
+    if (total && tasks.length > 4) chips.push(ui.chip('ほか' + (tasks.length - 4), 'ghosty'));
+
+    return el('a', { class: 'row docs-entry', href: '#/pages/' + p.id }, [
+      el('div', { class: 'row-main' }, [
+        el('div', { class: 'row-title' }, [
+          ui.icon('manga', 17), el('span', { text: '原稿の' + word + '管理表' })
+        ]),
+        el('div', { class: 'row-sub' }, chips)
+      ]),
+      el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+    ]);
   }
 
   /* ---------------- タスク行 ---------------- */
