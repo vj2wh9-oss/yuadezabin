@@ -108,7 +108,7 @@ export default {
           plotWebhook: !!env.DISCORD_PLOT_WEBHOOK,
           menuWebhook: !!env.DISCORD_MENU_WEBHOOK
         },
-        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/menu/dish', '/v1/menu/send', '/v1/reschedule', '/v1/bank/balance', '/v1/plot', '/v1/plot/send', '/v1/spend'],
+        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/inbox/weights', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/menu/dish', '/v1/menu/send', '/v1/reschedule', '/v1/bank/balance', '/v1/plot', '/v1/plot/send', '/v1/spend', '/v1/fit/plan'],
         // どの食事に対応しているか。deploy を忘れると古いままなのが分かる
         menuSlots: MENU_SLOTS,
         note: '各 /v1/... は Authorization: Bearer <合鍵> が必要です'
@@ -254,6 +254,14 @@ export default {
 
       if (url.pathname === '/v1/plot/send') {
         return plotSend(request, env, cors);
+      }
+
+      if (url.pathname === '/v1/fit/plan') {
+        return fitPlan(request, env, cors);
+      }
+
+      if (url.pathname === '/v1/inbox/weight' || url.pathname === '/v1/inbox/weights') {
+        return weights(request, env, cors, url, id);
       }
 
       if (url.pathname === '/v1/roomreserve') {
@@ -1375,6 +1383,327 @@ async function plot(request, env, cors) {
   if (bad) return json({ error: 'plot_unsafe', word: bad }, 422, cors);
 
   return json({ ok: true, data: out, model: pass.model, usage: pass.usage }, 200, cors);
+}
+
+
+/* ================= 筋トレの計画 =================
+
+   エニタイムフィットネスの器具トレーニングと、外を走る有酸素。
+   「次に何キロ持つか」はアプリ側が記録から数えて決めているので、
+   ここではその重さを土台に、日ごとの組み立てだけを考えてもらう。 */
+
+const FIT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['days', 'advice'],
+  properties: {
+    days: {
+      type: 'array',
+      description: '頼まれた日数ぶん、日付の順に。休みの日も入れる',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['date', 'kind', 'title', 'focus', 'minutes', 'warmup', 'items', 'cardio', 'cooldown', 'note'],
+        properties: {
+          date: { type: 'string', description: 'YYYY-MM-DD' },
+          kind: {
+            type: 'string', enum: ['gym', 'run', 'rest'],
+            description: 'gym=ジム run=外を走るだけ rest=休み'
+          },
+          title: { type: 'string', description: '短い見出し。例）胸と三頭' },
+          focus: { type: 'string', description: '鍛える部位。例）大胸筋・上腕三頭筋' },
+          minutes: { type: 'integer', description: 'かかる目安の分数' },
+          warmup: {
+            type: 'array', description: '準備運動。2〜4つ',
+            items: { type: 'string' }
+          },
+          items: {
+            type: 'array',
+            description: '器具の種目。休みの日とランだけの日は空配列',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['name', 'gear', 'sets', 'reps', 'weight', 'rest', 'note'],
+              properties: {
+                name: { type: 'string', description: '種目名（日本語）' },
+                gear: { type: 'string', description: '使う器具。例）スミスマシン、ダンベル、ケーブル' },
+                sets: { type: 'integer', description: 'セット数' },
+                reps: { type: 'string', description: '回数。例）8-12' },
+                weight: { type: 'number', description: '重さ(kg)。自重なら 0' },
+                rest: { type: 'integer', description: 'セット間の休み(秒)' },
+                note: { type: 'string', description: 'フォームのこつ。無ければ空文字' }
+              }
+            }
+          },
+          cardio: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['kind', 'minutes', 'distance', 'pace', 'note'],
+            description: '有酸素。やらない日は minutes と distance を 0 に',
+            properties: {
+              kind: { type: 'string', description: 'ラン／トレッドミル／バイク／ウォーク' },
+              minutes: { type: 'integer' },
+              distance: { type: 'number', description: 'km' },
+              pace: { type: 'string', description: '目安のペース。例）7分/km' },
+              note: { type: 'string' }
+            }
+          },
+          cooldown: {
+            type: 'array', description: '整理運動・ストレッチ。2〜4つ',
+            items: { type: 'string' }
+          },
+          note: { type: 'string', description: 'その日の狙い。1〜2行' }
+        }
+      }
+    },
+    advice: { type: 'string', description: '食事や休養の助言。3〜5行' }
+  }
+};
+
+const FIT_GOAL_JA = {
+  bulk: 'いわゆるガチムチ体型（筋肉量を増やして厚みを出す）',
+  recomp: '脂肪を落としながら筋肉を増やす',
+  cut: 'まず体脂肪を落とす',
+  strength: '扱う重量を伸ばす'
+};
+const FIT_LEVEL_JA = {
+  beginner: '初心者（フォームを固める段階）',
+  intermediate: '慣れてきた',
+  advanced: '長く続けている'
+};
+
+function fitPrompt(o) {
+  const p = o.profile || {};
+  const lines = [
+    'ジムに通う人の、日ごとのトレーニング計画を組んでください。',
+    '',
+    '【本人】',
+    '・' + (p.sex === 'female' ? '女性' : '男性')
+      + (p.age ? '　' + p.age + '歳' : '')
+      + (p.height ? '　身長 ' + p.height + 'cm' : '')
+      + (p.weight ? '　体重 ' + p.weight + 'kg' : '')
+      + (p.fat ? '　体脂肪 ' + p.fat + '%' : ''),
+    '・目標：' + (FIT_GOAL_JA[p.goal] || FIT_GOAL_JA.bulk)
+      + (p.goalWeight ? '（目標体重 ' + p.goalWeight + 'kg）' : ''),
+    '・経験：' + (FIT_LEVEL_JA[p.level] || FIT_LEVEL_JA.beginner),
+    '・通うジム：' + (p.gym || 'エニタイムフィットネス')
+      + '（24時間営業のマシン中心のジム。フリーウエイトとスミスマシン、'
+      + 'ケーブル、各種マシン、トレッドミルとバイクがある。'
+      + 'パワーラックが1〜2台しかない店舗が多いので、混む時間に'
+      + 'ラックを長く占有する組み方は避けてください）',
+    '・1回 ' + (p.minutes || 60) + '分、週 ' + (p.daysPerWeek || 4) + '回',
+    p.note ? '・気をつけること：' + p.note : '',
+    '',
+    '【組む範囲】' + o.from + ' から ' + o.days + '日ぶん（日付を必ず埋める）'
+  ];
+
+  if ((o.weekdays || []).length) {
+    const ja = ['日', '月', '火', '水', '木', '金', '土'];
+    lines.push('【ジムに行く曜日】' + o.weekdays.map(d => ja[d]).join('・')
+      + '　この曜日を gym にして、ほかの日は rest か軽い run にしてください');
+  }
+
+  if (o.trend && o.trend.now) {
+    lines.push('', '【体重の動き】いま ' + o.trend.now.kg + 'kg'
+      + '（' + o.trend.n + '回の記録で ' + (o.trend.diff >= 0 ? '+' : '') + o.trend.diff + 'kg、'
+      + '週あたり ' + (o.trend.perWeek >= 0 ? '+' : '') + o.trend.perWeek + 'kg）');
+  }
+  if (o.recent) {
+    lines.push('【ここ4週】予定 ' + o.recent.planned + '回のうち ' + o.recent.done + '回できた'
+      + '（' + o.recent.rate + '%）。ジム ' + o.recent.gym + '回、有酸素 ' + o.recent.run + '回');
+  }
+
+  if ((o.loads || []).length) {
+    lines.push('', '【いま扱える重さ】この数字を必ず使ってください（勝手に増減させない）');
+    o.loads.forEach(l => lines.push('・' + l.name + '　' + l.kg + 'kg'));
+  }
+
+  if ((o.history || []).length) {
+    lines.push('', '【直近の記録】');
+    o.history.forEach(h => {
+      const done = h.done === 'skip' ? 'できなかった' : h.done === 'part' ? '途中まで' : '完了';
+      lines.push('・' + h.date + '　' + (h.title || '') + '　' + done
+        + (h.rpe ? '　きつさ ' + h.rpe + '/10' : '')
+        + (h.cardio ? '　' + h.cardio : ''));
+      (h.items || []).slice(0, 6).forEach(i => lines.push('　　' + i.name + '：' + i.sets));
+      if (h.memo) lines.push('　　メモ：' + h.memo);
+    });
+  }
+
+  if (o.want) lines.push('', '【今回の希望】' + o.want);
+
+  lines.push(
+    '',
+    '守ること：',
+    '・1回のジムは、準備運動と整理運動まで含めて ' + (p.minutes || 60) + '分に収まるようにしてください。'
+      + '種目は4〜6つが目安です（欲張らない）。',
+    '・全身をまんべんなく。週のうちで、胸・背中・脚・肩・腕・体幹がひと通り入るように分けてください。',
+    '・大きい筋肉の種目（スクワット、ベンチ、ローイング、デッドリフト系）を先に置いてください。',
+    '・「いま扱える重さ」に載っている種目は、その重さをそのまま weight に入れてください。'
+      + '載っていない種目は、体重と経験から無理のない重さを見当で入れてください。',
+    '・有酸素は、筋トレの後か別の日に置いてください。'
+      + '筋肥大が目標なので、走りすぎない範囲（1回 20〜35分）にしてください。',
+    '・記録に「できなかった」が続いているときは、量を減らして戻しやすくしてください。',
+    '・advice には、その週の食事（たんぱく質の目安量とカロリーの方向）と、'
+      + '睡眠・休養について短く書いてください。',
+    '・医療の助言はしないでください。痛みがあるときは休むよう添えるだけにしてください。'
+  );
+  return lines.filter(Boolean).join('\n');
+}
+
+/* 受け取ったものを整える。日付は必ず頼んだ範囲に収める */
+function fitClean(data, o) {
+  const days = Array.isArray(data && data.days) ? data.days : [];
+  const want = [];
+  for (let i = 0; i < o.days; i++) want.push(addDaysIso(o.from, i));
+  const out = [];
+  want.forEach((date, i) => {
+    const d = days[i] || days.filter(x => x && x.date === date)[0];
+    if (!d) return;
+    const kind = ['gym', 'run', 'rest'].indexOf(d.kind) >= 0 ? d.kind : 'gym';
+    out.push({
+      date,
+      kind,
+      title: fitText(d.title, 60) || (kind === 'rest' ? '休み' : kind === 'run' ? 'ラン' : 'ジム'),
+      focus: fitText(d.focus, 60),
+      minutes: Math.min(300, Math.max(0, Math.round(Number(d.minutes) || 0))),
+      warmup: (Array.isArray(d.warmup) ? d.warmup : []).slice(0, 8).map(x => fitText(x, 80)).filter(Boolean),
+      items: (Array.isArray(d.items) ? d.items : []).slice(0, 16).map(i => ({
+        name: fitText(i && i.name, 40),
+        gear: fitText(i && i.gear, 40),
+        sets: Math.min(12, Math.max(0, Math.round(Number(i && i.sets) || 0))),
+        reps: fitText(i && i.reps, 20),
+        weight: Math.min(500, Math.max(0, Number(i && i.weight) || 0)),
+        rest: Math.min(600, Math.max(0, Math.round(Number(i && i.rest) || 0))),
+        note: fitText(i && i.note, 120)
+      })).filter(i => i.name),
+      cardio: fitCardio(d.cardio),
+      cooldown: (Array.isArray(d.cooldown) ? d.cooldown : []).slice(0, 8).map(x => fitText(x, 80)).filter(Boolean),
+      note: fitText(d.note, 400)
+    });
+  });
+  return { days: out, advice: fitText(data && data.advice, 1200) };
+}
+
+function fitCardio(c) {
+  if (!c || typeof c !== 'object') return null;
+  const out = {
+    kind: fitText(c.kind, 20) || 'ラン',
+    minutes: Math.min(600, Math.max(0, Math.round(Number(c.minutes) || 0))),
+    distance: Math.min(200, Math.max(0, Math.round((Number(c.distance) || 0) * 100) / 100)),
+    pace: fitText(c.pace, 20),
+    note: fitText(c.note, 200)
+  };
+  return (out.minutes || out.distance) ? out : null;
+}
+
+function fitText(v, n) { return String(v == null ? '' : v).trim().slice(0, n); }
+
+function addDaysIso(iso, n) {
+  const d = new Date(iso + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+async function fitPlan(request, env, cors) {
+  if (request.method !== 'POST') return json({ error: 'not_found' }, 404, cors);
+  if (!env.OPENAI_API_KEY) return json({ error: 'no_api_key' }, 503, cors);
+
+  let body;
+  try { body = await request.json(); } catch (e) { return json({ error: 'bad_json' }, 400, cors); }
+
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(String(body && body.from))
+    ? body.from : new Date().toISOString().slice(0, 10);
+  const o = {
+    from,
+    days: Math.min(14, Math.max(1, Math.round(Number(body && body.days) || 7))),
+    weekdays: (Array.isArray(body && body.weekdays) ? body.weekdays : [])
+      .map(d => Math.round(Number(d))).filter(d => d >= 0 && d <= 6).slice(0, 7),
+    profile: (body && body.profile) || {},
+    trend: (body && body.trend) || null,
+    recent: (body && body.recent) || null,
+    loads: (Array.isArray(body && body.loads) ? body.loads : []).slice(0, 40),
+    history: (Array.isArray(body && body.history) ? body.history : []).slice(0, 8),
+    want: fitText(body && body.want, 400)
+  };
+
+  const model = String(body.model || env.OPENAI_FIT_MODEL || env.OPENAI_MODEL || OCR_DEFAULTS.model);
+  const max = Number(env.OPENAI_FIT_MAX_TOKENS || 8000);
+
+  const pass = await askJson(env, model, fitPrompt(o), 'fit', FIT_SCHEMA, max);
+  if (!pass.ok) return json(pass.body, pass.status, cors);
+  return json({ ok: true, data: fitClean(pass.data, o), model: pass.model, usage: pass.usage }, 200, cors);
+}
+
+/* ================= 体重の受け口 =================
+
+   iPhone のブラウザから体重計へ直につなぐ道は無いので、
+   PC やラズパイで動かすスクリプト（tools/eufy-weight.py）が
+   ここへ投げ、アプリが取りに来て消す。 */
+
+const MAX_WEIGHTS = 400;
+
+async function weights(request, env, cors, url, id) {
+  const key = 'weights:' + id;
+
+  if (url.pathname === '/v1/inbox/weight' && request.method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch (e) { return json({ error: 'bad_json' }, 400, cors); }
+    const list = Array.isArray(body && body.items) ? body.items : [body];
+    const box = (await env.SYNC.get(key, 'json')) || { list: [] };
+    let added = 0;
+    list.forEach(w => {
+      const item = cleanWeight(w);
+      if (!item) return;
+      // 同じ日のぶんは新しいほうで置き換える（1日に何度も乗ることがある）
+      box.list = box.list.filter(x => x.date !== item.date);
+      box.list.unshift(item);
+      added++;
+    });
+    if (!added) return json({ error: 'bad_body' }, 400, cors);
+    box.list = box.list.slice(0, MAX_WEIGHTS);
+    await env.SYNC.put(key, JSON.stringify(box));
+    return json({ ok: true, added, count: box.list.length }, 200, cors);
+  }
+
+  if (url.pathname === '/v1/inbox/weights' && request.method === 'GET') {
+    const box = (await env.SYNC.get(key, 'json')) || { list: [] };
+    return json({ items: box.list, count: box.list.length }, 200, cors);
+  }
+
+  /* 取り込めたぶんを片づける。id を渡さなければ全部 */
+  if (url.pathname === '/v1/inbox/weights' && request.method === 'DELETE') {
+    let body = null;
+    try { body = await request.json(); } catch (e) { body = null; }
+    const ids = Array.isArray(body && body.ids) ? body.ids.map(String) : null;
+    const box = (await env.SYNC.get(key, 'json')) || { list: [] };
+    const before = box.list.length;
+    box.list = ids ? box.list.filter(x => ids.indexOf(String(x.id)) < 0) : [];
+    await env.SYNC.put(key, JSON.stringify(box));
+    return json({ ok: true, removed: before - box.list.length }, 200, cors);
+  }
+
+  return json({ error: 'not_found' }, 404, cors);
+}
+
+function cleanWeight(w) {
+  if (!w || typeof w !== 'object') return null;
+  const date = /^\d{4}-\d{2}-\d{2}/.test(String(w.date || ''))
+    ? String(w.date).slice(0, 10) : new Date().toISOString().slice(0, 10);
+  const kg = Number(w.kg || w.weight || 0);
+  if (!(kg > 0) || kg > 400) return null;
+  const num = v => {
+    const n = Number(v);
+    return isFinite(n) && n > 0 ? Math.round(n * 10) / 10 : null;
+  };
+  return {
+    id: date + '|' + Math.round(kg * 10),
+    date,
+    kg: Math.round(kg * 10) / 10,
+    fat: num(w.fat),
+    muscle: num(w.muscle),
+    at: new Date().toISOString()
+  };
 }
 
 /* できたプロットを Discord のチャンネルへ送る */

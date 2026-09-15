@@ -178,6 +178,10 @@
     dishNotes: {},
     // いま手元に置いてあるプロット（1つだけ）
     plot: null,
+    /* 筋トレ。体づくりの計画と記録
+       { profile, weights:[{date,kg,fat,muscle,from}], plans:{date:計画},
+         logs:{date:記録}, loads:{種目名:{kg,at}} } */
+    fit: null,
     // 貯金（貯蓄用の口座）。残高は銀行から読むか、手で入れる
     // { goal, at, total, accounts:[{id,name,balance}], history:{'YYYY-MM-DD': 残高} }
     savings: { goal: 0, at: '', total: 0, accounts: [], history: {} },
@@ -350,6 +354,7 @@
     s.settings.dishNotes = normalizeDishNotes(s.settings.dishNotes);
     s.settings.savings = normalizeSavings(s.settings.savings);
     s.settings.plot = normalizePlot(s.settings.plot);
+    s.settings.fit = normalizeFit(s.settings.fit);
     s.settings.pantry = (s.settings.pantry || []).map(normalizePantry);
     s.settings.leftovers = (s.settings.leftovers || []).map(normalizeLeftover);
     s.settings.notify = normalizeNotify(s.settings.notify);
@@ -2043,6 +2048,266 @@
     return state.settings.plot;
   }
 
+  /* ---------------- 筋トレ ----------------
+
+     ジムでの器具トレーニングと、外を走る有酸素運動。
+     計画（plans）は日ごとに1つ、実際にやったこと（logs）も日ごとに1つ。
+     体重（weights）は日に1つで、同じ日に入れ直せば上書きする。
+     loads は種目ごとの「いまの重さ」。記録から少しずつ上げていく。 */
+
+  var FIT_GOALS = [
+    { value: 'bulk', label: 'ガチムチ（筋肥大優先）' },
+    { value: 'recomp', label: '絞りながら太く' },
+    { value: 'cut', label: 'まず絞る' },
+    { value: 'strength', label: '重さを伸ばす' }
+  ];
+  var FIT_LEVELS = [
+    { value: 'beginner', label: '初心者' },
+    { value: 'intermediate', label: '慣れてきた' },
+    { value: 'advanced', label: '長くやっている' }
+  ];
+  var FIT_KINDS = ['gym', 'run', 'rest'];
+
+  function fitStr(v, n) { return String(v == null ? '' : v).trim().slice(0, n); }
+  /* 体重も重さも小数を持つので、整数に丸める U.num は使えない */
+  function fitNum(v, lo, hi, def) {
+    var n = parseFloat(v);
+    if (!isFinite(n)) n = def;
+    return Math.min(hi, Math.max(lo, n));
+  }
+
+  function normalizeFit(f) {
+    f = f || {};
+    var p = f.profile || {};
+    var out = {
+      profile: {
+        height: fitNum(p.height, 0, 250, 0),
+        goalWeight: fitNum(p.goalWeight, 0, 300, 0),
+        age: Math.round(fitNum(p.age, 0, 120, 0)),
+        sex: p.sex === 'female' ? 'female' : 'male',
+        days: Math.round(fitNum(p.days, 1, 7, 4)),          // 週に何回ジムへ行くか
+        minutes: Math.round(fitNum(p.minutes, 15, 180, 60)), // 1回の目安
+        gym: fitStr(p.gym || 'エニタイムフィットネス', 40),
+        goal: FIT_GOALS.filter(function (g) { return g.value === p.goal; }).length ? p.goal : 'bulk',
+        level: FIT_LEVELS.filter(function (g) { return g.value === p.level; }).length ? p.level : 'beginner',
+        // ジムに行く曜日（0=日）。決めておくと計画がその曜日に入る
+        weekdays: (Array.isArray(p.weekdays) ? p.weekdays : [1, 2, 4, 5])
+          .map(function (d) { return Math.round(U.num(d, -1)); })
+          .filter(function (d) { return d >= 0 && d <= 6; }).slice(0, 7),
+        note: fitStr(p.note, 400)                            // けが・苦手な種目など
+      },
+      weights: normalizeWeights(f.weights),
+      plans: {}, logs: {}, loads: {}
+    };
+    Object.keys(f.plans || {}).forEach(function (d) {
+      if (!U.isISO(d)) return;
+      var v = normalizeFitPlan(f.plans[d], d);
+      if (v) out.plans[d] = v;
+    });
+    Object.keys(f.logs || {}).forEach(function (d) {
+      if (!U.isISO(d)) return;
+      var v = normalizeFitLog(f.logs[d], d);
+      if (v) out.logs[d] = v;
+    });
+    Object.keys(f.loads || {}).forEach(function (k) {
+      var name = fitStr(k, 40);
+      var v = (f.loads || {})[k] || {};
+      var kg = fitNum(v.kg, 0, 500, 0);
+      if (name && kg > 0) out.loads[name] = { kg: Math.round(kg * 10) / 10, at: fitStr(v.at, 30) };
+    });
+    return out;
+  }
+
+  /* 体重。1日1件で、新しい順に持つ */
+  function normalizeWeights(list) {
+    var by = {};
+    (Array.isArray(list) ? list : []).forEach(function (w) {
+      w = w || {};
+      if (!U.isISO(w.date)) return;
+      var kg = fitNum(w.kg, 0, 400, 0);
+      if (kg <= 0) return;
+      by[w.date] = {
+        date: w.date,
+        kg: Math.round(kg * 10) / 10,
+        fat: w.fat === null || w.fat === undefined || w.fat === ''
+          ? null : Math.round(fitNum(w.fat, 0, 80, 0) * 10) / 10,
+        muscle: w.muscle === null || w.muscle === undefined || w.muscle === ''
+          ? null : Math.round(fitNum(w.muscle, 0, 200, 0) * 10) / 10,
+        from: ['eufy', 'csv', 'manual'].indexOf(w.from) >= 0 ? w.from : 'manual',
+        at: fitStr(w.at, 30) || new Date().toISOString()
+      };
+    });
+    return Object.keys(by).sort().reverse().map(function (d) { return by[d]; }).slice(0, 2000);
+  }
+
+  function normalizeFitPlan(p, date) {
+    if (!p || typeof p !== 'object') return null;
+    var kind = FIT_KINDS.indexOf(p.kind) >= 0 ? p.kind : 'gym';
+    var out = {
+      date: U.isISO(p.date) ? p.date : date,
+      kind: kind,
+      title: fitStr(p.title, 60) || (kind === 'run' ? 'ラン' : kind === 'rest' ? '休み' : 'ジム'),
+      focus: fitStr(p.focus, 60),                 // 例）胸・肩・上腕三頭
+      minutes: Math.round(fitNum(p.minutes, 0, 300, 60)),
+      warmup: (Array.isArray(p.warmup) ? p.warmup : []).slice(0, 8)
+        .map(function (x) { return fitStr(x, 80); }).filter(Boolean),
+      items: (Array.isArray(p.items) ? p.items : []).slice(0, 16).map(function (i) {
+        i = i || {};
+        return {
+          name: fitStr(i.name, 40),
+          gear: fitStr(i.gear, 40),               // 使う器具（マシン名など）
+          sets: Math.round(fitNum(i.sets, 0, 12, 3)),
+          reps: fitStr(i.reps, 20),               // '8-12' のような幅もあるので文字で持つ
+          weight: fitNum(i.weight, 0, 500, 0),    // kg。自重なら 0
+          rest: Math.round(fitNum(i.rest, 0, 600, 90)),
+          note: fitStr(i.note, 120)
+        };
+      }).filter(function (i) { return i.name; }),
+      cardio: normalizeFitCardio(p.cardio),
+      cooldown: (Array.isArray(p.cooldown) ? p.cooldown : []).slice(0, 8)
+        .map(function (x) { return fitStr(x, 80); }).filter(Boolean),
+      note: fitStr(p.note, 400),
+      madeAt: fitStr(p.madeAt, 30) || new Date().toISOString()
+    };
+    return (out.items.length || out.cardio || out.note || kind === 'rest') ? out : null;
+  }
+
+  function normalizeFitCardio(c) {
+    if (!c || typeof c !== 'object') return null;
+    var out = {
+      kind: fitStr(c.kind, 20) || 'ラン',
+      minutes: Math.round(fitNum(c.minutes, 0, 600, 0)),
+      distance: Math.round(fitNum(c.distance, 0, 200, 0) * 100) / 100,   // km
+      pace: fitStr(c.pace, 20),
+      note: fitStr(c.note, 200)
+    };
+    return (out.minutes || out.distance || out.note) ? out : null;
+  }
+
+  function normalizeFitLog(l, date) {
+    if (!l || typeof l !== 'object') return null;
+    var done = ['full', 'part', 'skip'].indexOf(l.done) >= 0 ? l.done : 'full';
+    var out = {
+      date: U.isISO(l.date) ? l.date : date,
+      done: done,
+      minutes: Math.round(fitNum(l.minutes, 0, 600, 0)),
+      items: (Array.isArray(l.items) ? l.items : []).slice(0, 16).map(function (i) {
+        i = i || {};
+        return {
+          name: fitStr(i.name, 40),
+          sets: (Array.isArray(i.sets) ? i.sets : []).slice(0, 12).map(function (s) {
+            s = s || {};
+            return {
+              reps: Math.round(fitNum(s.reps, 0, 200, 0)),
+              weight: Math.round(fitNum(s.weight, 0, 500, 0) * 10) / 10
+            };
+          }),
+          note: fitStr(i.note, 120)
+        };
+      }).filter(function (i) { return i.name; }),
+      cardio: normalizeFitCardio(l.cardio),
+      rpe: Math.round(fitNum(l.rpe, 0, 10, 0)),     // きつさ 1〜10
+      memo: fitStr(l.memo, 400),
+      at: fitStr(l.at, 30) || new Date().toISOString()
+    };
+    return out;
+  }
+
+  function fit() { return state.settings.fit || (state.settings.fit = normalizeFit(null)); }
+
+  function updateFitProfile(patch) {
+    var f = fit();
+    f.profile = normalizeFit({ profile: Object.assign({}, f.profile, patch || {}) }).profile;
+    save();
+    return f.profile;
+  }
+
+  function fitWeights() { return fit().weights.slice(); }
+
+  /** その日の体重（無ければ null） */
+  function weightOf(date) {
+    return fit().weights.filter(function (w) { return w.date === date; })[0] || null;
+  }
+
+  /** いちばん新しい体重 */
+  function latestWeight() { return fit().weights[0] || null; }
+
+  /**
+   * 体重を入れる（同じ日は上書き）。
+   * @returns {boolean} 中身が変わったか（取り込みで「何件入った」を数えるのに使う）
+   */
+  function putWeight(w) {
+    var f = fit();
+    var next = normalizeWeights([w])[0];
+    if (!next) return false;
+    var before = weightOf(next.date);
+    if (before && before.kg === next.kg && before.fat === next.fat
+      && before.muscle === next.muscle) return false;
+    f.weights = normalizeWeights(f.weights.filter(function (x) {
+      return x.date !== next.date;
+    }).concat([next]));
+    save();
+    return true;
+  }
+
+  function removeWeight(date) {
+    var f = fit();
+    f.weights = f.weights.filter(function (w) { return w.date !== date; });
+    save();
+  }
+
+  function fitPlan(date) { return fit().plans[date] || null; }
+  function fitPlans() { return Object.assign({}, fit().plans); }
+
+  function putFitPlan(date, plan) {
+    if (!U.isISO(date)) return null;
+    var f = fit();
+    var v = normalizeFitPlan(plan, date);
+    if (v) f.plans[date] = v; else delete f.plans[date];
+    save();
+    return v;
+  }
+
+  function removeFitPlan(date) {
+    delete fit().plans[date];
+    save();
+  }
+
+  function fitLog(date) { return fit().logs[date] || null; }
+  function fitLogs() { return Object.assign({}, fit().logs); }
+
+  function putFitLog(date, log) {
+    if (!U.isISO(date)) return null;
+    var f = fit();
+    var v = normalizeFitLog(log, date);
+    if (v) f.logs[date] = v; else delete f.logs[date];
+    save();
+    return v;
+  }
+
+  function removeFitLog(date) {
+    delete fit().logs[date];
+    save();
+  }
+
+  /** 種目ごとの「いまの重さ」 */
+  function fitLoad(name) {
+    var v = fit().loads[fitStr(name, 40)];
+    return v ? v.kg : 0;
+  }
+
+  function setFitLoad(name, kg) {
+    var f = fit();
+    var key = fitStr(name, 40);
+    if (!key) return;
+    var v = fitNum(kg, 0, 500, 0);
+    if (v > 0) f.loads[key] = { kg: Math.round(v * 10) / 10, at: U.today() };
+    else delete f.loads[key];
+    save();
+  }
+
+  function fitLoads() { return Object.assign({}, fit().loads); }
+
   /* ---- 貯金 ----
 
      貯蓄用の口座の残高。銀行から読むのは同期サーバーの役目で、
@@ -3506,6 +3771,13 @@
     markedPages: markedPages, isPageMarked: isPageMarked, markPages: markPages,
     setPageMark: setPageMark, togglePageMark: togglePageMark,
     setPageNote: setPageNote, pageNote: pageNote,
+    FIT_GOALS: FIT_GOALS, FIT_LEVELS: FIT_LEVELS,
+    fit: fit, updateFitProfile: updateFitProfile,
+    fitWeights: fitWeights, weightOf: weightOf, latestWeight: latestWeight,
+    putWeight: putWeight, removeWeight: removeWeight,
+    fitPlan: fitPlan, fitPlans: fitPlans, putFitPlan: putFitPlan, removeFitPlan: removeFitPlan,
+    fitLog: fitLog, fitLogs: fitLogs, putFitLog: putFitLog, removeFitLog: removeFitLog,
+    fitLoad: fitLoad, fitLoads: fitLoads, setFitLoad: setFitLoad,
     syncProgressFromPages: syncProgressFromPages,
     issuers: issuers, getIssuer: getIssuer, addIssuer: addIssuer,
     updateIssuer: updateIssuer, removeIssuer: removeIssuer, issuerColor: issuerColor,

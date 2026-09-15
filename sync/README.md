@@ -263,3 +263,39 @@ wrangler kv namespace delete --binding SYNC   # 置き場ごと消す
 ```
 
 アプリ側は 設定 →「同期」→「接続を解除」で切り離せます（端末内のデータはそのまま残ります）。
+
+## 体重計（Eufy）から体重を取り込む
+
+iPhone のブラウザには Web Bluetooth が無いので、アプリから体重計へ
+直につなぐことはできません。家に置いた PC やラズパイで小さな
+スクリプトを動かし、そこから Worker に預けます。
+
+```
+pip install eufylife-ble-client bleak
+
+# 体重計の MAC アドレスを調べる（体重計に乗って起こしてから）
+python3 tools/eufy-weight.py --scan
+
+export SHIMEKIRI_URL=https://<あなたの Worker>.workers.dev
+export SHIMEKIRI_TOKEN=<アプリの設定にある合鍵>
+export EUFY_ADDRESS=XX:XX:XX:XX:XX:XX
+
+# 乗るのを待って、数字が落ち着いたら1件だけ預ける
+python3 tools/eufy-weight.py --watch
+
+# 乗るたびにずっと預ける（ラズパイに常駐させるとき）
+python3 tools/eufy-weight.py --watch --keep
+```
+
+体重計が手元に無いところからは、手でも入れられます。
+
+```
+python3 tools/eufy-weight.py --kg 81.4 --date 2026-09-15
+```
+
+アプリ側は「筋トレ」タブ →「体重計から取り込む」→「預かっているぶんを
+取り込む」で入ります。取り込んだぶんはサーバーから消えるので、
+二度入ることはありません。EufyLife アプリから書き出した CSV を
+貼り付けて入れることもできます。
+
+合鍵は環境変数で渡してください（ソースにも履歴にも書かないこと）。

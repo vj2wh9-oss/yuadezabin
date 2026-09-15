@@ -218,24 +218,26 @@ h1, h2, h3, p { margin: 0; }
 /* ---------------- タブバー ---------------- */
 .tabbar {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 40;
-  display: grid; grid-template-columns: repeat(6, 1fr);
+  display: grid; grid-template-columns: repeat(7, 1fr);
   padding-bottom: env(safe-area-inset-bottom);
   background: var(--bg);
   border-top: 1px solid var(--line);
 }
 .tab {
   height: var(--tab-h); display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 3px; font-size: 10.5px; color: var(--muted); position: relative;
-  /* 6つ並ぶので、狭い画面でも2段に折り返さないよう幅を詰められるようにする */
-  min-width: 0; padding: 0 1px;
+  gap: 2px; font-size: 9.5px; color: var(--muted); position: relative;
+  /* 7つ並ぶので、狭い画面でも2段に折り返さないよう幅を詰められるようにする */
+  min-width: 0; padding: 0 1px; letter-spacing: -.02em;
 }
 /* 「カレンダー」のような長い名前は、狭い端末では少しだけ縮める */
 .tab > span:last-child {
   max-width: 100%; overflow: hidden; text-overflow: clip; white-space: nowrap;
 }
 @media (max-width: 379px) {
-  .tab { font-size: 9.5px; letter-spacing: -.02em; }
+  .tab { font-size: 9px; letter-spacing: -.04em; }
 }
+/* アイコンも1つぶん小さくして、7つでも高さが変わらないようにする */
+.tab .tabicon svg { width: 20px; height: 20px; }
 /* キーボードが出ているあいだは、下タブと＋ボタンをしまう。
    iPhone では画面の途中まで押し上げられて浮いてしまうため */
 body.kb-open .tabbar, body.kb-open .fab { display: none; }
@@ -2423,3 +2425,76 @@ a.tp-proj:active { color: var(--accent); }
 /* まだのものは、印（レ点）だけ隠す（幅が動かないように場所は取っておく） */
 .pg-toggles .btn:not(.on) > svg { visibility: hidden; }
 .pg-help { margin: 0; }
+
+/* ---------------- 筋トレ ---------------- */
+.fit-page { display: flex; flex-direction: column; gap: 10px; }
+
+/* 今日の1枚 */
+.fit-today { display: flex; flex-direction: column; gap: 8px; }
+.fit-head { display: flex; flex-direction: column; gap: 4px; }
+.fit-head-l { display: flex; flex-direction: column; gap: 2px; }
+.fit-head-l b { font-size: 16px; }
+.fit-focus { margin: 0; font-size: 13px; color: var(--accent2); }
+.fit-line { margin: 0; font-size: 12.5px; color: var(--muted); display: flex; gap: 8px; }
+.fit-line-k { flex: none; color: var(--text); font-weight: 700; }
+
+.fit-items { display: flex; flex-direction: column; gap: 0; }
+.fit-item {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 8px 0; border-bottom: 1px solid var(--line);
+}
+.fit-item:last-child { border-bottom: 0; }
+.fit-item.is-done { opacity: .62; }
+.fit-item-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fit-item-h b { font-size: 14px; }
+.fit-set {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  font-size: 13px; font-variant-numeric: tabular-nums;
+}
+.fit-w { font-weight: 700; color: var(--accent); }
+.fit-did { margin: 0; font-size: 11.5px; color: var(--ok); font-variant-numeric: tabular-nums; }
+.fit-cardio {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px;
+  background: var(--card2); border: 1px solid var(--line); border-radius: var(--radius-s);
+  padding: 7px 9px;
+}
+.fit-cardio > svg { color: var(--sky); flex: none; }
+
+/* 1週間の帯 */
+.fit-week { display: flex; gap: 4px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.fit-day {
+  flex: 1 0 40px; min-width: 40px;
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-s);
+  padding: 5px 2px; cursor: pointer; color: inherit; font: inherit;
+}
+.fit-day b { font-size: 14px; font-variant-numeric: tabular-nums; }
+.fd-w { font-size: 10px; color: var(--muted); }
+.fd-t { font-size: 9.5px; color: var(--muted); max-width: 100%; overflow: hidden; white-space: nowrap; }
+.fit-day.today { border-color: var(--accent); }
+.fit-day.on { background: var(--accent-soft); border-color: var(--accent); }
+.fit-day.done { border-color: var(--ok); }
+.fit-day.done b { color: var(--ok); }
+.fit-day.miss b { color: var(--danger); }
+.fit-day.rest { opacity: .6; }
+
+/* 体重の折れ線に引く、目標の線 */
+.lc-goal { stroke: var(--ok); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.sum-box b.up { color: var(--warn); }
+.sum-box b.down { color: var(--accent2); }
+
+/* 計画の下読み */
+.fit-prev { display: flex; flex-direction: column; gap: 4px; }
+.fit-prev-l { margin: 0; padding-left: 18px; font-size: 12.5px; line-height: 1.7; }
+.fit-advice { margin: 0; font-size: 13px; line-height: 1.8; white-space: pre-wrap; }
+.fit-out { display: flex; flex-direction: column; gap: 8px; }
+
+/* 記録の入力 */
+.fit-log-item { display: flex; flex-direction: column; gap: 6px; }
+.fit-log-set { display: flex; align-items: center; gap: 6px; }
+.fit-log-set .input { text-align: center; padding: 7px 4px; min-width: 0; }
+.fit-log-n { flex: none; width: 34px; font-size: 11.5px; color: var(--muted); }
+.fit-cardio-in { display: flex; flex-direction: column; gap: 6px; }
+.fit-wd { display: flex; gap: 4px; flex-wrap: wrap; }
+.fit-wd .btn { flex: 1 0 36px; padding: 7px 2px; }
+.fit-wd .btn.on { border-color: var(--accent); color: var(--accent); }
