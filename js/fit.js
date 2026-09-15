@@ -361,6 +361,63 @@
   /** ショートカットに入れる送り先 */
   function postUrl() { return base() ? base() + '/v1/inbox/weight' : ''; }
 
+  /* 受け口が生きているか、そっと確かめる。
+     ショートカットが通らないときの切り分けに使う。
+     見に行くだけなので、押しても何も書き換わらない。
+     まず入口（/）で Worker の品ぞろえを見て、そのあと合鍵を試す。
+     返り {ok, kind, text}
+       noconf … 同期の接続先がまだ
+       net   … そもそも届かない
+       auth  … 合鍵が違う
+       old   … Worker が古くて体重の受け口が無い
+       ok    … 通っている（held に預かり件数） */
+  function checkInbox() {
+    if (!ready()) {
+      return Promise.resolve({ ok: false, kind: 'noconf',
+        text: '同期の接続先がまだ入っていません。設定 → 同期で、Worker の URL と合鍵を入れてください。' });
+    }
+    var netErr = { ok: false, kind: 'net',
+      text: '届きませんでした。設定 → 同期の URL が合っているか、'
+        + '通信が生きているか確かめてください。' };
+
+    /* 入口は合鍵が要らない。ここで Worker の品ぞろえが分かる */
+    return fetch(base() + '/').then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (b) {
+        if (!res.ok) {
+          return { ok: false, kind: 'net',
+            text: 'サーバーが応答しませんでした（' + res.status + '）。' };
+        }
+        var list = (b && b.endpoints) || [];
+        if (list.indexOf('/v1/inbox/weights') < 0) {
+          return { ok: false, kind: 'old',
+            text: 'Worker に体重の受け口がまだありません。パソコンで '
+              + '「git pull && bash sync/setup.sh」を通して、Worker を新しくしてください。'
+              + 'ショートカットが通らないのは、たいていこれです。' };
+        }
+        return fetch(base() + '/v1/inbox/weights', {
+          headers: { authorization: 'Bearer ' + conf().token }
+        }).then(function (r2) {
+          if (r2.status === 401) {
+            return { ok: false, kind: 'auth',
+              text: '合鍵が違うと言われました（401）。ショートカットのヘッダに入れた合鍵と、'
+                + '設定 → 同期の合鍵が同じか確かめてください。' };
+          }
+          if (!r2.ok) {
+            return { ok: false, kind: 'net',
+              text: '受け口が断りました（' + r2.status + '）。' };
+          }
+          return r2.json().catch(function () { return {}; }).then(function (box) {
+            var n = U.num(box && box.count, 0);
+            return { ok: true, kind: 'ok', held: n,
+              text: '受け口は生きています。'
+                + (n ? 'いま ' + n + '件 預かっています。' : 'いま預かっているぶんはありません。')
+                + 'ここまで来ていれば、あとはショートカット側の作りだけです。' };
+          });
+        }, function () { return netErr; });
+      });
+    }, function () { return netErr; });
+  }
+
   /* ---------------- Fitbit ----------------
 
      Eufy の体重計は EufyLife から Fitbit へ同期できる。
@@ -502,7 +559,8 @@
     step: step, repsGoal: repsGoal, nextWeight: nextWeight, applyProgress: applyProgress,
     recent: recent, streak: streak, history: history,
     plan: plan, adopt: adopt,
-    pull: pull, autoPull: autoPull, postUrl: postUrl, parseCSV: parseCSV,
+    pull: pull, autoPull: autoPull, postUrl: postUrl, checkInbox: checkInbox,
+    parseCSV: parseCSV,
     fitbit: fitbit
   };
 })(window.DL);

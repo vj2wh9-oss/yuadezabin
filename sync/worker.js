@@ -1662,9 +1662,11 @@ function weightDate(v) {
   if (m) {
     return m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2);
   }
+  /* 日本時間で数える。UTC のままだと、朝7時のショートカットが
+     前の日のぶんとして入ってしまう（日本の 0〜9時は UTC ではまだ前日） */
   const t = Date.parse(s);
-  if (!isNaN(t)) return new Date(t).toISOString().slice(0, 10);
-  return new Date().toISOString().slice(0, 10);
+  if (!isNaN(t)) return jstDate(t);
+  return jstDate(Date.now());
 }
 
 async function weights(request, env, cors, url, id) {
@@ -1683,7 +1685,8 @@ async function weights(request, env, cors, url, id) {
     } else if (request.method === 'POST') {
       try { body = await request.json(); } catch (e) { return json({ error: 'bad_json' }, 400, cors); }
     } else {
-      return json({ error: 'bad_body' }, 400, cors);
+      // ショートカットの ▶ で見たときに、何が足りないのか分かる言い方にする
+      return json({ error: 'no_weight', hint: '?kg=81.2 のように体重を付けてください' }, 400, cors);
     }
     const list = Array.isArray(body && body.items) ? body.items : [body];
     const box = (await env.SYNC.get(key, 'json')) || { list: [] };
@@ -1696,7 +1699,9 @@ async function weights(request, env, cors, url, id) {
       box.list.unshift(item);
       added++;
     });
-    if (!added) return json({ error: 'bad_body' }, 400, cors);
+    if (!added) {
+      return json({ error: 'no_weight', hint: '体重が読めませんでした（kg が空か、数字になっていません）' }, 400, cors);
+    }
     box.list = box.list.slice(0, MAX_WEIGHTS);
     await env.SYNC.put(key, JSON.stringify(box));
     return json({ ok: true, added, count: box.list.length }, 200, cors);

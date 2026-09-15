@@ -83,12 +83,13 @@ put_secret BANK_CLIENT_SECRET "クライアントシークレット（OAuth の�
 put_secret BANK_REFRESH_TOKEN "リフレッシュトークン（OAuth のとき）"
 
 echo
-echo "==== Fitbit（体重の取り込み）======================================"
-echo "体重計を Fitbit へ同期しているなら、そこから体重を読めます。"
-echo "dev.fitbit.com → Register an App でアプリを1つ作り、"
-echo "  OAuth 2.0 Application Type … Personal"
+echo "==== Fitbit（体重の取り込み・新規登録は終了）======================"
+echo "※ Fitbit は開発者の新規登録を終了しました。いまから鍵は作れません。"
+echo "   Web API そのものも 2026年9月で終わります。"
+echo "   体重は「iPhone のショートカット」で入れてください（sync/README.md の A）。"
+echo "前に作った Client ID / Secret が手元にある人だけ、ここに入れてください。"
 echo "  Callback URL … https://<この Worker>.workers.dev/v1/fitbit/callback"
-echo "として、出てきた2つをここに入れてください（使わないなら空で Enter）。"
+echo "（使わないなら空のまま Enter）"
 put_secret FITBIT_CLIENT_ID     "OAuth 2.0 Client ID"
 put_secret FITBIT_CLIENT_SECRET "Client Secret"
 

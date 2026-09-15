@@ -619,55 +619,69 @@
       placeholder: 'EufyLife アプリから書き出した CSV を、ここに貼り付け' });
 
     var body = el('div', { class: 'form' }, [
+      shortcutCard(),
       el('div', { class: 'card' }, [
         el('div', { class: 'row-title', text: '預かっているぶんを取り込む' }),
         el('p', { class: 'muted small',
           text: 'ショートカットや体重計のスクリプトが預けてくれたぶんを入れます。'
             + 'この画面を開いたときにも、そっと取り込んでいます。' }),
-        ui.btn('いま取り込む', 'primary full', function () { pull(); }, 'cloud')
+        el('div', { class: 'row-wrap' }, [
+          ui.btn('いま取り込む', 'primary', function () { pull(); }, 'cloud'),
+          ui.btn('送り先を試す', 'ghost tiny', function () { check(); })
+        ]),
+        el('p', { class: 'muted small',
+          text: 'ショートカットが通らないときは「送り先を試す」を押すと、'
+            + 'どこで止まっているか分かります。押しても何も書き換えません。' })
       ]),
+      out,
       fitbitCard(),
-      shortcutCard(),
       ui.field('CSV を貼り付けて入れる', csv,
         'EufyLife アプリ →「データのエクスポート」で出した CSV が読めます'),
       ui.btn('CSV から入れる', 'ghost full', function () { fromCSV(); }, 'plus'),
       el('p', { class: 'muted small',
         text: 'PC やラズパイがあるなら、tools/eufy-weight.py で体重計から直に読むこともできます'
-          + '（乗るだけで入ります。立て方は sync/README.md）。' }),
-      out
+          + '（乗るだけで入ります。立て方は sync/README.md）。' })
     ]);
 
     ui.sheet({ title: '体重の取り込み', body: body });
 
     /* Fitbit から読む道。
        EufyLife → Fitbit までつないであれば、あとは Worker が読むだけ。
-       iPhone で何かを動かす必要も、そばに機械を置く必要もない */
+
+       ただし Fitbit 側の窓口は閉じつつある。開発者の新規登録は終わっていて、
+       いまから鍵を作ることはできない。Web API そのものも 2026年9月で終わり、
+       後継の Google Health API は審査が要るので、ひとりの持ち物には重すぎる。
+       すでに鍵があるときだけ使える道として残しておく。 */
+    var FB_OVER = 'Fitbit 側の新規登録は終了しました。いまから鍵を作ることはできません。'
+      + 'Web API そのものも 2026年9月で終わります。'
+      + '上の「ショートカット」の道を使ってください。';
+
     function fitbitCard() {
       var box = el('div', { class: 'card fb-card' }, [
-        el('div', { class: 'row-title', text: 'Fitbit から読む（いちばん手がかからない）' }),
-        el('p', { class: 'muted small',
-          text: 'EufyLife から Fitbit への同期をオンにしてあれば、あとはこの画面を'
-            + '開くだけで入ります。一度つなげば、ショートカットも PC も要りません。' }),
+        el('div', { class: 'row-title', text: 'Fitbit から読む（終了しました）' }),
         el('p', { class: 'muted small', text: '見に行っています…' })
       ]);
       F.fitbit.status().then(function (st) {
         U.clear(box);
         box.appendChild(el('div', { class: 'row-title' }, [
-          el('span', { text: 'Fitbit から読む（いちばん手がかからない）' }),
+          el('span', { text: st.linked ? 'Fitbit から読む' : 'Fitbit から読む（終了しました）' }),
           st.linked ? ui.chip('つながっています', 'ok') : null
         ]));
         if (!st.ready) {
           box.appendChild(el('p', { class: 'mn-warn small' }, [
-            ui.icon('alert', 14),
-            el('span', { text: 'Worker に Fitbit の鍵が入っていません。'
-              + 'dev.fitbit.com でアプリを1つ作り、sync/setup.sh で '
-              + 'FITBIT_CLIENT_ID と FITBIT_CLIENT_SECRET を入れてください。' })
+            ui.icon('alert', 14), el('span', { text: FB_OVER })
           ]));
+          box.appendChild(el('p', { class: 'muted small',
+            text: '（もし前に作った Fitbit の鍵が手元にあるなら、sync/setup.sh で '
+              + 'FITBIT_CLIENT_ID と FITBIT_CLIENT_SECRET を入れれば、ここは使えるようになります。）' }));
           if (st.redirect) {
-            box.appendChild(el('p', { class: 'muted small', text: 'Fitbit 側に登録するリダイレクト URL：' }));
             box.appendChild(el('div', { class: 'fit-url', text: st.redirect }));
           }
           return;
+        }
+        if (!st.linked) {
+          box.appendChild(el('p', { class: 'muted small',
+            text: 'Fitbit の Web API は 2026年9月で終わります。それまでの間だけ使えます。' }));
         }
         box.appendChild(el('p', { class: 'muted small',
           text: st.linked
@@ -734,17 +748,27 @@
       var url = F.postUrl();
       var paste = url ? url + '?kg=' : '';
       var steps = [
-        'EufyLife アプリで「ヘルスケア」への同期をオンにする',
-        'ショートカット App の「＋」で新規作成',
+        'EufyLife アプリ →「プロフィール」→ ヘルスケアへの同期をオンにする。'
+          + '一度 体重計に乗って、ヘルスケア App の「体重」に数字が入るのを見ておく',
+        'ショートカット App →「＋」→「アクションを追加」',
         '「ヘルスケアのサンプルを検索」を足す。'
-          + 'タイプ＝体重／並べ替え＝終了日／降順／上限＝1件',
-        '「テキスト」を足して、下の送り先を貼り付け、そのうしろに'
-          + '手順3の結果（変数）を入れる。変数を押して「値」を選ぶ',
-        '「URL の内容を取得」を足して、URL に手順4のテキストを入れる。'
-          + '「詳しく表示」→ ヘッダに Authorization ＝ Bearer と合鍵',
-        '▶ で試す。{"ok":true,"added":1} が返れば通っている',
-        'オートメーションで「毎朝7時」か「EufyLife を閉じたとき」に'
+          + 'タイプ＝体重／並べ替え＝終了日／順序＝降順／上限＝1',
+        '「テキスト」を足して、下の送り先を貼り付ける。そのうしろに手順3の'
+          + '「ヘルスケアのサンプル」を入れ、それを押して「値」に変える'
+          + '（「サンプル」のままだと「81.2 kg」のような文になってしまいます）',
+        '「URL の内容を取得」を足す。URL は手順4の「テキスト」。'
+          + '「詳しく表示」を開いて、方法＝POST、ヘッダの ＋ で'
+          + 'キー＝Authorization ／ 値＝Bearer と合鍵（間に半角スペース1つ）',
+        '右下の ▶ で試す。{"ok":true,"added":1} が返れば通っています',
+        '名前を付けて保存する',
+        'ショートカット App →「オートメーション」→「＋」→「時刻」→ 毎日 7:00 →'
           + 'このショートカットを実行（「実行前に尋ねる」はオフ）'
+      ];
+      var traps = [
+        '404 が返る … Worker がまだ古いです。上の「送り先を試す」を押してください',
+        '401 が返る … 合鍵が違います。ヘッダの「Bearer 」を消していないか見てください',
+        '{"error":"no_weight"} … ヘルスケアに体重が入っていないか、手順3の上限が 0 です',
+        '数字が入らない … 手順4の変数が「値」ではなく「サンプル」のままです'
       ];
       return el('div', { class: 'card' }, [
         el('div', { class: 'row-title', text: 'iPhone だけで自動にする（ショートカット）' }),
@@ -769,8 +793,22 @@
         el('p', { class: 'muted small',
           text: '体脂肪も送るなら &fat= を、日付を指定するなら &date=2026-09-15 を'
             + 'うしろに足します。日付を付けなければ、送った日のぶんになります。'
-            + '合鍵は URL には付けず、ヘッダに入れてください。' })
+            + '合鍵は URL には付けず、ヘッダに入れてください。' }),
+        el('div', { class: 'row-title', text: 'つまずきやすいところ' }),
+        el('ul', { class: 'fit-traps' }, traps.map(function (t) { return el('li', { text: t }); }))
       ]);
+    }
+
+    /* 受け口が生きているかを見て、そのまま言葉で返す */
+    function check() {
+      U.clear(out);
+      out.appendChild(el('p', { class: 'muted small', text: '送り先を見ています…' }));
+      F.checkInbox().then(function (r) {
+        U.clear(out);
+        out.appendChild(r.ok
+          ? el('p', { class: 'muted small' }, [ui.icon('check', 14), el('span', { text: ' ' + r.text })])
+          : el('p', { class: 'mn-warn small' }, [ui.icon('alert', 14), el('span', { text: r.text })]));
+      });
     }
 
     function pull() {
