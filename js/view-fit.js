@@ -643,14 +643,19 @@
        ブラウザからヘルスケアは読めないので、iPhone 側から送ってもらう */
     function shortcutCard() {
       var url = F.postUrl();
+      var paste = url ? url + '?kg=' : '';
       var steps = [
         'EufyLife アプリで「ヘルスケア」への同期をオンにする',
-        'ショートカットアプリで新規ショートカットを作る',
-        '「ヘルスケアのサンプルを検索」を足す。種類＝体重／並べ替え＝終了日／降順／上限1件',
-        '「URL の内容を取得」を足して、下の送り先を貼る',
-        '方法＝POST、ヘッダに Authorization ＝ Bearer <合鍵>',
-        '本文＝JSON で kg ＝（ヘルスケアのサンプルの「値」）',
-        'オートメーションで「毎朝7時」か「EufyLife を閉じたとき」に動かす'
+        'ショートカット App の「＋」で新規作成',
+        '「ヘルスケアのサンプルを検索」を足す。'
+          + 'タイプ＝体重／並べ替え＝終了日／降順／上限＝1件',
+        '「テキスト」を足して、下の送り先を貼り付け、そのうしろに'
+          + '手順3の結果（変数）を入れる。変数を押して「値」を選ぶ',
+        '「URL の内容を取得」を足して、URL に手順4のテキストを入れる。'
+          + '「詳しく表示」→ ヘッダに Authorization ＝ Bearer と合鍵',
+        '▶ で試す。{"ok":true,"added":1} が返れば通っている',
+        'オートメーションで「毎朝7時」か「EufyLife を閉じたとき」に'
+          + 'このショートカットを実行（「実行前に尋ねる」はオフ）'
       ];
       return el('div', { class: 'card' }, [
         el('div', { class: 'row-title', text: 'iPhone だけで自動にする（ショートカット）' }),
@@ -659,12 +664,12 @@
             + '読めないので、ショートカットに「ヘルスケアから読んで、ここへ送る」を'
             + 'やってもらいます。PC もラズパイも要りません。' }),
         el('ol', { class: 'fit-steps' }, steps.map(function (t) { return el('li', { text: t }); })),
-        url ? el('div', { class: 'fit-url', text: url }) : el('p', { class: 'mn-warn small' }, [
+        paste ? el('div', { class: 'fit-url', text: paste }) : el('p', { class: 'mn-warn small' }, [
           ui.icon('alert', 14), el('span', { text: '先に設定で同期の接続先を入れてください。' })
         ]),
         el('div', { class: 'row-wrap' }, [
-          url ? ui.btn('送り先をコピー', 'ghost tiny', function () {
-            U.copy(url).then(function (ok) { ui.toast(ok ? 'コピーしました' : 'コピーできませんでした', ok ? '' : 'warn'); });
+          paste ? ui.btn('送り先をコピー', 'ghost tiny', function () {
+            U.copy(paste).then(function (ok) { ui.toast(ok ? 'コピーしました' : 'コピーできませんでした', ok ? '' : 'warn'); });
           }) : null,
           S.settings.sync && S.settings.sync.token ? ui.btn('合鍵をコピー', 'ghost tiny', function () {
             U.copy(S.settings.sync.token).then(function (ok) {
@@ -673,8 +678,9 @@
           }) : null
         ]),
         el('p', { class: 'muted small',
-          text: 'URL のうしろに ?kg=81.4&fat=28.2 と付けるだけでも入ります'
-            + '（本文を組み立てるのが面倒なとき）。日付を付けなければ、その日のぶんになります。' })
+          text: '体脂肪も送るなら &fat= を、日付を指定するなら &date=2026-09-15 を'
+            + 'うしろに足します。日付を付けなければ、送った日のぶんになります。'
+            + '合鍵は URL には付けず、ヘッダに入れてください。' })
       ]);
     }
 
