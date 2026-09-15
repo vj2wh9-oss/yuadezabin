@@ -113,7 +113,7 @@ const env = { SYNC: KV, FILES: R2, ALLOW_ORIGIN: process.env.ALLOW_ORIGIN || '*'
 for (const k of Object.keys(process.env)) {
   if (k.startsWith('OPENAI_') || k.startsWith('VAPID_')
     || k.startsWith('DISCORD_') || k.startsWith('BACKUP_')
-    || k.startsWith('BANK_')) env[k] = process.env[k];
+    || k.startsWith('BANK_') || k.startsWith('FITBIT_')) env[k] = process.env[k];
 }
 
 createServer(async (req, res) => {

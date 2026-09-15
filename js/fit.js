@@ -349,11 +349,83 @@
     if (!ready()) return Promise.resolve({ added: 0 });
     if (Date.now() - pulledAt < 120000) return Promise.resolve({ added: 0 });
     pulledAt = Date.now();
-    return pull({ quiet: true }).catch(function () { return { added: 0 }; });
+    // 預かっているぶん（ショートカット・体重計のスクリプト）と、Fitbit の両方
+    return Promise.all([
+      pull({ quiet: true }).catch(function () { return { added: 0 }; }),
+      fitbit.pull(30).catch(function () { return { added: 0 }; })
+    ]).then(function (r) {
+      return { added: (r[0].added || 0) + (r[1].added || 0) };
+    });
   }
 
   /** ショートカットに入れる送り先 */
   function postUrl() { return base() ? base() + '/v1/inbox/weight' : ''; }
+
+  /* ---------------- Fitbit ----------------
+
+     Eufy の体重計は EufyLife から Fitbit へ同期できる。
+     そこまで行っていれば、あとは Worker が Fitbit から読むだけでよい。
+     iPhone で何かを動かす必要も、体重計のそばに機械を置く必要もない。
+     鍵とつなぎの控えは Worker 側（KV）にあって、この端末には何も残らない。 */
+
+  function fbApi(path, init) {
+    if (!ready()) return Promise.reject(new Error('同期の接続先が未設定です'));
+    return fetch(base() + path, Object.assign({
+      headers: { authorization: 'Bearer ' + conf().token }
+    }, init || {})).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (b) {
+        if (!res.ok) throw new Error(fbReason(res.status, b));
+        return b;
+      });
+    }, function () { throw new Error('通信できませんでした'); });
+  }
+
+  function fbReason(status, b) {
+    var k = b && b.error;
+    if (k === 'no_fitbit_key') {
+      return 'Worker に Fitbit の鍵がありません（FITBIT_CLIENT_ID と FITBIT_CLIENT_SECRET）';
+    }
+    if (k === 'fitbit_not_linked') return 'まだ Fitbit とつないでいません';
+    if (k === 'fitbit_auth_error') return 'Fitbit が許可を出しませんでした。つなぎ直してください';
+    if (k === 'fitbit_error') return 'Fitbit が断りました（' + (b.status || status) + '）';
+    if (k === 'fitbit_unreachable') return 'Fitbit につながりませんでした';
+    if (status === 404) {
+      return 'サーバー側が未対応です。Worker を最新にして deploy し直してください';
+    }
+    return 'サーバーが応答しませんでした（' + status + '）';
+  }
+
+  var fitbit = {
+    /** つないであるか。{ready, linked, at, redirect} */
+    status: function () {
+      if (!ready()) return Promise.resolve({ ready: false, linked: false });
+      return fbApi('/v1/fitbit/status').catch(function () {
+        return { ready: false, linked: false };
+      });
+    },
+
+    /** つなぎ始める。返った URL を開いてもらう */
+    start: function () {
+      return fbApi('/v1/fitbit/start', { method: 'POST' });
+    },
+
+    /**
+     * Fitbit から体重を取って、そのまま入れる。
+     * @param {number} [days] さかのぼる日数（既定30・最大31）
+     */
+    pull: function (days) {
+      return fbApi('/v1/fitbit/weight?days=' + Math.min(31, Math.max(1, U.num(days, 30))))
+        .then(function (b) {
+          var added = 0;
+          (b.items || []).forEach(function (x) {
+            if (S.putWeight({ date: x.date, kg: x.kg, fat: x.fat, from: 'eufy' })) added++;
+          });
+          return { added: added, found: (b.items || []).length };
+        });
+    },
+
+    unlink: function () { return fbApi('/v1/fitbit', { method: 'DELETE' }); }
+  };
 
   /**
    * EufyLife の書き出し（CSV）を読む。
@@ -430,6 +502,7 @@
     step: step, repsGoal: repsGoal, nextWeight: nextWeight, applyProgress: applyProgress,
     recent: recent, streak: streak, history: history,
     plan: plan, adopt: adopt,
-    pull: pull, autoPull: autoPull, postUrl: postUrl, parseCSV: parseCSV
+    pull: pull, autoPull: autoPull, postUrl: postUrl, parseCSV: parseCSV,
+    fitbit: fitbit
   };
 })(window.DL);

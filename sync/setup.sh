@@ -82,6 +82,16 @@ put_secret BANK_CLIENT_ID     "クライアントID（OAuth のとき）"
 put_secret BANK_CLIENT_SECRET "クライアントシークレット（OAuth のとき）"
 put_secret BANK_REFRESH_TOKEN "リフレッシュトークン（OAuth のとき）"
 
+echo
+echo "==== Fitbit（体重の取り込み）======================================"
+echo "体重計を Fitbit へ同期しているなら、そこから体重を読めます。"
+echo "dev.fitbit.com → Register an App でアプリを1つ作り、"
+echo "  OAuth 2.0 Application Type … Personal"
+echo "  Callback URL … https://<この Worker>.workers.dev/v1/fitbit/callback"
+echo "として、出てきた2つをここに入れてください（使わないなら空で Enter）。"
+put_secret FITBIT_CLIENT_ID     "OAuth 2.0 Client ID"
+put_secret FITBIT_CLIENT_SECRET "Client Secret"
+
 # ---- deploy -------------------------------------------------------
 echo
 echo "==== deploy ======================================================"

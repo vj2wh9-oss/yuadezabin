@@ -270,7 +270,52 @@ wrangler kv namespace delete --binding SYNC   # 置き場ごと消す
 Web Bluetooth が無く、Apple の「ヘルスケア」もブラウザからは読めません）。
 そこで、iPhone か PC から Worker へ送ってもらいます。
 
-### A. iPhone のショートカットで自動にする（おすすめ・PC 不要）
+### A. Fitbit から読む（いちばん手がかからない・おすすめ）
+
+EufyLife は Fitbit へ体重を同期できます。そこまで行っていれば、あとは
+Worker が Fitbit から読むだけです。iPhone で何かを動かす必要も、
+体重計のそばに機械を置く必要もありません。
+
+**1. Fitbit 側にアプリを1つ作る**
+
+https://dev.fitbit.com/apps/new を開いて、こう埋めます。
+
+| 欄 | 入れるもの |
+|---|---|
+| Application Name | 何でも（例：shimekiri） |
+| Description / Application Website | 何でも（自分用なので適当でよい） |
+| Organization | 自分の名前 |
+| OAuth 2.0 Application Type | **Personal** |
+| Redirect URL | `https://<この Worker>.workers.dev/v1/fitbit/callback` |
+| Default Access Type | Read-Only |
+
+Redirect URL は**1文字でも違うと弾かれます**。アプリの「体重計から
+取り込む」の画面にも同じものが出るので、そこからコピーしてください。
+
+作ると **OAuth 2.0 Client ID** と **Client Secret** が出ます。
+
+**2. Worker に入れる**
+
+```
+git pull && bash sync/setup.sh
+```
+途中の「Fitbit（体重の取り込み）」で、上の2つを貼り付けます。
+
+**3. アプリでつなぐ（一度だけ）**
+
+「筋トレ」タブ →「体重計から取り込む」→ **「Fitbit とつなぐ」**。
+Fitbit の画面が開くので「許可」。戻ってきたら終わりです。
+
+以後は **筋トレのタブを開くたび**に、Fitbit から新しいぶんが入ります。
+すぐ入れたいときは「Fitbit から取り込む」。
+
+- 体重は 30 日ぶんさかのぼって見ます（同じ日に何度も乗ったぶんは、
+  いちばん遅い時刻のものを採ります）
+- 体脂肪も一緒に入ります
+- アクセストークンの取り直しは Worker が黙ってやります。
+  端末には鍵もトークンも置きません
+
+### B. iPhone のショートカットで自動にする（PC 不要）
 
 EufyLife は Apple の「ヘルスケア」へ体重を送れます。そのヘルスケアから
 読んで Worker へ投げるところを、ショートカットにやってもらいます。
@@ -318,7 +363,7 @@ EufyLife は Apple の「ヘルスケア」へ体重を送れます。そのヘ�
 - 体重が古いまま … 体重計に乗ったあと EufyLife アプリを一度開く。
   そこで初めてヘルスケアに入る（だから「閉じたとき」が効く）
 
-### B. PC やラズパイから、体重計に直につなぐ
+### C. PC やラズパイから、体重計に直につなぐ
 
 家に置いた PC やラズパイで小さなスクリプトを動かし、そこから Worker に
 預けます。乗るだけで入るので、ショートカットを操作する必要もありません。

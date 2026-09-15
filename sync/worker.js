@@ -106,13 +106,20 @@ export default {
           // 貯金口座（鍵が入っているかだけ。中身は出さない）
           bank: bankReady(env),
           plotWebhook: !!env.DISCORD_PLOT_WEBHOOK,
+          fitbit: fitbitReady(env),
           menuWebhook: !!env.DISCORD_MENU_WEBHOOK
         },
-        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/inbox/weights', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/menu/dish', '/v1/menu/send', '/v1/reschedule', '/v1/bank/balance', '/v1/plot', '/v1/plot/send', '/v1/spend', '/v1/fit/plan'],
+        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/inbox/weights', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/menu/dish', '/v1/menu/send', '/v1/reschedule', '/v1/bank/balance', '/v1/plot', '/v1/plot/send', '/v1/spend', '/v1/fit/plan', '/v1/fitbit'],
         // どの食事に対応しているか。deploy を忘れると古いままなのが分かる
         menuSlots: MENU_SLOTS,
         note: '各 /v1/... は Authorization: Bearer <合鍵> が必要です'
       }, 200, cors);
+    }
+
+    /* Fitbit からの戻り。ブラウザのリダイレクトなので合鍵は付いていない。
+       誰か分からないと困るので、start のときに配った state で結びつける */
+    if (url.pathname === '/v1/fitbit/callback') {
+      return fitbitCallback(request, env, url);
     }
 
     const token = bearer(request);
@@ -258,6 +265,10 @@ export default {
 
       if (url.pathname === '/v1/fit/plan') {
         return fitPlan(request, env, cors);
+      }
+
+      if (url.pathname === '/v1/fitbit' || url.pathname.startsWith('/v1/fitbit/')) {
+        return fitbit(request, env, cors, url, id);
       }
 
       if (url.pathname === '/v1/inbox/weight' || url.pathname === '/v1/inbox/weights') {
@@ -1728,6 +1739,252 @@ function cleanWeight(w) {
     muscle: num(w.muscle),
     at: new Date().toISOString()
   };
+}
+
+
+/* ================= Fitbit から体重を取る =================
+
+   Eufy の体重計は EufyLife 経由で Fitbit へ同期できる。
+   そこまで行っていれば、あとは Fitbit から読むだけでよい。
+   iPhone で何かを動かす必要もなくなる。
+
+   鍵の置き場
+     FITBIT_CLIENT_ID / FITBIT_CLIENT_SECRET … Worker の secret
+     つなぎ終えた印（リフレッシュトークン）  … KV の fitbit:<id>
+   端末には何も置かない。
+
+   つなぎ方（一度だけ）
+     アプリ →「Fitbit とつなぐ」→ /v1/fitbit/start が入口の URL を返す
+     → Fitbit で許可 → /v1/fitbit/callback に戻ってくる → KV に控える
+   合鍵の無い callback を誰かに叩かれても困らないよう、state で結びつける。 */
+
+const FITBIT_DEFAULTS = {
+  auth: 'https://www.fitbit.com/oauth2/authorize',
+  api: 'https://api.fitbit.com'
+};
+const FITBIT_SCOPE = 'weight';
+const FITBIT_STATE_TTL = 900;        // 入口の URL の有効時間（秒）
+
+/* 動きを手元で確かめるときだけ、入口を差し替えられるようにしておく */
+function fitbitApi(env) { return String(env.FITBIT_API || FITBIT_DEFAULTS.api).replace(/\/+$/, ''); }
+function fitbitAuthUrl(env) { return String(env.FITBIT_AUTH || FITBIT_DEFAULTS.auth); }
+
+function fitbitReady(env) { return !!(env.FITBIT_CLIENT_ID && env.FITBIT_CLIENT_SECRET); }
+
+function fitbitRedirect(url) { return url.origin + '/v1/fitbit/callback'; }
+
+function b64url(bytes) {
+  let s = '';
+  for (const b of new Uint8Array(bytes)) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function randomStr(n) {
+  return b64url(crypto.getRandomValues(new Uint8Array(n || 32)));
+}
+
+async function pkceChallenge(verifier) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  return b64url(buf);
+}
+
+async function fitbit(request, env, cors, url, id) {
+  if (!fitbitReady(env)) return json({ error: 'no_fitbit_key' }, 503, cors);
+  const key = 'fitbit:' + id;
+
+  /* つないであるか */
+  if (url.pathname === '/v1/fitbit/status' && request.method === 'GET') {
+    const saved = await env.SYNC.get(key, 'json');
+    return json({
+      ready: true, linked: !!(saved && saved.refresh),
+      at: (saved && saved.at) || '', redirect: fitbitRedirect(url)
+    }, 200, cors);
+  }
+
+  /* つなぎ始める。返した URL を、その場で開いてもらう */
+  if (url.pathname === '/v1/fitbit/start' && (request.method === 'POST' || request.method === 'GET')) {
+    const state = randomStr(24);
+    const verifier = randomStr(48);
+    await env.SYNC.put('fbstate:' + state, JSON.stringify({ id, verifier }),
+      { expirationTtl: FITBIT_STATE_TTL });
+    const q = new URLSearchParams({
+      client_id: env.FITBIT_CLIENT_ID,
+      response_type: 'code',
+      scope: FITBIT_SCOPE,
+      redirect_uri: fitbitRedirect(url),
+      state,
+      code_challenge: await pkceChallenge(verifier),
+      code_challenge_method: 'S256',
+      prompt: 'consent'
+    });
+    return json({ url: fitbitAuthUrl(env) + '?' + q.toString(), redirect: fitbitRedirect(url) }, 200, cors);
+  }
+
+  /* 体重を取ってくる */
+  if (url.pathname === '/v1/fitbit/weight' && request.method === 'GET') {
+    const days = Math.min(31, Math.max(1, Math.round(Number(url.searchParams.get('days')) || 30)));
+    const tok = await fitbitToken(env, key);
+    if (!tok.ok) return json(tok.body, tok.status, cors);
+
+    const end = new Date();
+    const start = new Date(end.getTime() - (days - 1) * 86400000);
+    const path = '/1/user/-/body/log/weight/date/'
+      + start.toISOString().slice(0, 10) + '/' + end.toISOString().slice(0, 10) + '.json';
+
+    let res;
+    try {
+      res = await fetch(fitbitApi(env) + path, {
+        headers: {
+          authorization: 'Bearer ' + tok.access,
+          // これを付けないと、地域によっては ポンド で返ってくる
+          'accept-language': 'ja_JP'
+        }
+      });
+    } catch (e) {
+      return json({ error: 'fitbit_unreachable', message: String(e && e.message || e) }, 502, cors);
+    }
+    const text = await res.text();
+    if (!res.ok) {
+      return json({ error: 'fitbit_error', status: res.status, message: text.slice(0, 400) },
+        res.status === 401 ? 401 : 502, cors);
+    }
+    let data;
+    try { data = JSON.parse(text); } catch (e) { return json({ error: 'fitbit_bad_json' }, 502, cors); }
+
+    const items = (Array.isArray(data.weight) ? data.weight : []).map(w => ({
+      date: String(w.date || '').slice(0, 10),
+      kg: Math.round(Number(w.weight) * 10) / 10,
+      fat: w.fat ? Math.round(Number(w.fat) * 10) / 10 : null,
+      time: String(w.time || '')
+    })).filter(w => /^\d{4}-\d{2}-\d{2}$/.test(w.date) && w.kg > 0 && w.kg < 400);
+
+    // 1日に何度も乗ったぶんは、いちばん遅い時刻のものを残す
+    const by = {};
+    items.forEach(w => {
+      const cur = by[w.date];
+      if (!cur || String(w.time) >= String(cur.time)) by[w.date] = w;
+    });
+    const out = Object.keys(by).sort().map(d => by[d]);
+    return json({ items: out, count: out.length, days }, 200, cors);
+  }
+
+  /* つなぎを外す */
+  if (url.pathname === '/v1/fitbit' && request.method === 'DELETE') {
+    await env.SYNC.delete(key);
+    return json({ ok: true }, 200, cors);
+  }
+
+  return json({ error: 'not_found' }, 404, cors);
+}
+
+/**
+ * 使えるアクセストークンを用意する。
+ * 期限が近ければ、リフレッシュトークンで取り直して控え直す
+ * （Fitbit はリフレッシュトークンも毎回入れ替わるので、必ず上書きする）。
+ */
+async function fitbitToken(env, key) {
+  const saved = await env.SYNC.get(key, 'json');
+  if (!saved || !saved.refresh) {
+    return { ok: false, status: 409, body: { error: 'fitbit_not_linked' } };
+  }
+  // まだ5分以上もつなら、そのまま使う
+  if (saved.access && saved.exp && Date.now() < saved.exp - 300000) {
+    return { ok: true, access: saved.access };
+  }
+  const got = await fitbitExchange(env, {
+    grant_type: 'refresh_token',
+    refresh_token: saved.refresh
+  });
+  if (!got.ok) {
+    // 縁が切れている（許可を取り消した・古すぎる）ときは、控えも捨てる
+    if (got.status === 400 || got.status === 401) await env.SYNC.delete(key);
+    return { ok: false, status: got.status, body: got.body };
+  }
+  await fitbitSave(env, key, got.data);
+  return { ok: true, access: got.data.access_token };
+}
+
+async function fitbitExchange(env, params) {
+  const body = new URLSearchParams(Object.assign({ client_id: env.FITBIT_CLIENT_ID }, params));
+  let res;
+  try {
+    res = await fetch(fitbitApi(env) + '/oauth2/token', {
+      method: 'POST',
+      headers: {
+        authorization: 'Basic ' + btoa(env.FITBIT_CLIENT_ID + ':' + env.FITBIT_CLIENT_SECRET),
+        'content-type': 'application/x-www-form-urlencoded'
+      },
+      body: body.toString()
+    });
+  } catch (e) {
+    return { ok: false, status: 502, body: { error: 'fitbit_unreachable', message: String(e && e.message || e) } };
+  }
+  const text = await res.text();
+  let data;
+  try { data = JSON.parse(text); } catch (e) { data = null; }
+  if (!res.ok || !data || !data.access_token) {
+    return { ok: false, status: res.status === 401 ? 401 : 502,
+      body: { error: 'fitbit_auth_error', status: res.status, message: text.slice(0, 400) } };
+  }
+  return { ok: true, data };
+}
+
+async function fitbitSave(env, key, data) {
+  await env.SYNC.put(key, JSON.stringify({
+    refresh: data.refresh_token,
+    access: data.access_token,
+    exp: Date.now() + (Number(data.expires_in) || 28800) * 1000,
+    at: new Date().toISOString()
+  }));
+}
+
+/* Fitbit から戻ってくるところ。合鍵は付いていないので、state で人を割り出す */
+async function fitbitCallback(request, env, url) {
+  const page = (title, body) => new Response(
+    '<!doctype html><meta charset="utf-8">'
+    + '<meta name="viewport" content="width=device-width,initial-scale=1">'
+    + '<title>' + title + '</title>'
+    + '<style>body{font-family:-apple-system,sans-serif;margin:0;padding:40px 24px;'
+    + 'background:#0b0f15;color:#e7eef7;line-height:1.9}h1{font-size:19px;margin:0 0 12px}'
+    + 'p{font-size:14px;color:#8ba0b8;margin:0 0 8px}</style>'
+    + '<h1>' + title + '</h1>' + body,
+    { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } });
+
+  if (!fitbitReady(env)) return page('つなげません', '<p>Worker に Fitbit の鍵が入っていません。</p>');
+  if (!env.SYNC) return page('つなげません', '<p>置き場（KV）が見つかりません。</p>');
+
+  const err = url.searchParams.get('error');
+  if (err) return page('許可されませんでした', '<p>' + escapeHtml(err) + '</p>');
+
+  const code = url.searchParams.get('code') || '';
+  const state = url.searchParams.get('state') || '';
+  if (!code || !state) return page('つなげません', '<p>戻り方がおかしいようです。</p>');
+
+  const holder = await env.SYNC.get('fbstate:' + state, 'json');
+  if (!holder || !holder.id) {
+    return page('時間切れです', '<p>アプリの「Fitbit とつなぐ」から、もう一度やり直してください。</p>');
+  }
+  await env.SYNC.delete('fbstate:' + state);
+
+  const got = await fitbitExchange(env, {
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri: fitbitRedirect(url),
+    code_verifier: holder.verifier
+  });
+  if (!got.ok) {
+    return page('つなげませんでした',
+      '<p>' + escapeHtml((got.body && got.body.message) || '') + '</p>');
+  }
+  await fitbitSave(env, 'fitbit:' + holder.id, got.data);
+  return page('つながりました',
+    '<p>この画面は閉じて、アプリの「筋トレ」タブへ戻ってください。</p>'
+    + '<p>体重は、画面を開いたときに自動で入ります。</p>');
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 /* できたプロットを Discord のチャンネルへ送る */

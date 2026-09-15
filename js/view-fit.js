@@ -626,6 +626,7 @@
             + 'この画面を開いたときにも、そっと取り込んでいます。' }),
         ui.btn('いま取り込む', 'primary full', function () { pull(); }, 'cloud')
       ]),
+      fitbitCard(),
       shortcutCard(),
       ui.field('CSV を貼り付けて入れる', csv,
         'EufyLife アプリ →「データのエクスポート」で出した CSV が読めます'),
@@ -637,6 +638,94 @@
     ]);
 
     ui.sheet({ title: '体重の取り込み', body: body });
+
+    /* Fitbit から読む道。
+       EufyLife → Fitbit までつないであれば、あとは Worker が読むだけ。
+       iPhone で何かを動かす必要も、そばに機械を置く必要もない */
+    function fitbitCard() {
+      var box = el('div', { class: 'card fb-card' }, [
+        el('div', { class: 'row-title', text: 'Fitbit から読む（いちばん手がかからない）' }),
+        el('p', { class: 'muted small',
+          text: 'EufyLife から Fitbit への同期をオンにしてあれば、あとはこの画面を'
+            + '開くだけで入ります。一度つなげば、ショートカットも PC も要りません。' }),
+        el('p', { class: 'muted small', text: '見に行っています…' })
+      ]);
+      F.fitbit.status().then(function (st) {
+        U.clear(box);
+        box.appendChild(el('div', { class: 'row-title' }, [
+          el('span', { text: 'Fitbit から読む（いちばん手がかからない）' }),
+          st.linked ? ui.chip('つながっています', 'ok') : null
+        ]));
+        if (!st.ready) {
+          box.appendChild(el('p', { class: 'mn-warn small' }, [
+            ui.icon('alert', 14),
+            el('span', { text: 'Worker に Fitbit の鍵が入っていません。'
+              + 'dev.fitbit.com でアプリを1つ作り、sync/setup.sh で '
+              + 'FITBIT_CLIENT_ID と FITBIT_CLIENT_SECRET を入れてください。' })
+          ]));
+          if (st.redirect) {
+            box.appendChild(el('p', { class: 'muted small', text: 'Fitbit 側に登録するリダイレクト URL：' }));
+            box.appendChild(el('div', { class: 'fit-url', text: st.redirect }));
+          }
+          return;
+        }
+        box.appendChild(el('p', { class: 'muted small',
+          text: st.linked
+            ? 'この画面を開くたびに、Fitbit から新しいぶんを取り込みます。'
+            : 'EufyLife アプリ → 設定 → Fitbit 連携をオンにしてから、下の「つなぐ」を押してください。' }));
+        box.appendChild(el('div', { class: 'row-wrap' }, [
+          st.linked ? ui.btn('Fitbit から取り込む', 'primary', function () { fbPull(); }, 'cloud')
+            : ui.btn('Fitbit とつなぐ', 'primary', function () { fbLink(); }, 'cloud'),
+          st.linked ? ui.btn('つなぎを外す', 'ghost tiny', function () {
+            ui.confirm('Fitbit とのつなぎを外します。体重の記録はそのまま残ります。',
+              { danger: true, okText: '外す' }).then(function (yes) {
+              if (!yes) return;
+              F.fitbit.unlink().then(function () {
+                ui.toast('外しました');
+                DL.app.render();
+              }).catch(function (e) { ui.toast(e.message, 'danger'); });
+            });
+          }) : null
+        ]));
+      });
+      return box;
+    }
+
+    function fbLink() {
+      U.clear(out);
+      out.appendChild(el('p', { class: 'muted small', text: '入口を用意しています…' }));
+      F.fitbit.start().then(function (r) {
+        U.clear(out);
+        out.appendChild(el('p', { class: 'muted small',
+          text: 'Fitbit の画面が開きます。許可したら、この画面に戻って'
+            + '「Fitbit から取り込む」を押してください。' }));
+        // 別のタブで開く（アプリの画面はそのまま残す）
+        window.open(r.url, '_blank');
+      }).catch(function (e) {
+        U.clear(out);
+        out.appendChild(el('p', { class: 'mn-warn small' }, [
+          ui.icon('alert', 14), el('span', { text: e.message })
+        ]));
+      });
+    }
+
+    function fbPull() {
+      U.clear(out);
+      out.appendChild(el('p', { class: 'muted small', text: 'Fitbit に聞いています…' }));
+      F.fitbit.pull(30).then(function (r) {
+        U.clear(out);
+        out.appendChild(el('p', { class: 'muted small',
+          text: r.found
+            ? r.found + '件のうち ' + r.added + '件を入れました'
+            : 'Fitbit にまだ体重の記録がありませんでした' }));
+        if (r.added) DL.app.render();
+      }).catch(function (e) {
+        U.clear(out);
+        out.appendChild(el('p', { class: 'mn-warn small' }, [
+          ui.icon('alert', 14), el('span', { text: e.message })
+        ]));
+      });
+    }
 
     /* iPhone だけで完結する道。
        EufyLife → Apple のヘルスケア → ショートカット → この受け口。
