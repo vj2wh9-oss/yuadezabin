@@ -109,7 +109,7 @@ export default {
           fitbit: fitbitReady(env),
           menuWebhook: !!env.DISCORD_MENU_WEBHOOK
         },
-        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/inbox/weights', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/menu/dish', '/v1/menu/send', '/v1/reschedule', '/v1/bank/balance', '/v1/plot', '/v1/plot/send', '/v1/spend', '/v1/fit/plan', '/v1/fitbit'],
+        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/inbox/weights', '/v1/inbox/weight/key', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/menu/dish', '/v1/menu/send', '/v1/reschedule', '/v1/bank/balance', '/v1/plot', '/v1/plot/send', '/v1/spend', '/v1/fit/plan', '/v1/fitbit'],
         // どの食事に対応しているか。deploy を忘れると古いままなのが分かる
         menuSlots: MENU_SLOTS,
         note: '各 /v1/... は Authorization: Bearer <合鍵> が必要です'
@@ -120,6 +120,20 @@ export default {
        誰か分からないと困るので、start のときに配った state で結びつける */
     if (url.pathname === '/v1/fitbit/callback') {
       return fitbitCallback(request, env, url);
+    }
+
+    /* 体重だけの合鍵。
+       iPhone のショートカットで「ヘッダを足す」のが難しいので、
+       体重を足すことしかできない合鍵を、URL に付けられるようにしておく。
+       これが漏れても、できるのは体重を書き込むことだけ。
+       本物の合鍵（読み書き全部）は、けっして URL に付けない。 */
+    if (url.pathname === '/v1/inbox/weight' && url.searchParams.get('k')) {
+      const k = String(url.searchParams.get('k'));
+      if (env.SYNC && /^[0-9a-f]{32}$/.test(k)) {
+        const owner = await env.SYNC.get('wkey:' + k, 'text');
+        if (owner) return weights(request, env, cors, url, owner);
+      }
+      return json({ error: 'bad_key', hint: '体重用の合鍵が違います' }, 401, cors);
     }
 
     const token = bearer(request);
@@ -269,6 +283,10 @@ export default {
 
       if (url.pathname === '/v1/fitbit' || url.pathname.startsWith('/v1/fitbit/')) {
         return fitbit(request, env, cors, url, id);
+      }
+
+      if (url.pathname === '/v1/inbox/weight/key') {
+        return weightKey(request, env, cors, id);
       }
 
       if (url.pathname === '/v1/inbox/weight' || url.pathname === '/v1/inbox/weights') {
@@ -1667,6 +1685,38 @@ function weightDate(v) {
   const t = Date.parse(s);
   if (!isNaN(t)) return jstDate(t);
   return jstDate(Date.now());
+}
+
+/* 体重だけの合鍵をつくる・見る・捨てる。
+   KV には両方向を持っておく（合鍵→持ち主／持ち主→合鍵）。
+   作り直すと前のものは使えなくなる。 */
+async function weightKey(request, env, cors, id) {
+  const mine = 'wkeyOf:' + id;
+
+  if (request.method === 'GET') {
+    const k = await env.SYNC.get(mine, 'text');
+    return json({ ok: true, key: k || null }, 200, cors);
+  }
+
+  if (request.method === 'POST') {
+    const old = await env.SYNC.get(mine, 'text');
+    if (old) await env.SYNC.delete('wkey:' + old);
+    const b = new Uint8Array(16);
+    crypto.getRandomValues(b);
+    const k = [...b].map(x => x.toString(16).padStart(2, '0')).join('');
+    await env.SYNC.put('wkey:' + k, id);
+    await env.SYNC.put(mine, k);
+    return json({ ok: true, key: k }, 200, cors);
+  }
+
+  if (request.method === 'DELETE') {
+    const old = await env.SYNC.get(mine, 'text');
+    if (old) await env.SYNC.delete('wkey:' + old);
+    await env.SYNC.delete(mine);
+    return json({ ok: true, key: null }, 200, cors);
+  }
+
+  return json({ error: 'not_found' }, 404, cors);
 }
 
 async function weights(request, env, cors, url, id) {

@@ -745,58 +745,122 @@
        EufyLife → Apple のヘルスケア → ショートカット → この受け口。
        ブラウザからヘルスケアは読めないので、iPhone 側から送ってもらう */
     function shortcutCard() {
-      var url = F.postUrl();
-      var paste = url ? url + '?kg=' : '';
+      /* ショートカット App に出てくる、いまの名前をそのまま書く。
+         アクションは4つだけ。ヘッダを足す手間は、体重だけの合鍵で無くした */
       var steps = [
-        'EufyLife アプリ →「プロフィール」→ ヘルスケアへの同期をオンにする。'
-          + '一度 体重計に乗って、ヘルスケア App の「体重」に数字が入るのを見ておく',
-        'ショートカット App →「＋」→「アクションを追加」',
-        '「ヘルスケアのサンプルを検索」を足す。'
-          + 'タイプ＝体重／並べ替え＝終了日／順序＝降順／上限＝1',
-        '「テキスト」を足して、下の送り先を貼り付ける。そのうしろに手順3の'
-          + '「ヘルスケアのサンプル」を入れ、それを押して「値」に変える'
-          + '（「サンプル」のままだと「81.2 kg」のような文になってしまいます）',
-        '「URL の内容を取得」を足す。URL は手順4の「テキスト」。'
-          + '「詳しく表示」を開いて、方法＝POST、ヘッダの ＋ で'
-          + 'キー＝Authorization ／ 値＝Bearer と合鍵（間に半角スペース1つ）',
-        '右下の ▶ で試す。{"ok":true,"added":1} が返れば通っています',
-        '名前を付けて保存する',
-        'ショートカット App →「オートメーション」→「＋」→「時刻」→ 毎日 7:00 →'
-          + 'このショートカットを実行（「実行前に尋ねる」はオフ）'
+        'EufyLife アプリでヘルスケアへの同期をオンにして、一度 体重計に乗る。'
+          + 'ヘルスケア App →「ブラウズ」→「身体測定値」→「体重」に数字が入ればOK',
+        'ショートカット App →「ショートカット」タブ → 右上の「＋」',
+        '検索欄に「ヘルスケア」と入れて【ヘルスケアサンプルを検索】を足す。'
+          + '「フィルタを追加」→ 種類「が次と等しい」体重／'
+          + '単位＝kg／グループ分け＝なし／並び順序＝開始日／順序＝新しい順／'
+          + '制限＝オン（1件のヘルスケアサンプルを取得）',
+        '検索欄に「ヘルスケア」と入れて【ヘルスケアサンプルの詳細を取得】を足す。'
+          + '「詳細」を押して【値】を選ぶ（これで数字だけになります）',
+        '検索欄に「テキスト」と入れて【テキスト】を足し、下の送り先を貼り付ける。'
+          + 'そのうしろに、手順4の変数「詳細」を入れる',
+        '検索欄に「URL」と入れて【URLの内容を取得】を足す。URL の欄に'
+          + '手順5の変数「テキスト」を入れる（ほかは何も触りません）',
+        '右上の「▶」で試す。{"ok":true,"added":1} が返れば通っています',
+        '右上の「完了」で保存。名前は何でもかまいません',
+        'ショートカット App →「オートメーション」タブ →「＋」→「時刻」→'
+          + '毎日 7:00 →「新規の空のオートメーション」→【ショートカットを実行】で'
+          + 'いま作ったものを選ぶ。「実行前に尋ねる」はオフ'
       ];
       var traps = [
+        'アクションが見つからない … ヘルスケア App を一度開いて、'
+          + 'ショートカット App を開き直すと出てくることがあります',
+        '{"error":"bad_key"} … 送り先の ?k= が古いか、欠けています。'
+          + '下の「送り先を作り直す」でやり直してください',
+        '{"error":"no_weight"} … ヘルスケアに体重が入っていないか、'
+          + '手順3の「制限」がオフです',
         '404 が返る … Worker がまだ古いです。上の「送り先を試す」を押してください',
-        '401 が返る … 合鍵が違います。ヘッダの「Bearer 」を消していないか見てください',
-        '{"error":"no_weight"} … ヘルスケアに体重が入っていないか、手順3の上限が 0 です',
-        '数字が入らない … 手順4の変数が「値」ではなく「サンプル」のままです'
+        '「81.2 kg」のような文が送られる … 手順4の「詳細」が【値】になっていません'
+          + '（そのままでも通りますが、値にしておくのが確実です）'
       ];
-      return el('div', { class: 'card' }, [
-        el('div', { class: 'row-title', text: 'iPhone だけで自動にする（ショートカット）' }),
-        el('p', { class: 'muted small',
-          text: 'EufyLife は Apple の「ヘルスケア」へ体重を送れます。ブラウザからヘルスケアは'
-            + '読めないので、ショートカットに「ヘルスケアから読んで、ここへ送る」を'
-            + 'やってもらいます。PC もラズパイも要りません。' }),
-        el('ol', { class: 'fit-steps' }, steps.map(function (t) { return el('li', { text: t }); })),
-        paste ? el('div', { class: 'fit-url', text: paste }) : el('p', { class: 'mn-warn small' }, [
-          ui.icon('alert', 14), el('span', { text: '先に設定で同期の接続先を入れてください。' })
-        ]),
-        el('div', { class: 'row-wrap' }, [
-          paste ? ui.btn('送り先をコピー', 'ghost tiny', function () {
-            U.copy(paste).then(function (ok) { ui.toast(ok ? 'コピーしました' : 'コピーできませんでした', ok ? '' : 'warn'); });
-          }) : null,
-          S.settings.sync && S.settings.sync.token ? ui.btn('合鍵をコピー', 'ghost tiny', function () {
-            U.copy(S.settings.sync.token).then(function (ok) {
-              ui.toast(ok ? 'コピーしました。人に見せないでください' : 'コピーできませんでした', ok ? '' : 'warn');
-            });
-          }) : null
-        ]),
-        el('p', { class: 'muted small',
-          text: '体脂肪も送るなら &fat= を、日付を指定するなら &date=2026-09-15 を'
-            + 'うしろに足します。日付を付けなければ、送った日のぶんになります。'
-            + '合鍵は URL には付けず、ヘッダに入れてください。' }),
-        el('div', { class: 'row-title', text: 'つまずきやすいところ' }),
-        el('ul', { class: 'fit-traps' }, traps.map(function (t) { return el('li', { text: t }); }))
+
+      var box = el('div', { class: 'card sc-card' }, [
+        el('p', { class: 'muted small', text: '送り先を見ています…' })
       ]);
+      draw(null, true);
+      F.weightKey.get().then(function (r) { draw(r.key, false); });
+      return box;
+
+      function draw(key, waiting) {
+        U.clear(box);
+        box.appendChild(el('div', { class: 'row-title',
+          text: 'iPhone だけで自動にする（ショートカット）' }));
+        box.appendChild(el('p', { class: 'muted small',
+          text: 'EufyLife は Apple の「ヘルスケア」へ体重を送れます。ブラウザから'
+            + 'ヘルスケアは読めないので、ショートカットに「ヘルスケアから読んで、'
+            + 'ここへ送る」をやってもらいます。PC もラズパイも要りません。' }));
+
+        if (!F.postUrl()) {
+          box.appendChild(el('p', { class: 'mn-warn small' }, [
+            ui.icon('alert', 14),
+            el('span', { text: '先に 設定 → 同期 で接続先を入れてください。' })
+          ]));
+          return;
+        }
+        if (waiting) {
+          box.appendChild(el('p', { class: 'muted small', text: '送り先を見ています…' }));
+          return;
+        }
+
+        if (!key) {
+          box.appendChild(el('p', { class: 'muted small',
+            text: 'まず送り先を作ります。体重を書き足すことしかできない合鍵が入るので、'
+              + 'ショートカット側で「ヘッダ」を足す必要がありません。' }));
+          box.appendChild(ui.btn('ショートカット用の送り先を作る', 'primary full', function () {
+            F.weightKey.create().then(function (r) {
+              draw(r.key, false);
+              ui.toast('作りました');
+            }).catch(function (e) { ui.toast(e.message, 'danger'); });
+          }, 'plus'));
+          return;
+        }
+
+        var paste = F.easyUrl(key);
+        box.appendChild(el('p', { class: 'muted small', text: '手順5で貼り付ける送り先：' }));
+        box.appendChild(el('div', { class: 'fit-url', text: paste }));
+        box.appendChild(el('div', { class: 'row-wrap' }, [
+          ui.btn('送り先をコピー', 'primary', function () {
+            U.copy(paste).then(function (ok) {
+              ui.toast(ok ? 'コピーしました' : 'コピーできませんでした', ok ? '' : 'warn');
+            });
+          }, 'folder'),
+          ui.btn('作り直す', 'ghost tiny', function () {
+            ui.confirm('新しい送り先を作ります。いまショートカットに入っている'
+              + '送り先は使えなくなります。', { okText: '作り直す' }).then(function (yes) {
+              if (!yes) return;
+              F.weightKey.create().then(function (r) {
+                draw(r.key, false);
+                ui.toast('作り直しました。ショートカットの送り先も貼り替えてください');
+              }).catch(function (e) { ui.toast(e.message, 'danger'); });
+            });
+          }),
+          ui.btn('使わない', 'ghost tiny', function () {
+            ui.confirm('この送り先を捨てます。ショートカットは動かなくなります。',
+              { danger: true, okText: '捨てる' }).then(function (yes) {
+              if (!yes) return;
+              F.weightKey.remove().then(function () {
+                draw(null, false);
+                ui.toast('捨てました');
+              }).catch(function (e) { ui.toast(e.message, 'danger'); });
+            });
+          })
+        ]));
+        box.appendChild(el('ol', { class: 'fit-steps' },
+          steps.map(function (t) { return el('li', { text: t }); })));
+        box.appendChild(el('p', { class: 'muted small',
+          text: '体脂肪も送るなら、うしろに &fat= と体脂肪の変数を足します。'
+            + '日付は付けなければ、送った日（日本時間）のぶんになります。'
+            + 'この送り先でできるのは体重を書き足すことだけで、'
+            + 'ほかのデータは読めません。本物の合鍵は URL に入れないでください。' }));
+        box.appendChild(el('div', { class: 'row-title', text: 'つまずきやすいところ' }));
+        box.appendChild(el('ul', { class: 'fit-traps' },
+          traps.map(function (t) { return el('li', { text: t }); })));
+      }
     }
 
     /* 受け口が生きているかを見て、そのまま言葉で返す */

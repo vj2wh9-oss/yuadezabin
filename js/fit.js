@@ -361,6 +361,44 @@
   /** ショートカットに入れる送り先 */
   function postUrl() { return base() ? base() + '/v1/inbox/weight' : ''; }
 
+  /* 体重だけの合鍵。
+     ショートカットに「ヘッダを足す」のは、慣れていないと難しい。
+     体重を書き込むことしかできない合鍵を URL に入れておけば、
+     ショートカットは「検索・詳細・テキスト・取得」の4つで済む。
+     漏れても、できるのは体重を書き足すことだけ。作り直せば前のは死ぬ。 */
+  var weightKey = {
+    /** いまの合鍵。無ければ {key:null} */
+    get: function () {
+      if (!ready()) return Promise.resolve({ key: null });
+      return keyApi('GET').catch(function () { return { key: null, off: true }; });
+    },
+    /** 作る（作り直す） */
+    create: function () { return keyApi('POST'); },
+    /** 捨てる */
+    remove: function () { return keyApi('DELETE'); }
+  };
+
+  function keyApi(method) {
+    if (!ready()) return Promise.reject(new Error('同期の接続先が未設定です'));
+    return fetch(base() + '/v1/inbox/weight/key', {
+      method: method,
+      headers: { authorization: 'Bearer ' + conf().token }
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (b) {
+        if (res.status === 404) {
+          throw new Error('Worker がまだ古いです。git pull && bash sync/setup.sh を通してください');
+        }
+        if (!res.ok) throw new Error('サーバーが断りました（' + res.status + '）');
+        return b;
+      });
+    }, function () { throw new Error('通信できませんでした'); });
+  }
+
+  /** ショートカットにそのまま貼れる送り先（体重用の合鍵つき） */
+  function easyUrl(key) {
+    return key ? postUrl() + '?k=' + key + '&kg=' : '';
+  }
+
   /* 受け口が生きているか、そっと確かめる。
      ショートカットが通らないときの切り分けに使う。
      見に行くだけなので、押しても何も書き換わらない。
@@ -388,7 +426,7 @@
             text: 'サーバーが応答しませんでした（' + res.status + '）。' };
         }
         var list = (b && b.endpoints) || [];
-        if (list.indexOf('/v1/inbox/weights') < 0) {
+        if (list.indexOf('/v1/inbox/weight/key') < 0) {
           return { ok: false, kind: 'old',
             text: 'Worker に体重の受け口がまだありません。パソコンで '
               + '「git pull && bash sync/setup.sh」を通して、Worker を新しくしてください。'
@@ -560,7 +598,7 @@
     recent: recent, streak: streak, history: history,
     plan: plan, adopt: adopt,
     pull: pull, autoPull: autoPull, postUrl: postUrl, checkInbox: checkInbox,
-    parseCSV: parseCSV,
+    weightKey: weightKey, easyUrl: easyUrl, parseCSV: parseCSV,
     fitbit: fitbit
   };
 })(window.DL);
