@@ -1643,12 +1643,37 @@ async function fitPlan(request, env, cors) {
 
 const MAX_WEIGHTS = 400;
 
+/* 日付。ショートカットから来るものは書き方がまちまちなので、広めに拾う。
+   読めなければ「今日」。朝いちで送る使い方なので、それでまず外れない */
+function weightDate(v) {
+  const s = String(v == null ? '' : v).trim();
+  let m = /(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})/.exec(s);
+  if (m) {
+    return m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2);
+  }
+  const t = Date.parse(s);
+  if (!isNaN(t)) return new Date(t).toISOString().slice(0, 10);
+  return new Date().toISOString().slice(0, 10);
+}
+
 async function weights(request, env, cors, url, id) {
   const key = 'weights:' + id;
 
-  if (url.pathname === '/v1/inbox/weight' && request.method === 'POST') {
-    let body;
-    try { body = await request.json(); } catch (e) { return json({ error: 'bad_json' }, 400, cors); }
+  if (url.pathname === '/v1/inbox/weight' && (request.method === 'POST' || request.method === 'GET')) {
+    /* iPhone のショートカットからは、URL に付けるだけで送れるようにしておく。
+       （JSON を組み立てなくてよい。合鍵はヘッダーで渡す） */
+    const q = url.searchParams;
+    let body = null;
+    if (q.get('kg') || q.get('weight')) {
+      body = {
+        kg: q.get('kg') || q.get('weight'),
+        fat: q.get('fat'), muscle: q.get('muscle'), date: q.get('date')
+      };
+    } else if (request.method === 'POST') {
+      try { body = await request.json(); } catch (e) { return json({ error: 'bad_json' }, 400, cors); }
+    } else {
+      return json({ error: 'bad_body' }, 400, cors);
+    }
     const list = Array.isArray(body && body.items) ? body.items : [body];
     const box = (await env.SYNC.get(key, 'json')) || { list: [] };
     let added = 0;
@@ -1688,12 +1713,11 @@ async function weights(request, env, cors, url, id) {
 
 function cleanWeight(w) {
   if (!w || typeof w !== 'object') return null;
-  const date = /^\d{4}-\d{2}-\d{2}/.test(String(w.date || ''))
-    ? String(w.date).slice(0, 10) : new Date().toISOString().slice(0, 10);
-  const kg = Number(w.kg || w.weight || 0);
+  const date = weightDate(w.date);
+  const kg = Number(String(w.kg || w.weight || 0).replace(/[^\d.]/g, ''));
   if (!(kg > 0) || kg > 400) return null;
   const num = v => {
-    const n = Number(v);
+    const n = Number(String(v == null ? '' : v).replace(/[^\d.]/g, ''));
     return isFinite(n) && n > 0 ? Math.round(n * 10) / 10 : null;
   };
   return {

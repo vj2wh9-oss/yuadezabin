@@ -307,7 +307,11 @@
      体重計から読んで Worker へ投げ、アプリはそれを取りに行く。
      取り込んだぶんはサーバーから消すので、二度入らない。 */
 
-  function pull() {
+  /**
+   * 預かっているぶんを取り込む。
+   * @param {object} [opts] {quiet:true} で、預かりが空でも黙って終わる
+   */
+  function pull(opts) {
     if (!ready()) return Promise.resolve({ added: 0, skipped: 0, off: true });
     return fetch(base() + '/v1/inbox/weights', {
       headers: { authorization: 'Bearer ' + conf().token }
@@ -335,6 +339,21 @@
         .then(function () { return { added: added, skipped: skipped }; });
     });
   }
+
+  /* 画面を開いたときの、そっとした取り込み。
+     ショートカットが朝のうちに預けてくれたぶんを、開いた拍子に入れる。
+     何度も叩かないよう、しばらくは控える */
+  var pulledAt = 0;
+
+  function autoPull() {
+    if (!ready()) return Promise.resolve({ added: 0 });
+    if (Date.now() - pulledAt < 120000) return Promise.resolve({ added: 0 });
+    pulledAt = Date.now();
+    return pull({ quiet: true }).catch(function () { return { added: 0 }; });
+  }
+
+  /** ショートカットに入れる送り先 */
+  function postUrl() { return base() ? base() + '/v1/inbox/weight' : ''; }
 
   /**
    * EufyLife の書き出し（CSV）を読む。
@@ -411,6 +430,6 @@
     step: step, repsGoal: repsGoal, nextWeight: nextWeight, applyProgress: applyProgress,
     recent: recent, streak: streak, history: history,
     plan: plan, adopt: adopt,
-    pull: pull, parseCSV: parseCSV
+    pull: pull, autoPull: autoPull, postUrl: postUrl, parseCSV: parseCSV
   };
 })(window.DL);

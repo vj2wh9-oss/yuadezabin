@@ -12,6 +12,9 @@
   function render(root, params) {
     var date = U.isISO(params && params.date) ? params.date : U.today();
     var wrap = el('div', { class: 'page fit-page' });
+    /* ショートカットが預けてくれた体重を、開いた拍子に入れる。
+       届いていれば描き直す（何も無ければ黙って終わる） */
+    F.autoPull().then(function (r) { if (r && r.added) DL.app.render(); });
 
     wrap.appendChild(todayCard(date));
     wrap.appendChild(weekStrip(date));
@@ -617,20 +620,63 @@
 
     var body = el('div', { class: 'form' }, [
       el('div', { class: 'card' }, [
-        el('div', { class: 'row-title', text: '体重計から自動で入れる' }),
+        el('div', { class: 'row-title', text: '預かっているぶんを取り込む' }),
         el('p', { class: 'muted small',
-          text: 'iPhone のブラウザからは体重計に直接つなげません（Web Bluetooth が無いため）。'
-            + 'PC やラズパイで tools/eufy-weight.py を動かすと、体重計から読んで'
-            + 'サーバーへ預けてくれます。ここを押すと、そのぶんを取り込みます。' }),
-        ui.btn('預かっているぶんを取り込む', 'primary full', function () { pull(); }, 'cloud')
+          text: 'ショートカットや体重計のスクリプトが預けてくれたぶんを入れます。'
+            + 'この画面を開いたときにも、そっと取り込んでいます。' }),
+        ui.btn('いま取り込む', 'primary full', function () { pull(); }, 'cloud')
       ]),
+      shortcutCard(),
       ui.field('CSV を貼り付けて入れる', csv,
         'EufyLife アプリ →「データのエクスポート」で出した CSV が読めます'),
       ui.btn('CSV から入れる', 'ghost full', function () { fromCSV(); }, 'plus'),
+      el('p', { class: 'muted small',
+        text: 'PC やラズパイがあるなら、tools/eufy-weight.py で体重計から直に読むこともできます'
+          + '（乗るだけで入ります。立て方は sync/README.md）。' }),
       out
     ]);
 
     ui.sheet({ title: '体重の取り込み', body: body });
+
+    /* iPhone だけで完結する道。
+       EufyLife → Apple のヘルスケア → ショートカット → この受け口。
+       ブラウザからヘルスケアは読めないので、iPhone 側から送ってもらう */
+    function shortcutCard() {
+      var url = F.postUrl();
+      var steps = [
+        'EufyLife アプリで「ヘルスケア」への同期をオンにする',
+        'ショートカットアプリで新規ショートカットを作る',
+        '「ヘルスケアのサンプルを検索」を足す。種類＝体重／並べ替え＝終了日／降順／上限1件',
+        '「URL の内容を取得」を足して、下の送り先を貼る',
+        '方法＝POST、ヘッダに Authorization ＝ Bearer <合鍵>',
+        '本文＝JSON で kg ＝（ヘルスケアのサンプルの「値」）',
+        'オートメーションで「毎朝7時」か「EufyLife を閉じたとき」に動かす'
+      ];
+      return el('div', { class: 'card' }, [
+        el('div', { class: 'row-title', text: 'iPhone だけで自動にする（ショートカット）' }),
+        el('p', { class: 'muted small',
+          text: 'EufyLife は Apple の「ヘルスケア」へ体重を送れます。ブラウザからヘルスケアは'
+            + '読めないので、ショートカットに「ヘルスケアから読んで、ここへ送る」を'
+            + 'やってもらいます。PC もラズパイも要りません。' }),
+        el('ol', { class: 'fit-steps' }, steps.map(function (t) { return el('li', { text: t }); })),
+        url ? el('div', { class: 'fit-url', text: url }) : el('p', { class: 'mn-warn small' }, [
+          ui.icon('alert', 14), el('span', { text: '先に設定で同期の接続先を入れてください。' })
+        ]),
+        el('div', { class: 'row-wrap' }, [
+          url ? ui.btn('送り先をコピー', 'ghost tiny', function () {
+            U.copy(url).then(function (ok) { ui.toast(ok ? 'コピーしました' : 'コピーできませんでした', ok ? '' : 'warn'); });
+          }) : null,
+          S.settings.sync && S.settings.sync.token ? ui.btn('合鍵をコピー', 'ghost tiny', function () {
+            U.copy(S.settings.sync.token).then(function (ok) {
+              ui.toast(ok ? 'コピーしました。人に見せないでください' : 'コピーできませんでした', ok ? '' : 'warn');
+            });
+          }) : null
+        ]),
+        el('p', { class: 'muted small',
+          text: 'URL のうしろに ?kg=81.4&fat=28.2 と付けるだけでも入ります'
+            + '（本文を組み立てるのが面倒なとき）。日付を付けなければ、その日のぶんになります。' })
+      ]);
+    }
 
     function pull() {
       U.clear(out);
