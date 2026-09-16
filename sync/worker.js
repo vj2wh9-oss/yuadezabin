@@ -1432,7 +1432,7 @@ const FIT_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['date', 'kind', 'title', 'focus', 'minutes', 'warmup', 'items', 'cardio', 'cooldown', 'note'],
+        required: ['date', 'kind', 'title', 'focus', 'minutes', 'warmup', 'items', 'abs', 'cardio', 'cooldown', 'note'],
         properties: {
           date: { type: 'string', description: 'YYYY-MM-DD' },
           kind: {
@@ -1461,6 +1461,22 @@ const FIT_SCHEMA = {
                 weight: { type: 'number', description: '重さ(kg)。自重なら 0' },
                 rest: { type: 'integer', description: 'セット間の休み(秒)' },
                 note: { type: 'string', description: 'フォームのこつ。無ければ空文字' }
+              }
+            }
+          },
+          abs: {
+            type: 'array',
+            description: '腹筋メニュー。腹筋の日だけ 3〜4種目。ほかの日は空配列。'
+              + '腹筋の種目は items ではなく必ずここに入れること',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['name', 'sets', 'reps', 'note'],
+              properties: {
+                name: { type: 'string', description: '種目名（日本語）' },
+                sets: { type: 'integer', description: 'セット数' },
+                reps: { type: 'string', description: '回数または秒数。例）15-20、45秒' },
+                note: { type: 'string', description: 'こつ。無ければ空文字' }
               }
             }
           },
@@ -1528,8 +1544,21 @@ function fitPrompt(o) {
 
   if ((o.weekdays || []).length) {
     const ja = ['日', '月', '火', '水', '木', '金', '土'];
-    lines.push('【ジムに行く曜日】' + o.weekdays.map(d => ja[d]).join('・')
-      + '　この曜日を gym にして、ほかの日は rest か軽い run にしてください');
+    lines.push('【ジムに行く曜日】' + o.weekdays.map(d => ja[d]).join('・'));
+  }
+
+  /* どの日にどこを鍛えるかは、アプリ側が回して決めている。
+     ここで渡した割り当てをそのまま使ってもらう（1日で全身をやらせないため） */
+  if ((o.split || []).length) {
+    lines.push('', '【日ごとの担当部位】この割り当てをそのまま守ってください');
+    o.split.forEach(s => {
+      if (s.kind === 'gym') {
+        lines.push('・' + s.date + '　gym　' + s.part + '（' + s.focus + '）'
+          + (s.abs ? '　＋腹筋メニュー' : ''));
+      } else {
+        lines.push('・' + s.date + '　休み または 有酸素の日（どちらかを選んでください）');
+      }
+    });
   }
 
   if (o.trend && o.trend.now) {
@@ -1566,8 +1595,15 @@ function fitPrompt(o) {
     '守ること：',
     '・1回のジムは、準備運動と整理運動まで含めて ' + (p.minutes || 60) + '分に収まるようにしてください。'
       + '種目は4〜6つが目安です（欲張らない）。',
-    '・全身をまんべんなく。週のうちで、胸・背中・脚・肩・腕・体幹がひと通り入るように分けてください。',
+    '・1日で全身をやらないでください。その日は【日ごとの担当部位】の部位だけを鍛えます。'
+      + 'title はその部位（例「腕の日」「背中と二頭」）にして、'
+      + 'ほかの部位の種目を混ぜないでください。週のうちで全身がひと通り回ります。',
     '・大きい筋肉の種目（スクワット、ベンチ、ローイング、デッドリフト系）を先に置いてください。',
+    '・腹筋の種目（クランチ、レッグレイズ、プランクなど）は items に入れず、'
+      + '必ず abs（腹筋メニュー）に入れてください。'
+      + '担当部位に「腹筋メニュー」と書いてある日だけ 3〜4種目、ほかの日は空配列です。',
+    '・有酸素の日（kind=run）は、有酸素運動と自重トレーニングだけにしてください。'
+      + '器具やウエイトを使う種目は入れません（items は自重のみ。weight は 0）。',
     '・「いま扱える重さ」に載っている種目は、その重さをそのまま weight に入れてください。'
       + '載っていない種目は、体重と経験から無理のない重さを見当で入れてください。',
     '・有酸素は、筋トレの後か別の日に置いてください。'
@@ -1581,31 +1617,67 @@ function fitPrompt(o) {
 }
 
 /* 受け取ったものを整える。日付は必ず頼んだ範囲に収める */
+/* 腹筋の種目を見分ける。器具の種目に混ざっていたら腹筋メニューへ移す */
+const ABS_RE = /腹筋|アブ|クランチ|シットアップ|レッグレイズ|プランク|ドラゴンフラッグ|トーソ|ニーレイズ|バイシクル|ロシアンツイスト|アブローラー|ハンギング/;
+
 function fitClean(data, o) {
   const days = Array.isArray(data && data.days) ? data.days : [];
   const want = [];
   for (let i = 0; i < o.days; i++) want.push(addDaysIso(o.from, i));
+  const duty = {};
+  (o.split || []).forEach(s => { if (s && s.date) duty[s.date] = s; });
   const out = [];
   want.forEach((date, i) => {
     const d = days[i] || days.filter(x => x && x.date === date)[0];
     if (!d) return;
-    const kind = ['gym', 'run', 'rest'].indexOf(d.kind) >= 0 ? d.kind : 'gym';
+    let kind = ['gym', 'run', 'rest'].indexOf(d.kind) >= 0 ? d.kind : 'gym';
+    /* 担当がジムの日なら、ジムの日として通す。
+       休み・有酸素の日に器具の種目を入れられても困るので、こちらで決める */
+    const du = duty[date];
+    let forcedRun = false;
+    if (du) {
+      if (du.kind === 'gym') kind = 'gym';
+      else if (kind === 'gym') { kind = 'run'; forcedRun = true; }
+    }
+
+    let items = (Array.isArray(d.items) ? d.items : []).slice(0, 16).map(i => ({
+      name: fitText(i && i.name, 40),
+      gear: fitText(i && i.gear, 40),
+      sets: Math.min(12, Math.max(0, Math.round(Number(i && i.sets) || 0))),
+      reps: fitText(i && i.reps, 20),
+      weight: Math.min(500, Math.max(0, Number(i && i.weight) || 0)),
+      rest: Math.min(600, Math.max(0, Math.round(Number(i && i.rest) || 0))),
+      note: fitText(i && i.note, 120)
+    })).filter(i => i.name);
+
+    let abs = (Array.isArray(d.abs) ? d.abs : []).slice(0, 8).map(i => ({
+      name: fitText(i && i.name, 40),
+      sets: Math.min(12, Math.max(0, Math.round(Number(i && i.sets) || 0))),
+      reps: fitText(i && i.reps, 20),
+      note: fitText(i && i.note, 120)
+    })).filter(i => i.name);
+
+    // 腹筋が器具の種目に紛れていたら、腹筋メニューへ移す
+    items.filter(i => ABS_RE.test(i.name)).forEach(i => {
+      if (abs.length < 8) abs.push({ name: i.name, sets: i.sets, reps: i.reps, note: i.note });
+    });
+    items = items.filter(i => !ABS_RE.test(i.name));
+
+    // 有酸素の日は、有酸素と自重だけ。重さを持つ種目は落とす
+    if (kind === 'run') items = items.filter(i => !(i.weight > 0));
+    if (kind === 'rest') { items = []; abs = []; }
+
     out.push({
       date,
       kind,
-      title: fitText(d.title, 60) || (kind === 'rest' ? '休み' : kind === 'run' ? 'ラン' : 'ジム'),
-      focus: fitText(d.focus, 60),
+      title: (kind === 'gym' && du && du.part) ? du.part
+        : forcedRun ? 'ラン'
+          : (fitText(d.title, 60) || (kind === 'rest' ? '休み' : kind === 'run' ? 'ラン' : 'ジム')),
+      focus: fitText(d.focus, 60) || (du ? du.focus : ''),
       minutes: Math.min(300, Math.max(0, Math.round(Number(d.minutes) || 0))),
       warmup: (Array.isArray(d.warmup) ? d.warmup : []).slice(0, 8).map(x => fitText(x, 80)).filter(Boolean),
-      items: (Array.isArray(d.items) ? d.items : []).slice(0, 16).map(i => ({
-        name: fitText(i && i.name, 40),
-        gear: fitText(i && i.gear, 40),
-        sets: Math.min(12, Math.max(0, Math.round(Number(i && i.sets) || 0))),
-        reps: fitText(i && i.reps, 20),
-        weight: Math.min(500, Math.max(0, Number(i && i.weight) || 0)),
-        rest: Math.min(600, Math.max(0, Math.round(Number(i && i.rest) || 0))),
-        note: fitText(i && i.note, 120)
-      })).filter(i => i.name),
+      items,
+      abs,
       cardio: fitCardio(d.cardio),
       cooldown: (Array.isArray(d.cooldown) ? d.cooldown : []).slice(0, 8).map(x => fitText(x, 80)).filter(Boolean),
       note: fitText(d.note, 400)
@@ -1653,6 +1725,14 @@ async function fitPlan(request, env, cors) {
     recent: (body && body.recent) || null,
     loads: (Array.isArray(body && body.loads) ? body.loads : []).slice(0, 40),
     history: (Array.isArray(body && body.history) ? body.history : []).slice(0, 8),
+    /* どの日にどこを鍛えるかは、アプリ側が回して決めている */
+    split: (Array.isArray(body && body.split) ? body.split : []).slice(0, 14).map(s => ({
+      date: /^\d{4}-\d{2}-\d{2}$/.test(String(s && s.date)) ? s.date : '',
+      kind: (s && s.kind) === 'gym' ? 'gym' : 'free',
+      part: fitText(s && s.part, 40),
+      focus: fitText(s && s.focus, 60),
+      abs: !!(s && s.abs)
+    })).filter(s => s.date),
     want: fitText(body && body.want, 400)
   };
 

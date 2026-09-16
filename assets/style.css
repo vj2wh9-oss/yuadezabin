@@ -2429,6 +2429,70 @@ a.tp-proj:active { color: var(--accent); }
 /* ---------------- 筋トレ ---------------- */
 .fit-page { display: flex; flex-direction: column; gap: 10px; }
 
+/* 筋トレ専用のカレンダー。ふだんのカレンダーとは別もの */
+.fit-cal {
+  display: flex; flex-direction: column; gap: 4px;
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 8px;
+}
+.fit-cal .monthnav { display: flex; align-items: center; gap: 4px; }
+.fc-title { flex: 1; font-size: 15px; font-weight: 700; }
+.fc-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.fc-cell {
+  position: relative; min-height: 42px; padding: 3px 2px;
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  background: var(--card2); border: 1px solid var(--line); border-radius: var(--radius-s);
+  cursor: pointer; color: inherit; font: inherit; overflow: hidden;
+}
+.fc-cell.out { opacity: .35; }
+.fc-n { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.fc-cell.sun .fc-n { color: var(--danger); }
+.fc-cell.sat .fc-n { color: var(--accent2); }
+.fc-t {
+  font-size: 9px; line-height: 1.15; text-align: center; color: var(--muted);
+  word-break: break-all;
+}
+.fc-abs {
+  position: absolute; right: 2px; top: 2px; font-size: 8px; line-height: 1;
+  padding: 1px 2px; border-radius: 3px;
+  color: var(--accent2); background: color-mix(in srgb, var(--accent2) 22%, transparent);
+}
+/* 予定あり／できた／できなかった／担当だけ決まっている */
+.fc-cell.duty { background: var(--card); border-style: dashed; }
+.fc-cell.plan { background: color-mix(in srgb, var(--accent) 13%, var(--card)); }
+.fc-cell.plan .fc-t { color: var(--accent); }
+.fc-cell.done { background: color-mix(in srgb, var(--ok) 18%, var(--card)); }
+.fc-cell.done .fc-n, .fc-cell.done .fc-t { color: var(--ok); }
+.fc-cell.miss { background: color-mix(in srgb, var(--danger) 14%, var(--card)); }
+.fc-cell.miss .fc-t { color: var(--danger); }
+.fc-cell.today { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.fc-legend {
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+  font-size: 10.5px; color: var(--muted);
+}
+.fc-legend .fc-key { display: inline-flex; margin-left: 6px; }
+.fc-legend .fc-key:first-child { margin-left: 0; }
+.fc-key i { width: 10px; height: 10px; border-radius: 2px; border: 1px solid var(--line); }
+.fc-key.done i { background: color-mix(in srgb, var(--ok) 55%, var(--card)); }
+.fc-key.miss i { background: color-mix(in srgb, var(--danger) 45%, var(--card)); }
+.fc-key.plan i { background: color-mix(in srgb, var(--accent) 45%, var(--card)); }
+
+/* つぎの1枚（押すとその日へ） */
+.fit-next {
+  display: flex; flex-direction: column; gap: 5px; text-align: left;
+  cursor: pointer; color: inherit; font: inherit; width: 100%;
+}
+
+/* 腹筋メニュー */
+.fit-abs {
+  display: flex; flex-direction: column; gap: 4px;
+  background: var(--card2); border: 1px solid var(--line);
+  border-radius: var(--radius-s); padding: 7px 9px;
+}
+.fit-abs-i { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.fit-abs-i b { font-size: 13.5px; }
+.fit-abs-i.is-done { opacity: .6; }
+
 /* 今日の1枚 */
 .fit-today { display: flex; flex-direction: column; gap: 8px; }
 .fit-head { display: flex; flex-direction: column; gap: 4px; }

@@ -86,7 +86,9 @@
     if (onCal) drawModeBtn(life);
 
     // 売上は下のタブから直接開くので、戻るボタンは要らない
-    var showBack = ['project', 'pages', 'day', 'docs', 'doc', 'search', 'stock', 'onsite', 'log', 'logs', 'ideas', 'time', 'orders', 'crm'].indexOf(route.name) >= 0;
+    var showBack = ['project', 'pages', 'day', 'docs', 'doc', 'search', 'stock', 'onsite', 'log', 'logs', 'ideas', 'time', 'orders', 'crm'].indexOf(route.name) >= 0
+      // 筋トレは、日付が付いているとき（その日の中身）だけ戻れるようにする
+      || (route.name === 'fit' && !!route.params.date);
     backBtn.hidden = !showBack;
 
     // 画面が切り替わった瞬間を、同期のきっかけにする

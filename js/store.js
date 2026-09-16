@@ -2163,13 +2163,25 @@
           note: fitStr(i.note, 120)
         };
       }).filter(function (i) { return i.name; }),
+      /* 腹筋は専用のメニューとして別に持つ。
+         器具の種目に混ぜると、その日の部位がぼやけるため */
+      abs: (Array.isArray(p.abs) ? p.abs : []).slice(0, 8).map(function (i) {
+        i = i || {};
+        return {
+          name: fitStr(i.name, 40),
+          sets: Math.round(fitNum(i.sets, 0, 12, 3)),
+          reps: fitStr(i.reps, 20),               // 秒数の種目もあるので文字で
+          note: fitStr(i.note, 120)
+        };
+      }).filter(function (i) { return i.name; }),
       cardio: normalizeFitCardio(p.cardio),
       cooldown: (Array.isArray(p.cooldown) ? p.cooldown : []).slice(0, 8)
         .map(function (x) { return fitStr(x, 80); }).filter(Boolean),
       note: fitStr(p.note, 400),
       madeAt: fitStr(p.madeAt, 30) || new Date().toISOString()
     };
-    return (out.items.length || out.cardio || out.note || kind === 'rest') ? out : null;
+    return (out.items.length || out.abs.length || out.cardio || out.note || kind === 'rest')
+      ? out : null;
   }
 
   function normalizeFitCardio(c) {

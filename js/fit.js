@@ -196,6 +196,140 @@
     return n;
   }
 
+  /** はじめてからの合計。ホームの「これまで」に出す */
+  function totals() {
+    var logs = S.fitLogs();
+    var dates = Object.keys(logs);
+    var gym = 0, run = 0, km = 0, min = 0, done = 0;
+    dates.forEach(function (d) {
+      var l = logs[d];
+      if (l.done === 'skip') return;
+      done++;
+      min += U.num(l.minutes, 0);
+      if (l.items.length) gym++;
+      if (l.cardio && (l.cardio.distance || l.cardio.minutes)) {
+        run++;
+        km += dec(l.cardio.distance, 0);
+      }
+    });
+    return {
+      days: done, gym: gym, run: run,
+      km: Math.round(km * 10) / 10,
+      hours: Math.round(min / 60 * 10) / 10,
+      since: dates.length ? dates.sort()[0] : ''
+    };
+  }
+
+  /* ---------------- 分割（どの日に、どこを鍛えるか） ----------------
+
+     1日で全身をやると、どこも中途半端になるうえ回復が追いつかない。
+     そこで「腕の日」「背中の日」のように部位を分け、
+     ジムに行く曜日の通し番号で順ぐりに回す。
+
+     通し番号は決まった日（EPOCH）からの数え上げなので、
+     どこかに控えを持たなくても、計画を作り直しても続きから回る。 */
+
+  var EPOCH = '2026-01-05';            // 月曜。数え始めの日
+  var EPOCH_DOW = 1;
+
+  /* 週の回数ごとの回し方。abs を立てた日に「腹筋メニュー」を入れる */
+  var SPLITS = {
+    2: [
+      { part: '上半身（押す・引く）', focus: '大胸筋・広背筋・三角筋', abs: true },
+      { part: '下半身と体幹', focus: '大腿四頭筋・ハムストリングス・臀筋', abs: true }
+    ],
+    3: [
+      { part: '胸と三頭', focus: '大胸筋・上腕三頭筋', abs: false },
+      { part: '背中と二頭', focus: '広背筋・僧帽筋・上腕二頭筋', abs: true },
+      { part: '脚', focus: '大腿四頭筋・ハムストリングス・臀筋・カーフ', abs: true }
+    ],
+    4: [
+      { part: '胸と三頭', focus: '大胸筋・上腕三頭筋', abs: false },
+      { part: '背中と二頭', focus: '広背筋・僧帽筋・上腕二頭筋', abs: true },
+      { part: '脚', focus: '大腿四頭筋・ハムストリングス・臀筋・カーフ', abs: false },
+      { part: '肩と腕', focus: '三角筋・上腕二頭筋・上腕三頭筋', abs: true }
+    ],
+    5: [
+      { part: '胸', focus: '大胸筋', abs: false },
+      { part: '背中', focus: '広背筋・僧帽筋', abs: true },
+      { part: '脚', focus: '大腿四頭筋・ハムストリングス・臀筋・カーフ', abs: false },
+      { part: '肩', focus: '三角筋', abs: true },
+      { part: '腕', focus: '上腕二頭筋・上腕三頭筋・前腕', abs: true }
+    ],
+    6: [
+      { part: '胸', focus: '大胸筋', abs: false },
+      { part: '背中', focus: '広背筋・僧帽筋', abs: true },
+      { part: '脚（前）', focus: '大腿四頭筋・臀筋', abs: false },
+      { part: '肩', focus: '三角筋', abs: true },
+      { part: '腕', focus: '上腕二頭筋・上腕三頭筋・前腕', abs: false },
+      { part: '脚（後ろ）と体幹', focus: 'ハムストリングス・脊柱起立筋', abs: true }
+    ]
+  };
+
+  /** 週に n 回のときの、既定のジムの曜日（決めていないとき） */
+  function defaultWeekdays(n) {
+    return ({
+      1: [3], 2: [2, 5], 3: [1, 3, 5], 4: [1, 2, 4, 5],
+      5: [1, 2, 3, 4, 5], 6: [1, 2, 3, 4, 5, 6], 7: [0, 1, 2, 3, 4, 5, 6]
+    })[Math.min(7, Math.max(1, U.num(n, 4)))] || [1, 2, 4, 5];
+  }
+
+  /** ジムに行く曜日。決めていなければ回数から見当をつける */
+  function gymDays() {
+    var p = S.fit().profile;
+    var wd = (p.weekdays || []).slice().sort();
+    return wd.length ? wd : defaultWeekdays(p.days);
+  }
+
+  /** その日がジムの日か */
+  function isGymDay(date, wd) {
+    return (wd || gymDays()).indexOf(U.dow(date)) >= 0;
+  }
+
+  /** EPOCH から数えて、その日が何回目のジムの日か（0 始まり） */
+  function gymIndex(date, wd) {
+    wd = wd || gymDays();
+    if (!wd.length) return 0;
+    var diff = U.diffDays(EPOCH, date);
+    var weeks = Math.floor(diff / 7);
+    var rem = diff - weeks * 7;          // 0..6（負の日でも 0 以上になる）
+    var n = weeks * wd.length;
+    for (var i = 0; i < rem; i++) {
+      if (wd.indexOf((EPOCH_DOW + i + 700) % 7) >= 0) n++;
+    }
+    return n;
+  }
+
+  /** 使う回し方 */
+  function splitTable() {
+    var wd = gymDays();
+    return SPLITS[Math.min(6, Math.max(2, wd.length))] || SPLITS[4];
+  }
+
+  /**
+   * その日の担当。
+   * @returns {{date, kind:'gym'|'free', part, focus, abs}}
+   *   kind='free' は「休みか有酸素」。どちらにするかは計画を作る側にまかせる
+   */
+  function dutyOf(date) {
+    var wd = gymDays();
+    if (!isGymDay(date, wd)) {
+      return { date: date, kind: 'free', part: '', focus: '', abs: false };
+    }
+    var tbl = splitTable();
+    var s = tbl[gymIndex(date, wd) % tbl.length];
+    return { date: date, kind: 'gym', part: s.part, focus: s.focus, abs: s.abs };
+  }
+
+  /** 範囲ぶんの担当割り */
+  function splitFor(from, days) {
+    var out = [];
+    for (var i = 0; i < Math.max(1, U.num(days, 7)); i++) {
+      out.push(dutyOf(U.addDays(from, i)));
+    }
+    return out;
+  }
+
   /** 直近の記録を、頼むときに渡せる形で（新しい順） */
   function history(n) {
     var logs = S.fitLogs(), plans = S.fitPlans();
@@ -259,6 +393,9 @@
         },
         trend: trend(28),
         recent: recent(4),
+        // どの日にどこを鍛えるかは、こちらで決めて渡す。
+        // 相手に任せると、1日で全身をやる組み方になりがちなので
+        split: splitFor(from, days),
         // 種目ごとの、いまの重さ。これを土台に組んでもらう
         loads: Object.keys(S.fitLoads()).map(function (k) {
           return { name: k, kg: S.fitLoads()[k].kg };
@@ -595,7 +732,9 @@
     CARDIO: CARDIO, STEP_UPPER: STEP_UPPER, STEP_LOWER: STEP_LOWER, dec: dec,
     ready: ready, bmi: bmi, trend: trend,
     step: step, repsGoal: repsGoal, nextWeight: nextWeight, applyProgress: applyProgress,
-    recent: recent, streak: streak, history: history,
+    recent: recent, streak: streak, history: history, totals: totals,
+    gymDays: gymDays, isGymDay: isGymDay, gymIndex: gymIndex,
+    dutyOf: dutyOf, splitFor: splitFor, splitTable: splitTable,
     plan: plan, adopt: adopt,
     pull: pull, autoPull: autoPull, postUrl: postUrl, checkInbox: checkInbox,
     weightKey: weightKey, easyUrl: easyUrl, parseCSV: parseCSV,

@@ -9,29 +9,234 @@
   var WDAY = ['日', '月', '火', '水', '木', '金', '土'];
   var DONE_LABEL = { full: 'やった', part: '途中まで', skip: 'できなかった' };
 
+  /* カレンダーで見ている月。画面を描き直しても覚えておく */
+  var calMonth = '';
+
   function render(root, params) {
-    var date = U.isISO(params && params.date) ? params.date : U.today();
-    var wrap = el('div', { class: 'page fit-page' });
     /* ショートカットが預けてくれた体重を、開いた拍子に入れる。
        届いていれば描き直す（何も無ければ黙って終わる） */
     F.autoPull().then(function (r) { if (r && r.added) DL.app.render(); });
 
-    wrap.appendChild(todayCard(date));
-    wrap.appendChild(weekStrip(date));
+    if (U.isISO(params && params.date)) dayPage(root, params.date);
+    else homePage(root);
+  }
+
+  /* ---------------- ホーム ---------------- */
+
+  function homePage(root) {
+    var wrap = el('div', { class: 'page fit-page' });
+    var today = U.today();
+
+    wrap.appendChild(monthCal());
+    wrap.appendChild(nextCard(today));
+
     wrap.appendChild(ui.section('体重', el('span', { class: 'muted small', text: bodyLine() })));
     wrap.appendChild(weightCard());
+
     wrap.appendChild(ui.section('続きぐあい', el('span', { class: 'muted small', text: 'ここ4週' })));
     wrap.appendChild(keepCard());
 
+    wrap.appendChild(ui.section('これまで', el('span', { class: 'muted small', text: '記録した ぶんの合計' })));
+    wrap.appendChild(totalCard());
+
     wrap.appendChild(el('div', { class: 'actions' }, [
-      ui.btn('計画を作ってもらう', 'primary', function () { planSheet(date); }, 'idea'),
-      ui.btn('体重を入れる', 'ghost', function () { weightSheet(U.today()); }, 'plus'),
-      ui.btn('体重計から取り込む', 'ghost', function () { importSheet(); }, 'cloud'),
-      ui.btn('からだと目標の設定', 'ghost', function () { profileSheet(); }, 'settings'),
-      ui.btn('記録の一覧', 'ghost', function () { historySheet(); }, 'task')
+      ui.btn('計画自動作成', 'primary', function () { planSheet(today); }, 'idea'),
+      ui.btn('記録の一覧', 'ghost', function () { historySheet(); }, 'task'),
+      ui.btn('設定', 'ghost', function () { settingsSheet(); }, 'settings')
     ]));
 
     root.appendChild(wrap);
+  }
+
+  /* ---------------- その日の中身 ---------------- */
+
+  function dayPage(root, date) {
+    var wrap = el('div', { class: 'page fit-page' });
+    wrap.appendChild(todayCard(date));
+    wrap.appendChild(weekStrip(date));
+    wrap.appendChild(el('div', { class: 'actions' }, [
+      ui.btn('筋トレのホームへ', 'ghost', function () { location.hash = '#/fit'; }, 'home')
+    ]));
+    root.appendChild(wrap);
+  }
+
+  /* ---------------- 筋トレのカレンダー ----------------
+
+     ふだんのカレンダーとは別もの。ここには筋トレの予定と記録だけを出す。
+     マスを押すと、その日の中身（#/fit/日付）へ行く */
+
+  function monthCal() {
+    var today = U.today();
+    if (!U.isISO(calMonth)) calMonth = U.monthStart(today);
+    var first = U.monthStart(calMonth);
+    var last = U.monthEnd(calMonth);
+    var box = el('div', { class: 'fit-cal' });
+
+    box.appendChild(el('div', { class: 'monthnav' }, [
+      el('button', { class: 'iconbtn', 'aria-label': '前の月',
+        onclick: function () { calMonth = U.addMonths(first, -1); DL.app.render(); }
+      }, ui.icon('chevronLeft', 20)),
+      el('span', { class: 'fc-title', text: first.slice(0, 4) + '年' + (+first.slice(5, 7)) + '月' }),
+      el('button', { class: 'iconbtn', 'aria-label': '次の月',
+        onclick: function () { calMonth = U.addMonths(first, 1); DL.app.render(); }
+      }, ui.icon('chevronRight', 20)),
+      ui.btn('今月', 'tiny ghost', function () { calMonth = U.monthStart(today); DL.app.render(); })
+    ]));
+
+    var head = el('div', { class: 'cal-head' });
+    for (var i = 0; i < 7; i++) {
+      head.appendChild(el('div', {
+        class: 'cal-hd' + (i === 0 ? ' sun' : i === 6 ? ' sat' : ''), text: U.wdName(i)
+      }));
+    }
+    box.appendChild(head);
+
+    var lead = U.dow(first);
+    var from = U.addDays(first, -lead);
+    var rows = Math.ceil((lead + U.diffDays(first, last) + 1) / 7);
+    var grid = el('div', { class: 'fc-grid' });
+    for (var c = 0; c < rows * 7; c++) grid.appendChild(calCell(U.addDays(from, c), first, today));
+    box.appendChild(grid);
+
+    box.appendChild(el('div', { class: 'fc-legend' }, [
+      el('span', { class: 'fc-key done' }, el('i', {})), el('span', { text: 'できた' }),
+      el('span', { class: 'fc-key miss' }, el('i', {})), el('span', { text: 'できなかった' }),
+      el('span', { class: 'fc-key plan' }, el('i', {})), el('span', { text: '予定' })
+    ]));
+    return box;
+  }
+
+  function calCell(d, first, today) {
+    var p = S.fitPlan(d), l = S.fitLog(d);
+    var duty = F.dutyOf(d);
+    var cls = 'fc-cell';
+    if (d.slice(0, 7) !== first.slice(0, 7)) cls += ' out';
+    if (d === today) cls += ' today';
+    if (U.dow(d) === 0) cls += ' sun';
+    if (U.dow(d) === 6) cls += ' sat';
+    if (l && l.done !== 'skip') cls += ' done';
+    else if (l) cls += ' miss';
+    else if (p && p.kind !== 'rest') cls += ' plan';
+    // 計画がまだ無い先の日でも、その日の担当が分かるように薄く出す
+    if (!p && !l && duty.kind === 'gym') cls += ' duty';
+
+    var label = p ? shortTitle(p) : (duty.kind === 'gym' ? duty.part.slice(0, 4) : '');
+    return el('button', {
+      class: cls,
+      'aria-label': U.fmtMDW(d) + '　' + ((p && p.title) || (duty.kind === 'gym' ? duty.part : '休み')),
+      onclick: function () { location.hash = '#/fit/' + d; }
+    }, [
+      el('span', { class: 'fc-n', text: String(U.num(d.slice(8, 10), 0)) }),
+      el('span', { class: 'fc-t', text: label }),
+      p && p.abs && p.abs.length ? el('span', { class: 'fc-abs', text: '腹' }) : null
+    ]);
+  }
+
+  /* 今日（か、いちばん近い先の予定）を、ひとこと出す */
+  function nextCard(today) {
+    var d = today;
+    for (var i = 0; i < 14; i++) {
+      var p = S.fitPlan(d);
+      if (p && p.kind !== 'rest') break;
+      d = U.addDays(d, 1);
+    }
+    var plan = S.fitPlan(d);
+    var log = S.fitLog(d);
+    if (!plan) {
+      return el('div', { class: 'card' }, [
+        el('div', { class: 'row-title', text: 'まだ計画がありません' }),
+        el('p', { class: 'muted small',
+          text: '「計画自動作成」を押すと、いまの体重と直近の記録から、'
+            + '部位を分けて何日かぶんをまとめて組んでもらえます。' })
+      ]);
+    }
+    return el('button', {
+      class: 'card fit-next', onclick: function () { location.hash = '#/fit/' + d; }
+    }, [
+      el('div', { class: 'fit-head-l' }, [
+        el('span', { class: 'cd-label',
+          text: U.fmtYMDW(d) + (d === today ? '　今日' : '　つぎ') }),
+        el('b', { text: plan.title })
+      ]),
+      el('div', { class: 'row-sub' }, [
+        plan.minutes ? ui.chip(plan.minutes + '分', 'soft') : null,
+        plan.items.length ? ui.chip(plan.items.length + '種目', 'ghosty') : null,
+        plan.abs.length ? ui.chip('腹筋メニュー', 'ghosty') : null,
+        plan.cardio ? ui.chip('有酸素', 'ghosty') : null,
+        log ? ui.chip(DONE_LABEL[log.done], log.done === 'skip' ? 'danger' : 'ok') : null
+      ]),
+      plan.focus ? el('p', { class: 'muted small', text: plan.focus }) : null
+    ]);
+  }
+
+  /* これまでの合計 */
+  function totalCard() {
+    var t = F.totals();
+    if (!t.days) {
+      return el('div', { class: 'card' },
+        ui.empty('まだ記録がありません。計画を作って、やったぶんを記録していくとここに出ます。'));
+    }
+    return el('div', { class: 'card' }, [
+      el('div', { class: 'sum-grid' }, [
+        el('div', { class: 'sum-box' }, [
+          el('span', { text: 'こなした' }), el('b', { text: t.days + '日' })
+        ]),
+        el('div', { class: 'sum-box' }, [
+          el('span', { text: 'ジム' }), el('b', { text: t.gym + '回' })
+        ]),
+        el('div', { class: 'sum-box' }, [
+          el('span', { text: '走った' }), el('b', { text: t.km + 'km' })
+        ]),
+        el('div', { class: 'sum-box' }, [
+          el('span', { text: '合計' }), el('b', { text: t.hours + '時間' })
+        ])
+      ]),
+      t.since ? el('p', { class: 'muted small', text: U.fmtYMD(t.since) + ' から' }) : null
+    ]);
+  }
+
+  /* ---------------- 設定（ふだんは触らないもの） ---------------- */
+
+  function settingsSheet() {
+    ui.sheet({
+      title: '筋トレの設定',
+      body: el('div', { class: 'form' }, [
+        el('div', { class: 'card' }, [
+          el('div', { class: 'row-title', text: 'からだと目標' }),
+          el('p', { class: 'muted small',
+            text: '身長・目標・週に何回・行く曜日。行く曜日を変えると、部位の回し方も変わります。' }),
+          ui.btn('からだと目標', 'ghost full', function () { profileSheet(); }, 'settings')
+        ]),
+        el('div', { class: 'card' }, [
+          el('div', { class: 'row-title', text: '体重' }),
+          el('p', { class: 'muted small',
+            text: 'ショートカットが毎朝そっと入れてくれます。'
+              + '手で入れたいときや、取り込み先を変えたいときだけ使ってください。' }),
+          el('div', { class: 'row-wrap' }, [
+            ui.btn('体重を入れる', 'ghost', function () { weightSheet(U.today()); }, 'plus'),
+            ui.btn('体重計から取り込む', 'ghost', function () { importSheet(); }, 'cloud')
+          ])
+        ]),
+        el('div', { class: 'card' }, [
+          el('div', { class: 'row-title', text: '部位の回し方' }),
+          splitList()
+        ])
+      ])
+    });
+  }
+
+  /* いまの設定だと、どの順で部位が回るか */
+  function splitList() {
+    var wd = F.gymDays();
+    var tbl = F.splitTable();
+    return el('div', {}, [
+      el('p', { class: 'muted small',
+        text: 'ジムの日：' + wd.map(function (i) { return U.wdName(i); }).join('・')
+          + '　この順で回します（1日で全身はやりません）' }),
+      el('ol', { class: 'fit-steps' }, tbl.map(function (s) {
+        return el('li', { text: s.part + '（' + s.focus + '）' + (s.abs ? '　＋腹筋メニュー' : '') });
+      }))
+    ]);
   }
 
   /* 身長・BMI をひとことで */
@@ -64,8 +269,8 @@
 
     if (!plan) {
       box.appendChild(el('p', { class: 'muted small',
-        text: '「計画を作ってもらう」を押すと、いまの体重と直近の記録から、'
-          + '何日かぶんをまとめて組んでもらえます。' }));
+        text: '筋トレのホームの「計画自動作成」を押すと、いまの体重と直近の記録から、'
+          + '部位を分けて何日かぶんをまとめて組んでもらえます。' }));
       return box;
     }
 
@@ -94,6 +299,22 @@
         ]));
       });
       box.appendChild(list);
+    }
+
+    /* 腹筋は専用のメニュー。器具の種目とは分けて出す */
+    if (plan.abs.length) {
+      var absBox = el('div', { class: 'fit-abs' }, [
+        el('div', { class: 'row-title', text: '腹筋メニュー' })
+      ]);
+      plan.abs.forEach(function (a) {
+        var didIt = log && log.items.filter(function (x) { return x.name === a.name; })[0];
+        absBox.appendChild(el('div', { class: 'fit-abs-i' + (didIt ? ' is-done' : '') }, [
+          el('b', { text: a.name }),
+          el('span', { class: 'fit-set', text: a.reps + '　' + a.sets + 'セット' }),
+          a.note ? el('span', { class: 'muted small', text: a.note }) : null
+        ]));
+      });
+      box.appendChild(absBox);
     }
 
     if (plan.cardio) {
@@ -292,7 +513,7 @@
     ]);
   }
 
-  /* ---------------- 計画を作ってもらう ---------------- */
+  /* ---------------- 計画自動作成 ---------------- */
 
   function planSheet(date) {
     var pr = S.fit().profile;
@@ -335,7 +556,7 @@
       ]), body.firstChild);
     }
 
-    ui.sheet({ title: '計画を作ってもらう', body: body });
+    ui.sheet({ title: '計画自動作成', body: body });
 
     function run() {
       if (busy) return;
@@ -374,6 +595,10 @@
           return el('li', { text: i.name + '　' + (i.weight ? i.weight + 'kg' : '自重')
             + '×' + i.reps + '　' + i.sets + 'セット' });
         })) : null,
+        (d.abs || []).length ? el('p', { class: 'muted small',
+          text: '腹筋メニュー：' + d.abs.map(function (a) {
+            return a.name + ' ' + a.reps + '×' + a.sets;
+          }).join('／') }) : null,
         d.cardio ? el('p', { class: 'muted small',
           text: d.cardio.kind + ' ' + (d.cardio.distance || 0) + 'km '
             + (d.cardio.minutes || 0) + '分' }) : null
@@ -416,8 +641,14 @@
       { value: 'skip', label: 'できなかった' }
     ], done, function (v) { done = v; })));
 
-    // 種目ごとのセット。計画の回数と重さを最初から入れておく
-    (plan ? plan.items : (prev ? prev.items : [])).forEach(function (pi) {
+    // 種目ごとのセット。計画の回数と重さを最初から入れておく。
+    // 腹筋メニューも同じ形で記録できるよう、うしろに続ける
+    var planned = plan
+      ? plan.items.concat(plan.abs.map(function (a) {
+        return { name: a.name, gear: '自重', sets: a.sets, reps: a.reps, weight: 0 };
+      }))
+      : (prev ? prev.items : []);
+    planned.forEach(function (pi) {
       var was = prev && prev.items.filter(function (x) { return x.name === pi.name; })[0];
       var nSets = Math.max(1, pi.sets || (was ? was.sets.length : 3));
       var rows = [];
@@ -526,7 +757,7 @@
           ]);
         })),
         el('p', { class: 'muted small',
-          text: 'この重さは、次に計画を作ってもらうときの土台になります。' })
+          text: 'この重さは、次に計画を作るときの土台になります。' })
       ])
     });
   }
@@ -550,7 +781,7 @@
         ui.field('目安の時間(分)', minIn),
         ui.field('メモ', noteIn),
         el('p', { class: 'muted small',
-          text: '種目の中身を大きく変えたいときは、「計画を作ってもらう」から組み直すほうが早いです。' })
+          text: '種目の中身を大きく変えたいときは、「計画自動作成」から組み直すほうが早いです。' })
       ]),
       actions: [
         ui.btn('キャンセル', 'ghost', function () { close(); }),
