@@ -65,6 +65,10 @@
 
     var tab = { home: 'home', fit: 'fit', calendar: 'calendar', day: 'calendar', log: 'calendar', logs: 'calendar', time: 'calendar', projects: 'projects', project: 'projects', pages: 'projects', docs: 'projects', doc: 'projects', crm: 'projects', sales: 'sales', stock: 'sales', onsite: 'sales', books: 'books', files: 'files' }[route.name];
     U.$$('.tab').forEach(function (t) { t.classList.toggle('on', t.dataset.tab === tab); });
+
+    /* 筋トレのタブだけ、黄と黒の見た目に切り替える。
+       シートは .view の外（#sheetRoot）に出るので、body に付ける */
+    document.body.classList.toggle('fit-theme', route.name === 'fit');
     // 設定は下のタブから外し、題名の右の歯車から開く。
     // 歯車を出すのはホームだけにして、ほかのタブでは邪魔をしない
     // （設定の画面でも出しておかないと、開いた先で行き場が分からなくなる）
