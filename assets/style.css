@@ -2622,7 +2622,55 @@ body.fit-theme .sheet,
 body.fit-theme .sheet * { border-radius: 0; }
 
 /* ヘッダーと下タブ。中身と地続きに見えるよう、同じ黒に揃える */
-body.fit-theme .appbar { background: #050505; border-bottom: 1px solid var(--accent); }
+/* ヘッダーの下の黄の線に、電気を走らせる。
+   線そのものは ::after、走る火花は ::before と .appbar-inner::after。
+   火花は一色の塗りを clip-path でぎざぎざに切っただけで、ぼかしも
+   グラデーションも使っていない。動きは steps() で飛ばして、
+   なめらかに滑るのではなく「ビリビリ」と跳ねるようにする。 */
+body.fit-theme .appbar {
+  background: #050505; border-bottom: 0;
+  overflow: hidden;              /* 火花が右へ抜けても横に広げない */
+}
+body.fit-theme .appbar::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
+  background: var(--accent);
+  animation: fzFlick 2.6s steps(1) infinite;
+}
+body.fit-theme .appbar::before,
+body.fit-theme .appbar-inner::after {
+  content: ''; position: absolute; bottom: 0; left: 0; z-index: 1;
+  height: 7px; width: 54px; background: #fffbe3;
+  clip-path: polygon(0 100%, 18% 14%, 30% 100%, 46% 0, 60% 100%, 74% 10%, 88% 100%, 100% 40%, 100% 100%);
+  animation: fzRun 2.6s steps(16) infinite;
+}
+body.fit-theme .appbar-inner { position: relative; }
+/* 2本目は細く暗く、少し遅らせて走らせる */
+body.fit-theme .appbar-inner::after {
+  height: 5px; width: 34px; background: var(--accent);
+  animation-delay: .9s; animation-duration: 3.1s;
+}
+@keyframes fzRun {
+  0%   { transform: translateX(-56px); opacity: 0; }
+  4%   { opacity: 1; }
+  52%  { opacity: 1; }
+  56%  { opacity: 0; }
+  100% { transform: translateX(100vw); opacity: 0; }
+}
+@keyframes fzFlick {
+  0%, 30%, 100% { opacity: 1; }
+  32% { opacity: .3; }
+  34% { opacity: 1; }
+  58% { opacity: .55; }
+  60% { opacity: 1; }
+  61% { opacity: .3; }
+  63% { opacity: 1; }
+}
+/* 動きを控えめにしている人には、光らない1本の線だけ */
+@media (prefers-reduced-motion: reduce) {
+  body.fit-theme .appbar::after { animation: none; }
+  body.fit-theme .appbar::before,
+  body.fit-theme .appbar-inner::after { display: none; }
+}
 body.fit-theme .appbar-title { letter-spacing: .18em; font-size: 13.5px; }
 body.fit-theme .tabbar { background: #050505; border-top-color: var(--line); }
 
