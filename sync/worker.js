@@ -1736,6 +1736,14 @@ async function weights(request, env, cors, url, id) {
       }
       return null;
     };
+    /* 欄そのものが無いのか、欄はあるが空なのかで、直す場所がまるで違う。
+       「&kg=」で終わっているなら、ヘルスケアから体重が取れていないということ */
+    const qhas = names => {
+      for (const [k] of q) {
+        if (names.indexOf(k.toLowerCase().replace(/[^a-z]/g, '')) >= 0) return true;
+      }
+      return false;
+    };
     const qkg = qval(['kg', 'weight']);
     let body = null;
     if (qkg) {
@@ -1748,7 +1756,11 @@ async function weights(request, env, cors, url, id) {
       // ショートカットの ▶ で見たときに、何が足りないのか分かる言い方にする
       return json({
         error: 'no_weight',
-        hint: 'URL の終わりが &kg=81.2 のように、数字まで入っているか見てください'
+        hint: qhas(['kg', 'weight'])
+          ? '&kg= のうしろが空でした。ショートカットの「値」が空です。'
+            + 'ヘルスケアに体重が入っているか、設定→ヘルスケア→データアクセスとデバイス→'
+            + 'ショートカットで「体重」の読み出しが許可されているかを見てください'
+          : 'URL の終わりに &kg=81.2 のような体重が付いていません'
       }, 400, cors);
     }
     const list = Array.isArray(body && body.items) ? body.items : [body];
