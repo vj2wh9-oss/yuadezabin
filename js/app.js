@@ -99,6 +99,10 @@
     if (route.name !== prevRoute) {
       // 当日モードを離れたら、画面を消さない設定は返す
       if (prevRoute === 'onsite') DL.views.onsite.left();
+      /* 筋トレのタブに入るときは、稲妻が溜まりきるまで幕をかけてから見せる。
+         中で日付を行き来するあいだは出さない（route の名前は fit のまま） */
+      if (route.name === 'fit') DL.views.fit.intro();
+      else DL.views.fit.closeIntro();
       prevRoute = route.name;
       // 別の画面へ移ったら、開きっぱなしのシートは畳む。
       // （検索から経費を開いたあと戻る、のように画面をまたぐ移動があるため）

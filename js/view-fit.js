@@ -1244,6 +1244,87 @@
     ui.sheet({ title: '記録の一覧', body: body });
   }
 
+  /* ---------------- 入るときの溜め ----------------
+
+     筋トレのタブに入るあいだだけ、黒い幕でいったん覆う。
+     ダンベルが下から黄に染まり、稲妻のゲージが 0 から 100 まで溜まる。
+     溜まりきったら幕が開いて、中の画面が出てくる。
+
+     数字とゲージとダンベルの染まりぐあいを、同じ値から描く。
+     CSS の時間任せにすると三つがずれるので、ここで毎フレーム進める。 */
+
+  var CHARGE_MS = 820;
+  /* ダンベルの絵は 24 のマスの縦 7.5〜16.5 にしかない。
+     枠の上下いっぱいで切ると、半分も溜まらないうちに染まりきってしまうので、
+     絵のあるところだけを行き来させる。線の太さぶん、少し外まで取る */
+  var CLIP_LO = 71.4, CLIP_HI = 28.4;
+  var introEl = null;
+  var introRaf = 0;
+
+  function calmly() {
+    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+
+  function intro() {
+    // 動きを控えめにしている人には出さない。起動の幕が出ているうちも出さない
+    if (calmly()) return;
+    var splash = document.getElementById('splash');
+    if (splash && !splash.classList.contains('out')) return;
+    closeIntro();
+
+    var bar = el('i', { class: 'fi-bar-in' });
+    var fill = ui.icon('dumbbell', 112, 'fi-dumb fi-dumb-on');
+    var num = el('b', { class: 'fi-num', text: '0' });
+    var bolt = ui.icon('bolt', 34, 'fi-bolt');
+    var label = el('span', { class: 'fi-label', text: 'CHARGING' });
+
+    introEl = el('div', {
+      id: 'fitIntro', class: 'fit-intro', 'aria-hidden': 'true'
+    }, [
+      el('div', { class: 'fi-stage' }, [
+        ui.icon('dumbbell', 112, 'fi-dumb fi-dumb-off'),
+        fill,
+        bolt
+      ]),
+      el('div', { class: 'fi-meter' }, [
+        el('span', { class: 'fi-bar' }, bar),
+        el('span', { class: 'fi-read' }, [num, el('span', { class: 'fi-pct', text: '%' })])
+      ]),
+      label
+    ]);
+    document.body.appendChild(introEl);
+
+    var t0 = 0;
+    var step = function (now) {
+      if (!introEl) return;
+      if (!t0) t0 = now;
+      var t = Math.min(1, (now - t0) / CHARGE_MS);
+      // 後半をゆるめて、溜まりきる手前で「ぐっ」とくるようにする
+      var v = Math.round(100 * (1 - Math.pow(1 - t, 2.2)));
+      num.textContent = String(v);
+      bar.style.width = v + '%';
+      // ダンベルは下から染まる
+      fill.style.clipPath =
+        'inset(' + (CLIP_LO - (CLIP_LO - CLIP_HI) * v / 100).toFixed(2) + '% 0 0 0)';
+      bolt.style.opacity = String(0.25 + 0.75 * (v / 100));
+      if (t < 1) { introRaf = requestAnimationFrame(step); return; }
+      // 溜まりきった。ひと光りさせてから幕を開ける
+      label.textContent = 'READY';
+      introEl.classList.add('full');
+      setTimeout(closeIntro, 220);
+    };
+    introRaf = requestAnimationFrame(step);
+  }
+
+  function closeIntro() {
+    if (introRaf) { cancelAnimationFrame(introRaf); introRaf = 0; }
+    if (introEl && introEl.parentNode) introEl.parentNode.removeChild(introEl);
+    introEl = null;
+  }
+
   DL.views = DL.views || {};
-  DL.views.fit = { render: render, logSheet: logSheet, weightSheet: weightSheet };
+  DL.views.fit = {
+    render: render, logSheet: logSheet, weightSheet: weightSheet,
+    intro: intro, closeIntro: closeIntro
+  };
 })(window.DL);

@@ -2723,3 +2723,59 @@ body.fit-theme .sheet-foot { border-top-color: var(--line); }
 body.fit-theme input, body.fit-theme select, body.fit-theme textarea {
   background: #0a0a09; border-color: var(--line2); color: var(--text);
 }
+
+/* ---- 筋トレに入るときの溜め ----
+
+   黒い幕。ダンベルが下から黄に染まり、ゲージが 0 から 100 まで溜まる。
+   溜まりきったら、ひと光りして幕が開く（view-fit.js が外す）。
+   角は落とし、グラデーションは使わない。 */
+.fit-intro {
+  position: fixed; inset: 0; z-index: 90;
+  background: #050505;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 22px; pointer-events: none;
+  animation: fiIn .12s ease-out;
+}
+@keyframes fiIn { from { opacity: 0; } to { opacity: 1; } }
+
+.fi-stage { position: relative; width: 112px; height: 112px; }
+.fi-dumb { position: absolute; inset: 0; width: 112px; height: 112px; stroke-width: 1.2; }
+.fi-dumb-off { color: #2a2a24; }
+/* 染まるほう。clip-path は view-fit.js が毎フレーム動かす */
+.fi-dumb-on { color: #ffd400; clip-path: inset(71.4% 0 0 0); }
+/* 稲妻はダンベルの真ん中に重ねる。明るさも js が動かす */
+.fi-bolt {
+  position: absolute; left: 50%; top: 50%; margin: -17px 0 0 -17px;
+  color: #ffd400; fill: #ffd400; stroke: none; opacity: .25;
+}
+
+.fi-meter { display: flex; align-items: center; gap: 12px; width: 212px; }
+.fi-bar { flex: 1; height: 8px; background: #16160f; border: 1px solid #2a2a24; display: block; }
+.fi-bar-in { display: block; height: 100%; width: 0; background: #ffd400; }
+.fi-read {
+  display: flex; align-items: baseline; gap: 1px; color: #ffd400;
+  font-variant-numeric: tabular-nums; min-width: 54px; justify-content: flex-end;
+}
+.fi-num { font-size: 24px; font-weight: 800; line-height: 1; letter-spacing: -.02em; }
+.fi-pct { font-size: 12px; font-weight: 700; }
+.fi-label {
+  font-size: 10px; font-weight: 700; letter-spacing: .34em; color: #6d6b60;
+  padding-left: .34em;
+}
+
+/* 溜まりきった瞬間。白く飛ばさず、黄で一度だけ強く光らせる */
+.fit-intro.full { animation: fiOut .22s ease-in forwards; }
+.fit-intro.full .fi-dumb-on { animation: fiZap .22s ease-out; }
+.fit-intro.full .fi-bolt { opacity: 1; animation: fiZap .22s ease-out; }
+.fit-intro.full .fi-label { color: #ffd400; }
+@keyframes fiOut { to { opacity: 0; } }
+@keyframes fiZap {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+
+/* 動きを控えめにしている人には、そもそも出さない（js 側でも見ている） */
+@media (prefers-reduced-motion: reduce) {
+  .fit-intro { display: none; }
+}
