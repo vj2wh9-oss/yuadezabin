@@ -1753,14 +1753,17 @@ async function weights(request, env, cors, url, id) {
     } else if (request.method === 'POST') {
       try { body = await request.json(); } catch (e) { return json({ error: 'bad_json' }, 400, cors); }
     } else {
-      // ショートカットの ▶ で見たときに、何が足りないのか分かる言い方にする
+      /* ショートカットの ▶ で見たときに、何が足りないのか分かる言い方にする。
+         何が届いたのかも名前だけ返す（合鍵は返さない）。
+         「kg が来ていない」のか「来ているが空」なのかが、これで一目で分かる */
       return json({
         error: 'no_weight',
         hint: qhas(['kg', 'weight'])
           ? '&kg= のうしろが空でした。ショートカットの「値」が空です。'
             + 'ヘルスケアに体重が入っているか、設定→ヘルスケア→データアクセスとデバイス→'
             + 'ショートカットで「体重」の読み出しが許可されているかを見てください'
-          : 'URL の終わりに &kg=81.2 のような体重が付いていません'
+          : 'URL の終わりに &kg=81.2 のような体重が付いていません',
+        seen: [...q.keys()].filter(n => n.toLowerCase().replace(/[^a-z]/g, '') !== 'k')
       }, 400, cors);
     }
     const list = Array.isArray(body && body.items) ? body.items : [body];
