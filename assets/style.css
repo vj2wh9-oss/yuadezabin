@@ -2758,7 +2758,8 @@ body.fit-theme input, body.fit-theme select, body.fit-theme textarea {
 .fi-curtain {
   position: absolute; inset: 0; background: #050505;
   transform-origin: top; transform: scaleY(0);
-  animation: fiDrop .2s cubic-bezier(.3, 0, .2, 1) forwards;
+  /* 長さは view-fit.js が --fi-ms で渡す（js の待ち時間とそろえるため） */
+  animation: fiDrop var(--fi-ms, .34s) cubic-bezier(.3, 0, .2, 1) forwards;
 }
 @keyframes fiDrop { to { transform: scaleY(1); } }
 
@@ -2775,7 +2776,7 @@ body.fit-theme input, body.fit-theme select, body.fit-theme textarea {
 .fit-outro {
   background: #050505;
   transform-origin: top; transform: scaleY(1);
-  animation: fiLift .26s cubic-bezier(.4, 0, .2, 1) forwards;
+  animation: fiLift var(--fi-ms, .42s) cubic-bezier(.4, 0, .2, 1) forwards;
 }
 @keyframes fiLift { to { transform: scaleY(0); } }
 

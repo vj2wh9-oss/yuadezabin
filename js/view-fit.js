@@ -1259,8 +1259,9 @@
      溜めの数字・ゲージ・ダンベルの染まりは、同じ値から描く。
      CSS の時間任せにすると三つがずれるので、ここで毎フレーム進める。 */
 
-  var CURTAIN_MS = 200;        // 幕が降りきるまで
-  var LIFT_MS = 260;           // 幕が上がりきるまで
+  /* 幕の長さ。CSS には --fi-ms として渡すので、ここだけ直せばそろう */
+  var CURTAIN_MS = 340;        // 幕が降りきるまで
+  var LIFT_MS = 420;           // 幕が上がりきるまで
   var CHARGE_MS = 820;
   /* ダンベルの絵は 24 のマスの縦 7.5〜16.5 にしかない。
      枠の上下いっぱいで切ると、半分も溜まらないうちに染まりきってしまうので、
@@ -1301,6 +1302,7 @@
     closeFx();
     build();
     curtainDown = true;
+    fxEl.style.setProperty('--fi-ms', CURTAIN_MS + 'ms');
     document.body.appendChild(fxEl);
     later(again, CURTAIN_MS);
     return true;
@@ -1371,6 +1373,7 @@
     /* 幕はもう張ってある状態から始める。次の画面はその裏で描き終わっていて、
        幕が上がるにつれて下から出てくる */
     fxEl = el('div', { id: 'fitOutro', class: 'fit-outro', 'aria-hidden': 'true' });
+    fxEl.style.setProperty('--fi-ms', LIFT_MS + 'ms');
     document.body.appendChild(fxEl);
     later(closeFx, LIFT_MS);
   }
