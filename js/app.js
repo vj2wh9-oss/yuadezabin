@@ -40,7 +40,15 @@
 
   function render() {
     if (!S.state) return;      // 読み込みが終わるまでは描かない
-    route = parseHash();
+
+    /* 筋トレのタブに入るときは、いまの明るい画面の上に黒い幕を降ろしてから
+       中身を入れ替える。先に入れ替えると、幕が降りる前に真っ黒になってしまい、
+       幕の意味がなくなる。降りきったら、ここへ戻ってきて描き直す */
+    var next = parseHash();
+    if (next.name === 'fit' && prevRoute !== 'fit'
+      && DL.views.fit.dropCurtain(render)) return;
+
+    route = next;
     var key = location.hash;
     var scroll = window.scrollY;
 
@@ -99,10 +107,12 @@
     if (route.name !== prevRoute) {
       // 当日モードを離れたら、画面を消さない設定は返す
       if (prevRoute === 'onsite') DL.views.onsite.left();
-      /* 筋トレのタブに入るときは、稲妻が溜まりきるまで幕をかけてから見せる。
+      /* 筋トレは黒、ほかのタブは明るい。そのまま切り替えると目に刺さるので、
+         あいだに黒い幕をはさむ。入るときは降ろしてから溜め、出るときは上げる。
          中で日付を行き来するあいだは出さない（route の名前は fit のまま） */
       if (route.name === 'fit') DL.views.fit.intro();
-      else DL.views.fit.closeIntro();
+      else if (prevRoute === 'fit') DL.views.fit.outro();
+      else DL.views.fit.closeFx();
       prevRoute = route.name;
       // 別の画面へ移ったら、開きっぱなしのシートは畳む。
       // （検索から経費を開いたあと戻る、のように画面をまたぐ移動があるため）

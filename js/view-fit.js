@@ -1244,59 +1244,106 @@
     ui.sheet({ title: '記録の一覧', body: body });
   }
 
-  /* ---------------- 入るときの溜め ----------------
+  /* ---------------- 出入りの幕 ----------------
 
-     筋トレのタブに入るあいだだけ、黒い幕でいったん覆う。
-     ダンベルが下から黄に染まり、稲妻のゲージが 0 から 100 まで溜まる。
-     溜まりきったら幕が開いて、中の画面が出てくる。
+     筋トレのタブは黒、ほかのタブは明るい。そのまま切り替えると
+     目に刺さるので、あいだに黒い幕をはさむ。
 
-     数字とゲージとダンベルの染まりぐあいを、同じ値から描く。
+     入るとき … 上から黒い幕が降りてくる → 稲妻が 0 から 100 まで溜まる
+                 → 溜まりきったら幕が開いて、中の画面が出る
+     出るとき … 黒い幕を張ったところから始めて、下から上へ上げる
+
+     どちらも幕は上端を軸にした縦の伸び縮み。降りるのも上がるのも
+     同じ軸なので、行き来が一本の動きにつながって見える。
+
+     溜めの数字・ゲージ・ダンベルの染まりは、同じ値から描く。
      CSS の時間任せにすると三つがずれるので、ここで毎フレーム進める。 */
 
+  var CURTAIN_MS = 200;        // 幕が降りきるまで
+  var LIFT_MS = 260;           // 幕が上がりきるまで
   var CHARGE_MS = 820;
   /* ダンベルの絵は 24 のマスの縦 7.5〜16.5 にしかない。
      枠の上下いっぱいで切ると、半分も溜まらないうちに染まりきってしまうので、
      絵のあるところだけを行き来させる。線の太さぶん、少し外まで取る */
   var CLIP_LO = 71.4, CLIP_HI = 28.4;
-  var introEl = null;
-  var introRaf = 0;
+  var fxEl = null;
+  var fxRaf = 0;
+  var fxTimers = [];
+  var fxParts = null;
+  var curtainDown = false;
 
   function calmly() {
     return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   }
 
-  function intro() {
-    // 動きを控えめにしている人には出さない。起動の幕が出ているうちも出さない
-    if (calmly()) return;
+  /* 幕を出してよいか。動きを控えめにしている人と、
+     起動の幕がまだ出ているあいだは、何もしない */
+  function mayPlay() {
+    if (calmly()) return false;
     var splash = document.getElementById('splash');
-    if (splash && !splash.classList.contains('out')) return;
-    closeIntro();
+    return !(splash && !splash.classList.contains('out'));
+  }
 
+  function later(fn, ms) { fxTimers.push(setTimeout(fn, ms)); }
+
+  /* ---- 入るとき ----
+
+     幕を降ろすのは、中身を入れ替える前。そうしないと明るい画面が
+     一瞬で黒くなってしまい、幕が降りる意味がなくなる。
+     降りきったら app.js に描き直してもらい、そこから溜め始める。 */
+
+  /**
+   * 黒い幕を降ろす。降りきったら again() を呼ぶ。
+   * @returns {boolean} true なら、こちらで引き取ったので描き直しを待ってほしい
+   */
+  function dropCurtain(again) {
+    if (!mayPlay() || curtainDown) return false;
+    closeFx();
+    build();
+    curtainDown = true;
+    document.body.appendChild(fxEl);
+    later(again, CURTAIN_MS);
+    return true;
+  }
+
+  function intro() {
+    // 幕が降りきって描き直された、そのとき。降りていなければ何もしない
+    if (!curtainDown || !fxEl) return;
+    fxEl.classList.add('down');
+    charge(fxParts.bar, fxParts.fill, fxParts.num, fxParts.bolt, fxParts.label);
+  }
+
+  function build() {
     var bar = el('i', { class: 'fi-bar-in' });
     var fill = ui.icon('dumbbell', 112, 'fi-dumb fi-dumb-on');
     var num = el('b', { class: 'fi-num', text: '0' });
     var bolt = ui.icon('bolt', 34, 'fi-bolt');
     var label = el('span', { class: 'fi-label', text: 'CHARGING' });
 
-    introEl = el('div', {
+    fxEl = el('div', {
       id: 'fitIntro', class: 'fit-intro', 'aria-hidden': 'true'
     }, [
-      el('div', { class: 'fi-stage' }, [
-        ui.icon('dumbbell', 112, 'fi-dumb fi-dumb-off'),
-        fill,
-        bolt
-      ]),
-      el('div', { class: 'fi-meter' }, [
-        el('span', { class: 'fi-bar' }, bar),
-        el('span', { class: 'fi-read' }, [num, el('span', { class: 'fi-pct', text: '%' })])
-      ]),
-      label
+      el('div', { class: 'fi-curtain' }),
+      el('div', { class: 'fi-body' }, [
+        el('div', { class: 'fi-stage' }, [
+          ui.icon('dumbbell', 112, 'fi-dumb fi-dumb-off'),
+          fill,
+          bolt
+        ]),
+        el('div', { class: 'fi-meter' }, [
+          el('span', { class: 'fi-bar' }, bar),
+          el('span', { class: 'fi-read' }, [num, el('span', { class: 'fi-pct', text: '%' })])
+        ]),
+        label
+      ])
     ]);
-    document.body.appendChild(introEl);
+    fxParts = { bar: bar, fill: fill, num: num, bolt: bolt, label: label };
+  }
 
+  function charge(bar, fill, num, bolt, label) {
     var t0 = 0;
     var step = function (now) {
-      if (!introEl) return;
+      if (!fxEl) return;
       if (!t0) t0 = now;
       var t = Math.min(1, (now - t0) / CHARGE_MS);
       // 後半をゆるめて、溜まりきる手前で「ぐっ」とくるようにする
@@ -1307,24 +1354,40 @@
       fill.style.clipPath =
         'inset(' + (CLIP_LO - (CLIP_LO - CLIP_HI) * v / 100).toFixed(2) + '% 0 0 0)';
       bolt.style.opacity = String(0.25 + 0.75 * (v / 100));
-      if (t < 1) { introRaf = requestAnimationFrame(step); return; }
+      if (t < 1) { fxRaf = requestAnimationFrame(step); return; }
       // 溜まりきった。ひと光りさせてから幕を開ける
       label.textContent = 'READY';
-      introEl.classList.add('full');
-      setTimeout(closeIntro, 220);
+      fxEl.classList.add('full');
+      later(closeFx, 220);
     };
-    introRaf = requestAnimationFrame(step);
+    fxRaf = requestAnimationFrame(step);
   }
 
-  function closeIntro() {
-    if (introRaf) { cancelAnimationFrame(introRaf); introRaf = 0; }
-    if (introEl && introEl.parentNode) introEl.parentNode.removeChild(introEl);
-    introEl = null;
+  /* ---- 出るとき ---- */
+
+  function outro() {
+    if (!mayPlay()) return;
+    closeFx();
+    /* 幕はもう張ってある状態から始める。次の画面はその裏で描き終わっていて、
+       幕が上がるにつれて下から出てくる */
+    fxEl = el('div', { id: 'fitOutro', class: 'fit-outro', 'aria-hidden': 'true' });
+    document.body.appendChild(fxEl);
+    later(closeFx, LIFT_MS);
+  }
+
+  function closeFx() {
+    if (fxRaf) { cancelAnimationFrame(fxRaf); fxRaf = 0; }
+    fxTimers.forEach(clearTimeout);
+    fxTimers = [];
+    if (fxEl && fxEl.parentNode) fxEl.parentNode.removeChild(fxEl);
+    fxEl = null;
+    fxParts = null;
+    curtainDown = false;
   }
 
   DL.views = DL.views || {};
   DL.views.fit = {
     render: render, logSheet: logSheet, weightSheet: weightSheet,
-    intro: intro, closeIntro: closeIntro
+    dropCurtain: dropCurtain, intro: intro, outro: outro, closeFx: closeFx
   };
 })(window.DL);

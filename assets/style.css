@@ -2622,39 +2622,13 @@ body.fit-theme .sheet,
 body.fit-theme .sheet * { border-radius: 0; }
 
 /* ヘッダーと下タブ。中身と地続きに見えるよう、同じ黒に揃える */
-/* ヘッダーの下の黄の線に、電気を走らせる。
-   線そのものは ::after、走る火花は ::before と .appbar-inner::after。
-   火花は一色の塗りを clip-path でぎざぎざに切っただけで、ぼかしも
-   グラデーションも使っていない。動きは steps() で飛ばして、
-   なめらかに滑るのではなく「ビリビリ」と跳ねるようにする。 */
-body.fit-theme .appbar {
-  background: #050505; border-bottom: 0;
-  overflow: hidden;              /* 火花が右へ抜けても横に広げない */
-}
+/* ヘッダーの下の黄の帯。電気が通っているように、不規則に明滅させる。
+   ぼかしもグラデーションも使わず、帯そのものの濃さだけを変える。 */
+body.fit-theme .appbar { background: #050505; border-bottom: 0; overflow: hidden; }
 body.fit-theme .appbar::after {
   content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
   background: var(--accent);
   animation: fzFlick 2.6s steps(1) infinite;
-}
-body.fit-theme .appbar::before,
-body.fit-theme .appbar-inner::after {
-  content: ''; position: absolute; bottom: 0; left: 0; z-index: 1;
-  height: 7px; width: 54px; background: #fffbe3;
-  clip-path: polygon(0 100%, 18% 14%, 30% 100%, 46% 0, 60% 100%, 74% 10%, 88% 100%, 100% 40%, 100% 100%);
-  animation: fzRun 2.6s steps(16) infinite;
-}
-body.fit-theme .appbar-inner { position: relative; }
-/* 2本目は細く暗く、少し遅らせて走らせる */
-body.fit-theme .appbar-inner::after {
-  height: 5px; width: 34px; background: var(--accent);
-  animation-delay: .9s; animation-duration: 3.1s;
-}
-@keyframes fzRun {
-  0%   { transform: translateX(-56px); opacity: 0; }
-  4%   { opacity: 1; }
-  52%  { opacity: 1; }
-  56%  { opacity: 0; }
-  100% { transform: translateX(100vw); opacity: 0; }
 }
 @keyframes fzFlick {
   0%, 30%, 100% { opacity: 1; }
@@ -2665,11 +2639,9 @@ body.fit-theme .appbar-inner::after {
   61% { opacity: .3; }
   63% { opacity: 1; }
 }
-/* 動きを控えめにしている人には、光らない1本の線だけ */
+/* 動きを控えめにしている人には、光らない1本の帯だけ */
 @media (prefers-reduced-motion: reduce) {
   body.fit-theme .appbar::after { animation: none; }
-  body.fit-theme .appbar::before,
-  body.fit-theme .appbar-inner::after { display: none; }
 }
 body.fit-theme .appbar-title { letter-spacing: .18em; font-size: 13.5px; }
 body.fit-theme .tabbar { background: #050505; border-top-color: var(--line); }
@@ -2772,19 +2744,40 @@ body.fit-theme input, body.fit-theme select, body.fit-theme textarea {
   background: #0a0a09; border-color: var(--line2); color: var(--text);
 }
 
-/* ---- 筋トレに入るときの溜め ----
+/* ---- 筋トレの出入りの幕 ----
 
-   黒い幕。ダンベルが下から黄に染まり、ゲージが 0 から 100 まで溜まる。
-   溜まりきったら、ひと光りして幕が開く（view-fit.js が外す）。
-   角は落とし、グラデーションは使わない。 */
-.fit-intro {
-  position: fixed; inset: 0; z-index: 90;
-  background: #050505;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 22px; pointer-events: none;
-  animation: fiIn .12s ease-out;
+   入るとき … 上から黒い幕が降り、溜まりきったら開く
+   出るとき … 張ってある黒い幕が、下から上へ上がる
+   どちらも上端を軸にした縦の伸び縮み。角は落とし、
+   グラデーションは使わない（黒一色の面だけで動かす）。 */
+.fit-intro, .fit-outro {
+  position: fixed; inset: 0; z-index: 95; pointer-events: none;
 }
-@keyframes fiIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* 降りてくる幕 */
+.fi-curtain {
+  position: absolute; inset: 0; background: #050505;
+  transform-origin: top; transform: scaleY(0);
+  animation: fiDrop .2s cubic-bezier(.3, 0, .2, 1) forwards;
+}
+@keyframes fiDrop { to { transform: scaleY(1); } }
+
+/* 溜めの中身。幕が降りきるまでは出さない */
+.fi-body {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 22px; opacity: 0;
+}
+.fit-intro.down .fi-body { animation: fiIn .14s ease-out forwards; }
+@keyframes fiIn { to { opacity: 1; } }
+
+/* 上がっていく幕。裏の画面が下から出てくる */
+.fit-outro {
+  background: #050505;
+  transform-origin: top; transform: scaleY(1);
+  animation: fiLift .26s cubic-bezier(.4, 0, .2, 1) forwards;
+}
+@keyframes fiLift { to { transform: scaleY(0); } }
 
 .fi-stage { position: relative; width: 112px; height: 112px; }
 .fi-dumb { position: absolute; inset: 0; width: 112px; height: 112px; stroke-width: 1.2; }
@@ -2825,5 +2818,6 @@ body.fit-theme input, body.fit-theme select, body.fit-theme textarea {
 
 /* 動きを控えめにしている人には、そもそも出さない（js 側でも見ている） */
 @media (prefers-reduced-motion: reduce) {
-  .fit-intro { display: none; }
+  .fit-intro, .fit-outro { display: none; }
+}
 }
