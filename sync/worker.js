@@ -1725,18 +1725,31 @@ async function weights(request, env, cors, url, id) {
   if (url.pathname === '/v1/inbox/weight' && (request.method === 'POST' || request.method === 'GET')) {
     /* iPhone のショートカットからは、URL に付けるだけで送れるようにしておく。
        （JSON を組み立てなくてよい。合鍵はヘッダーで渡す） */
+    /* ショートカットで組み立てた URL は、? や & が余分に入ることがある
+       （?k=... の うしろに ?kg= と足してしまう、など）。
+       名前から記号を落として見比べ、多少の崩れは読んであげる */
     const q = url.searchParams;
+    const qval = names => {
+      for (const [k, v] of q) {
+        const name = k.toLowerCase().replace(/[^a-z]/g, '');
+        if (names.indexOf(name) >= 0 && String(v).trim()) return v;
+      }
+      return null;
+    };
+    const qkg = qval(['kg', 'weight']);
     let body = null;
-    if (q.get('kg') || q.get('weight')) {
+    if (qkg) {
       body = {
-        kg: q.get('kg') || q.get('weight'),
-        fat: q.get('fat'), muscle: q.get('muscle'), date: q.get('date')
+        kg: qkg, fat: qval(['fat']), muscle: qval(['muscle']), date: qval(['date'])
       };
     } else if (request.method === 'POST') {
       try { body = await request.json(); } catch (e) { return json({ error: 'bad_json' }, 400, cors); }
     } else {
       // ショートカットの ▶ で見たときに、何が足りないのか分かる言い方にする
-      return json({ error: 'no_weight', hint: '?kg=81.2 のように体重を付けてください' }, 400, cors);
+      return json({
+        error: 'no_weight',
+        hint: 'URL の終わりが &kg=81.2 のように、数字まで入っているか見てください'
+      }, 400, cors);
     }
     const list = Array.isArray(body && body.items) ? body.items : [body];
     const box = (await env.SYNC.get(key, 'json')) || { list: [] };
@@ -1750,7 +1763,10 @@ async function weights(request, env, cors, url, id) {
       added++;
     });
     if (!added) {
-      return json({ error: 'no_weight', hint: '体重が読めませんでした（kg が空か、数字になっていません）' }, 400, cors);
+      return json({
+        error: 'no_weight',
+        hint: '体重が読めませんでした（kg が空か、数字になっていません）'
+      }, 400, cors);
     }
     box.list = box.list.slice(0, MAX_WEIGHTS);
     await env.SYNC.put(key, JSON.stringify(box));
