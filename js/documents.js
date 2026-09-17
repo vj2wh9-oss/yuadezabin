@@ -354,6 +354,33 @@
     };
   }
 
+  /**
+   * 案件のお金の並び。見込みと、実際に請求した額・入った額を突き合わせる。
+   * 見込みは税抜で持っているので、比べる相手も税抜（小計）にそろえる。
+   * @param {object} project
+   * @returns {{fee:number, invoiced:number, paid:number, unbilled:number, unpaid:number}}
+   */
+  function projectMoney(project) {
+    var list = (project && project.docs) || [];
+    var invoices = list.filter(function (d) {
+      return d.type === 'invoice' && d.status !== 'draft';
+    });
+    var sub = function (arr) {
+      return U.sum(arr, function (d) { return calc(d).subtotal; });
+    };
+    var fee = Math.max(0, Math.round(U.num(project && project.fee, 0)));
+    var invoiced = sub(invoices);
+    var paid = sub(invoices.filter(function (d) { return d.status === 'paid'; }));
+    return {
+      fee: fee,
+      invoiced: invoiced,
+      paid: paid,
+      // まだ請求書にしていないぶん。見込みを入れていなければ数えない
+      unbilled: fee ? Math.max(0, fee - invoiced) : 0,
+      unpaid: Math.max(0, invoiced - paid)
+    };
+  }
+
   DL.docs = {
     TYPE_LABEL: TYPE_LABEL, TYPE_ICON: TYPE_ICON, STATUS_LABEL: STATUS_LABEL,
     ESTIMATE_STATUS_LABEL: ESTIMATE_STATUS_LABEL,
@@ -363,6 +390,7 @@
     yen: yen, calc: calc, blank: blank, applyClient: applyClient, defaultDueDate: defaultDueDate,
     defaultValidUntil: defaultValidUntil,
     fromInvoice: fromInvoice, fromEstimate: fromEstimate, sheet: sheet, summary: summary,
+    projectMoney: projectMoney,
     countsAsSale: countsAsSale, sales: sales
   };
 })(window.DL);

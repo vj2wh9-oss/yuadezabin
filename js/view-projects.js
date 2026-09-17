@@ -92,6 +92,17 @@
     if (p.kind === 'event' && U.isISO(p.eventDate)) sub.push(ui.iconChip('event', U.fmtMD(p.eventDate), 'ghosty'));
     if (p.client) sub.push(ui.chip(p.client, 'ghosty'));
     if (p.site) sub.push(ui.chip(p.site, 'ghosty'));
+    /* いくらの仕事か。請求まで済んでいれば、そちらの額のほうが確かなので
+       そちらを出す（見込みは請求前の目安） */
+    if (p.kind === 'work') {
+      var m = DL.docs.projectMoney(p);
+      if (m.invoiced) {
+        sub.push(ui.chip(DL.docs.yen(m.invoiced) + (m.unpaid ? '（未入金）' : '（入金済）'),
+          m.unpaid ? 'warn' : 'ok'));
+      } else if (m.fee) {
+        sub.push(ui.chip(DL.docs.yen(m.fee) + '（見込み）', 'soft'));
+      }
+    }
 
     var row = el('a', { class: 'row proj card-row st-' + st, href: '#/project/' + p.id }, [
       el('div', { class: 'row-bar', style: { background: p.color } }),

@@ -76,13 +76,21 @@
       } else if (p.client) {
         info.push(['クライアント', p.client]);
       }
-      if (p.fee) info.push(['報酬', '¥' + Number(p.fee).toLocaleString('ja-JP')]);
+
     }
     if (p.memo) info.push(['メモ', p.memo]);
     if (info.length) {
       wrap.appendChild(el('div', { class: 'card info' }, info.map(function (r) {
         return el('div', { class: 'info-row' }, [el('span', { class: 'info-k', text: r[0] }), el('span', { class: 'info-v', text: r[1] })]);
       })));
+    }
+
+    /* ---- お金（仕事のみ） ----
+       見込みの報酬と、実際に請求した額・入った額を並べる。
+       請求書を作る前でも「いくらの仕事か」が分かるようにしておく。 */
+    if (p.kind === 'work') {
+      var money = DL.docs.projectMoney(p);
+      if (money.fee || money.invoiced) wrap.appendChild(moneyCard(p, money));
     }
 
     /* ---- 見積書・請求書・領収書（仕事のみ） ---- */
@@ -229,6 +237,46 @@
     ]));
 
     root.appendChild(wrap);
+  }
+
+  /* ---------------- お金（仕事の案件） ----------------
+
+     報酬は税抜で持っているので、比べる相手も税抜（小計）にそろえる。
+     税込で並べると、見込みと請求額が合っていても違って見えてしまう。 */
+
+  function moneyCard(p, m) {
+    var yen = DL.docs.yen;
+    var boxes = [
+      el('div', { class: 'sum-box' }, [
+        el('span', { text: '報酬（税抜）' }),
+        el('b', { text: m.fee ? yen(m.fee) : '—' })
+      ]),
+      el('div', { class: 'sum-box' }, [
+        el('span', { text: '請求済み' }), el('b', { text: yen(m.invoiced) })
+      ]),
+      el('div', { class: 'sum-box' }, [
+        el('span', { text: '入金済み' }),
+        el('b', { class: m.paid ? 'down' : '', text: yen(m.paid) })
+      ])
+    ];
+    if (m.fee) {
+      boxes.push(el('div', { class: 'sum-box' }, [
+        el('span', { text: '未請求' }),
+        el('b', { class: m.unbilled ? 'up' : '', text: m.unbilled ? yen(m.unbilled) : '—' })
+      ]));
+    }
+
+    var note = !m.fee
+      ? '報酬を入れておくと、請求前でも売上の見込みに入ります（案件を編集 →「報酬」）。'
+      : m.invoiced > m.fee
+        ? '請求した額が見込みを上回っています。見込みのほうを直すか、そのままでも構いません。'
+        : m.unbilled ? '未請求のぶんは、売上の「見込み」に数えています。'
+          : m.unpaid ? '請求は済んでいます。入金待ちです。' : '請求も入金も済んでいます。';
+
+    return el('div', { class: 'card' }, [
+      el('div', { class: 'sum-grid' }, boxes),
+      el('p', { class: 'muted small', text: note })
+    ]);
   }
 
   /* ---------------- 原稿のページ管理表への入口 ----------------

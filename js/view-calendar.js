@@ -411,8 +411,8 @@
     root.appendChild(wrap);
 
     /* 1日の時間の画面と同じく、左右スワイプで前後の日へ。
-       ホイールは円グラフの上だけ（ページのスクロールを奪わないため） */
-    DL.views.time.attachDayNav(root, wrap.querySelector('.tp-pie-wrap'), date, 'day');
+       ホイールでは動かさない（PC で読み進めたいだけのときに日が飛ぶため） */
+    DL.views.time.attachDayNav(root, date, 'day');
   }
 
   /* その日の献立。ホームと同じ一枚を出すので、この日ぶんをここで作れる */
@@ -443,11 +443,19 @@
 
   /* 予定1件の操作メニュー */
   function entryMenu(e, date) {
+    /* 原稿のページ管理表は、ページ（枚）で数える工程を持つ案件だけ。
+       持たない案件で出しても、開いた先に表が無くて戸惑わせるだけなので */
+    var hasPages = sc.pageTasks(e.project).length > 0;
+    var word = sc.pageWord(e.project);
+
     var close = ui.sheet({
       title: e.task.name + '（' + U.fmtMD(date) + '）',
       body: el('div', { class: 'menu' }, [
         el('button', { class: 'menu-item', onclick: function () { close(); DL.forms.progressSheet(e.project.id, e.task.id, date); } },
           [ui.icon('check', 18), el('span', { text: '実績を記録する' })]),
+        hasPages ? el('a', {
+          class: 'menu-item', href: '#/pages/' + e.project.id, onclick: function () { close(); }
+        }, [ui.icon('manga', 18), el('span', { text: '原稿の' + word + '管理表' })]) : null,
         el('button', { class: 'menu-item', onclick: function () { close(); DL.forms.deferSheet(e.project.id, e.task.id, date); } },
           [ui.icon('arrowRight', 18), el('span', { text: 'できなかった → 翌日以降に回す' })]),
         el('button', { class: 'menu-item', onclick: function () { close(); DL.forms.planOverrideSheet(e.project.id, e.task.id, date); } },

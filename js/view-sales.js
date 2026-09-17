@@ -70,6 +70,38 @@
     boxes.push(sumBox('未入金', D.yen(totals.unpaid), totals.unpaid ? 'warn' : ''));
     wrap.appendChild(el('div', { class: 'card sum-grid' }, boxes));
 
+    /* ---- まだ請求していないぶん（見込み） ----
+       進行中の仕事に入れた報酬から、もう請求した額を引いた残り。
+       請求書を作る前でも、いくら入る見込みかが立つようにしておく。 */
+    var pipe = pipeline();
+    if (pipe.total) {
+      wrap.appendChild(ui.section('未請求の見込み',
+        ui.chip(pipe.rows.length + '件', 'soft')));
+      wrap.appendChild(el('div', { class: 'card' }, [
+        el('div', { class: 'sum-grid' }, [
+          el('div', { class: 'sum-box' }, [
+            el('span', { text: '合計（税抜）' }), el('b', { class: 'big', text: D.yen(pipe.total) })
+          ])
+        ]),
+        el('div', { class: 'list' }, pipe.rows.map(function (r) {
+          return el('a', { class: 'row', href: '#/project/' + r.p.id }, [
+            el('div', { class: 'row-main' }, [
+              el('div', { class: 'row-title', text: r.p.title }),
+              el('div', { class: 'row-sub' }, [
+                r.p.client ? ui.chip(r.p.client, 'ghosty') : null,
+                U.isISO(r.p.deadline) ? ui.chip(U.fmtMD(r.p.deadline) + ' 納品', 'ghosty') : null,
+                r.m.invoiced ? ui.chip('請求済み ' + D.yen(r.m.invoiced), 'soft') : null
+              ])
+            ]),
+            el('b', { class: 'pipe-amt', text: D.yen(r.m.unbilled) })
+          ]);
+        })),
+        el('p', { class: 'muted small',
+          text: '案件に入れた報酬のうち、まだ請求書にしていないぶんです。'
+            + '上の売上合計には入っていません。' })
+      ]));
+    }
+
     if (totals.draftCount) {
       wrap.appendChild(el('div', { class: 'alert info' }, [
         el('span', { class: 'alert-icon' }, ui.icon('info', 17)),
@@ -636,6 +668,17 @@
         ])
       ])
     ]);
+  }
+
+  /* まだ請求していない仕事を集める。保管・完了にしたものは数えない */
+  function pipeline() {
+    var rows = [];
+    S.activeProjects().filter(function (p) { return p.kind === 'work'; }).forEach(function (p) {
+      var m = D.projectMoney(p);
+      if (m.unbilled > 0) rows.push({ p: p, m: m });
+    });
+    rows.sort(function (a, b) { return U.cmp(a.p.deadline || '9999', b.p.deadline || '9999'); });
+    return { rows: rows, total: U.sum(rows, function (r) { return r.m.unbilled; }) };
   }
 
   DL.views = DL.views || {};

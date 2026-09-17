@@ -2426,6 +2426,9 @@ a.tp-proj:active { color: var(--accent); }
 .pg-toggles .btn:not(.on) > svg { visibility: hidden; }
 .pg-help { margin: 0; }
 
+/* 未請求の見込み。金額は右にそろえて、等幅で読めるようにする */
+.pipe-amt { flex: none; font-size: 14px; font-variant-numeric: tabular-nums; color: var(--accent); }
+
 /* ---------------- 筋トレ ---------------- */
 .fit-page { display: flex; flex-direction: column; gap: 10px; }
 

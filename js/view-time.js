@@ -1191,39 +1191,27 @@
   }
 
   /**
-   * スワイプとホイールで日を移せるようにする。
+   * 左右のスワイプで日を移せるようにする。
    *
    * スワイプは画面の入れ物（#view）ぜんぶ。中身（.page）に掛けると、
    * 予定の少ない日は下に余白ができて、そこでは効かなくなるため。
    * 入れ物は描き直しても同じものが残るので、前に掛けたぶんを外してから掛ける。
    *
-   * ホイールは円グラフの上だけにする。画面ぜんぶに掛けると、
-   * 下のボタンまでスクロールしたいだけのときに日が飛んでしまう。
-   * 円グラフの上には動かすものが無いので、ここなら取り違えようがない。
+   * ホイールでは動かさない。PC では円グラフの上でも「ただ下へ読み進めたい」
+   * ことのほうが多く、そのたびに日が飛んでしまうため。
+   * 月をめくるカレンダーのホイールは、あちらはめくる以外にすることが
+   * ないので、そのまま残してある。
    *
    * @param {Element} root #view
-   * @param {Element} pie 円グラフの入れ物（無ければホイールは掛けない）
    * @param {string} date いま見ている日
    * @param {string} [path] 移る先の画面。既定は 'time'（日別画面からは 'day'）
    */
-  function attachDayNav(root, pie, date, path) {
+  function attachDayNav(root, date, path) {
     path = path || 'time';
     // 前の日ぶんの見張りを外す（重ねて掛けると1回のスワイプで何日も飛ぶ）
     if (root._dayNav) root._dayNav();
 
     var x0 = 0, y0 = 0, t0 = 0, tracking = false, swiped = false;
-    var useWheel = !!pie && !!(window.matchMedia
-      && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
-
-    function onWheel(e) {
-      var dy = e.deltaY;
-      if (!dy || Math.abs(dy) < Math.abs(e.deltaX)) return;
-      e.preventDefault();
-      var now = Date.now();
-      if (now - lastHop < 260) return;    // 1回のホイールで何日も飛ばさない
-      lastHop = now;
-      goDay(path, date, dy > 0 ? 1 : -1);
-    }
 
     function onStart(e) {
       swiped = false;
@@ -1256,14 +1244,11 @@
     root.addEventListener('touchstart', onStart, { passive: true });
     root.addEventListener('touchend', onEnd, { passive: true });
     root.addEventListener('click', onClick, true);
-    if (useWheel) pie.addEventListener('wheel', onWheel, { passive: false });
 
     root._dayNav = function () {
       root.removeEventListener('touchstart', onStart, { passive: true });
       root.removeEventListener('touchend', onEnd, { passive: true });
       root.removeEventListener('click', onClick, true);
-      // 円グラフは描き直しで消えるので、外すのは念のため
-      if (useWheel) pie.removeEventListener('wheel', onWheel, { passive: false });
       root._dayNav = null;
     };
   }
@@ -1292,7 +1277,7 @@
 
     root.appendChild(wrap);
     // スワイプ（画面ぜんぶ）と、ホイール（円グラフの上）で前後の日へ
-    attachDayNav(root, wrap.querySelector('.tp-pie-wrap'), date);
+    attachDayNav(root, date);
   }
 
   DL.views = DL.views || {};

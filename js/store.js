@@ -396,6 +396,10 @@
     delete p.offDays;                   // 曜日単位の休みは廃止した
     p.holidays = p.holidays || [];
     p.memo = p.memo || '';
+    /* 見込みの報酬（税抜・円）。仕事の案件だけで使う。
+       請求書を作る前から「いくらの仕事か」を持たせておくためのもので、
+       実際の売上は請求書のほうが正になる */
+    p.fee = Math.max(0, U.num(p.fee, 0));
     p.site = p.site || '';     // 支援サイト名
     p.plan = p.plan || '';     // 支援プラン
     p.docs = (p.docs || []).map(normalizeDoc);   // 請求書・領収書
