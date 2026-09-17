@@ -376,8 +376,9 @@
     updateOrderFab();
     updateCrmFab();
     /* カレンダーは画面いっぱいに出すので、重なるボタンは置かない。
-       筋トレには案件を作る用がないので、ここも出さない */
-    if (['settings', 'calendar', 'docs', 'doc', 'sales', 'search', 'onsite', 'log', 'logs', 'ideas', 'time', 'orders', 'crm', 'fit'].indexOf(route.name) >= 0) { fab.hidden = true; return; }
+       筋トレには案件を作る用がないので、ここも出さない。
+       ホームは眺める場所で、案件を作るなら案件タブの＋を使うので、ここも出さない */
+    if (['home', 'settings', 'calendar', 'docs', 'doc', 'sales', 'search', 'onsite', 'log', 'logs', 'ideas', 'time', 'orders', 'crm', 'fit'].indexOf(route.name) >= 0) { fab.hidden = true; return; }
     fab.hidden = false;
     fab.onclick = function () {
       /* 日別画面では、ここがその日の予定の追加口になる。
