@@ -274,14 +274,21 @@
     })[Math.min(7, Math.max(1, U.num(n, 4)))] || [1, 2, 4, 5];
   }
 
-  /** ジムに行く曜日。決めていなければ回数から見当をつける */
+  /** トレーニングする曜日。決めていなければ回数から見当をつける */
   function gymDays() {
     var p = S.fit().profile;
     var wd = (p.weekdays || []).slice().sort();
     return wd.length ? wd : defaultWeekdays(p.days);
   }
 
-  /** その日がジムの日か */
+  /** そのうち、器具を使わず自重でやる曜日 */
+  function homeDays() {
+    var p = S.fit().profile;
+    var wd = gymDays();
+    return (p.homedays || []).filter(function (d) { return wd.indexOf(d) >= 0; }).sort();
+  }
+
+  /** その日がトレーニングの日か */
   function isGymDay(date, wd) {
     return (wd || gymDays()).indexOf(U.dow(date)) >= 0;
   }
@@ -308,26 +315,80 @@
 
   /**
    * その日の担当。
-   * @returns {{date, kind:'gym'|'free', part, focus, abs}}
+   * @param {string} date
+   * @param {string} [where] 'gym'（全部ジム）／'home'（全部自重）。
+   *   省くと曜日の決めごとに従う
+   * @returns {{date, kind:'gym'|'home'|'free', part, focus, abs}}
    *   kind='free' は「休みか有酸素」。どちらにするかは計画を作る側にまかせる
    */
-  function dutyOf(date) {
+  function dutyOf(date, where) {
     var wd = gymDays();
     if (!isGymDay(date, wd)) {
       return { date: date, kind: 'free', part: '', focus: '', abs: false };
     }
     var tbl = splitTable();
     var s = tbl[gymIndex(date, wd) % tbl.length];
-    return { date: date, kind: 'gym', part: s.part, focus: s.focus, abs: s.abs };
+    var kind = where === 'gym' ? 'gym'
+      : where === 'home' ? 'home'
+        : (homeDays().indexOf(U.dow(date)) >= 0 ? 'home' : 'gym');
+    return { date: date, kind: kind, part: s.part, focus: s.focus, abs: s.abs };
   }
 
   /** 範囲ぶんの担当割り */
-  function splitFor(from, days) {
+  function splitFor(from, days, where) {
     var out = [];
     for (var i = 0; i < Math.max(1, U.num(days, 7)); i++) {
-      out.push(dutyOf(U.addDays(from, i)));
+      out.push(dutyOf(U.addDays(from, i), where));
     }
     return out;
+  }
+
+  /* ---------------- 自重のメニュー ----------------
+
+     ジムに行けない日でも、その日の部位はそのままに、器具なしの種目へ
+     置き換えられるようにしておく。ここは決め打ちの表。
+     計画を作り直さなくても、その場で切り替えられるのが狙い。 */
+
+  var HOME_MENU = {
+    胸: [['腕立て伏せ', 3, '10-20', '手は肩幅より少し広く'],
+      ['ワイドプッシュアップ', 3, '10-15', ''],
+      ['足上げプッシュアップ', 3, '8-12', '足を椅子に乗せて上部を狙う']],
+    背中: [['タオルロー', 3, '12-15', 'タオルを引き合って背中を寄せる'],
+      ['バックエクステンション', 3, '12-15', ''],
+      ['懸垂', 3, '5-10', 'ぶら下がれる場所があれば']],
+    脚: [['スクワット', 4, '15-25', '膝がつま先より前に出すぎないように'],
+      ['ブルガリアンスクワット', 3, '10-15', '片脚ずつ。椅子に後ろ足を乗せる'],
+      ['ヒップリフト', 3, '15-20', ''],
+      ['カーフレイズ', 3, '20-30', '']],
+    肩: [['パイクプッシュアップ', 3, '8-12', '腰を高く上げて肩に効かせる'],
+      ['サイドレイズ', 3, '12-15', '水を入れたペットボトルで']],
+    腕: [['ナロープッシュアップ', 3, '10-15', '手幅を狭く。三頭に効かせる'],
+      ['リバースディップス', 3, '10-15', '椅子の縁を使う'],
+      ['タオルカール', 3, '12-15', '']],
+    体幹: [['プランク', 3, '45秒', ''], ['サイドプランク', 3, '30秒', '左右']]
+  };
+
+  /**
+   * その日の部位に合う、自重だけのメニューを組む。
+   * @param {string} part 例）'肩と腕'
+   * @returns {Array} [{name, gear, sets, reps, weight, rest, note}]
+   */
+  function homeMenu(part) {
+    var p = String(part || '');
+    var picked = [];
+    Object.keys(HOME_MENU).forEach(function (k) {
+      if (p.indexOf(k) >= 0) picked = picked.concat(HOME_MENU[k]);
+    });
+    // どこにも当てはまらなければ、ひととおり動かす組み立てにする
+    if (!picked.length) {
+      picked = [HOME_MENU['胸'][0], HOME_MENU['脚'][0], HOME_MENU['背中'][0], HOME_MENU['肩'][0]];
+    }
+    return picked.slice(0, 5).map(function (x) {
+      return {
+        name: x[0], gear: '自重', sets: x[1], reps: x[2],
+        weight: 0, rest: 60, note: x[3]
+      };
+    });
   }
 
   /** 直近の記録を、頼むときに渡せる形で（新しい順） */
@@ -395,7 +456,7 @@
         recent: recent(4),
         // どの日にどこを鍛えるかは、こちらで決めて渡す。
         // 相手に任せると、1日で全身をやる組み方になりがちなので
-        split: splitFor(from, days),
+        split: splitFor(from, days, o.where),
         // 種目ごとの、いまの重さ。これを土台に組んでもらう
         loads: Object.keys(S.fitLoads()).map(function (k) {
           return { name: k, kg: S.fitLoads()[k].kg };
@@ -733,7 +794,8 @@
     ready: ready, bmi: bmi, trend: trend,
     step: step, repsGoal: repsGoal, nextWeight: nextWeight, applyProgress: applyProgress,
     recent: recent, streak: streak, history: history, totals: totals,
-    gymDays: gymDays, isGymDay: isGymDay, gymIndex: gymIndex,
+    gymDays: gymDays, homeDays: homeDays, isGymDay: isGymDay, gymIndex: gymIndex,
+    homeMenu: homeMenu,
     dutyOf: dutyOf, splitFor: splitFor, splitTable: splitTable,
     plan: plan, adopt: adopt,
     pull: pull, autoPull: autoPull, postUrl: postUrl, checkInbox: checkInbox,

@@ -8,6 +8,8 @@
 
   var WDAY = ['日', '月', '火', '水', '木', '金', '土'];
   var DONE_LABEL = { full: 'やった', part: '途中まで', skip: 'できなかった' };
+  /* その日を、どこで・何でやるか */
+  var KIND_LABEL = { gym: 'ジムの器具', home: '自重', run: '有酸素', rest: '休み' };
 
   /* カレンダーで見ている月。画面を描き直しても覚えておく */
   var calMonth = '';
@@ -118,12 +120,17 @@
     else if (l) cls += ' miss';
     else if (p && p.kind !== 'rest') cls += ' plan';
     // 計画がまだ無い先の日でも、その日の担当が分かるように薄く出す
-    if (!p && !l && duty.kind === 'gym') cls += ' duty';
+    if (!p && !l && (duty.kind === 'gym' || duty.kind === 'home')) cls += ' duty';
+    // 器具を使わない日は、輪郭だけで見分けられるようにする
+    if ((p && p.kind === 'home') || (!p && !l && duty.kind === 'home')) cls += ' home';
 
     var label = p ? shortTitle(p) : (duty.kind === 'gym' ? duty.part.slice(0, 4) : '');
     return el('button', {
       class: cls,
-      'aria-label': U.fmtMDW(d) + '　' + ((p && p.title) || (duty.kind === 'gym' ? duty.part : '休み')),
+      'aria-label': U.fmtMDW(d) + '　'
+        + ((p && p.title) || (duty.kind === 'free' ? '休み' : duty.part))
+        + '　' + (p ? (KIND_LABEL[p.kind] || '')
+          : duty.kind === 'free' ? '' : KIND_LABEL[duty.kind]),
       onclick: function () { location.hash = '#/fit/' + d; }
     }, [
       el('span', { class: 'fc-n', text: String(U.num(d.slice(8, 10), 0)) }),
@@ -159,6 +166,7 @@
         el('b', { text: plan.title })
       ]),
       el('div', { class: 'row-sub' }, [
+        ui.chip(KIND_LABEL[plan.kind] || plan.kind, plan.kind === 'home' ? 'ghosty' : 'soft'),
         plan.minutes ? ui.chip(plan.minutes + '分', 'soft') : null,
         plan.items.length ? ui.chip(plan.items.length + '種目', 'ghosty') : null,
         plan.abs.length ? ui.chip('腹筋メニュー', 'ghosty') : null,
@@ -231,8 +239,9 @@
     var tbl = F.splitTable();
     return el('div', {}, [
       el('p', { class: 'muted small',
-        text: 'ジムの日：' + wd.map(function (i) { return U.wdName(i); }).join('・')
+        text: 'トレーニングの日：' + nameDays(wd)
           + '　この順で回します（1日で全身はやりません）' }),
+      el('p', { class: 'muted small', text: whereHint() }),
       el('ol', { class: 'fit-steps' }, tbl.map(function (s) {
         return el('li', { text: s.part + '（' + s.focus + '）' + (s.abs ? '　＋腹筋メニュー' : '') });
       }))
@@ -261,7 +270,8 @@
         el('b', { text: plan ? plan.title : 'まだ計画がありません' })
       ]),
       el('div', { class: 'row-sub' }, [
-        plan && plan.kind === 'rest' ? ui.chip('休み', 'ghosty') : null,
+        plan ? ui.chip(KIND_LABEL[plan.kind] || plan.kind,
+          plan.kind === 'home' ? 'ghosty' : plan.kind === 'rest' ? 'ghosty' : 'soft') : null,
         plan && plan.minutes ? ui.chip(plan.minutes + '分', 'soft') : null,
         log ? ui.chip(DONE_LABEL[log.done], log.done === 'skip' ? 'danger' : 'ok') : null
       ])
@@ -336,6 +346,11 @@
         logSheet(date);
       }, 'check'),
       ui.btn('計画を直す', 'ghost tiny', function () { planEditSheet(date); }),
+      // ジムに行けない日でも、部位はそのままに自重へ切り替えられるようにする
+      plan.kind === 'gym' || plan.kind === 'home'
+        ? ui.btn(plan.kind === 'gym' ? '自重に変える' : 'ジムに変える', 'ghost tiny',
+          function () { swapPlace(date); })
+        : null,
       ui.btn('この日の計画を消す', 'ghost tiny', function () {
         ui.confirm(U.fmtMD(date) + ' の計画を消します。', { danger: true, okText: '消す' })
           .then(function (ok) { if (ok) { S.removeFitPlan(date); ui.toast('消しました'); } });
@@ -381,6 +396,31 @@
     if (p.kind === 'rest') return '休';
     if (p.kind === 'run') return 'ラン';
     return String(p.title || 'ジム').slice(0, 4);
+  }
+
+  /* その日をジム⇄自重で入れ替える。部位はそのまま、種目だけ差し替える */
+  function swapPlace(date) {
+    var plan = S.fitPlan(date);
+    if (!plan) return;
+    var toHome = plan.kind === 'gym';
+    ui.confirm(U.fmtMD(date) + ' を「' + (toHome ? '自重' : 'ジムの器具') + '」に変えます。'
+      + '部位はそのままで、種目を組み替えます。', { okText: '変える' }).then(function (ok) {
+      if (!ok) return;
+      if (toHome) {
+        S.putFitPlan(date, Object.assign({}, plan, {
+          kind: 'home',
+          // 見出し（肩と腕）と部位（三角筋・上腕…）の両方から種目を選ぶ
+          items: F.homeMenu(plan.title + ' ' + plan.focus),
+          note: plan.note
+        }));
+        ui.toast('自重のメニューに変えました');
+      } else {
+        // ジムへ戻すときは、種目までは決められない。計画から組み直してもらう
+        S.putFitPlan(date, Object.assign({}, plan, { kind: 'gym' }));
+        ui.toast('ジムに戻しました。種目は「計画自動作成」で組み直せます');
+      }
+      DL.app.render();
+    });
   }
 
   /* ---------------- 体重 ---------------- */
@@ -523,6 +563,14 @@
       { value: '3', label: '3日ぶん' }
     ], '7');
     var fromIn = ui.input({ type: 'date', value: U.today() });
+    /* ふだんは曜日の決めごとに従うが、「今週はジムに行けない」ような
+       ときのために、この場で全部を寄せられるようにしておく */
+    var where = '';
+    var whereBox = ui.segmented([
+      { value: '', label: 'いつもどおり' },
+      { value: 'gym', label: 'ジムだけ' },
+      { value: 'home', label: '自重だけ' }
+    ], '', function (v) { where = v; });
     var noteIn = ui.textarea({ rows: 2,
       placeholder: '例）今週は腰が張っているのでデッドは軽めに／出張で火曜は行けない' });
     var out = el('div', { class: 'fit-out' });
@@ -544,6 +592,7 @@
       ]),
       ui.field('いつから', fromIn),
       ui.field('どのくらい', daysSel),
+      ui.block('何でやる', whereBox, whereHint()),
       ui.field('足しておきたいこと', noteIn),
       goBtn,
       out
@@ -564,7 +613,8 @@
       goBtn.disabled = true;
       U.clear(out);
       out.appendChild(el('p', { class: 'muted small', text: '組んでいます…（30秒ほどかかります）' }));
-      F.plan({ from: fromIn.value, days: U.num(daysSel.value, 7), note: noteIn.value })
+      F.plan({ from: fromIn.value, days: U.num(daysSel.value, 7),
+        where: where, note: noteIn.value })
         .then(function (r) {
           busy = false;
           goBtn.disabled = false;
@@ -582,12 +632,26 @@
     }
   }
 
+  /* 曜日の決めごとを、ひとことで */
+  function whereHint() {
+    var hd = F.homeDays();
+    if (!hd.length) return 'いまは、トレーニングの日はすべてジムの器具を使う決めです';
+    var wd = F.gymDays().filter(function (d) { return hd.indexOf(d) < 0; });
+    return 'いまの決め：ジム＝' + (wd.length ? nameDays(wd) : 'なし')
+      + '／自重＝' + nameDays(hd) + '（設定 → からだと目標で変えられます）';
+  }
+
+  function nameDays(list) {
+    return list.map(function (i) { return U.wdName(i); }).join('・');
+  }
+
   function planPreview(r) {
     var box = el('div', {});
     (r.plans || []).forEach(function (d) {
       box.appendChild(el('div', { class: 'card fit-prev' }, [
         el('div', { class: 'fit-item-h' }, [
           el('b', { text: U.fmtMDW(d.date) + '　' + d.title }),
+          ui.chip(KIND_LABEL[d.kind] || d.kind, d.kind === 'home' ? 'ghosty' : 'soft'),
           d.minutes ? ui.chip(d.minutes + '分', 'ghosty') : null
         ]),
         d.focus ? el('p', { class: 'muted small', text: d.focus }) : null,
@@ -1171,14 +1235,43 @@
       placeholder: '例）右肩を痛めたことがある／腰は無理をしない' });
 
     var picked = p.weekdays.slice();
+    var home = p.homedays.slice();
+    var homeBtns = [];
+
     var wdBox = el('div', { class: 'fit-wd' }, WDAY.map(function (w, i) {
       var b = ui.btn(w, 'ghost' + (picked.indexOf(i) >= 0 ? ' on' : ''), function () {
         var at = picked.indexOf(i);
         if (at >= 0) picked.splice(at, 1); else picked.push(i);
         b.classList.toggle('on', picked.indexOf(i) >= 0);
+        syncHome();
       });
       return b;
     }));
+
+    /* トレーニングの日のうち、どれを自重にするか。
+       トレーニングしない曜日は押せないようにしておく */
+    var homeBox = el('div', { class: 'fit-wd' }, WDAY.map(function (w, i) {
+      var b = ui.btn(w, 'ghost' + (home.indexOf(i) >= 0 ? ' on' : ''), function () {
+        if (picked.indexOf(i) < 0) return;
+        var at = home.indexOf(i);
+        if (at >= 0) home.splice(at, 1); else home.push(i);
+        b.classList.toggle('on', home.indexOf(i) >= 0);
+      });
+      homeBtns.push(b);
+      return b;
+    }));
+
+    function syncHome() {
+      homeBtns.forEach(function (b, i) {
+        var on = picked.indexOf(i) >= 0;
+        b.disabled = !on;
+        if (!on && home.indexOf(i) >= 0) {
+          home.splice(home.indexOf(i), 1);
+          b.classList.remove('on');
+        }
+      });
+    }
+    syncHome();
 
     var close = ui.sheet({
       title: 'からだと目標',
@@ -1193,7 +1286,10 @@
         el('div', { class: 'grid2' }, [
           ui.field('週に何回', daysIn), ui.field('1回の分数', minIn)
         ]),
-        ui.block('行く曜日', wdBox, '決めておくと、その曜日に計画が入ります'),
+        ui.block('トレーニングする曜日', wdBox, '決めておくと、その曜日に計画が入ります'),
+        ui.block('そのうち自重でやる曜日', homeBox,
+          '選んだ曜日は、器具を使わない自重だけで組みます。'
+            + '選ばなければ、すべてジムの器具を使います'),
         ui.field('気をつけること', noteIn)
       ]),
       actions: [
@@ -1203,7 +1299,8 @@
             height: U.num(hIn.value, 0), age: U.num(aIn.value, 0),
             goalWeight: F.dec(gwIn.value, 0), goal: goalSel.value, level: lvSel.value,
             gym: gymIn.value, days: U.num(daysIn.value, 4), minutes: U.num(minIn.value, 60),
-            weekdays: picked.slice().sort(), note: noteIn.value
+            weekdays: picked.slice().sort(), homedays: home.slice().sort(),
+            note: noteIn.value
           });
           close();
           ui.toast('保存しました');

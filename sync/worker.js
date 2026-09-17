@@ -1436,8 +1436,9 @@ const FIT_SCHEMA = {
         properties: {
           date: { type: 'string', description: 'YYYY-MM-DD' },
           kind: {
-            type: 'string', enum: ['gym', 'run', 'rest'],
-            description: 'gym=ジム run=外を走るだけ rest=休み'
+            type: 'string', enum: ['gym', 'home', 'run', 'rest'],
+            description: 'gym=ジムの器具を使う home=器具を使わない自重だけ'
+              + ' run=外を走るだけ rest=休み'
           },
           title: { type: 'string', description: '短い見出し。例）胸と三頭' },
           focus: { type: 'string', description: '鍛える部位。例）大胸筋・上腕三頭筋' },
@@ -1455,7 +1456,8 @@ const FIT_SCHEMA = {
               required: ['name', 'gear', 'sets', 'reps', 'weight', 'rest', 'note'],
               properties: {
                 name: { type: 'string', description: '種目名（日本語）' },
-                gear: { type: 'string', description: '使う器具。例）スミスマシン、ダンベル、ケーブル' },
+                gear: { type: 'string', description: "使う器具。例）スミスマシン、ダンベル、ケーブル。"
+                  + "自重の種目は「自重」" },
                 sets: { type: 'integer', description: 'セット数' },
                 reps: { type: 'string', description: '回数。例）8-12' },
                 weight: { type: 'number', description: '重さ(kg)。自重なら 0' },
@@ -1552,8 +1554,9 @@ function fitPrompt(o) {
   if ((o.split || []).length) {
     lines.push('', '【日ごとの担当部位】この割り当てをそのまま守ってください');
     o.split.forEach(s => {
-      if (s.kind === 'gym') {
-        lines.push('・' + s.date + '　gym　' + s.part + '（' + s.focus + '）'
+      if (s.kind === 'gym' || s.kind === 'home') {
+        lines.push('・' + s.date + '　' + s.kind + '　' + s.part + '（' + s.focus + '）'
+          + (s.kind === 'home' ? '　※器具は使えません。自重だけで組んでください' : '')
           + (s.abs ? '　＋腹筋メニュー' : ''));
       } else {
         lines.push('・' + s.date + '　休み または 有酸素の日（どちらかを選んでください）');
@@ -1604,6 +1607,10 @@ function fitPrompt(o) {
       + '担当部位に「腹筋メニュー」と書いてある日だけ 3〜4種目、ほかの日は空配列です。',
     '・有酸素の日（kind=run）は、有酸素運動と自重トレーニングだけにしてください。'
       + '器具やウエイトを使う種目は入れません（items は自重のみ。weight は 0）。',
+    '・自重の日（kind=home）は、家でできる自重の種目だけで組んでください。'
+      + 'マシン・バーベル・ダンベル・ケーブルは使えません。weight は 0 にして、'
+      + 'gear には「自重」と入れます。負荷は回数・可動域・片脚片手・止める時間で付けてください。'
+      + '担当部位はジムの日と同じように守ります。',
     '・「いま扱える重さ」に載っている種目は、その重さをそのまま weight に入れてください。'
       + '載っていない種目は、体重と経験から無理のない重さを見当で入れてください。',
     '・有酸素は、筋トレの後か別の日に置いてください。'
@@ -1620,6 +1627,9 @@ function fitPrompt(o) {
 /* 腹筋の種目を見分ける。器具の種目に混ざっていたら腹筋メニューへ移す */
 const ABS_RE = /腹筋|アブ|クランチ|シットアップ|レッグレイズ|プランク|ドラゴンフラッグ|トーソ|ニーレイズ|バイシクル|ロシアンツイスト|アブローラー|ハンギング/;
 
+/* 器具を使う種目を見分ける。自重の日に紛れ込んだら落とす */
+const GEAR_RE = /マシン|バーベル|ダンベル|ケーブル|スミス|ラック|プレート|レッグプレス|ラットプル|ペック|チェストプレス|ローイング|エクステンション台|バー |EZ/;
+
 function fitClean(data, o) {
   const days = Array.isArray(data && data.days) ? data.days : [];
   const want = [];
@@ -1630,14 +1640,14 @@ function fitClean(data, o) {
   want.forEach((date, i) => {
     const d = days[i] || days.filter(x => x && x.date === date)[0];
     if (!d) return;
-    let kind = ['gym', 'run', 'rest'].indexOf(d.kind) >= 0 ? d.kind : 'gym';
+    let kind = ['gym', 'home', 'run', 'rest'].indexOf(d.kind) >= 0 ? d.kind : 'gym';
     /* 担当がジムの日なら、ジムの日として通す。
        休み・有酸素の日に器具の種目を入れられても困るので、こちらで決める */
     const du = duty[date];
     let forcedRun = false;
     if (du) {
-      if (du.kind === 'gym') kind = 'gym';
-      else if (kind === 'gym') { kind = 'run'; forcedRun = true; }
+      if (du.kind === 'gym' || du.kind === 'home') kind = du.kind;
+      else if (kind === 'gym' || kind === 'home') { kind = 'run'; forcedRun = true; }
     }
 
     let items = (Array.isArray(d.items) ? d.items : []).slice(0, 16).map(i => ({
@@ -1665,12 +1675,18 @@ function fitClean(data, o) {
 
     // 有酸素の日は、有酸素と自重だけ。重さを持つ種目は落とす
     if (kind === 'run') items = items.filter(i => !(i.weight > 0));
+    /* 自重の日は器具を使わない。重さの付いた種目は落とし、
+       残ったものの道具は「自重」と言い直す */
+    if (kind === 'home') {
+      items = items.filter(i => !(i.weight > 0) && !GEAR_RE.test(i.gear + ' ' + i.name));
+      items = items.map(i => ({ ...i, gear: '自重' }));
+    }
     if (kind === 'rest') { items = []; abs = []; }
 
     out.push({
       date,
       kind,
-      title: (kind === 'gym' && du && du.part) ? du.part
+      title: ((kind === 'gym' || kind === 'home') && du && du.part) ? du.part
         : forcedRun ? 'ラン'
           : (fitText(d.title, 60) || (kind === 'rest' ? '休み' : kind === 'run' ? 'ラン' : 'ジム')),
       focus: fitText(d.focus, 60) || (du ? du.focus : ''),
@@ -1728,7 +1744,7 @@ async function fitPlan(request, env, cors) {
     /* どの日にどこを鍛えるかは、アプリ側が回して決めている */
     split: (Array.isArray(body && body.split) ? body.split : []).slice(0, 14).map(s => ({
       date: /^\d{4}-\d{2}-\d{2}$/.test(String(s && s.date)) ? s.date : '',
-      kind: (s && s.kind) === 'gym' ? 'gym' : 'free',
+      kind: (s && s.kind) === 'gym' ? 'gym' : (s && s.kind) === 'home' ? 'home' : 'free',
       part: fitText(s && s.part, 40),
       focus: fitText(s && s.focus, 60),
       abs: !!(s && s.abs)

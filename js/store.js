@@ -2066,7 +2066,8 @@
     { value: 'intermediate', label: '慣れてきた' },
     { value: 'advanced', label: '長くやっている' }
   ];
-  var FIT_KINDS = ['gym', 'run', 'rest'];
+  /* gym=器具を使う日 home=自重の日 run=有酸素の日 rest=休み */
+  var FIT_KINDS = ['gym', 'home', 'run', 'rest'];
 
   function fitStr(v, n) { return String(v == null ? '' : v).trim().slice(0, n); }
   /* 体重も重さも小数を持つので、整数に丸める U.num は使えない */
@@ -2090,8 +2091,13 @@
         gym: fitStr(p.gym || 'エニタイムフィットネス', 40),
         goal: FIT_GOALS.filter(function (g) { return g.value === p.goal; }).length ? p.goal : 'bulk',
         level: FIT_LEVELS.filter(function (g) { return g.value === p.level; }).length ? p.level : 'beginner',
-        // ジムに行く曜日（0=日）。決めておくと計画がその曜日に入る
+        // トレーニングする曜日（0=日）。決めておくと計画がその曜日に入る
         weekdays: (Array.isArray(p.weekdays) ? p.weekdays : [1, 2, 4, 5])
+          .map(function (d) { return Math.round(U.num(d, -1)); })
+          .filter(function (d) { return d >= 0 && d <= 6; }).slice(0, 7),
+        /* そのうち、器具を使わず自重でやる曜日。
+           ここに入っていない曜日はジム（器具を使う）扱いになる */
+        homedays: (Array.isArray(p.homedays) ? p.homedays : [])
           .map(function (d) { return Math.round(U.num(d, -1)); })
           .filter(function (d) { return d >= 0 && d <= 6; }).slice(0, 7),
         note: fitStr(p.note, 400)                            // けが・苦手な種目など
@@ -2146,7 +2152,8 @@
     var out = {
       date: U.isISO(p.date) ? p.date : date,
       kind: kind,
-      title: fitStr(p.title, 60) || (kind === 'run' ? 'ラン' : kind === 'rest' ? '休み' : 'ジム'),
+      title: fitStr(p.title, 60)
+        || (kind === 'run' ? 'ラン' : kind === 'rest' ? '休み' : kind === 'home' ? '自重' : 'ジム'),
       focus: fitStr(p.focus, 60),                 // 例）胸・肩・上腕三頭
       minutes: Math.round(fitNum(p.minutes, 0, 300, 60)),
       warmup: (Array.isArray(p.warmup) ? p.warmup : []).slice(0, 8)
