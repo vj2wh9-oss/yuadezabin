@@ -181,17 +181,36 @@ h1, h2, h3, p { margin: 0; }
 .logo-reel { display: block; height: 1em; overflow: hidden; }
 .logo-strip { display: block; transform: translateY(calc(var(--land) * -1em)); }
 .logo-strip i { display: block; height: 1em; font-style: normal; text-align: center; }
-.logo-word.spin .logo-strip { animation: logoReel var(--ms) both; }
-/* はじめは同じ速さでぐるぐる回し、最後の1周ぶんでゆっくり止める。
-   何周ぶん回るか（--land）と、そこまでの時間（--ms）は桁ごとに変えてあり、
-   左から順に長く回るので 3 → 6 → 5 と1つずつ止まる */
-@keyframes logoReel {
+/* 回って、1つずつ止まって、しばらく置いて、また回りだす。7秒でひと回り。
+   帯のいちばん上といちばん下は同じ数字（js/app.js 側でそう並べている）ので、
+   繰り返しの継ぎ目は見えない */
+.logo-word.spin .logo-strip { animation: var(--spin) 7s infinite both; }
+/* どの桁も、はじめは同じ速さでぐるぐる回し、最後の1周ぶんでゆっくり止める。
+   止まるのは 1.5 秒 → 2.1 秒 → 2.7 秒（7秒のうちの 21.4% → 30% → 38.6%）。
+   そのあとは 4.3 秒ほど 365 のまま止まって、また回りだす */
+@keyframes logoSpin1 {
   0% { transform: translateY(0); animation-timing-function: linear; }
-  55% {
+  11.8% {
     transform: translateY(calc((var(--land) - 11) * -1em));
     animation-timing-function: cubic-bezier(.12, .7, .3, 1);
   }
-  100% { transform: translateY(calc(var(--land) * -1em)); }
+  21.4%, 100% { transform: translateY(calc(var(--land) * -1em)); }
+}
+@keyframes logoSpin2 {
+  0% { transform: translateY(0); animation-timing-function: linear; }
+  16.5% {
+    transform: translateY(calc((var(--land) - 11) * -1em));
+    animation-timing-function: cubic-bezier(.12, .7, .3, 1);
+  }
+  30%, 100% { transform: translateY(calc(var(--land) * -1em)); }
+}
+@keyframes logoSpin3 {
+  0% { transform: translateY(0); animation-timing-function: linear; }
+  21.2% {
+    transform: translateY(calc((var(--land) - 11) * -1em));
+    animation-timing-function: cubic-bezier(.12, .7, .3, 1);
+  }
+  38.6%, 100% { transform: translateY(calc(var(--land) * -1em)); }
 }
 @media (prefers-reduced-motion: reduce) {
   /* 回さずに、はじめから 365 を出す */

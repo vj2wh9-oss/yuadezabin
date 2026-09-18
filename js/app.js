@@ -199,12 +199,14 @@
     if (!sp || sp.classList.contains('out')) spinTitle();
   }
 
-  /* 何周ぶん回してから止めるか（止まる先の数字は、この一の位）と、そこまでの時間。
-     左から順に長く回して、3 → 6 → 5 と1つずつ止まるようにする */
+  /* 止まる先の数字と、そこまでに回る周数。
+     左ほど短く回るので、3 → 6 → 5 と1つずつ止まる。
+     どれも「ちょうど何周」にしてあり、帯のはじめと終わりが同じ数字になる。
+     回る・止まる・また回りだす、の時間の割り振りは assets/style.css の側 */
   var LOGO_REELS = [
-    { land: 33, ms: 1500 },   // 3周ぶん回って 3
-    { land: 46, ms: 2100 },   // 4周ぶん回って 6
-    { land: 65, ms: 2700 }    // 6周ぶん回って 5
+    { n: 3, turns: 3, spin: 'logoSpin1' },
+    { n: 6, turns: 4, spin: 'logoSpin2' },
+    { n: 5, turns: 6, spin: 'logoSpin3' }
   ];
 
   /**
@@ -219,14 +221,16 @@
     node.addEventListener('click', function () { spinLogo(node); });
     return node;
 
-    /* 数字1桁ぶんの窓。中の帯に 0〜9 を何周ぶんも並べておいて、
-       いちばん下（land 番目）の数字まで送って止める */
+    /* 数字1桁ぶんの窓。止まる先の数字から始めて 0〜9 を何周ぶんも並べ、
+       land 番目まで送って止める。ちょうど何周ぶんなので、いちばん上と
+       いちばん下は同じ数字になる。繰り返すとき、戻るところが見えない */
     function reel(r) {
+      var land = r.turns * 10;
       var strip = el('span', {
         class: 'logo-strip',
-        style: { '--land': String(r.land), '--ms': r.ms + 'ms' }
+        style: { '--land': String(land), '--spin': r.spin }
       });
-      for (var k = 0; k <= r.land; k++) strip.appendChild(el('i', { text: String(k % 10) }));
+      for (var k = 0; k <= land; k++) strip.appendChild(el('i', { text: String((r.n + k) % 10) }));
       return el('span', { class: 'logo-reel' }, strip);
     }
   }
