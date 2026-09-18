@@ -1999,6 +1999,26 @@
     return m;
   }
 
+  /**
+   * その日の買い物から、買った印の付いたものを消す。
+   * 印を外すだけの clearShopGot と違い、行そのものが無くなる。
+   * 献立の中身（一品と作り方）はそのまま残す。
+   * @param {string} date
+   * @returns {number} 消した数
+   */
+  function removeGotShop(date) {
+    var m = getMenu(date);
+    if (!m) return 0;
+    var keep = (m.shopping || []).filter(function (x) { return !x.got; });
+    var n = (m.shopping || []).length - keep.length;
+    if (!n) return 0;
+    m.shopping = keep;
+    // 合計は買い物から数え直す。消したぶん、その日の買い物は減る
+    m.total = keep.reduce(function (a, x) { return a + U.num(x.price, 0); }, 0);
+    save();
+    return n;
+  }
+
   /** 最近出した献立の呼び名。同じものばかり出ないよう、次に渡す */
   function recentMenuNames(days) {
     var out = [];
@@ -3847,7 +3867,7 @@
     menusIn: menusIn, menuPlan: menuPlan, setMenuPlan: setMenuPlan,
     shopItems: shopItems, addShopItem: addShopItem, updateShopItem: updateShopItem,
     removeShopItem: removeShopItem, clearGotShopItems: clearGotShopItems,
-    setShopGot: setShopGot, clearShopGot: clearShopGot,
+    setShopGot: setShopGot, clearShopGot: clearShopGot, removeGotShop: removeGotShop,
     dishNotes: dishNotes, dishNote: dishNote, setDishNote: setDishNote,
     dislikedDishes: dislikedDishes, dishHints: dishHints,
     prices: prices, priceOf: priceOf, setPrice: setPrice,

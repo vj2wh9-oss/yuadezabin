@@ -182,18 +182,49 @@
     if (entered) ui.introduce(view);
   }
 
-  /* アプリの名前のところだけロゴの組みにする。ほかの画面は画面名の文字のまま */
+  /* アプリの名前のところだけロゴの組みにする。ほかの画面は画面名の文字のまま。
+     ロゴはそのまま置かず、最初の一枚（splash）と同じように 365 を回して止める。
+     ホームに入ったときだけ回し、保存のたびの描き直しでは動かさない
+     （組み直すと、そのたびに回ってしまうので、すでにロゴなら触らない） */
   function setTitle(text) {
-    U.clear(titleEl);
     var isLogo = text === 'METEO365';
+    if (isLogo && titleEl.classList.contains('is-logo')) return;
+    U.clear(titleEl);
     titleEl.classList.toggle('is-logo', isLogo);
-    if (isLogo) {
-      titleEl.appendChild(el('span', { class: 'logo-word' }, [
-        el('b', { text: 'METEO' }), el('i', { text: '365' })
-      ]));
-    } else {
-      titleEl.textContent = text;
+    if (isLogo) titleEl.appendChild(logoWord());
+    else titleEl.textContent = text;
+  }
+
+  /**
+   * ロゴの組み。METEO はそのまま、365 は1桁ずつ窓に入れて回す。
+   * 押すともう一度回る（押せることは文字では出さない。触れば分かる程度の遊び）
+   */
+  function logoWord() {
+    var node = el('span', { class: 'logo-word', role: 'img', 'aria-label': 'METEO365' }, [
+      el('b', { text: 'METEO', 'aria-hidden': 'true' }),
+      el('span', { class: 'logo-num', 'aria-hidden': 'true' }, [3, 6, 5].map(reel))
+    ]);
+    node.addEventListener('click', function () { spinLogo(node); });
+    node.classList.add('spin');
+    return node;
+
+    /* 数字1桁ぶんの窓。中の帯を一周ぶん多く並べておいて、狙った数字で止める */
+    function reel(n, i) {
+      var strip = el('span', {
+        class: 'logo-strip',
+        style: { '--land': String(10 + n), '--delay': (i * 0.08) + 's' }
+      });
+      for (var k = 0; k <= 10 + n; k++) strip.appendChild(el('i', { text: String(k % 10) }));
+      return el('span', { class: 'logo-reel' }, strip);
     }
+  }
+
+  /* もう一度回す。付けっぱなしだと2度目が動かないので、
+     いったん外し、そこで一度measureして（ブラウザに気づかせて）から入れ直す */
+  function spinLogo(node) {
+    node.classList.remove('spin');
+    void node.offsetWidth;
+    node.classList.add('spin');
   }
 
   /* ---------------- 同期ボタン ---------------- */

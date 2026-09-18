@@ -914,7 +914,8 @@
       menus.length ? ui.btn('献立ごとに見る', 'ghost', function () {
         planShopSheet(r.from, r.to);
       }, 'books') : null,
-      gotN ? ui.btn('買ったぶんを片づける', 'ghost', function () { tidyShop(r); }, 'check') : null
+      /* 買い終わったものを消す口。献立があってもなくても、いつでも同じ場所に置く */
+      ui.btn('買ったぶんを消す', 'ghost', function () { dropGotShop(r); }, 'trash')
     ]));
     return card;
 
@@ -927,6 +928,9 @@
           onchange: function (e) {
             var on = e.target.checked;
             x.at.forEach(function (a) { S.setShopGot(a.date, a.name, on); });
+            // 描き直さずに印を付けるので、見た目もその場で合わせる
+            x.got = on;
+            box.classList.toggle('got', on);
           }
         }),
         el('span', { class: 'mn-item-n', text: x.name }),
@@ -938,11 +942,15 @@
 
     /* 自分で足した1行。押すと直せる */
     function freeRow(x) {
-      return el('label', { class: 'mn-item mn-buy mine' + (x.got ? ' got' : '') }, [
+      var box = el('label', { class: 'mn-item mn-buy mine' + (x.got ? ' got' : '') }, [
         el('input', {
           type: 'checkbox', class: 'mn-chk', checked: x.got,
           'aria-label': x.name + 'を買った',
-          onchange: function (e) { S.updateShopItem(x.id, { got: e.target.checked }); }
+          onchange: function (e) {
+            var on = e.target.checked;
+            S.updateShopItem(x.id, { got: on });
+            box.classList.toggle('got', on);
+          }
         }),
         el('span', { class: 'mn-item-n', text: x.name }),
         x.qty ? el('span', { class: 'muted small', text: x.qty }) : null,
@@ -952,6 +960,7 @@
           onclick: function (e) { e.preventDefault(); shopItemSheet(x); }
         }, el('b', { text: x.price ? yen(x.price) : '—' }))
       ]);
+      return box;
     }
   }
 
@@ -976,14 +985,27 @@
     return order.map(function (k) { return map[k]; });
   }
 
-  /* 買ったぶんを片づける。自分で足したぶんは消し、献立ぶんは印だけ外す */
-  function tidyShop(r) {
-    ui.confirm('買ったものを片づけます。\n自分で足したぶんは消して、'
-      + '献立ぶんは印だけ外します。', { okText: '片づける' }).then(function (ok) {
+  /**
+   * 買った印の付いたものを、買い物リストから消す。
+   * 自分で足したぶんも、献立から来たぶんも同じように消える。
+   * 消すのは買い物の行だけで、献立そのもの（一品と作り方）は残す。
+   * 数は押した時点で数え直す。印は画面を描き直さずに付けられるので、
+   * 出したときの数を当てにすると合わなくなる。
+   * @param {object} r 出している期間 {from, to}
+   */
+  function dropGotShop(r) {
+    var menus = S.menusIn(r.from, r.to);
+    var gotN = mergedShop(menus).filter(function (x) { return x.got; }).length
+      + S.shopItems().filter(function (x) { return x.got; }).length;
+    if (!gotN) { ui.toast('買った印の付いたものがありません', 'warn'); return; }
+    ui.confirm('買った印の付いた ' + gotN + '点を、買い物リストから消します。\n'
+      + '献立から来たぶんも消えます（献立そのものは残ります）。',
+      { okText: '消す', danger: true }).then(function (ok) {
       if (!ok) return;
       S.clearGotShopItems();
-      S.menusIn(r.from, r.to).forEach(function (o) { S.clearShopGot(o.date); });
-      ui.toast('片づけました');
+      menus.forEach(function (o) { S.removeGotShop(o.date); });
+      DL.app.render();
+      ui.toast(gotN + '点を消しました');
     });
   }
 

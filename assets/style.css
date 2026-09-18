@@ -167,9 +167,28 @@ h1, h2, h3, p { margin: 0; }
   font-size: 15px; font-weight: 700; text-align: left; letter-spacing: .02em;
   padding-left: 2px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-/* ロゴ（文字だけ）。アプリの名前を出すところで、365 をインディゴにする */
-.logo-word { font-size: 16.5px; font-weight: 800; letter-spacing: .05em; line-height: 1; }
-.logo-word i { font-style: normal; color: var(--indigo); margin-left: 1px; }
+/* ロゴ（文字だけ）。アプリの名前を出すところで、365 をインディゴにする。
+   最初の一枚（splash）と同じように、365 は1桁ずつ回して止める。
+   ホームに入るたびに回り、押すともう一度回る */
+.logo-word {
+  display: inline-flex; align-items: baseline; gap: .04em;
+  font-size: 16.5px; font-weight: 800; letter-spacing: .05em; line-height: 1;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.logo-word b { font-weight: 800; }
+.logo-num { display: flex; color: var(--indigo); font-variant-numeric: tabular-nums; }
+/* 数字1桁ぶんの窓。中の帯が上に動いて、狙った数字で止まる */
+.logo-reel { display: block; height: 1em; overflow: hidden; }
+.logo-strip { display: block; transform: translateY(calc(var(--land) * -1em)); }
+.logo-strip i { display: block; height: 1em; font-style: normal; text-align: center; }
+.logo-word.spin .logo-strip {
+  animation: logoReel .72s cubic-bezier(.16, 1, .3, 1) var(--delay, 0s) both;
+}
+@keyframes logoReel { from { transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) {
+  /* 回さずに、はじめから 365 を出す */
+  .logo-word.spin .logo-strip { animation: none; }
+}
 
 .appbar-gap { flex: 1; }
 .gearbtn { flex: none; }
@@ -589,6 +608,19 @@ a.alert-main { text-decoration: none; }
   background: color-mix(in srgb, var(--danger) 20%, transparent); color: var(--danger);
 }
 .cal-line.mk.event { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); }
+/* 締切とイベントは、一覧の中でゆっくり明滅させて目に留める。
+   同じ拍だと1マスの中でそろって点いてしまうので、速さを別々にする */
+@keyframes calBlinkDue {
+  50% { background: color-mix(in srgb, var(--danger) 46%, transparent); }
+}
+@keyframes calBlinkEv {
+  50% { background: color-mix(in srgb, var(--accent) 46%, transparent); }
+}
+.cal-line.mk.deadline, .cal-line.mk.printing { animation: calBlinkDue 2.6s ease-in-out infinite; }
+.cal-line.mk.event { animation: calBlinkEv 3.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .cal-line.mk.deadline, .cal-line.mk.printing, .cal-line.mk.event { animation: none; }
+}
 /* 祝日の名前。マスの中では、締切などと混ざらないよう控えめに */
 .cal-line.hol {
   font-weight: 700; color: var(--danger); padding-left: 2px;
