@@ -181,10 +181,18 @@ h1, h2, h3, p { margin: 0; }
 .logo-reel { display: block; height: 1em; overflow: hidden; }
 .logo-strip { display: block; transform: translateY(calc(var(--land) * -1em)); }
 .logo-strip i { display: block; height: 1em; font-style: normal; text-align: center; }
-.logo-word.spin .logo-strip {
-  animation: logoReel .72s cubic-bezier(.16, 1, .3, 1) var(--delay, 0s) both;
+.logo-word.spin .logo-strip { animation: logoReel var(--ms) both; }
+/* はじめは同じ速さでぐるぐる回し、最後の1周ぶんでゆっくり止める。
+   何周ぶん回るか（--land）と、そこまでの時間（--ms）は桁ごとに変えてあり、
+   左から順に長く回るので 3 → 6 → 5 と1つずつ止まる */
+@keyframes logoReel {
+  0% { transform: translateY(0); animation-timing-function: linear; }
+  55% {
+    transform: translateY(calc((var(--land) - 11) * -1em));
+    animation-timing-function: cubic-bezier(.12, .7, .3, 1);
+  }
+  100% { transform: translateY(calc(var(--land) * -1em)); }
 }
-@keyframes logoReel { from { transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) {
   /* 回さずに、はじめから 365 を出す */
   .logo-word.spin .logo-strip { animation: none; }

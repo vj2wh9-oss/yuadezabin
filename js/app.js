@@ -191,9 +191,21 @@
     if (isLogo && titleEl.classList.contains('is-logo')) return;
     U.clear(titleEl);
     titleEl.classList.toggle('is-logo', isLogo);
-    if (isLogo) titleEl.appendChild(logoWord());
-    else titleEl.textContent = text;
+    if (!isLogo) { titleEl.textContent = text; return; }
+    titleEl.appendChild(logoWord());
+    /* 起動の一枚が出ているあいだは、その裏で回っても見えない。
+       そのときは回さず、幕が開くとき（startSplash）に回す */
+    var sp = document.getElementById('splash');
+    if (!sp || sp.classList.contains('out')) spinTitle();
   }
+
+  /* 何周ぶん回してから止めるか（止まる先の数字は、この一の位）と、そこまでの時間。
+     左から順に長く回して、3 → 6 → 5 と1つずつ止まるようにする */
+  var LOGO_REELS = [
+    { land: 33, ms: 1500 },   // 3周ぶん回って 3
+    { land: 46, ms: 2100 },   // 4周ぶん回って 6
+    { land: 65, ms: 2700 }    // 6周ぶん回って 5
+  ];
 
   /**
    * ロゴの組み。METEO はそのまま、365 は1桁ずつ窓に入れて回す。
@@ -202,21 +214,27 @@
   function logoWord() {
     var node = el('span', { class: 'logo-word', role: 'img', 'aria-label': 'METEO365' }, [
       el('b', { text: 'METEO', 'aria-hidden': 'true' }),
-      el('span', { class: 'logo-num', 'aria-hidden': 'true' }, [3, 6, 5].map(reel))
+      el('span', { class: 'logo-num', 'aria-hidden': 'true' }, LOGO_REELS.map(reel))
     ]);
     node.addEventListener('click', function () { spinLogo(node); });
-    node.classList.add('spin');
     return node;
 
-    /* 数字1桁ぶんの窓。中の帯を一周ぶん多く並べておいて、狙った数字で止める */
-    function reel(n, i) {
+    /* 数字1桁ぶんの窓。中の帯に 0〜9 を何周ぶんも並べておいて、
+       いちばん下（land 番目）の数字まで送って止める */
+    function reel(r) {
       var strip = el('span', {
         class: 'logo-strip',
-        style: { '--land': String(10 + n), '--delay': (i * 0.08) + 's' }
+        style: { '--land': String(r.land), '--ms': r.ms + 'ms' }
       });
-      for (var k = 0; k <= 10 + n; k++) strip.appendChild(el('i', { text: String(k % 10) }));
+      for (var k = 0; k <= r.land; k++) strip.appendChild(el('i', { text: String(k % 10) }));
       return el('span', { class: 'logo-reel' }, strip);
     }
+  }
+
+  /* いまヘッダーに出ているロゴを回す。ロゴでなければ何もしない */
+  function spinTitle() {
+    var w = titleEl.querySelector('.logo-word');
+    if (w) spinLogo(w);
   }
 
   /* もう一度回す。付けっぱなしだと2度目が動かないので、
@@ -572,6 +590,8 @@
          幕ごしに一瞬見えてしまう */
       ui.introduce(view, 220);
       box.classList.add('out');
+      // ヘッダーのロゴは、幕の裏では見えない。開きだすいま回す
+      spinTitle();
       setTimeout(function () {
         if (box.parentNode) box.parentNode.removeChild(box);
       }, 320);
