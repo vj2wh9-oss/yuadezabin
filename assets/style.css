@@ -599,6 +599,19 @@ a.alert-main { text-decoration: none; }
    .off や .today より後に置いて、休みの日でも色が分かるようにする */
 .cal-cell.has-due { background: color-mix(in srgb, var(--danger) 11%, var(--card)); }
 .cal-cell.has-event { background: color-mix(in srgb, var(--event) 15%, var(--card)); }
+/* 締切のある日とイベントの日は、その日のマスまるごとをゆっくり明滅させて
+   目に留める。同じ拍だと隣どうしそろって点いてしまうので、速さは別々にする */
+@keyframes calBlinkDue {
+  50% { background: color-mix(in srgb, var(--danger) 30%, var(--card)); }
+}
+@keyframes calBlinkEv {
+  50% { background: color-mix(in srgb, var(--event) 36%, var(--card)); }
+}
+.cal-cell.has-due { animation: calBlinkDue 2.6s ease-in-out infinite; }
+.cal-cell.has-event { animation: calBlinkEv 3.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .cal-cell.has-due, .cal-cell.has-event { animation: none; }
+}
 .cal-cell.today { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .cal-top { display: flex; align-items: center; justify-content: space-between; gap: 2px; flex: none; }
 .cal-n { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
@@ -635,19 +648,6 @@ a.alert-main { text-decoration: none; }
   background: color-mix(in srgb, var(--danger) 20%, transparent); color: var(--danger);
 }
 .cal-line.mk.event { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); }
-/* 締切とイベントは、一覧の中でゆっくり明滅させて目に留める。
-   同じ拍だと1マスの中でそろって点いてしまうので、速さを別々にする */
-@keyframes calBlinkDue {
-  50% { background: color-mix(in srgb, var(--danger) 46%, transparent); }
-}
-@keyframes calBlinkEv {
-  50% { background: color-mix(in srgb, var(--accent) 46%, transparent); }
-}
-.cal-line.mk.deadline, .cal-line.mk.printing { animation: calBlinkDue 2.6s ease-in-out infinite; }
-.cal-line.mk.event { animation: calBlinkEv 3.4s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) {
-  .cal-line.mk.deadline, .cal-line.mk.printing, .cal-line.mk.event { animation: none; }
-}
 /* 祝日の名前。マスの中では、締切などと混ざらないよう控えめに */
 .cal-line.hol {
   font-weight: 700; color: var(--danger); padding-left: 2px;
