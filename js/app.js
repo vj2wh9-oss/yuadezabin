@@ -14,10 +14,14 @@
   var fab = U.$('#fab');
   var fabOrders = U.$('#fabOrders');
   var fabCrm = U.$('#fabCrm');
+  var appbar = U.$('#appbar');
+  var tabbar = U.$('#tabbar');
 
   var route = { name: 'home', params: {} };
   var lastKey = '';
   var prevRoute = '';
+  /* 上の帯と下のタブの置き場所を見に行く。中身は watchBars で入れる */
+  var checkBars = function () {};
 
   function parseHash() {
     var h = (location.hash || '#/home').replace(/^#\/?/, '');
@@ -180,6 +184,9 @@
     // 金額の数え上げや、グラフの描き出し。開いたときだけで、
     // 保存のたびの描き直しでは動かさない
     if (entered) ui.introduce(view);
+
+    // 上の帯と下のタブが浮いたままになっていないか、ついでに見ておく
+    checkBars();
   }
 
   /* アプリの名前のところだけロゴの組みにする。ほかの画面は画面名の文字のまま。
@@ -571,6 +578,64 @@
     check();
   }
 
+  /* 上の帯と下のタブは position:fixed で画面に貼り付けている。
+     iOS はキーボードが出入りしたあとに、この貼り付け先を取りこぼすことがある。
+     そうなると、タブが画面のまん中あたりに浮いたまま残り、上の帯も消える。
+     ずれていないか見張って、ずれていたら貼り直す。 */
+  function watchBars() {
+    var timer = 0;
+    var tries = 0;      // 同じずれを押し続けないための回数
+    var later = function () { clearTimeout(timer); timer = setTimeout(fix, 150); };
+    // キーボードの出入りなど、ずれが起きうる変わり目。ここでは数え直す
+    var fresh = function () { tries = 0; later(); };
+
+    /* いちばん上・いちばん下から外れていないか。
+       キーボードが出ているあいだはタブを畳んでいるので、そこは見ない */
+    function astray() {
+      var h = window.innerHeight;
+      if (!h || document.body.classList.contains('kb-open')) return false;
+      var t = tabbar.getBoundingClientRect();
+      if (!t.height) return false;
+      var a = appbar.getBoundingClientRect();
+      return Math.abs(t.bottom - h) > 2 || Math.abs(a.top) > 2;
+    }
+
+    /* いったん消して、もう一度置く。これで貼り付け先を取り直してくれる。
+       それでも直らなければ、画面を1pxだけ動かして気づかせる。
+       直らないものを押し続けても仕方がないので、続けての試みは3回まで。
+       うまく付いたか、次の変わり目が来たら、また数え直す */
+    function fix() {
+      if (!astray()) { tries = 0; return; }
+      if (tries >= 3) return;
+      var first = tries === 0;
+      tries++;
+      [appbar, tabbar].forEach(function (n) {
+        n.style.display = 'none';
+        void n.offsetHeight;
+        n.style.display = '';
+      });
+      if (!first || !astray()) return;
+      var y = window.scrollY;
+      window.scrollTo(0, y + (y > 0 ? -1 : 1));
+      window.scrollTo(0, y);
+    }
+
+    var vv = window.visualViewport;
+    if (vv) {
+      vv.addEventListener('resize', fresh);
+      vv.addEventListener('scroll', later);
+    }
+    window.addEventListener('scroll', later, { passive: true });
+    window.addEventListener('orientationchange', fresh);
+    window.addEventListener('pageshow', fresh);
+    // 入力欄から手が離れる＝キーボードが引っ込むところ。いちばん起きやすい
+    document.addEventListener('focusout', fresh);
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible') fresh();
+    });
+    checkBars = fresh;
+  }
+
   /* 起動の一枚を、そろそろ開ける。
 
      絵と回りだしは CSS と index.html の側にあるので、ここは幕を引くだけ。
@@ -612,6 +677,7 @@
   function init() {
     mountIcons();
     watchKeyboard();
+    watchBars();
     var splashDone = startSplash();
     if (!location.hash) location.hash = '#/home';
 

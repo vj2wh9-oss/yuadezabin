@@ -64,6 +64,11 @@
     sheetStack.push(entry);
 
     function close() {
+      /* 入力欄に手が乗ったまま畳むと、iOS はキーボードを引っ込めながら
+         中身を消すことになり、上の帯と下のタブの置き場所を取りこぼすことがある。
+         先に手を離して、キーボードをきれいに引っ込めてから畳む */
+      var on = document.activeElement;
+      if (on && on.blur && back.contains(on)) on.blur();
       back.classList.remove('show');
       sheetStack = sheetStack.filter(function (s) { return s !== entry; });
       if (!sheetStack.length) document.body.classList.remove('no-scroll');
