@@ -439,6 +439,77 @@ body.kb-open .tabbar, body.kb-open .fab { display: none; }
 .wx-none .icon { color: var(--muted); }
 .wx-set { font-size: 13px; font-weight: 700; }
 
+/* ---------------- 天気のしるしを、ゆっくり動かす ----------------
+
+   お日さまは光がまわり、雲は流れ、しずくは落ちる。
+   ずっと目に入るところなので、どれも見ていて気にならない遅さにしてある。
+   動かす先は js/icons.js の側で印（wx-rays / wx-cloud など）を付けたところ。
+   transform-box を view-box にしておかないと、回る軸が形の真ん中になってしまう */
+.wx-rays, .wx-core, .wx-cloud, .wx-drop, .wx-flake, .wx-fog, .wx-bolt, .wx-moon {
+  transform-box: view-box; transform-origin: 12px 12px;
+}
+.wx-rays.sm, .wx-core.sm { transform-origin: 8.4px 7.4px; }
+
+/* 光がゆっくり一周する。30秒で1回 */
+.wx-rays { animation: wxSpin 30s linear infinite; }
+@keyframes wxSpin { to { transform: rotate(360deg); } }
+/* 日なた（月）はそっと息をする */
+.wx-core { animation: wxBreathe 5.5s ease-in-out infinite; }
+@keyframes wxBreathe { 50% { transform: scale(1.07); } }
+.wx-moon { animation: wxTilt 11s ease-in-out infinite; }
+@keyframes wxTilt { 50% { transform: rotate(-7deg); } }
+
+/* 雲は左右にゆっくり流れる */
+.wx-cloud { animation: wxDrift 9s ease-in-out infinite; }
+@keyframes wxDrift { 0%, 100% { transform: translateX(-.7px); } 50% { transform: translateX(.7px); } }
+
+/* しずくは上から落ちて、下で消える。3本を少しずつずらす */
+.wx-drop { animation: wxFall 2.4s linear infinite; }
+.wx-drop.slant { animation-name: wxFallSlant; }
+.wx-drop.d2 { animation-delay: .8s; }
+.wx-drop.d3 { animation-delay: 1.6s; }
+@keyframes wxFall {
+  0% { transform: translateY(-1.6px); opacity: 0; }
+  25% { opacity: 1; }
+  75% { opacity: 1; }
+  100% { transform: translateY(2.2px); opacity: 0; }
+}
+@keyframes wxFallSlant {
+  0% { transform: translate(.9px, -1.8px); opacity: 0; }
+  25% { opacity: 1; }
+  75% { opacity: 1; }
+  100% { transform: translate(-1.1px, 2.2px); opacity: 0; }
+}
+
+/* 雪は落ちながら、少し横に揺れる */
+.wx-flake { animation: wxSnow 4.2s ease-in-out infinite; }
+.wx-flake.f2 { animation-delay: 1.4s; }
+.wx-flake.f3 { animation-delay: 2.8s; }
+@keyframes wxSnow {
+  0% { transform: translate(0, -1.8px); opacity: 0; }
+  30% { transform: translate(.6px, -.6px); opacity: 1; }
+  70% { transform: translate(-.6px, .8px); opacity: 1; }
+  100% { transform: translate(0, 1.8px); opacity: 0; }
+}
+
+/* 霧は2本が別々に流れる */
+.wx-fog { animation: wxFogDrift 7s ease-in-out infinite; }
+.wx-fog.f2 { animation-delay: 2.2s; animation-duration: 8.5s; }
+@keyframes wxFogDrift {
+  0%, 100% { transform: translateX(-1.4px); opacity: .55; }
+  50% { transform: translateX(1.4px); opacity: 1; }
+}
+
+/* 稲妻はゆっくり明滅する（ちかちかはさせない） */
+.wx-bolt { animation: wxFlash 3.4s ease-in-out infinite; }
+@keyframes wxFlash { 0%, 100% { opacity: 1; } 45% { opacity: .2; } 60% { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .wx-rays, .wx-core, .wx-cloud, .wx-drop, .wx-flake, .wx-fog, .wx-bolt, .wx-moon {
+    animation: none;
+  }
+}
+
 /* 天気の画面 */
 .wx-sheet { gap: 8px; }
 .wx-now { display: flex; align-items: center; gap: 12px; padding: 2px 0 6px; }
@@ -2126,6 +2197,30 @@ a.tp-proj:active { color: var(--accent); }
 }
 .mn-g:active { opacity: .8; }
 .mn-g.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+/* 系統は「指定なし」を入れて4つ。人数とは行を分けて、字がつぶれないようにする */
+.mn-serv-wrap { display: flex; flex-direction: column; gap: 6px; }
+
+/* ---------------- 使いたい食材 ----------------
+   入れた食材は札にして並べる。押すと外れる */
+.mn-use { display: flex; flex-direction: column; gap: 6px; }
+.mn-use-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.mn-use-l { font-size: 12px; color: var(--muted); font-weight: 600; }
+.mn-use-clear {
+  font: inherit; font-size: 11.5px; color: var(--muted); cursor: pointer;
+  background: none; border: 0; padding: 2px 4px; text-decoration: underline;
+}
+.mn-use-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+.mn-use-tag {
+  display: inline-flex; align-items: center; gap: 4px; font: inherit; font-size: 12.5px;
+  padding: 4px 8px; cursor: pointer; color: var(--accent);
+  background: var(--accent-soft); border: 1px solid var(--accent);
+  border-radius: var(--radius-s);
+}
+.mn-use-tag:active { opacity: .7; }
+.mn-use-tag .icon { flex: none; }
+.mn-use-add { display: flex; gap: 6px; align-items: stretch; }
+.mn-use-add input { flex: 1; min-width: 0; }
+.mn-use-add .btn { flex: none; }
 .mn-pick .btn.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 
 .mn-body { display: flex; flex-direction: column; gap: 8px; }
@@ -2375,9 +2470,34 @@ a.tp-proj:active { color: var(--accent); }
 .pl-beat { font-size: 12.5px; line-height: 1.7; }
 .pl-beat-h { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .pl-beat p { margin: 2px 0 0; color: var(--muted); }
-/* 成人向けの場面は、印だけ置く（番号は続けたいので list-item のまま） */
+/* 成人向けの場面。中身も出すが、どこがそれかは一目で分かるようにする */
 .pl-beat.adult { color: var(--accent2); }
-.pl-beat.adult .chip { margin-left: 6px; vertical-align: middle; }
+.pl-beat.adult > .pl-beat-h b { color: var(--accent2); }
+.pl-beat.adult p {
+  color: var(--text); border-left: 2px solid var(--accent2);
+  padding-left: 8px; margin-top: 4px;
+}
+
+/* ジャンル・入れたいシーン。いくつでも足せる札の入力 */
+.pl-tags { display: flex; flex-direction: column; gap: 6px; }
+.pl-tags-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.pl-tags-l { font-size: 12px; color: var(--muted); font-weight: 600; }
+.pl-tags-clear {
+  font: inherit; font-size: 11.5px; color: var(--muted); cursor: pointer;
+  background: none; border: 0; padding: 2px 4px; text-decoration: underline;
+}
+.pl-tag-row { display: flex; flex-wrap: wrap; gap: 5px; }
+.pl-tag {
+  display: inline-flex; align-items: center; gap: 4px; font: inherit; font-size: 12.5px;
+  padding: 4px 8px; cursor: pointer; color: var(--accent);
+  background: var(--accent-soft); border: 1px solid var(--accent);
+  border-radius: var(--radius-s);
+}
+.pl-tag:active { opacity: .7; }
+.pl-tag .icon { flex: none; }
+.pl-tag-add { display: flex; gap: 6px; align-items: stretch; }
+.pl-tag-add input { flex: 1; min-width: 0; }
+.pl-tag-add .btn { flex: none; }
 
 /* 貯金の目標と節約目標 */
 .sv-need { display: flex; gap: 6px; flex-wrap: wrap; }

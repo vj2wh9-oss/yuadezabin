@@ -2054,17 +2054,29 @@
     return n;
   }
 
-  /** 最近出した献立の呼び名。同じものばかり出ないよう、次に渡す */
-  function recentMenuNames(days) {
+  /**
+   * 最近出した献立の呼び名と、その中の一品の名前。
+   * 同じものばかり出ないよう、次に頼むときに「これは避けて」と渡す。
+   * 食事の呼び名（鶏の照り焼き定食）だけでは中の一品が繰り返されるので、
+   * 一品の名前（鶏の照り焼き・ほうれん草のおひたし）もそろえて渡す。
+   * @param {number} [days] 何日さかのぼるか
+   * @param {number} [max] 何件まで
+   */
+  function recentMenuNames(days, max) {
     var out = [];
-    var from = U.addDays(U.today(), -(days || 14));
+    var from = U.addDays(U.today(), -(days || 30));
+    var add = function (s) {
+      var v = String(s || '').trim();
+      if (v && out.indexOf(v) < 0) out.push(v);
+    };
     Object.keys(state.settings.menus || {}).sort().reverse().forEach(function (d) {
       if (U.cmp(d, from) < 0) return;
       (state.settings.menus[d].meals || []).forEach(function (x) {
-        if (x.name && out.indexOf(x.name) < 0) out.push(x.name);
+        add(x.name);
+        (x.dishes || []).forEach(function (dd) { add(dd.name); });
       });
     });
-    return out.slice(0, 12);
+    return out.slice(0, Math.max(0, max || 40));
   }
 
   /* ---- プロット ----
@@ -2080,7 +2092,9 @@
       logline: str(p.logline, 300),
       length: p.length === 'long' ? 'long' : 'short',
       pages: Math.max(0, Math.round(U.num(p.pages, 0))),
-      genre: str(p.genre, 60),
+      genre: str(p.genre, 200),
+      // 頼んだときの「入れたいシーン」。あとから何を頼んだか分かるように残す
+      want: str(p.want, 1600),
       people: Math.max(0, Math.round(U.num(p.people, 0))),
       note: str(p.note, 300),
       at: p.at || new Date().toISOString(),
@@ -2092,8 +2106,9 @@
       beats: (Array.isArray(p.beats) ? p.beats : []).slice(0, 24).map(function (b) {
         b = b || {};
         var kind = b.kind === 'adult' ? 'adult' : 'story';
+        // 成人向けの場面も中身を持つ（設計図として使うため）。そのぶん長く取る
         return { label: str(b.label, 60), kind: kind,
-          text: kind === 'adult' ? '' : str(b.text, 600), page: str(b.page, 20) };
+          text: str(b.text, kind === 'adult' ? 1200 : 600), page: str(b.page, 20) };
       }).filter(function (b) { return b.label || b.text || b.kind === 'adult'; })
     };
     return (out.title || out.beats.length) ? out : null;

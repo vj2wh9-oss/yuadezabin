@@ -676,6 +676,7 @@
   var mSlots = ['dinner'];   // 選んだ食事。画面を描き直しても覚えておく
   var mServ = 1;             // 何人分
   var mGenre = '';           // 和食・洋食・中華。空なら指定なし
+  var mUse = [];             // 使いたい食材。入れておくと、必ずそれを使った献立になる
   var mDraft = null;         // まだ採用していない献立
   var mDate = '';            // その下書きは、どの日のぶんか
   var mBusy = '';            // いま考えている日（空なら考えていない）
@@ -737,6 +738,7 @@
       if (M.ready() && b) {
         card.appendChild(slotPick());
         card.appendChild(servRow());
+        card.appendChild(usePick());
       }
       card.appendChild(el('div', { class: 'row-wrap mn-acts' }, [
         b ? ui.btn(busy ? '考えています…' : '再考案', 'ghost', function () {
@@ -773,6 +775,7 @@
     /* 選ぶところ。見出しは付けない（朝食・1人分と書いてあれば分かる） */
     card.appendChild(slotPick());
     card.appendChild(servRow());
+    card.appendChild(usePick());
 
     // まだ出していないとき
     if (!draft) {
@@ -856,7 +859,7 @@
       DL.app.render();
       DL.menu.suggest({
         budget: budget || (bd ? bd.todayLeft : 0), slots: mSlots.slice(), servings: mServ,
-        genre: mGenre, avoid: avoid, date: date
+        genre: mGenre, use: mUse.slice(), avoid: avoid, date: date
       }).then(function (m) {
         mBusy = '';
         mDraft = m;
@@ -1711,23 +1714,92 @@
 
   /* 人数と、料理の系統。1行に並べる */
   function servRow() {
-    return el('div', { class: 'mn-serv' }, [
-      ui.segmented([{ value: 1, label: '1人分' }, { value: 2, label: '2人分' }],
-        mServ, function (v) { mServ = U.num(v, 1); DL.app.render(); }),
+    /* 系統は「指定なし」を入れて4つになったので、人数とは行を分ける
+       （iPhone の幅では1行に収まらず、字が読めなくなる） */
+    return el('div', { class: 'mn-serv-wrap' }, [
+      el('div', { class: 'mn-serv' },
+        ui.segmented([{ value: 1, label: '1人分' }, { value: 2, label: '2人分' }],
+          mServ, function (v) { mServ = U.num(v, 1); DL.app.render(); })),
       genrePick()
     ]);
   }
 
-  /* 和食・洋食・中華。もう一度押すと外れて、指定なしに戻る */
+  /* 指定なし・和食・洋食・中華。いまどれなのかが分かるよう、
+     「指定なし」も並びの中に置く（押して外す、では分かりにくい） */
   function genrePick() {
-    return el('div', { class: 'mn-genre' }, DL.menu.GENRES.map(function (g) {
+    var list = [{ value: '', label: '指定なし' }].concat(DL.menu.GENRES);
+    return el('div', { class: 'mn-genre' }, list.map(function (g) {
       var on = mGenre === g.value;
       return el('button', {
         type: 'button', class: 'mn-g' + (on ? ' on' : ''),
         'aria-pressed': on ? 'true' : 'false',
-        onclick: function () { mGenre = on ? '' : g.value; DL.app.render(); }
+        onclick: function () { mGenre = g.value; DL.app.render(); }
       }, el('span', { text: g.label }));
     }));
+  }
+
+  /* ---------------- 使いたい食材 ----------------
+
+     冷蔵庫に鶏肉がある、今日は魚が食べたい、というときに先に渡しておく。
+     いくつでも足せて、入れたものは必ず使った献立になる。 */
+
+  /** 入れた文字を食材に割る。読点・カンマ・中黒・空白のどれで区切ってもいい */
+  function splitUse(s) {
+    return String(s || '').split(/[,、,・\s　]+/)
+      .map(function (x) { return x.trim().slice(0, 30); })
+      .filter(Boolean);
+  }
+
+  function addUse(s) {
+    splitUse(s).forEach(function (x) {
+      if (mUse.indexOf(x) < 0 && mUse.length < 8) mUse.push(x);
+    });
+  }
+
+  /* 入れた食材の並びと、足すところ */
+  function usePick() {
+    var box = el('div', { class: 'mn-use' });
+    box.appendChild(el('div', { class: 'mn-use-head' }, [
+      el('span', { class: 'mn-use-l', text: '使いたい食材' }),
+      mUse.length ? el('button', {
+        type: 'button', class: 'mn-use-clear',
+        onclick: function () { mUse = []; DL.app.render(); }
+      }, el('span', { text: 'ぜんぶ外す' })) : null
+    ]));
+
+    if (mUse.length) {
+      box.appendChild(el('div', { class: 'mn-use-tags' }, mUse.map(function (x) {
+        return el('button', {
+          type: 'button', class: 'mn-use-tag', 'aria-label': x + 'を外す',
+          onclick: function () {
+            mUse = mUse.filter(function (v) { return v !== x; });
+            DL.app.render();
+          }
+        }, [el('span', { text: x }), ui.icon('close', 12)]);
+      })));
+    }
+
+    var input = ui.input({
+      value: '', maxlength: 60, placeholder: '例）魚、豚肉、なす',
+      'aria-label': '使いたい食材を足す'
+    });
+    var push = function () {
+      if (!input.value.trim()) return;
+      addUse(input.value);
+      input.value = '';
+      DL.app.render();
+    };
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); push(); }
+    });
+    box.appendChild(el('div', { class: 'mn-use-add' }, [
+      input,
+      ui.btn('足す', 'ghost', push, 'plus')
+    ]));
+    if (mUse.length >= 8) {
+      box.appendChild(el('p', { class: 'muted small', text: '足せるのは8つまでです。' }));
+    }
+    return box;
   }
 
   /* どの食事にするか。押すと入る・外れる（全部外すことはできない） */
@@ -1859,7 +1931,7 @@
     mRedo = redoKey(ctx.meal, d);
     DL.app.render();
     DL.menu.suggestDish({
-      menu: m, slot: ctx.meal.slot, dish: d, genre: mGenre,
+      menu: m, slot: ctx.meal.slot, dish: d, genre: mGenre, use: mUse.slice(),
       budget: m.budget, date: date
     }).then(function (r) {
       mRedo = '';

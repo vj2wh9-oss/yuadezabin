@@ -50,7 +50,8 @@
  * レシートの読み取り（OpenAI）
  *   GET    /v1/ocr/status  → { key, r2, model, strongModel, reasoning, maxTokens }（鍵は返さない）
  *   POST   /v1/ocr/receipt → 本文 {fileId} → { data:{store,date,total,items,…}, model, retried, usage }
- *   POST   /v1/menu        → 本文 {budget,slots,servings,genre,avoid,prices} → { data:{meals,shopping,total,note} }
+ *   POST   /v1/menu        → 本文 {budget,slots,servings,genre,use,avoid,prices} → { data:{meals,shopping,total,note} }
+ *                             use は使いたい食材の並び。入れると必ずそれを使った献立になる
  *   POST   /v1/menu/dish   → 本文 {budget,slot,role,keep,shopping,…} → { data:{dish,shopping,total,note} }
  *                             献立まるごとではなく、主菜・副菜など一品だけ出し直す
  *   POST   /v1/ocr/card    → 本文 {fileId} → { data:{company,contact,email,tel,address,…}, model, retried, usage }
@@ -701,10 +702,22 @@ function menuCommonLines(o, one) {
         + (x.kept ? '（作り置き。そのまま出せます）' : '')).join('、'));
     lines.push('残り物で足りるところは、新しく買わないでください。');
   }
+  /* 使いたい食材。入れてあれば、ここがいちばん強い縛りになる。
+     予算に収まらないときは、量を減らすか安い部位に替えて、
+     ともかくその食材を使うほうを取ってもらう */
+  if (o.use && o.use.length) {
+    lines.push('この人が使いたい食材です。'
+      + (one ? 'この一品には' : '今回の献立には') + '必ず全部を使ってください：'
+      + o.use.join('、'));
+    lines.push('使いたい食材のうち肉・魚にあたるものは、副菜ではなく主菜の主役にしてください。');
+    lines.push('予算に収まらないときは、量を減らすか安い部位・安い切り身に替えて、'
+      + 'その食材を使うほうを優先してください。使わずに済ませてはいけません。');
+  }
   if (o.avoid && o.avoid.length) {
     lines.push((one ? 'この一品は、次のものとは別の料理にしてください：'
-      : '次の献立は最近出したので、それとは別のものにしてください：')
-      + o.avoid.slice(0, 12).join('、'));
+      : '次の料理は最近出したので、それとは別のものにしてください'
+        + '（名前を少し変えただけのもの、味つけを変えただけの同じ料理も駄目です）：')
+      + o.avoid.slice(0, 30).join('、'));
   }
   // 作ってみて口に合わなかったもの。避けきれないときも、頻度は落としてもらう
   if (o.disliked && o.disliked.length) {
@@ -736,7 +749,21 @@ function menuPrompt(o) {
     '作るのは ' + slots + '。量は' + people + 'です。',
     '1食は、大きめの主菜を1品と、副菜を1品の、あわせて2品以上にしてください。'
       + '予算と手間に余裕があれば汁物やごはんを足しても構いません。',
-    '副菜はもやし・豆腐・卵・きのこ・旬の野菜など、安く作れるもので構いません。'
+    '副菜はもやし・豆腐・卵・きのこ・旬の野菜など、安く作れるもので構いません。',
+    /* 放っておくと「鶏の照り焼き」「豚の生姜焼き」あたりばかりが出てくる。
+       手を広げてもらうために、選べる幅をこちらから並べて見せておく */
+    '料理の幅を広く取ってください。定番のいつもの一皿に寄せず、'
+      + '家庭でよく作られるものから、ふだんあまり作らないけれど'
+      + '家の台所で作れるものまで、毎回ちがう方向から選んでください。',
+    '主菜の食材は 鶏・豚・牛・ひき肉・魚（切り身／刺身／缶詰）・えび・いか・貝・'
+      + '卵・豆腐・厚揚げ・大豆製品 のどれかから、毎回ちがうものを選んでください。',
+    '調理のしかたも 焼く・炒める・煮る・揚げる（少ない油の揚げ焼きも可）・蒸す・'
+      + '茹でる・和える・炊き込む・鍋・オーブン から、毎回ちがうものを選んでください。',
+    '味つけの方向も しょうゆ・みそ・塩・だし・甘辛・酢・ごま・バター醤油・'
+      + 'トマト・クリーム・カレー／スパイス・中華だれ・オイスター・にんにく・'
+      + '柚子こしょう・ナンプラー・キムチ・チーズ から、毎回ちがうものを選んでください。',
+    '和食・洋食・中華のほかに、韓国風・タイ風・台湾風・インド風・イタリア風なども'
+      + '使って構いません（系統の指定があるときは、そちらを優先してください）。'
   ];
   /* 何日かぶんをまとめて作っているとき。名前を変えただけの
      似たような献立が並ばないよう、はっきり別のものにしてもらう */
@@ -816,8 +843,11 @@ function menuOpts(body) {
     servings: Number(body.servings) === 2 ? 2 : 1,
     // 知らない値は指定なし扱い（古いアプリからは そもそも来ない）
     genre: GENRE_JA[String(body.genre || '')] ? String(body.genre) : '',
-    avoid: (Array.isArray(body.avoid) ? body.avoid : [])
+    avoid: (Array.isArray(body.avoid) ? body.avoid : []).slice(0, 40)
       .map((s) => String(s || '').slice(0, 40)).filter(Boolean),
+    // 使いたい食材。入れてあれば必ず使ってもらう
+    use: (Array.isArray(body.use) ? body.use : []).slice(0, 8)
+      .map((s) => String(s || '').trim().slice(0, 30)).filter(Boolean),
     // 家の残り物。先に使い切ってもらう
     leftovers: (Array.isArray(body.leftovers) ? body.leftovers : []).slice(0, 12)
       .map((x) => ({
@@ -1251,11 +1281,18 @@ async function spend(request, env, cors) {
 
 /* ---------------- プロット相談 ----------------
 
-   物語の大きな流れだけを作ってもらう。性的な場面は書かせず、
-   その位置に印（kind:'adult'）を置くだけにする。アプリ側はそこに
-   「ここから成人向けシーン」と出す。
+   成人向け（ゲイ男性向け）の男性同士のマンガの、プロットを作ってもらう。
+   作るのは「絵に起こす前の設計図」で、完成原稿の文章ではない。
+
+   成人向けの場面（kind:'adult'）にも、前は何も書かせていなかったが、
+   それでは設計図として使えないので、いまは中身を持たせている。
+   ただし持たせるのはプロットの粒度まで——どんな状況で、どちらが仕掛け、
+   二人のあいだで何が変わり、身体のやりとりがどの方向へ向かうか——で、
+   行為をなぞる文章そのものは書かせない。
+   そこから先の描写は、作者が絵で描くところ。
+
    登場人物は全員おとなにする。未成年を思わせる言葉が混ざったら、
-   一度だけ言い直してもらい、それでも混ざるなら断る。 */
+   一度だけ言い直してもらい、それでも混ざるなら断る。ここは譲らない。 */
 
 const PLOT_LENGTHS = ['short', 'long'];
 
@@ -1292,9 +1329,14 @@ const PLOT_SCHEMA = {
           label: { type: 'string', description: '場面の見出し' },
           kind: {
             type: 'string', enum: ['story', 'adult'],
-            description: 'story=ふつうの場面 adult=成人向けの場面（中身は書かない）'
+            description: 'story=ふつうの場面 adult=成人向けの場面'
           },
-          text: { type: 'string', description: 'その場面で起きること。kind が adult のときは空文字' },
+          text: {
+            type: 'string',
+            description: 'その場面で起きること。kind が adult のときは、'
+              + '状況・どちらが仕掛けるか・二人のあいだで何が変わるか・'
+              + '身体のやりとりがどちらへ向かうかを、プロットの粒度で書く'
+          },
           page: { type: 'string', description: '目安のページ数。例）8P' }
         }
       }
@@ -1309,20 +1351,45 @@ const PLOT_BAN = ['小学', '中学', '高校', '学生', '生徒', '児童', '�
 
 function plotPrompt(o, strict) {
   const lines = [
-    '男性同士（ゲイ向け）のマンガのプロットを考えてください。作者は成人向け同人作家です。',
-    '書くのは物語の大きな流れだけです。台詞や細かい描写は要りません。',
+    '成人向け（18禁）の、ゲイ男性向けの男性同士のマンガのプロットを考えてください。',
+    '依頼主は商業・同人で成人向けを描いているプロの漫画家で、これはその設計図です。',
+    '書くのは物語の骨組みです。完成原稿の文章や台詞は要りません。',
     '',
     '【長さ】' + (o.length === 'long' ? '長編' : '短編') + '（およそ ' + o.pages + 'ページ）',
     '【ジャンル】' + (o.genre || 'おまかせ'),
     '【入れたいシーン】' + (o.want || 'とくになし'),
     '【主要人物】' + o.people + '人',
     '',
+    '読者について：',
+    '・読者はゲイの成人男性です。女性向けの BL とは作りが違います。',
+    '・「攻／受」を役割として固定した型や、少女漫画的な甘い言い回しに寄せないでください。',
+    '・体つき・仕事・暮らしぶりは、実在する大人の男そのものとして書いてください'
+      + '（中性的で華奢な造形に寄せない。体格・体毛・年齢感・生活感に幅を持たせる）。',
+    '・欲望はごまかさず、まっすぐ書いてください。'
+      + '恋愛の手前の身体からの関係、割り切った関係、長く続いた関係のほころび、'
+      + '一夜かぎり、再会、同居、上下関係、といった大人の間柄も選択肢に入れてください。',
+    '',
+    '成人向けの場面について：',
+    '・性的な場面は物語の山です。ぼかしたり、飛ばしたりしないでください。',
+    '・その場面は kind を "adult" にし、text に次を必ず書いてください：'
+      + '①どんな状況・場所で始まるか　②どちらがどう仕掛け、相手がどう応えるか　'
+      + '③その最中に二人のあいだで何が変わるか（力関係、本音、ためらいが外れる瞬間）　'
+      + '④身体のやりとりがどの方向へ進むか（前戯から本番へ、どちらが抱くか、'
+      + '途中で入れ替わるか、道具や場所の条件など）　⑤終わったあと二人がどうなるか。',
+    '・④は絵に起こせる程度まで具体的に書いてください。'
+      + 'ただし書くのはあくまで流れであって、行為そのものをなぞる文章は要りません'
+      + '（そこは作者が絵で描きます）。露骨な性器の呼称や擬音は使わないでください。',
+    '・成人向けの場面は ' + (o.length === 'long' ? '2〜4' : '1〜2') + 'つ入れてください。',
+    '',
     '守ること：',
     '・登場人物は全員はっきりとおとな（20代以上の社会人）にしてください。',
     '・未成年を思わせる設定・言葉は一切使わないでください'
-      + '（学生、生徒、学校、学園、制服、幼い、少年 などは禁止です）。',
-    '・性的な場面そのものは書かないでください。その位置には kind を "adult" にした場面を置き、'
-      + 'text は空文字にしてください。前後のふつうの場面だけを書きます。',
+      + '（学生、生徒、学校、学園、制服、幼い、少年 などは禁止です）。ここは絶対です。',
+    '・性的な場面は、どちらも進んでそうしている、対等な大人同士のものにしてください。',
+    '・【入れたいシーン】に挙がっているものは、一つ残らず、書かれたとおりに'
+      + '物語のどこかへ入れてください。足りない場面を勝手に省かないでください。',
+    '・【ジャンル】に挙がっている要素も、すべて満たしてください。'
+      + '複数あるときは、そのどれもが効いている一本にまとめてください。',
     '・場面ごとに、目安のページ数を入れてください。合計が ' + o.pages + 'ページ前後になるように。',
     '・場面は' + (o.length === 'long' ? '10〜16' : '5〜9') + 'つくらいに分けてください。'
   ];
@@ -1331,6 +1398,19 @@ function plotPrompt(o, strict) {
       + '年齢・職業・場所をすべておとなのものに置き換えてください。');
   }
   return lines.join('\n');
+}
+
+/* ジャンル・入れたいシーンの受け取り。
+   配列でも、読点や改行で区切った1本の文字列でも、同じように並びに直す */
+function plotList(v, max, len) {
+  const raw = Array.isArray(v) ? v : String(v == null ? '' : v).split(/[\n、,，]+/);
+  const out = [];
+  for (const x of raw) {
+    const s = String(x == null ? '' : x).trim().slice(0, len);
+    if (s && out.indexOf(s) < 0) out.push(s);
+    if (out.length >= max) break;
+  }
+  return out;
 }
 
 /* 年齢は必ずおとなにする。数が小さければ言い方を変える */
@@ -1358,13 +1438,14 @@ function plotClean(data, o) {
       return {
         label: str(b && b.label, 60),
         kind: kind,
-        // 成人向けの場面は、中身を持たせない
-        text: kind === 'adult' ? '' : str(b && b.text, 600),
+        /* 成人向けの場面も、設計図として使えるように中身を持たせる。
+           そのぶん長くなるので、文字数の上限だけ広く取る */
+        text: str(b && b.text, kind === 'adult' ? 1200 : 600),
         page: str(b && b.page, 20)
       };
     }).filter((b) => b.label || b.text || b.kind === 'adult'),
     note: str(data && data.note, 300),
-    length: o.length, pages: o.pages, genre: o.genre, people: o.people
+    length: o.length, pages: o.pages, genre: o.genre, want: o.want, people: o.people
   };
 }
 
@@ -1389,8 +1470,10 @@ async function plot(request, env, cors) {
   const o = {
     length: PLOT_LENGTHS.indexOf(body && body.length) >= 0 ? body.length : 'short',
     pages: Math.min(600, Math.max(4, Math.round(Number(body && body.pages) || 24))),
-    genre: String((body && body.genre) || '').slice(0, 120),
-    want: String((body && body.want) || '').slice(0, 600),
+    // ジャンルも入れたいシーンも、いくつでも入れられる。
+    // 古いアプリからは文字列1本で来るので、どちらでも受ける
+    genre: plotList(body && body.genre, 8, 60).join('／'),
+    want: plotList(body && body.want, 12, 120).map((s, i) => (i + 1) + '. ' + s).join('\n'),
     people: Math.min(6, Math.max(1, Math.round(Number(body && body.people) || 2)))
   };
 
@@ -2180,6 +2263,7 @@ async function plotSend(request, env, cors) {
     length: (body && body.plot && body.plot.length) || 'short',
     pages: (body && body.plot && body.plot.pages) || 0,
     genre: (body && body.plot && body.plot.genre) || '',
+    want: (body && body.plot && body.plot.want) || '',
     people: (body && body.plot && body.plot.people) || 0
   });
   if (!p.title && !p.beats.length) return json({ error: 'empty' }, 400, cors);
@@ -2198,11 +2282,10 @@ async function plotSend(request, env, cors) {
   }
   lines.push('', '＜流れ＞');
   p.beats.forEach((b, i) => {
-    if (b.kind === 'adult') {
-      lines.push((i + 1) + '. ここから成人向けシーン' + (b.page ? '（' + b.page + '）' : ''));
-      return;
-    }
-    lines.push((i + 1) + '. ' + b.label + (b.page ? '（' + b.page + '）' : ''));
+    // 成人向けの場面も中身を送る。どこがそれなのかは見出しで分かるようにする
+    const mark = b.kind === 'adult' ? '🔞 ' : '';
+    lines.push((i + 1) + '. ' + mark + (b.label || '成人向けシーン')
+      + (b.page ? '（' + b.page + '）' : ''));
     if (b.text) lines.push('　　' + b.text);
   });
   if (p.note) lines.push('', p.note);

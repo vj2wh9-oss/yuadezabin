@@ -1,7 +1,13 @@
 /* プロット相談。
 
-   物語の大きな流れだけを考えてもらう。性的な場面は中身を作らせず、
-   その位置に「ここから成人向けシーン」と置くだけにしてある。
+   成人向け（ゲイ男性向け）の、男性同士のマンガの設計図を考えてもらう。
+   成人向けの場面にも中身を持たせる（どんな状況で、どちらが仕掛け、
+   二人のあいだで何が変わり、身体のやりとりがどこへ向かうか）。
+   絵に起こすのは作者なので、行為そのものをなぞる文章までは作らせない。
+
+   ジャンルも入れたいシーンも、いくつでも足せる。足したものは
+   一つ残らず入るように、サーバー側の頼みかたで念を押してある。
+
    登場人物は全員おとな。未成年を思わせる言葉が混ざったものは、
    サーバー側で作り直すか、出さずに断る。
 
@@ -12,7 +18,7 @@
 
   var LENGTHS = [{ value: 'short', label: '短編' }, { value: 'long', label: '長編' }];
   var DEFAULT_PAGES = { short: 24, long: 120 };
-  var ADULT_MARK = 'ここから成人向けシーン';
+  var ADULT_MARK = '成人向けシーン';
 
   function conf() { return S.syncSettings ? S.syncSettings() : (S.settings.sync || {}); }
   function base() { return String(conf().url || '').replace(/\/+$/, ''); }
@@ -57,7 +63,10 @@
   /** 作ってもらう */
   function make(o) {
     return post('/v1/plot', {
-      length: o.length, pages: o.pages, genre: o.genre, want: o.want, people: o.people
+      length: o.length, pages: o.pages, people: o.people,
+      // いくつでも足せる。向こうは並びでも1本の文字列でも受ける
+      genre: (o.genre || []).slice(0, 8),
+      want: (o.want || []).slice(0, 12)
     }).then(function (b) { return S.setPlot(b.data); });
   }
 
@@ -66,8 +75,62 @@
 
   /* ---------------- 画面（ホーム） ---------------- */
 
-  var form = { length: 'short', pages: 24, genre: '', want: '', people: 2 };
+  /* ジャンルも入れたいシーンも、いくつでも足せる並びで持つ */
+  var form = { length: 'short', pages: 24, genre: [], want: [], people: 2 };
   var busy = false;
+
+  /* 入れた文字を札に割る。読点・カンマ・改行・スラッシュのどれで区切ってもいい */
+  function splitTags(s) {
+    return String(s || '').split(/[\n、,，／\/]+/)
+      .map(function (x) { return x.trim().slice(0, 120); })
+      .filter(Boolean);
+  }
+
+  /**
+   * いくつでも足せる札の入力。足したものは押すと外れる。
+   * @param {string} label 見出し
+   * @param {Array} list いま入っている並び（この配列を直に触る）
+   * @param {number} max いくつまで
+   * @param {string} hint 入力欄の下書き
+   */
+  function tagField(label, list, max, hint) {
+    var box = el('div', { class: 'pl-tags' });
+    box.appendChild(el('div', { class: 'pl-tags-head' }, [
+      el('span', { class: 'pl-tags-l', text: label }),
+      list.length ? el('button', {
+        type: 'button', class: 'pl-tags-clear',
+        onclick: function () { list.length = 0; paint(); }
+      }, el('span', { text: 'ぜんぶ外す' })) : null
+    ]));
+
+    if (list.length) {
+      box.appendChild(el('div', { class: 'pl-tag-row' }, list.map(function (x, i) {
+        return el('button', {
+          type: 'button', class: 'pl-tag', 'aria-label': x + 'を外す',
+          onclick: function () { list.splice(i, 1); paint(); }
+        }, [el('span', { text: x }), ui.icon('close', 12)]);
+      })));
+    }
+
+    var input = ui.input({ value: '', maxlength: 120, placeholder: hint,
+      'aria-label': label + 'を足す' });
+    var push = function () {
+      if (!input.value.trim()) return;
+      splitTags(input.value).forEach(function (x) {
+        if (list.indexOf(x) < 0 && list.length < max) list.push(x);
+      });
+      input.value = '';
+      paint();
+    };
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); push(); }
+    });
+    box.appendChild(el('div', { class: 'pl-tag-add' }, [input, ui.btn('足す', 'ghost', push, 'plus')]));
+    if (list.length >= max) {
+      box.appendChild(el('p', { class: 'muted small', text: '足せるのは' + max + 'つまでです。' }));
+    }
+    return box;
+  }
 
   function card() {
     if (!ready()) return null;
@@ -115,21 +178,16 @@
 
     var pagesIn = ui.input({ type: 'number', inputmode: 'numeric', min: 4, max: 600,
       value: form.pages, onchange: function () { form.pages = U.num(pagesIn.value, form.pages); } });
-    var genreIn = ui.input({ value: form.genre, maxlength: 60, placeholder: '例）年の差／幼なじみ再会／オフィス',
-      onchange: function () { form.genre = genreIn.value; } });
-    var wantIn = ui.textarea({ rows: 2, value: form.want, maxlength: 400,
-      placeholder: '例）雨宿り／喧嘩からの仲直り／指輪を渡す',
-      onchange: function () { form.want = wantIn.value; } });
     var peopleIn = ui.stepper({ value: form.people, max: 6,
       onChange: function (v) { form.people = Math.max(1, U.num(v, 2)); } });
 
     box.appendChild(ui.field('ページ数', pagesIn));
-    box.appendChild(ui.field('ジャンル', genreIn));
-    box.appendChild(ui.field('入れたいシーン', wantIn));
+    box.appendChild(tagField('ジャンル', form.genre, 8, '例）年の差　再会　上司と部下'));
+    box.appendChild(tagField('入れたいシーン', form.want, 12, '例）雨宿り　朝まで帰さない　風呂場'));
+    box.appendChild(el('p', { class: 'muted small',
+      text: '足したものは、ぜんぶ入るように頼みます。読点で区切れば一度にいくつも足せます。' }));
     box.appendChild(ui.block('主要人物', peopleIn));
     box.appendChild(ui.btn(busy ? '考えています…' : 'プロットを出す', 'primary full', function () {
-      form.genre = genreIn.value;
-      form.want = wantIn.value;
       form.pages = U.num(pagesIn.value, form.pages);
       form.people = Math.max(1, peopleIn.getValue());
       run();
@@ -216,16 +274,13 @@
       })));
     }
 
+    /* 成人向けの場面も中身まで出す。どこがそれなのかは 18禁 の印で分かるようにする */
     box.appendChild(el('ol', { class: 'pl-beats' }, p.beats.map(function (b) {
-      if (b.kind === 'adult') {
-        return el('li', { class: 'pl-beat adult' }, [
-          el('b', { text: ADULT_MARK }),
-          b.page ? ui.chip(b.page, 'ghosty') : null
-        ]);
-      }
-      return el('li', { class: 'pl-beat' }, [
+      var adult = b.kind === 'adult';
+      return el('li', { class: 'pl-beat' + (adult ? ' adult' : '') }, [
         el('div', { class: 'pl-beat-h' }, [
-          el('b', { text: b.label }),
+          adult ? ui.chip('18禁', 'danger') : null,
+          el('b', { text: b.label || (adult ? ADULT_MARK : '') }),
           b.page ? ui.chip(b.page, 'ghosty') : null
         ]),
         b.text ? el('p', { text: b.text }) : null

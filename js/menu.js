@@ -147,6 +147,7 @@
    * 献立を考えてもらう。
    * @param {object} o {budget, slots:['breakfast','lunch','dinner'], servings:1|2,
    *   genre:'washoku'|'yoshoku'|'chuka'|''（空は指定なし）, avoid:[名前], date,
+   *   use:[使いたい食材]（複数可。入れると必ずそれを使った献立になる）,
    *   variety:true で「何日かぶんのうちの1日」として、似たものを避けてもらう}
    * @returns {Promise<object>} 正規化した献立
    */
@@ -178,7 +179,9 @@
         variety: !!o.variety,
         /* 同じものばかり出ないよう、最近のぶんを渡す。
            星2以下を付けたものも、あまり出さないほうへ寄せる */
-        avoid: (o.avoid || []).concat(S.recentMenuNames(14)).slice(0, 12),
+        avoid: (o.avoid || []).concat(S.recentMenuNames(30, 40)).slice(0, 30),
+        // 使いたい食材。入れてあれば、必ずそれを主にした献立にしてもらう
+        use: (o.use || []).slice(0, 8),
         disliked: S.dislikedDishes(20),
         // 前に作ったときのメモ。同じ料理が来たら活かしてもらう
         notes: S.dishHints(24),
@@ -269,7 +272,8 @@
         servings: U.num(m.servings, 1) === 2 ? 2 : 1,
         genre: GENRE_LABEL[o.genre] ? o.genre : '',
         // いま出ている一品と、最近の献立は避ける
-        avoid: [d.name].concat(S.recentMenuNames(14)).slice(0, 12),
+        avoid: [d.name].concat(S.recentMenuNames(30, 40)).slice(0, 30),
+        use: (o.use || []).slice(0, 8),
         disliked: S.dislikedDishes(20),
         notes: S.dishHints(24),
         leftovers: useLeftovers(o.date),
