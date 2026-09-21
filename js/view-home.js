@@ -746,6 +746,8 @@
         M.ready() ? sendBtn(saved, today) : null,
         // 別の日の「作るもの」として送る（コピーでも、移すのでも）
         onlyIcon('calendar', '別の日へ送る', 'ghost', function () { sendToDay(saved, today); }),
+        // 前に作ったものから選び直す（作ってもらわなくても差し替えられる）
+        onlyIcon('star', '前に作った献立から選ぶ', 'ghost', function () { pastMenuSheet(today); }),
         kitchenBtn(),
         onlyIcon('trash', '献立を外す', 'ghost', function () {
           ui.confirm(U.fmtMD(today) + ' の献立を外します。', { okText: '外す' }).then(function (ok) {
@@ -759,7 +761,12 @@
     }
 
     if (!M.ready()) {
-      card.appendChild(el('p', { class: 'muted small', text: '同期を設定すると使えます' }));
+      /* 作ってもらうには同期が要る。前に作ったものから選ぶだけなら、それも要らない */
+      card.appendChild(el('p', { class: 'muted small',
+        text: '同期を設定すると、献立を作ってもらえます' }));
+      card.appendChild(el('div', { class: 'row-wrap mn-acts' }, [
+        ui.btn('前のから選ぶ', 'ghost grow', function () { pastMenuSheet(today); }, 'star')
+      ]));
       return card;
     }
 
@@ -784,6 +791,8 @@
           }
           run(today, b, [], sv.left);
         }) : null,
+        // 作ってもらわずに、前に作ったものから選ぶ
+        ui.btn('前のから選ぶ', 'ghost grow', function () { pastMenuSheet(today); }),
         kitchenBtn()
       ]));
       return card;
@@ -1470,6 +1479,234 @@
     });
     box.appendChild(dl);
     return box;
+  }
+
+  /* ---------------- 前に作った献立から選ぶ ----------------
+
+     一度おいしかったものは、また作りたい。前に作った献立を星の数で分けて並べ、
+     そこから選んでその日の献立にできる。
+     値段は作ったときのものではなく、いまの控え（実際に払った額）に直して出す。
+     そのうえで、1日の予算と貯金予算に収まるかを見る。 */
+
+  var PAST_MAX = 60;         // さかのぼって見る献立の数
+
+  /** 星の平均を、並べるときの段に落とす（4.5 は ★5 の段） */
+  function starStep(n) { return Math.min(5, Math.max(0, Math.round(U.num(n, 0)))); }
+
+  function starText(n) {
+    return '★'.repeat(n) + '☆'.repeat(5 - n);
+  }
+
+  /**
+   * その献立を、いまの値段の控えで見直す。控えの無いものは作ったときの値段のまま。
+   * @returns {object} {shopping, total, changed}
+   */
+  function repriced(m) {
+    var changed = 0;
+    var shopping = (m.shopping || []).map(function (s) {
+      var was = Math.max(0, Math.round(U.num(s.price, 0)));
+      var now = S.priceOf(s.name) || was;
+      if (now !== was) changed++;
+      // 買った印は付け直し。前に買ったぶんは、いまの買い物とは関わりがない
+      return { name: s.name, qty: s.qty, price: now, was: was, got: false };
+    });
+    return {
+      shopping: shopping, changed: changed,
+      total: shopping.reduce(function (a, s) { return a + s.price; }, 0)
+    };
+  }
+
+  /**
+   * その日の予算と、貯金を守るなら使える額。
+   * @returns {object} {day: 1日の予算（今日あと使える額）|null, save: 貯金ぶんを引いた額|null}
+   */
+  function budgetLimits(date) {
+    var b = DL.expenses.dailyBudget(date);
+    if (!b) return { day: null, save: null };
+    var sv = savingLeft(date, b);
+    return { day: b.todayLeft, save: sv ? sv.left : null, b: b };
+  }
+
+  /**
+   * 前に作った献立の一覧。星ごとにまとめて出す。
+   * @param {string} date その献立にしたい日
+   */
+  function pastMenuSheet(date) {
+    var list = S.pastMenus({ before: date, max: PAST_MAX });
+    var body = el('div', { class: 'form' });
+    var closeList = function () { close(); };
+
+    if (!list.length) {
+      body.appendChild(ui.empty('前に作った献立が、まだありません。'));
+    } else {
+      body.appendChild(el('p', { class: 'muted small',
+        text: U.fmtMD(date) + ' の献立にします。星は、その献立の一品に付けた評価の平均です。' }));
+      [5, 4, 3, 2, 1, 0].forEach(function (n) {
+        var rows = list.filter(function (r) { return starStep(r.stars) === n; });
+        if (!rows.length) return;
+        body.appendChild(ui.section(n ? starText(n) : 'まだ評価していない',
+          el('span', { class: 'muted small', text: rows.length + '件' })));
+        body.appendChild(el('div', { class: 'list' }, rows.map(function (r) {
+          return pastRow(r, date, closeList);
+        })));
+      });
+    }
+
+    var close = ui.sheet({
+      title: '前に作った献立から選ぶ',
+      body: body,
+      actions: [ui.btn('閉じる', 'ghost', function () { close(); })]
+    });
+  }
+
+  /* 一覧の1行。押すと中身と買い物リストを開く */
+  function pastRow(r, date, closeList) {
+    var yen = DL.docs.yen;
+    var rp = repriced(r.menu);
+    var lim = budgetLimits(date);
+    // 収まらないものは、一覧の時点で分かるようにしておく
+    var overDay = lim.day !== null && rp.total > lim.day;
+    var overSave = lim.save !== null && rp.total > lim.save;
+    return el('button', {
+      type: 'button', class: 'row pm-row',
+      onclick: function () { pastPickSheet(r, date, closeList); }
+    }, [
+      el('div', { class: 'row-main' }, [
+        el('div', { class: 'row-title' }, [
+          el('span', { text: r.names.join('・') })
+        ]),
+        el('div', { class: 'row-sub' }, [
+          ui.chip(U.fmtMD(r.date), 'soft'),
+          r.rated ? ui.chip('★' + (Math.round(r.stars * 10) / 10) + '（' + r.rated + '品）', 'ghosty')
+            : ui.chip('評価なし', 'ghosty'),
+          el('b', { class: overDay || overSave ? 'over' : '', text: yen(rp.total) }),
+          overDay ? ui.chip('1日の予算オーバー', 'danger')
+            : overSave ? ui.chip('貯金予算オーバー', 'warn') : null
+        ])
+      ]),
+      el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+    ]);
+  }
+
+  /**
+   * 選んだ献立の中身。買い物リストを金額付きで出し、予算に収まるかを見せる。
+   * @param {object} r S.pastMenus の1件
+   * @param {string} date その献立にしたい日
+   * @param {function} closeList 一覧を畳む
+   */
+  function pastPickSheet(r, date, closeList) {
+    var yen = DL.docs.yen;
+    var rp = repriced(r.menu);
+    var lim = budgetLimits(date);
+    var body = el('div', { class: 'form' });
+
+    body.appendChild(el('p', { class: 'muted small',
+      text: U.fmtMD(r.date) + ' に作ったもの　'
+        + (r.menu.servings === 2 ? '2人分' : '1人分') }));
+
+    // 中身（何を作るか）
+    body.appendChild(ui.section('作るもの'));
+    var meals = el('div', { class: 'list' });
+    (r.menu.meals || []).forEach(function (x) {
+      meals.appendChild(el('div', { class: 'row' }, el('div', { class: 'row-main' }, [
+        el('div', { class: 'row-title' }, [
+          ui.chip(DL.menu.SLOT_LABEL[x.slot] || '', 'soft'),
+          el('span', { text: x.name })
+        ]),
+        (x.dishes || []).length ? el('div', { class: 'row-sub' },
+          el('span', { class: 'muted small',
+            text: x.dishes.map(function (d) { return d.name; }).join('・') })) : null
+      ])));
+    });
+    body.appendChild(meals);
+
+    // 買い物リスト。ふだんと同じ並びで、金額を添えて出す
+    body.appendChild(ui.section('買うもの',
+      el('span', { class: 'muted small', text: rp.shopping.length + '点' })));
+    if (!rp.shopping.length) {
+      body.appendChild(ui.empty('買うものは控えていません。'));
+    } else {
+      body.appendChild(el('div', { class: 'mn-list' }, rp.shopping.map(function (s) {
+        return el('div', { class: 'mn-item' }, [
+          el('span', { class: 'mn-item-n', text: s.name }),
+          s.qty ? el('span', { class: 'muted small', text: s.qty }) : null,
+          el('b', { class: 'mn-plan-p', text: yen(s.price) })
+        ]);
+      })));
+      body.appendChild(el('div', { class: 'mn-item pm-sum' }, [
+        el('span', { class: 'mn-item-n', text: 'あわせて' }),
+        el('b', { class: 'mn-plan-p', text: yen(rp.total) })
+      ]));
+      if (rp.changed) {
+        body.appendChild(el('p', { class: 'muted small',
+          text: '値段 ' + rp.changed + '点は、そのあと控えた実際の額に直してあります'
+            + '（作ったときは ' + yen(r.menu.total) + '）。' }));
+      }
+    }
+
+    // 予算に収まるか
+    body.appendChild(ui.section('予算'));
+    var warn = [];
+    var box = el('div', { class: 'list' });
+    box.appendChild(limitRow('1日の予算（今日あと使える額）', lim.day, rp.total, warn, '1日の予算'));
+    box.appendChild(limitRow('貯金予算（貯金ぶんを引いた額）', lim.save, rp.total, warn, '貯金予算'));
+    body.appendChild(box);
+    warn.forEach(function (w) {
+      body.appendChild(el('p', { class: 'mn-warn small' }, [
+        ui.icon('alert', 14), el('span', { text: w })
+      ]));
+    });
+
+    var close = ui.sheet({
+      title: r.names.join('・'),
+      body: body,
+      actions: [
+        ui.btn('やめる', 'ghost', function () { close(); }),
+        ui.btn('この献立にする', warn.length ? 'danger' : 'primary', function () {
+          var m = U.clone(r.menu);
+          m.shopping = rp.shopping.map(function (s) {
+            return { name: s.name, qty: s.qty, price: s.price, got: false };
+          });
+          m.total = rp.total;
+          S.setMenu(date, m);
+          close();
+          closeList();
+          DL.app.render();
+          ui.toast(U.fmtMD(date) + ' の献立にしました');
+        })
+      ]
+    });
+  }
+
+  /**
+   * 予算1行。収まらなければ、いくら足りないかを出して警告に足す。
+   * @param {number|null} limit 決めていなければ null
+   * @param {Array} warn 足りないぶんの言い分けを詰める先
+   */
+  function limitRow(label, limit, total, warn, shortName) {
+    var yen = DL.docs.yen;
+    if (limit === null) {
+      return el('div', { class: 'row' }, el('div', { class: 'row-main' }, [
+        el('div', { class: 'row-title' }, el('span', { text: label })),
+        el('div', { class: 'row-sub' },
+          el('span', { class: 'muted small', text: '決めていません' }))
+      ]));
+    }
+    var over = total > limit;
+    if (over) {
+      warn.push(shortName + 'を ' + yen(total - limit) + ' オーバーします'
+        + '（' + yen(limit) + ' のところ ' + yen(total) + '）。');
+    }
+    return el('div', { class: 'row pm-lim' }, el('div', { class: 'row-main' }, [
+      el('div', { class: 'row-title' }, [
+        el('span', { text: label }),
+        over ? ui.chip('オーバー', 'danger') : ui.chip('収まります', 'ok')
+      ]),
+      el('div', { class: 'row-sub' }, [
+        el('span', { class: 'muted small', text: yen(limit) + ' − ' + yen(total) + ' ＝ ' }),
+        el('b', { class: over ? 'over' : '', text: yen(limit - total) })
+      ])
+    ]));
   }
 
   /* 人数と、料理の系統。1行に並べる */

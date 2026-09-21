@@ -1885,6 +1885,41 @@
       });
   }
 
+  /**
+   * 前に作った献立を、新しい日から順に返す。
+   * 星は、その献立の一品それぞれに付けた星の平均（付いていないぶんは数えない）。
+   * 同じ顔ぶれの献立が何度も出てくるので、いちばん新しい1件にまとめる。
+   * @param {object} [o] {before: その日より前だけ, max: 何件まで}
+   * @returns {Array} [{date, menu, names, stars, rated}]
+   */
+  function pastMenus(o) {
+    o = o || {};
+    var map = state.settings.menus || {};
+    var seen = {};
+    var out = [];
+    Object.keys(map).filter(U.isISO).sort().reverse().forEach(function (d) {
+      if (o.before && U.cmp(d, o.before) >= 0) return;
+      var m = map[d];
+      var names = [];
+      (m.meals || []).forEach(function (x) {
+        (x.dishes || []).forEach(function (dd) { if (dd.name) names.push(dd.name); });
+        if (!(x.dishes || []).length && x.name) names.push(x.name);
+      });
+      if (!names.length) return;
+      // 同じ顔ぶれは1件だけ。日付の新しいほうから見ているので、先に来たものを残す
+      var key = names.map(priceKey).sort().join('|');
+      if (seen[key]) return;
+      seen[key] = true;
+      var got = names.map(dishNote).filter(function (n) { return n && n.stars; });
+      var sum = got.reduce(function (a, n) { return a + n.stars; }, 0);
+      out.push({
+        date: d, menu: m, names: names, rated: got.length,
+        stars: got.length ? sum / got.length : 0
+      });
+    });
+    return o.max ? out.slice(0, Math.max(0, o.max)) : out;
+  }
+
   function getMenu(date) { return (state.settings.menus || {})[date] || null; }
 
   function setMenu(date, m) {
@@ -3864,7 +3899,7 @@
     putTimeblock: putTimeblock, removeTimeblock: removeTimeblock,
     getLog: getLog, setLog: setLog, logDates: logDates, MOODS: MOODS,
     getMenu: getMenu, setMenu: setMenu, removeMenu: removeMenu,
-    menusIn: menusIn, menuPlan: menuPlan, setMenuPlan: setMenuPlan,
+    menusIn: menusIn, pastMenus: pastMenus, menuPlan: menuPlan, setMenuPlan: setMenuPlan,
     shopItems: shopItems, addShopItem: addShopItem, updateShopItem: updateShopItem,
     removeShopItem: removeShopItem, clearGotShopItems: clearGotShopItems,
     setShopGot: setShopGot, clearShopGot: clearShopGot, removeGotShop: removeGotShop,

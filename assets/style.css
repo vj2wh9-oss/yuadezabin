@@ -2240,6 +2240,16 @@ a.tp-proj:active { color: var(--accent); }
 /* 自分で足したぶんは、献立から来たものと見分けが付くようにする */
 .mn-item.mine .mn-item-n { text-decoration: underline dotted; text-underline-offset: 3px; }
 
+/* 前に作った献立から選ぶ。一覧の1行は押せるので、ボタンの見た目を素に戻す */
+.pm-row { width: 100%; text-align: left; font: inherit; cursor: pointer; }
+.pm-row:active { background: var(--card2); }
+/* 予算に収まらないときの額。赤で出す */
+.pm-row b.over, .pm-lim b.over { color: var(--danger); }
+/* 買い物リストの合計。上に区切りを1本引いて、品物と分ける */
+.pm-sum {
+  border-top: 1px dashed var(--line2); padding-top: 6px; margin-top: 4px; font-weight: 700;
+}
+
 .mn-foot { margin: 0; }
 .mn-foot.over { color: var(--danger); }
 
