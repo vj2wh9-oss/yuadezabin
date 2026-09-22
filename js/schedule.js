@@ -218,6 +218,41 @@
     return marks;
   }
 
+  /**
+   * これから先の、カレンダーに出るのと同じ印（入稿・締切・イベント当日）。
+   *
+   * 出しかたは dayMarks とそろえてある。とくに印刷所のプランは、
+   * カレンダーと同じく「メインに指定したものだけ」。
+   * timeline のほうは早割から割増まで全部を並べるので、それをそのまま
+   * 別のところで使うと、カレンダーのどこにも無い締切が出てきてしまう。
+   *
+   * @param {string} [fromDate] この日から
+   * @param {number} [days] 何日先まで
+   * @returns {Array} [{type, date, project, label}] 日付の順
+   */
+  function upcomingMarks(fromDate, days) {
+    var from = fromDate || U.today();
+    var to = U.addDays(from, days || 400);
+    var out = [];
+    DL.store.scopedProjects().forEach(function (p) {
+      if (p.status === 'archived') return;
+      var push = function (type, date, label) {
+        if (!U.isISO(date)) return;
+        if (U.cmp(date, from) < 0 || U.cmp(date, to) > 0) return;
+        out.push({ type: type, date: date, project: p, label: label });
+      };
+      if (p.kind === 'event') push('event', p.eventDate, p.eventName || p.title);
+      push('deadline', p.deadline, deadlineShort(p));
+      (p.printings || []).forEach(function (pr) {
+        if (!pr.primary) return;                 // メイン以外はカレンダーに出ない
+        if (pr.due === p.deadline) return;       // 締切と同じ日なら、二重に出さない
+        push('printing', pr.due, pr.label || '入稿');
+      });
+    });
+    out.sort(function (a, b) { return U.cmp(a.date, b.date); });
+    return out;
+  }
+
   /* 今後の締切（イベント・入稿・納品をまとめて時系列に） */
   function timeline(fromDate, days) {
     var from = fromDate || U.today();
@@ -713,6 +748,7 @@
     projectProgress: projectProgress, projectStatus: projectStatus, STATUS_LABEL: STATUS_LABEL,
     deadlineLabel: deadlineLabel, deadlineShort: deadlineShort,
     dayEntries: dayEntries, dayMarks: dayMarks, timeline: timeline,
+    upcomingMarks: upcomingMarks,
     alerts: alerts, moneyAlerts: moneyAlerts,
     actualPace: actualPace, isOverloaded: isOverloaded, overloadedDays: overloadedDays,
     deferDay: deferDay, rescheduleRemaining: rescheduleRemaining,

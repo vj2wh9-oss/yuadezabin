@@ -167,7 +167,7 @@ h1, h2, h3, p { margin: 0; }
   font-size: 15px; font-weight: 700; text-align: left; letter-spacing: .02em;
   padding-left: 2px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-/* ロゴは縮めない。右に「次の締切まで」が並んでも 365 まで出しきる
+/* ロゴは縮めない。右に「次の締切まで」の板が並んでも 365 まで出しきる
    （画面名の文字のときは、今までどおり縮んで「…」になってよい） */
 .appbar-title.is-logo { flex: none; }
 /* ロゴ（文字だけ）。アプリの名前を出すところで、365 をインディゴにする。
@@ -223,33 +223,66 @@ h1, h2, h3, p { margin: 0; }
 .appbar-gap { flex: 1; }
 
 /* ---------------- 次の締切まであと何日 ----------------
-   ホームでだけ、検索の右（帯の右はし）に出す。
-   同じ日にいくつもあるときは、右から左へ流して順に見せる */
+   ホームでだけ、検索の右に細長い一本で出す。駅の発車標のような見た目。
+   黒地に文字を光らせ、角は落として、数字は等幅でそろえる。
+   同じ日に重なっているものは、右から左へ流して順に見せる */
+.appbar.has-tick .appbar-gap { flex: 0 0 2px; }
+/* 発車標を出すときは、右の入れ物が空なら場所を空ける
+   （min-width ぶんの 32px が、板の幅をそのまま削ってしまうため） */
+.appbar.has-tick .appbar-actions:empty { display: none; }
+/* 帯の中の間も、そのぶん詰める */
+.appbar.has-tick .appbar-inner { gap: 2px; }
 .due-tick {
-  flex: none; position: relative; overflow: hidden;
-  height: 34px; min-width: 68px; max-width: 40vw;
-  display: flex; align-items: center; justify-content: flex-end;
-  padding: 0 5px; border-radius: var(--radius-s);
-  background: var(--card2); border: 1px solid var(--line2);
+  flex: 1; min-width: 0; position: relative; overflow: hidden;
+  height: 22px; margin-left: 4px;
+  display: flex; align-items: center;
+  padding: 0 7px; border-radius: 2px;
+  background: #0a0d12; border: 1px solid #1d232d;
+  /* 光っている板に見えるよう、中にうっすら内側の影を落とす */
+  box-shadow: inset 0 0 8px rgba(0, 0, 0, .8);
 }
 .due-tick[hidden] { display: none; }
-.due-tick:active { opacity: .7; }
-.due-face {
-  display: flex; flex-direction: column; align-items: flex-end; gap: 1px;
-  line-height: 1.15; white-space: nowrap;
+.due-tick:active { opacity: .75; }
+/* 走査線。近づかないと分からないくらい薄く敷く */
+.due-tick::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom, rgba(255, 255, 255, .045) 0 1px, transparent 1px 2px);
 }
-.due-what { display: flex; align-items: center; gap: 3px; font-size: 9px; color: var(--muted); }
-.due-dot { width: 5px; height: 5px; flex: none; display: inline-block; border-radius: 1px; }
-.due-left { font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.due-left.near { color: var(--warn); }
-.due-left.now { color: var(--danger); }
-/* 右から入って、左へ抜ける。どちらも薄くなりながら */
-.due-face.in { animation: dueIn .3s ease-out both; }
-.due-face.out { animation: dueOut .3s ease-in both; }
-@keyframes dueIn { from { transform: translateX(14px); opacity: 0; } }
-@keyframes dueOut { to { transform: translateX(-14px); opacity: 0; } }
+.due-face {
+  display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0;
+  font-size: 11px; line-height: 1;
+  font-variant-numeric: tabular-nums; letter-spacing: .02em;
+}
+/* 流れるのはここだけ。右の日数は動かさない */
+.due-scroll { flex: 1; min-width: 0; overflow: hidden; }
+.due-line { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.due-dot { width: 4px; height: 10px; flex: none; display: inline-block; border-radius: 0; }
+/* 種別（入稿・納品・イベント）。発車標の「種別」にあたるところ */
+.due-what {
+  flex: none; font-size: 9.5px; font-weight: 700; letter-spacing: .08em;
+  color: #0b0d11; background: #d8dee8; padding: 2px 4px; border-radius: 1px;
+}
+.due-name { flex: none; color: #cfd8e6; }
+/* あと何日か。いちばん知りたいところなので、右に固定して必ず見えるようにする。
+   ここだけ大きく、琥珀色に光らせる */
+.due-left {
+  flex: none;
+  font-size: 12.5px; font-weight: 800; letter-spacing: .04em;
+  color: #ffc247; text-shadow: 0 0 6px rgba(255, 194, 71, .55);
+}
+.due-left.near { color: #ff9d3d; text-shadow: 0 0 6px rgba(255, 157, 61, .6); }
+.due-left.now { color: #ff5d5d; text-shadow: 0 0 7px rgba(255, 93, 93, .7); }
+/* 右から入って、左へ抜ける */
+.due-face.in { animation: dueIn .34s ease-out both; }
+.due-face.out { animation: dueOut .34s ease-in both; }
+@keyframes dueIn { from { transform: translateX(60%); opacity: 0; } }
+@keyframes dueOut { to { transform: translateX(-60%); opacity: 0; } }
+/* 入りきらないときだけ、出しているあいだにゆっくり左へ送る */
+.due-line.pan { animation: duePan 3.4s ease-in-out .7s both; }
+@keyframes duePan { to { transform: translateX(var(--pan, 0px)); } }
 @media (prefers-reduced-motion: reduce) {
-  .due-face.in, .due-face.out { animation: none; }
+  .due-face.in, .due-face.out, .due-line.pan { animation: none; }
   .due-face.out { opacity: 0; }
 }
 

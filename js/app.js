@@ -319,52 +319,83 @@
 
   /* ---------------- 次の締切まであと何日 ----------------
 
-     入稿（印刷所の締切を含む）・締切・イベント当日のうち、いちばん近い日を出す。
-     同じ日にいくつもあるときは、右から左へ流して順に見せる。
+     入稿・締切・イベント当日のうち、いちばん近い日を出す。
+     どれを拾うかは、案件のカレンダーに出ている印とそろえてある
+     （schedule.upcomingMarks）。カレンダーのどこにも無い締切が
+     ここにだけ出てくる、ということが起きないようにするため。
+
+     見た目は駅の発車標のような細長い一本。同じ日にいくつも重なっていれば、
+     右から左へ流して順に見せる。名前が長くて入りきらないときは、
+     出しているあいだにゆっくり左へ送って、終わりまで読めるようにする。
 
      数えるのは日付だけなので、時計より軽い。日が変わったときに
      render() から呼び直される（app.js の1分ごとの見張り）。 */
 
-  var TICK_MS = 3400;        // 1つを出しておく時間
+  var TICK_MS = 4200;        // 1つを出しておく時間
+  var TICK_OUT = 340;        // 送り出すのにかかる時間
   var tickTimer = 0;
   var tickList = [];
   var tickAt = 0;
   var tickKey = '';          // いま出している顔ぶれ。変わらなければ流しを続ける
 
   function dueItems(today) {
-    var all = DL.schedule.timeline(today, 400).filter(function (it) {
-      return it.type === 'deadline' || it.type === 'printing' || it.type === 'event';
-    });
+    // カレンダーに出るのと同じ印だけ（印刷所のプランはメインのみ）
+    var all = DL.schedule.upcomingMarks(today, 400);
     if (!all.length) return [];
     // いちばん近い日ぶん。同じ日に重なっているものは、まとめて流す
     var first = all[0].date;
     return all.filter(function (it) { return it.date === first; }).slice(0, 6);
   }
 
-  /** その1件の出しかた。短く、appbar に収まる長さにする */
+  /**
+   * その1件の出しかた。発車標のように1行にまとめる。
+   * あと何日かは、いちばん知りたいところなので右に固定して必ず見えるようにし、
+   * 流すのはその左（種別と案件名）だけにする。
+   * 狭い画面では名前が入りきらないので、そこだけ送って読ませる。
+   */
   function tickFace(it, today) {
     var left = U.diffDays(today, it.date);
     var name = it.type === 'event' ? 'イベント'
-      : it.type === 'printing' ? '入稿'
+      : it.type === 'printing' ? (it.label || '入稿')
         : DL.schedule.deadlineShort(it.project);
     return el('span', { class: 'due-face' }, [
-      el('span', { class: 'due-what' }, [
-        el('i', { class: 'due-dot', style: { background: it.project.color } }),
-        el('span', { text: name })
-      ]),
+      el('span', { class: 'due-scroll' },
+        el('span', { class: 'due-line' }, [
+          el('i', { class: 'due-dot', style: { background: it.project.color } }),
+          el('span', { class: 'due-what', text: name }),
+          el('span', { class: 'due-name', text: it.project.title })
+        ])),
       el('b', { class: 'due-left' + (left <= 0 ? ' now' : left <= 3 ? ' near' : ''),
-        text: left <= 0 ? '今日' : 'あと' + left + '日' })
+        text: left <= 0 ? 'TODAY' : left + '日' })
     ]);
+  }
+
+  /* 入りきらないぶんを、出しているあいだにゆっくり左へ送る。
+     ぴったり収まっているときは、動かさない */
+  function panTick(face) {
+    var box = face.querySelector('.due-scroll');
+    var line = box && box.firstElementChild;
+    if (!line) return;
+    var over = line.scrollWidth - box.clientWidth + 4;
+    if (over <= 4) return;
+    line.style.setProperty('--pan', '-' + Math.round(over) + 'px');
+    line.classList.add('pan');
   }
 
   function drawDueTick(on) {
     clearTimeout(tickTimer);
     tickTimer = 0;
-    if (!on) { dueTick.hidden = true; tickKey = ''; U.clear(dueTick); return; }
+    var off = function () {
+      dueTick.hidden = true;
+      appbar.classList.remove('has-tick');
+      tickKey = '';
+      U.clear(dueTick);
+    };
+    if (!on) { off(); return; }
 
     var today = U.today();
     var list = dueItems(today);
-    if (!list.length) { dueTick.hidden = true; tickKey = ''; U.clear(dueTick); return; }
+    if (!list.length) { off(); return; }
 
     var key = today + '|' + list.map(function (it) {
       return it.type + ':' + it.date + ':' + it.project.id;
@@ -375,6 +406,7 @@
     tickList = list;
     tickAt = 0;
     dueTick.hidden = false;
+    appbar.classList.add('has-tick');
     dueTick.setAttribute('href', '#/day/' + list[0].date);
     dueTick.setAttribute('aria-label', '次の締切を見る');
     showTick(false);
@@ -389,6 +421,8 @@
     if (slide) face.classList.add('in');
     dueTick.appendChild(face);
     dueTick.setAttribute('href', '#/day/' + it.date);
+    // 幅は置いてからでないと測れない
+    panTick(face);
     queueTick();
   }
 
@@ -405,7 +439,7 @@
       setTimeout(function () {
         tickAt = (tickAt + 1) % tickList.length;
         showTick(true);
-      }, 320);
+      }, TICK_OUT);
     }, TICK_MS);
   }
 
