@@ -404,6 +404,10 @@
     p.plan = p.plan || '';     // 支援プラン
     p.docs = (p.docs || []).map(normalizeDoc);   // 請求書・領収書
     p.eventCash = normalizeCash(p.eventCash);    // 当日モードの釣銭とレジ締め
+    /* この案件のプロット。案件に紐づけておけば、いつでも案件の画面から見られる。
+       plotMemo は、そのプロットから思いついたことを書き留めておくところ */
+    p.plot = normalizePlot(p.plot);
+    p.plotMemo = String(p.plotMemo || '').slice(0, 4000);
     p.createdAt = p.createdAt || new Date().toISOString();
     // 作業開始日が未設定の既存データは、一番早いタスクの開始日で補う
     if (!p.startDate) {
@@ -3196,11 +3200,17 @@
    *   同期の版番号など「中身ではない情報」を書くときに使う。これを進めてしまうと、
    *   同期した直後の端末が「変更あり」に見えて、毎回ぶつかったことになってしまう。
    */
+  /**
+   * 保存する。
+   * @param {object} [opts] quiet=同期の記録で「変更あり」にしない
+   *   noRender=画面を描き直さない（打っている最中の欄で手が止まらないように）。
+   *   noRender でも保存と同期の予約は今までどおり走る
+   */
   function save(opts) {
     if (!opts || !opts.quiet) state.savedAt = new Date().toISOString();
     writeMirror();
     scheduleIDB();
-    emit();
+    emit(opts || {});
   }
 
   /**
@@ -3250,7 +3260,7 @@
     return writeIDB();
   }
 
-  function emit() { listeners.forEach(function (f) { f(state); }); }
+  function emit(opts) { listeners.forEach(function (f) { f(state, opts || {}); }); }
   function subscribe(fn) { listeners.push(fn); }
 
   /* ---------------- プロジェクト ---------------- */
@@ -3278,6 +3288,19 @@
     Object.assign(p, patch);
     normalizeProject(p);
     save();
+    return p;
+  }
+
+  /**
+   * プロットのメモだけを書き入れる。
+   * 打っている最中に画面を描き直すと、欄から手が離れて打てなくなる。
+   * ここでは描き直しを起こさずに保存する（同期には今までどおり乗る）。
+   */
+  function setProjectPlotMemo(id, memo) {
+    var p = getProject(id);
+    if (!p) return null;
+    p.plotMemo = String(memo == null ? '' : memo).slice(0, 4000);
+    save({ noRender: true });
     return p;
   }
 
@@ -3858,6 +3881,7 @@
     get settings() { return state.settings; },
     projects: projects, activeProjects: activeProjects, getProject: getProject,
     createProject: createProject, updateProject: updateProject, removeProject: removeProject,
+    setProjectPlotMemo: setProjectPlotMemo,
     addTask: addTask, getTask: getTask, updateTask: updateTask, removeTask: removeTask,
     moveTask: moveTask, setProgress: setProgress, bumpProgress: bumpProgress,
     MAX_PAGES: MAX_PAGES, pageTotal: pageTotal, setPageTotal: setPageTotal,

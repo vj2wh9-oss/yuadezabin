@@ -167,6 +167,9 @@ h1, h2, h3, p { margin: 0; }
   font-size: 15px; font-weight: 700; text-align: left; letter-spacing: .02em;
   padding-left: 2px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* ロゴは縮めない。右に「次の締切まで」が並んでも 365 まで出しきる
+   （画面名の文字のときは、今までどおり縮んで「…」になってよい） */
+.appbar-title.is-logo { flex: none; }
 /* ロゴ（文字だけ）。アプリの名前を出すところで、365 をインディゴにする。
    最初の一枚（splash）と同じように、365 は1桁ずつ回して止める。
    ホームに入るたびに回り、押すともう一度回る */
@@ -218,6 +221,62 @@ h1, h2, h3, p { margin: 0; }
 }
 
 .appbar-gap { flex: 1; }
+
+/* ---------------- 次の締切まであと何日 ----------------
+   ホームでだけ、検索の右（帯の右はし）に出す。
+   同じ日にいくつもあるときは、右から左へ流して順に見せる */
+.due-tick {
+  flex: none; position: relative; overflow: hidden;
+  height: 34px; min-width: 68px; max-width: 40vw;
+  display: flex; align-items: center; justify-content: flex-end;
+  padding: 0 5px; border-radius: var(--radius-s);
+  background: var(--card2); border: 1px solid var(--line2);
+}
+.due-tick[hidden] { display: none; }
+.due-tick:active { opacity: .7; }
+.due-face {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 1px;
+  line-height: 1.15; white-space: nowrap;
+}
+.due-what { display: flex; align-items: center; gap: 3px; font-size: 9px; color: var(--muted); }
+.due-dot { width: 5px; height: 5px; flex: none; display: inline-block; border-radius: 1px; }
+.due-left { font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.due-left.near { color: var(--warn); }
+.due-left.now { color: var(--danger); }
+/* 右から入って、左へ抜ける。どちらも薄くなりながら */
+.due-face.in { animation: dueIn .3s ease-out both; }
+.due-face.out { animation: dueOut .3s ease-in both; }
+@keyframes dueIn { from { transform: translateX(14px); opacity: 0; } }
+@keyframes dueOut { to { transform: translateX(-14px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .due-face.in, .due-face.out { animation: none; }
+  .due-face.out { opacity: 0; }
+}
+
+/* ---------------- 引き下げて更新 ----------------
+   ホームのいちばん上から下へ引くと出てくる輪。
+   引いたぶんだけ降りてきて、離すところまで引くと色が付く */
+.ptr {
+  position: fixed; left: 0; right: 0; top: calc(var(--bar-h) + env(safe-area-inset-top));
+  z-index: 39; display: flex; justify-content: center; pointer-events: none;
+  opacity: 0; visibility: hidden;
+  transform: translateY(calc(var(--ptr, 0px) - 44px));
+  transition: transform .2s ease, opacity .2s ease, visibility .2s;
+}
+.ptr.on { opacity: 1; visibility: visible; transition: opacity .1s ease, visibility 0s; }
+.ptr-ring {
+  display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: 50%;
+  background: var(--card); border: 1px solid var(--line);
+  color: var(--muted); box-shadow: 0 2px 10px rgba(0, 0, 0, .12);
+  transform: rotate(calc(var(--ptr, 0px) * 3));
+}
+.ptr.ready .ptr-ring { color: var(--accent); border-color: var(--accent); }
+.ptr.busy .ptr-ring { color: var(--accent); border-color: var(--accent); animation: ptrSpin .9s linear infinite; }
+@keyframes ptrSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .ptr.busy .ptr-ring { animation: none; }
+}
 .gearbtn { flex: none; }
 /* 横断検索（虫めがね）。歯車の右に並べる */
 .searchbtn { flex: none; }
@@ -2498,6 +2557,18 @@ a.tp-proj:active { color: var(--accent); }
 .pl-tag-add { display: flex; gap: 6px; align-items: stretch; }
 .pl-tag-add input { flex: 1; min-width: 0; }
 .pl-tag-add .btn { flex: none; }
+
+/* どの案件のプロットを見ているか。シートの頭に小さく置く */
+.pl-own { display: flex; align-items: center; gap: 5px; margin: 0; }
+.pl-own .icon { flex: none; }
+/* 案件に紐づけるときの選び先 */
+.pl-pick { width: 100%; text-align: left; font: inherit; cursor: pointer; }
+.pl-pick:active { background: var(--card2); }
+/* プロットのメモ。打ったそばから静かに残す */
+.pl-memo { display: flex; flex-direction: column; gap: 4px; }
+.pl-memo .area { min-height: 120px; }
+.pl-memo-foot { display: flex; justify-content: flex-end; min-height: 14px; }
+.pl-memo-state { transition: opacity .2s ease; }
 
 /* 貯金の目標と節約目標 */
 .sv-need { display: flex; gap: 6px; flex-wrap: wrap; }

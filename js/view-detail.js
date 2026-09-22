@@ -193,6 +193,9 @@
     var pgEntry = pagesEntry(p, today);
     if (pgEntry) wrap.appendChild(pgEntry);
 
+    /* ---- プロットとメモ ---- */
+    plotSection(wrap, p);
+
     /* ---- タスク ---- */
     wrap.appendChild(ui.section('タスク', el('span', { class: 'muted small', text: prog.doneTasks + ' / ' + prog.total + ' 完了' })));
     if (!(p.tasks || []).length) {
@@ -306,6 +309,71 @@
       ]),
       el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
     ]);
+  }
+
+  /* ---------------- プロットとメモ ----------------
+
+     プロット相談で作ったものを案件に紐づけておくと、ここからいつでも読める。
+     その下のメモは、そのプロットを見ていて思いついたことを書き留めておくところ。
+     打っている途中で描き直されると手が止まるので、
+     少し間を置いてから静かに保存する（画面はそのまま）。 */
+
+  function plotSection(wrap, p) {
+    var has = !!p.plot;
+    // プロットも、書き留めたメモも無いなら、作る口だけ出す
+    if (!has && !p.plotMemo) {
+      if (!DL.plot.ready()) return;
+      wrap.appendChild(ui.section('プロット'));
+      wrap.appendChild(ui.empty('この案件のプロットはまだありません。',
+        ui.btn('プロットを作る', 'primary', function () { DL.views.plot.open(p.id); }, 'idea')));
+      return;
+    }
+
+    wrap.appendChild(ui.section('プロット', DL.plot.ready()
+      ? ui.btn(has ? '開く' : '作る', 'ghost tiny',
+        function () { DL.views.plot.open(p.id); }, 'idea')
+      : null));
+
+    if (has) {
+      var card = el('div', { class: 'card pl-card' });
+      card.appendChild(DL.views.plot.body(p.plot));
+      wrap.appendChild(card);
+    } else {
+      wrap.appendChild(ui.empty('この案件のプロットはまだありません。'));
+    }
+
+    wrap.appendChild(ui.section('プロットのメモ',
+      el('span', { class: 'muted small', text: '書いたそばから残ります' })));
+    wrap.appendChild(plotMemoBox(p));
+  }
+
+  function plotMemoBox(p) {
+    var box = el('div', { class: 'card pl-memo' });
+    var area = ui.textarea({
+      value: p.plotMemo || '', rows: 6, maxlength: 4000,
+      placeholder: '思いついたこと、描きたいコマ、台詞の断片など',
+      'aria-label': 'プロットのメモ'
+    });
+    var state = el('span', { class: 'muted small pl-memo-state', text: '' });
+    var timer = 0;
+    var put = function () {
+      // 画面を描き直さずに入れる（打っている最中に手が離れないように）
+      S.setProjectPlotMemo(p.id, area.value);
+      state.textContent = '保存しました';
+      setTimeout(function () {
+        if (state.textContent === '保存しました') state.textContent = '';
+      }, 1600);
+    };
+    area.addEventListener('input', function () {
+      state.textContent = '…';
+      clearTimeout(timer);
+      timer = setTimeout(put, 600);
+    });
+    // 画面を離れるときに取りこぼさないよう、手が離れたところでも入れておく
+    area.addEventListener('blur', function () { clearTimeout(timer); put(); });
+    box.appendChild(area);
+    box.appendChild(el('div', { class: 'pl-memo-foot' }, state));
+    return box;
   }
 
   /* ---------------- タスク行 ---------------- */

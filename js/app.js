@@ -16,6 +16,7 @@
   var fabCrm = U.$('#fabCrm');
   var appbar = U.$('#appbar');
   var tabbar = U.$('#tabbar');
+  var dueTick = U.$('#dueTick');
 
   var route = { name: 'home', params: {} };
   var lastKey = '';
@@ -139,8 +140,15 @@
     // 顧客管理を閉じるボタン
     if (route.name === 'crm') DL.views.crm.actions(actionsEl);
 
-    // 同期ボタン（つないでいるときだけ）
-    if (DL.sync.active()) actionsEl.appendChild(syncBtn());
+    /* 同期ボタン（つないでいるときだけ）。
+       ホームでは出さない——上から引き下げれば同期がかかるので、
+       そのぶんの場所を「次の締切まであと何日」に譲る */
+    if (DL.sync.active() && route.name !== 'home') actionsEl.appendChild(syncBtn());
+
+    // 次の締切まであと何日。ホームでだけ、検索の右に出す
+    drawDueTick(route.name === 'home');
+    // 引きかけたまま画面が移ったときに、輪が残らないようにする
+    if (route.name !== 'home') restPull();
 
     // 名義の切り替え（2つ以上登録しているときだけ出す）。
     // 日常のカレンダーは名義と関わらないので、そこでは出さない
@@ -307,6 +315,98 @@
       }
     }, DL.icons.icon('refresh', 19));
     return b;
+  }
+
+  /* ---------------- 次の締切まであと何日 ----------------
+
+     入稿（印刷所の締切を含む）・締切・イベント当日のうち、いちばん近い日を出す。
+     同じ日にいくつもあるときは、右から左へ流して順に見せる。
+
+     数えるのは日付だけなので、時計より軽い。日が変わったときに
+     render() から呼び直される（app.js の1分ごとの見張り）。 */
+
+  var TICK_MS = 3400;        // 1つを出しておく時間
+  var tickTimer = 0;
+  var tickList = [];
+  var tickAt = 0;
+  var tickKey = '';          // いま出している顔ぶれ。変わらなければ流しを続ける
+
+  function dueItems(today) {
+    var all = DL.schedule.timeline(today, 400).filter(function (it) {
+      return it.type === 'deadline' || it.type === 'printing' || it.type === 'event';
+    });
+    if (!all.length) return [];
+    // いちばん近い日ぶん。同じ日に重なっているものは、まとめて流す
+    var first = all[0].date;
+    return all.filter(function (it) { return it.date === first; }).slice(0, 6);
+  }
+
+  /** その1件の出しかた。短く、appbar に収まる長さにする */
+  function tickFace(it, today) {
+    var left = U.diffDays(today, it.date);
+    var name = it.type === 'event' ? 'イベント'
+      : it.type === 'printing' ? '入稿'
+        : DL.schedule.deadlineShort(it.project);
+    return el('span', { class: 'due-face' }, [
+      el('span', { class: 'due-what' }, [
+        el('i', { class: 'due-dot', style: { background: it.project.color } }),
+        el('span', { text: name })
+      ]),
+      el('b', { class: 'due-left' + (left <= 0 ? ' now' : left <= 3 ? ' near' : ''),
+        text: left <= 0 ? '今日' : 'あと' + left + '日' })
+    ]);
+  }
+
+  function drawDueTick(on) {
+    clearTimeout(tickTimer);
+    tickTimer = 0;
+    if (!on) { dueTick.hidden = true; tickKey = ''; U.clear(dueTick); return; }
+
+    var today = U.today();
+    var list = dueItems(today);
+    if (!list.length) { dueTick.hidden = true; tickKey = ''; U.clear(dueTick); return; }
+
+    var key = today + '|' + list.map(function (it) {
+      return it.type + ':' + it.date + ':' + it.project.id;
+    }).join(',');
+    // 顔ぶれが同じなら、いま流れているところを止めずに続ける
+    if (key === tickKey && dueTick.firstChild) { queueTick(); return; }
+    tickKey = key;
+    tickList = list;
+    tickAt = 0;
+    dueTick.hidden = false;
+    dueTick.setAttribute('href', '#/day/' + list[0].date);
+    dueTick.setAttribute('aria-label', '次の締切を見る');
+    showTick(false);
+  }
+
+  /* いまの1件を出す。slide=true なら、右から流し込む */
+  function showTick(slide) {
+    var it = tickList[tickAt];
+    if (!it) return;
+    U.clear(dueTick);
+    var face = tickFace(it, U.today());
+    if (slide) face.classList.add('in');
+    dueTick.appendChild(face);
+    dueTick.setAttribute('href', '#/day/' + it.date);
+    queueTick();
+  }
+
+  /* 2つ以上あるときだけ、次のものへ送る */
+  function queueTick() {
+    clearTimeout(tickTimer);
+    if (tickList.length < 2) return;
+    tickTimer = setTimeout(function () {
+      var face = dueTick.firstElementChild;
+      if (!face) return;
+      // いま出ているものを左へ送り出してから、次を右から入れる
+      face.classList.remove('in');
+      face.classList.add('out');
+      setTimeout(function () {
+        tickAt = (tickAt + 1) % tickList.length;
+        showTick(true);
+      }, 320);
+    }, TICK_MS);
   }
 
   /* ---------------- カレンダーの切り替え（案件 / 日常） ---------------- */
@@ -542,7 +642,9 @@
   window.addEventListener('hashchange', render);
 
   // データが変わったら再描画（シートは開いたまま）
-  S.subscribe(function () { render(); });
+  /* 保存されたら描き直す。ただし noRender を付けた保存は、そのままにしておく
+     （打っている最中の欄で手が離れてしまうため）*/
+  S.subscribe(function (st, opts) { if (opts && opts.noRender) return; render(); });
 
   // data-icon が付いた要素にアイコンを流し込む
   function mountIcons() {
@@ -576,6 +678,98 @@
     vv.addEventListener('resize', check);
     vv.addEventListener('scroll', check);
     check();
+  }
+
+  /* ---------------- 引き下げて更新 ----------------
+
+     ホームのいちばん上で、上から下へ引くと同期がかかる。
+     ボタンを押すのではなく、指の動きそのものが「もう一度見に行く」になる。
+     引いているあいだは輪が付いてきて、離すところまで引けば回りだす。
+
+     ホームの上にいるときだけ。横に振ったぶんは見送る（左右のスワイプを邪魔しない）。 */
+
+  var PULL_NEED = 72;        // ここまで引いたら更新する
+  var PULL_MAX = 110;        // これ以上は付いてこない
+  /* 引きかけたまま画面が移ったとき用の片づけ。中身は watchPull で入れる */
+  var restPull = function () {};
+
+  function watchPull() {
+    var ring = el('div', { class: 'ptr', 'aria-hidden': 'true' },
+      el('div', { class: 'ptr-ring' }, DL.icons.icon('refresh', 20)));
+    document.body.appendChild(ring);
+
+    var y0 = 0, x0 = 0, dist = 0;
+    var tracking = false, pulling = false, busy = false;
+
+    var set = function (d) {
+      dist = d;
+      ring.style.setProperty('--ptr', d + 'px');
+      ring.classList.toggle('ready', d >= PULL_NEED);
+    };
+    var rest = function () {
+      pulling = false;
+      tracking = false;
+      ring.classList.remove('on', 'ready');
+      ring.style.removeProperty('--ptr');
+      dist = 0;
+    };
+
+    document.addEventListener('touchstart', function (e) {
+      if (busy || route.name !== 'home' || e.touches.length !== 1) return;
+      // いちばん上にいるときだけ。少しでも巻き上がっていれば、ふつうのスクロール
+      if (window.scrollY > 0) return;
+      // シートが開いているあいだは、そちらの操作
+      if (document.body.classList.contains('no-scroll')) return;
+      tracking = true;
+      pulling = false;
+      y0 = e.touches[0].clientY;
+      x0 = e.touches[0].clientX;
+    }, { passive: true });
+
+    document.addEventListener('touchmove', function (e) {
+      if (!tracking || busy) return;
+      var t = e.touches[0];
+      var dy = t.clientY - y0;
+      var dx = t.clientX - x0;
+      if (!pulling) {
+        // 下へ、まっすぐ引いたときだけ受ける
+        if (dy < 8) { if (dy < -4) tracking = false; return; }
+        if (Math.abs(dx) > Math.abs(dy)) { tracking = false; return; }
+        pulling = true;
+        ring.classList.add('on');
+      }
+      if (window.scrollY > 0) { rest(); return; }
+      // 引くほど重くなる。ずっと付いてくると、どこまでも伸びてしまう
+      set(Math.min(PULL_MAX, dy * 0.55));
+      if (e.cancelable) e.preventDefault();
+    }, { passive: false });
+
+    var done = function () {
+      if (!pulling) { tracking = false; return; }
+      if (dist < PULL_NEED) { rest(); return; }
+      busy = true;
+      ring.classList.add('busy');
+      set(PULL_NEED);
+      DL.sync.run({ force: true }).then(function (r) {
+        busy = false;
+        ring.classList.remove('busy');
+        rest();
+        if (r.status === 'error' || r.status === 'conflict') return;  // それぞれ側で知らせる
+        ui.toast(r.status === 'pushed' ? '送りました'
+          : r.status === 'pulled' ? '受け取りました'
+          : r.status === 'merged' ? '統合しました' : '最新です');
+        checkFanbox(true);
+        checkOrders(true);
+        render();
+      }).catch(function () {
+        busy = false;
+        ring.classList.remove('busy');
+        rest();
+      });
+    };
+    document.addEventListener('touchend', done, { passive: true });
+    document.addEventListener('touchcancel', function () { rest(); }, { passive: true });
+    restPull = function () { if (!busy) rest(); };
   }
 
   /* 上の帯と下のタブは position:fixed で画面に貼り付けている。
@@ -678,6 +872,7 @@
     mountIcons();
     watchKeyboard();
     watchBars();
+    watchPull();
     var splashDone = startSplash();
     if (!location.hash) location.hash = '#/home';
 

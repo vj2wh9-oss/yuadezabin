@@ -67,7 +67,7 @@
       // いくつでも足せる。向こうは並びでも1本の文字列でも受ける
       genre: (o.genre || []).slice(0, 8),
       want: (o.want || []).slice(0, 12)
-    }).then(function (b) { return S.setPlot(b.data); });
+    }).then(function (b) { return put(b.data); });
   }
 
   /** Discord のチャンネルへ送る */
@@ -78,6 +78,28 @@
   /* ジャンルも入れたいシーンも、いくつでも足せる並びで持つ */
   var form = { length: 'short', pages: 24, genre: [], want: [], people: 2 };
   var busy = false;
+
+  /* いま扱っているプロットの持ち主。
+     空ならどの案件にも紐づいていないぶん（ホームの1行から開いたとき）。
+     案件の画面から開いたときは、その案件の id が入る */
+  var pid = '';
+
+  /** いま扱っているプロット */
+  function cur() {
+    if (!pid) return S.getPlot();
+    var p = S.getProject(pid);
+    return p ? p.plot : null;
+  }
+
+  /** いま扱っているプロットを入れ替える。null で消す */
+  function put(v) {
+    if (!pid) return S.setPlot(v);
+    S.updateProject(pid, { plot: v });
+    return cur();
+  }
+
+  /** 持ち主の案件。紐づいていなければ null */
+  function owner() { return pid ? S.getProject(pid) : null; }
 
   /* 入れた文字を札に割る。読点・カンマ・改行・スラッシュのどれで区切ってもいい */
   function splitTags(s) {
@@ -135,7 +157,16 @@
   function card() {
     if (!ready()) return null;
     var box = el('div', { class: 'card pl-card' });
-    var saved = S.getPlot();
+    var saved = cur();
+    var own = owner();
+
+    // どの案件のぶんを見ているのか、はじめに断っておく
+    if (own) {
+      box.appendChild(el('p', { class: 'muted small pl-own' }, [
+        ui.icon('projects', 13),
+        el('span', { text: own.title + ' のプロット' })
+      ]));
+    }
 
     if (saved) {
       box.appendChild(body(saved));
@@ -160,13 +191,19 @@
           onclick: function () {
             ui.confirm('このプロットを消します。', { okText: '消す' }).then(function (ok) {
               if (!ok) return;
-              S.setPlot(null);
+              put(null);
               ui.toast('消しました');
               paint();
             });
           }
         }, ui.icon('trash', 16))
       ]));
+      /* どの案件のものでもないプロットは、あとから案件へ移せる。
+         案件のぶんは、その案件の画面からいつでも開ける */
+      if (!pid) {
+        box.appendChild(ui.btn('案件に紐づける', 'ghost full',
+          function () { linkSheet(saved); }, 'projects'));
+      }
       return box;
     }
 
@@ -226,7 +263,7 @@
   function row() {
     if (!ready()) return null;
     var saved = S.getPlot();
-    return el('button', { type: 'button', class: 'row', onclick: open }, [
+    return el('button', { type: 'button', class: 'row', onclick: function () { open(); } }, [
       el('div', { class: 'row-main' }, [
         el('div', { class: 'row-title' }, [
           ui.icon('idea', 16),
@@ -243,13 +280,76 @@
     ]);
   }
 
-  function open() {
+  /**
+   * プロット相談を開く。
+   * @param {string} [projectId] 案件の id。渡すと、その案件のプロットを扱う
+   */
+  function open(projectId) {
+    pid = projectId || '';
+    var own = owner();
     host = el('div');
     host.appendChild(card());
     ui.sheet({
-      title: 'プロット相談', body: host,
-      onClose: function () { host = null; }
+      title: own ? own.title + ' のプロット' : 'プロット相談',
+      body: host,
+      // 閉じたら、次に開くまで持ち主は持たない（ホームの1行が引きずられないように）
+      onClose: function () { host = null; pid = ''; DL.app.render(); }
     });
+  }
+
+  /**
+   * どの案件のものでもないプロットを、案件へ移す。
+   * 移した先にすでにプロットがあれば、置き替えるかどうか聞く。
+   * @param {object} p いま持っているプロット
+   */
+  function linkSheet(p) {
+    var list = S.scopedProjects().filter(function (x) { return x.status !== 'archived'; });
+    var body = el('div', { class: 'form' });
+
+    if (!list.length) {
+      body.appendChild(ui.empty('紐づけられる案件がありません。'));
+    } else {
+      body.appendChild(el('p', { class: 'muted small',
+        text: '選んだ案件のプロットにします。案件の画面から、いつでも開けるようになります。' }));
+      body.appendChild(el('div', { class: 'list' }, list.map(function (x) {
+        return el('button', {
+          type: 'button', class: 'row pl-pick',
+          onclick: function () { pick(x); }
+        }, [
+          el('span', { class: 'dot', style: { background: x.color } }),
+          el('div', { class: 'row-main' }, [
+            el('div', { class: 'row-title' }, el('span', { text: x.title })),
+            el('div', { class: 'row-sub' }, [
+              ui.chip(ui.KIND_LABEL[x.kind] || '', 'soft'),
+              x.plot ? ui.chip('プロットあり', 'warn') : null,
+              U.isISO(x.deadline) ? el('span', { class: 'muted small',
+                text: U.fmtMD(x.deadline) + ' 締切' }) : null
+            ])
+          ]),
+          el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+        ]);
+      })));
+    }
+
+    var close = ui.sheet({
+      title: '案件に紐づける', body: body,
+      actions: [ui.btn('やめる', 'ghost', function () { close(); })]
+    });
+
+    function pick(x) {
+      var go = function () {
+        S.updateProject(x.id, { plot: p });
+        S.setPlot(null);            // ホームのぶんからは外す（移す、であってコピーではない）
+        close();
+        pid = x.id;
+        paint();
+        ui.toast(x.title + ' のプロットにしました');
+      };
+      if (!x.plot) { go(); return; }
+      ui.confirm('「' + x.title + '」にはすでにプロットがあります。\n'
+        + '（' + (x.plot.title || '無題') + '）置き替えますか。',
+        { okText: '置き替える', danger: true }).then(function (ok) { if (ok) go(); });
+    }
   }
 
   /* できたプロットの見た目 */
