@@ -112,6 +112,13 @@
       wrap.appendChild(list);
     }
 
+    // カードの決済通知から取り込んだぶん。まだ経費に入れていないもの
+    var cardRow = cardEntry();
+    if (cardRow) {
+      wrap.appendChild(ui.section('カードの取り込み'));
+      wrap.appendChild(cardRow);
+    }
+
     // 3つとも同じ幅で1列に並べる（折り返さない）
     wrap.appendChild(el('div', { class: 'pad btn-row3' }, [
       ui.btn(isLife ? '支出を追加' : '経費を追加', 'primary', function () { addExpense(); }, 'plus'),
@@ -1286,6 +1293,276 @@
 
   function addExpense(opts) { expenseSheet(null, opts || {}); }
 
+  /* ---------------- カードの決済通知（取込済み情報） ----------------
+
+     iPhone の通知から取り込んだ決済は、ここでいったん預かっておく。
+     すぐ経費に入れてしまうと、私用と経費の見分けも、
+     二重に入ってしまったぶんの取り消しもできない。
+     1件ずつ、経費に入れるか捨てるかを決める。 */
+
+  function cardEntry() {
+    var C = DL.card;
+    if (!C || !C.ready()) return null;
+    var n = C.pending();
+    // 預かりが空のときは、設定の入口としてだけ残す（薄く）
+    return el('button', {
+      type: 'button', class: 'row docs-entry' + (n ? '' : ' is-quiet'),
+      onclick: function () { cardSheet(); }
+    }, [
+      el('div', { class: 'row-main' }, [
+        el('div', { class: 'row-title' }, [
+          ui.icon('client', 17), el('span', { text: 'カードの決済通知' })
+        ]),
+        el('div', { class: 'row-sub' }, n
+          ? [ui.chip('取込済み ' + n + '件', 'warn'),
+            el('span', { class: 'muted small', text: '経費に入れるか、捨てるかを決めます' })]
+          : [ui.chip('預かりなし', 'ghosty')])
+      ]),
+      el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+    ]);
+  }
+
+  /* 取り込んだぶんの一覧。ここから経費へ入れるか、捨てる */
+  function cardSheet() {
+    var C = DL.card;
+    var host = el('div');
+    var busy = false;
+
+    function draw() {
+      U.clear(host);
+      var list = S.cardInbox();
+      var box = el('div', { class: 'form' });
+
+      box.appendChild(el('div', { class: 'row-wrap' }, [
+        ui.btn(busy ? '取りに行っています…' : 'いま取りに行く', 'ghost', function () {
+          if (busy) return;
+          busy = true;
+          draw();
+          C.pull().then(function (r) {
+            busy = false;
+            draw();
+            ui.toast(r.added ? r.added + '件 取り込みました' : '新しいぶんはありませんでした');
+          }).catch(function (e) {
+            busy = false;
+            draw();
+            ui.toast(e.message, 'danger');
+          });
+        }, 'refresh'),
+        ui.btn('iPhone の設定', 'ghost', function () { cardSetupSheet(); }, 'settings')
+      ]));
+
+      if (!list.length) {
+        box.appendChild(ui.empty('取り込んだ決済はありません。'));
+        host.appendChild(box);
+        return;
+      }
+
+      var total = list.reduce(function (a, x) { return a + x.amount; }, 0);
+      box.appendChild(el('div', { class: 'card sum-grid' }, [
+        el('div', { class: 'sum-box big' }, [el('span', { text: '預かり' }),
+          el('b', { text: list.length + '件' })]),
+        el('div', { class: 'sum-box' }, [el('span', { text: 'あわせて' }),
+          el('b', { text: D.yen(total) })])
+      ]));
+
+      box.appendChild(el('div', { class: 'list' }, list.map(cardRow)));
+
+      box.appendChild(ui.btn('ぜんぶ捨てる', 'danger full', function () {
+        ui.confirm('預かっている ' + list.length + '件を、ぜんぶ捨てます。\n'
+          + '経費には入りません。', { danger: true, okText: '捨てる' }).then(function (ok) {
+          if (!ok) return;
+          S.clearCardInbox();
+          draw();
+          ui.toast('捨てました');
+        });
+      }, 'trash'));
+      host.appendChild(box);
+    }
+
+    /* 1件ぶん。押すと中身を直せる。右に「経費へ」と「捨てる」 */
+    function cardRow(x) {
+      return el('div', { class: 'row ci-row' }, [
+        el('div', { class: 'row-main' }, [
+          el('div', { class: 'row-title' }, [
+            el('span', { text: x.store || '（店名なし）' }),
+            el('b', { class: 'ci-amount', text: D.yen(x.amount) })
+          ]),
+          el('div', { class: 'row-sub' }, [
+            ui.chip(U.fmtMD(x.date) + (x.time ? ' ' + x.time : ''), 'soft'),
+            el('button', {
+              type: 'button', class: 'ci-fix',
+              onclick: function () { fixSheet(x); }
+            }, [ui.icon('edit', 13), el('span', { text: '直す' })])
+          ])
+        ]),
+        el('div', { class: 'ci-acts' }, [
+          ui.btn('経費へ', 'primary tiny', function () { apply(x); }),
+          el('button', {
+            type: 'button', class: 'btn tiny only ghost', 'aria-label': x.store + 'を捨てる',
+            onclick: function () {
+              S.removeCardItem(x.id);
+              draw();
+              ui.toast('捨てました');
+            }
+          }, ui.icon('trash', 14))
+        ])
+      ]);
+    }
+
+    /* 経費に入れる。いつもの経費の入力を、通知のぶんで埋めて開く。
+       どの帳簿の、どの分類にするかは、そこで決めてもらう */
+    function apply(x) {
+      addExpense({
+        book: book,
+        preset: C.toExpense(x, book),
+        onSaved: function () {
+          S.removeCardItem(x.id);
+          draw();
+        }
+      });
+    }
+
+    /* 読み違えを手で直す。届いた文面も見せる */
+    function fixSheet(x) {
+      var storeIn = ui.input({ value: x.store, maxlength: 60, placeholder: '店の名前' });
+      var amountIn = ui.input({ type: 'number', inputmode: 'numeric', min: 0, value: x.amount });
+      var dateIn = ui.input({ type: 'date', value: x.date });
+      var close = ui.sheet({
+        title: '取り込んだ決済を直す',
+        body: el('div', { class: 'form' }, [
+          ui.field('店の名前', storeIn),
+          el('div', { class: 'grid2' }, [
+            ui.field('金額（円）', amountIn),
+            ui.field('日付', dateIn)
+          ]),
+          x.raw ? el('div', {}, [
+            el('p', { class: 'muted small', text: '届いた通知の文面' }),
+            el('p', { class: 'ci-raw', text: x.raw })
+          ]) : null
+        ]),
+        actions: [
+          ui.btn('キャンセル', 'ghost', function () { close(); }),
+          ui.btn('保存', 'primary', function () {
+            S.updateCardItem(x.id, {
+              store: storeIn.value.trim(),
+              amount: U.num(amountIn.value, x.amount),
+              date: U.isISO(dateIn.value) ? dateIn.value : x.date
+            });
+            close();
+            draw();
+            ui.toast('直しました');
+          })
+        ]
+      });
+    }
+
+    draw();
+    var closeAll = ui.sheet({
+      title: 'カードの決済通知',
+      body: host,
+      actions: [ui.btn('閉じる', 'ghost', function () { closeAll(); })]
+    });
+  }
+
+  /* iPhone 側の仕込み。合鍵を作って、送り先を写して、ショートカットに貼る */
+  function cardSetupSheet() {
+    var C = DL.card;
+    var host = el('div');
+
+    function draw(k) {
+      U.clear(host);
+      var box = el('div', { class: 'form' });
+
+      box.appendChild(el('p', { class: 'muted small',
+        text: 'iPhone の「通知を受け取ったとき」のオートメーションで、'
+          + 'Amex のアプリの通知をここへ送ります。'
+          + 'この合鍵で送れるのは決済の文面だけで、ほかのものは触れません。' }));
+
+      if (!k) {
+        box.appendChild(ui.btn('合鍵を作る', 'primary full', function () {
+          C.key.create().then(function (r) { draw(r.key); ui.toast('作りました'); })
+            .catch(function (e) { ui.toast(e.message, 'danger'); });
+        }, 'plus'));
+        host.appendChild(box);
+        return;
+      }
+
+      var url = C.postUrl(k);
+      box.appendChild(ui.field('送り先（ショートカットに貼る）',
+        el('div', {}, [
+          el('p', { class: 'ci-url', text: url }),
+          ui.btn('写す', 'ghost', function () {
+            U.copy(url).then(function () { ui.toast('写しました'); },
+              function () { ui.toast('写せませんでした', 'danger'); });
+          }, 'fileFill')
+        ])));
+
+      box.appendChild(ui.section('ショートカットの作りかた'));
+      box.appendChild(el('ol', { class: 'ci-steps' }, [
+        'ショートカットアプリ →「オートメーション」→ 右上の ＋',
+        '「通知」を選ぶ（一覧の下のほう）',
+        'アプリに「Amex JP」を選び、「すぐに実行」にして「実行の前に尋ねる」を切る',
+        '「次へ」→「新規の空のオートメーション」',
+        'アクションを足す →「URLの内容を取得」',
+        'URL に、上の送り先をそのまま貼る',
+        '「詳しく表示」を開き、方法を POST にする',
+        '「本文を要求」を「ファイル」にし、値に「通知」の“メッセージ”（本文）を入れる',
+        '完了。次に Amex から通知が来たら、そのまま届きます'
+      ].map(function (t) { return el('li', { text: t }); })));
+
+      box.appendChild(el('p', { class: 'muted small',
+        text: '届いたぶんは、この画面の「いま取りに行く」か、'
+          + 'アプリを開いた拍子に取り込まれます。' }));
+
+      box.appendChild(ui.section('文面をためす'));
+      var tryIn = ui.textarea({ rows: 3, maxlength: 300,
+        placeholder: 'お客様のカード番号 (下5桁 12345) において、 LAWSON で ¥1,203 のご利用がありました。' });
+      var out = el('p', { class: 'muted small ci-out' });
+      box.appendChild(tryIn);
+      box.appendChild(ui.btn('この文面を読ませてみる', 'ghost full', function () {
+        if (!tryIn.value.trim()) { ui.toast('文面を入れてください', 'warn'); return; }
+        out.textContent = '読んでいます…';
+        C.tryText(tryIn.value).then(function (r) {
+          out.textContent = r.amount
+            ? '店：' + (r.store || '（読めませんでした）') + '　金額：' + D.yen(r.amount)
+            : '金額を読めませんでした。この文面を教えてもらえれば、読めるようにします。';
+        }).catch(function (e) { out.textContent = e.message; });
+      }, 'idea'));
+      box.appendChild(out);
+      box.appendChild(el('p', { class: 'muted small',
+        text: '通知の言い回しが変わって読めなくなったときは、ここで確かめられます。' }));
+
+      box.appendChild(ui.section('合鍵'));
+      box.appendChild(el('div', { class: 'row-wrap' }, [
+        ui.btn('作り直す', 'ghost', function () {
+          ui.confirm('合鍵を作り直します。いまショートカットに貼ってある送り先は使えなくなるので、'
+            + '貼り直してください。', { okText: '作り直す' }).then(function (ok) {
+            if (!ok) return;
+            C.key.create().then(function (r) { draw(r.key); ui.toast('作り直しました'); })
+              .catch(function (e) { ui.toast(e.message, 'danger'); });
+          });
+        }, 'refresh'),
+        ui.btn('捨てる', 'danger', function () {
+          ui.confirm('合鍵を捨てます。通知は届かなくなります。',
+            { danger: true, okText: '捨てる' }).then(function (ok) {
+            if (!ok) return;
+            C.key.remove().then(function () { draw(null); ui.toast('捨てました'); })
+              .catch(function (e) { ui.toast(e.message, 'danger'); });
+          });
+        }, 'trash')
+      ]));
+      host.appendChild(box);
+    }
+
+    draw(null);
+    C.key.get().then(function (r) { draw(r.key); });
+    var close = ui.sheet({
+      title: 'カードの決済通知の設定',
+      body: host,
+      actions: [ui.btn('閉じる', 'ghost', function () { close(); })]
+    });
+  }
+
   /* レシートを撮って読み取る入口。ここが今のいちばん早い入れ方 */
   function scanCard() {
     return el('div', { class: 'row-wrap scan-row' }, [
@@ -1694,6 +1971,8 @@
       else S.updateExpense(x.id, data);
       close();
       ui.toast(isNew ? '追加しました' : '保存しました');
+      // 呼んだ側で後始末があるとき（カードの取り込みを預かりから外す、など）
+      if (opts.onSaved) opts.onSaved(data);
       // 外した写真・撮り直す前の写真は、ここで初めてサーバーから消す
       dropFiles(dropIds).catch(function () {
         ui.toast('前のレシートの写真は消せませんでした', 'warn');
@@ -1708,6 +1987,7 @@
   DL.views.books = {
     render: render,
     addExpense: addExpense,
+    cardSheet: cardSheet,
     // ホームの「節約目標」の行から、同じ画面を開くため
     planSheet: savingsPlan,
     // 毎月の貯金額。ホームにも同じ警告と入力を出す

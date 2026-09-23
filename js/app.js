@@ -132,6 +132,13 @@
       if (['home', 'sales', 'settings'].indexOf(route.name) >= 0) checkFanbox();
       // 発注フォームから届いていないか見に行く
       if (['home', 'settings', 'orders'].indexOf(route.name) >= 0) checkOrders();
+      /* カードの決済通知。預かっているぶんを、そっと取り込んでおく。
+         経費に入れるかどうかは、経理の画面で決める（勝手には入れない） */
+      if (['home', 'books'].indexOf(route.name) >= 0 && DL.card && DL.card.ready()) {
+        DL.card.autoPull().then(function (r) {
+          if (r && r.added) render();
+        }).catch(function () { /* つながらないときは、次に開いたときに */ });
+      }
     }
 
     // ROOM RESERVE の取り込み。日常のカレンダーでだけ、更新ボタンの左に置く

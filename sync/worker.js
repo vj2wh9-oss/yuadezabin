@@ -110,7 +110,7 @@ export default {
           fitbit: fitbitReady(env),
           menuWebhook: !!env.DISCORD_MENU_WEBHOOK
         },
-        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/inbox/weights', '/v1/inbox/weight/key', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/menu/dish', '/v1/menu/send', '/v1/reschedule', '/v1/bank/balance', '/v1/plot', '/v1/plot/send', '/v1/spend', '/v1/fit/plan', '/v1/fitbit'],
+        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/inbox/weights', '/v1/inbox/weight/key', '/v1/inbox/card', '/v1/inbox/cards', '/v1/inbox/card/key', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/menu/dish', '/v1/menu/send', '/v1/reschedule', '/v1/bank/balance', '/v1/plot', '/v1/plot/send', '/v1/spend', '/v1/fit/plan', '/v1/fitbit'],
         // どの食事に対応しているか。deploy を忘れると古いままなのが分かる
         menuSlots: MENU_SLOTS,
         note: '各 /v1/... は Authorization: Bearer <合鍵> が必要です'
@@ -135,6 +135,19 @@ export default {
         if (owner) return weights(request, env, cors, url, owner);
       }
       return json({ error: 'bad_key', hint: '体重用の合鍵が違います' }, 401, cors);
+    }
+
+    /* カードの決済通知だけの合鍵。体重と同じ考えかた。
+       ショートカットは「URLの内容を取得」ひとつで済む。
+       これが漏れても、できるのは預かり箱に文字を足すことだけ */
+    if ((url.pathname === '/v1/inbox/card' || url.pathname === '/v1/inbox/card/try')
+      && url.searchParams.get('k')) {
+      const k = String(url.searchParams.get('k'));
+      if (env.SYNC && /^[0-9a-f]{32}$/.test(k)) {
+        const owner = await env.SYNC.get('ckey:' + k, 'text');
+        if (owner) return cards(request, env, cors, url, owner);
+      }
+      return json({ error: 'bad_key', hint: 'カード用の合鍵が違います' }, 401, cors);
     }
 
     const token = bearer(request);
@@ -290,6 +303,15 @@ export default {
         return weightKey(request, env, cors, id);
       }
 
+      if (url.pathname === '/v1/inbox/card/key') {
+        return cardKey(request, env, cors, id);
+      }
+
+      if (url.pathname === '/v1/inbox/card' || url.pathname === '/v1/inbox/cards'
+        || url.pathname === '/v1/inbox/card/try') {
+        return cards(request, env, cors, url, id);
+      }
+
       if (url.pathname === '/v1/inbox/weight' || url.pathname === '/v1/inbox/weights') {
         return weights(request, env, cors, url, id);
       }
@@ -331,6 +353,11 @@ const BK_MAGIC = 'M365BK1';          // 暗号にしたファイルの頭に置�
 /** 日本時間での 'YYYY-MM-DD'（UTC+9） */
 function jstDate(ms) {
   return new Date(ms + 9 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+/** 日本時間の HH:MM */
+function jstTime(ms) {
+  return new Date(ms + 9 * 3600 * 1000).toISOString().slice(11, 16);
 }
 
 /** 何時（UTC）以降に送るか。var BACKUP_HOUR で変えられる（既定は日本の0時） */
@@ -2006,6 +2033,209 @@ function cleanWeight(w) {
   };
 }
 
+
+/* ================= カードの決済通知を預かる =================
+
+   iOS 26 以降の「通知を受け取ったとき」のオートメーションで、
+   Amex のアプリから来た通知の本文をそのままここへ送ってもらう。
+   届いた文面から、店の名前と金額だけを抜いて預かっておく。
+
+   決済の時刻は、通知が届いた時刻（＝ここに届いた時刻）でよい。
+
+   合鍵は体重と同じ作りで、「決済を書き足すことしかできない」もの。
+   これが漏れても、できるのは預かり箱に文字を足すことだけ。
+   本物の合鍵（読み書き全部）は、けっして URL に付けない。
+
+   取り込んだものは、アプリ側でいったん「取込済み」として貯めておく。
+   経費に入れるかどうかは、アプリの画面で1件ずつ決める。 */
+
+const MAX_CARDS = 300;
+
+/* Amex JP の通知は、いまのところこの形。
+     お客様のカード番号 (下5桁 12345) において、 LAWSON で ¥1,203 のご利用がありました。
+   文面が変わっても拾えるよう、いくつかの形を順に当てる。 */
+
+/** 金額を抜く。¥1,203 / 1,203円 / JPY 1,203 のどれでも */
+function cardAmount(text) {
+  const pats = [
+    /[¥￥]\s*([0-9０-９][0-9０-９,，.．]*)/,
+    /([0-9０-９][0-9０-９,，.．]*)\s*円/,
+    /JPY\s*([0-9０-９][0-9０-９,，.．]*)/i
+  ];
+  for (const re of pats) {
+    const m = re.exec(text);
+    if (!m) continue;
+    const n = Number(zen2han(m[1]).replace(/[,，]/g, ''));
+    if (isFinite(n) && n > 0) return Math.round(n);
+  }
+  return 0;
+}
+
+/** 店の名前を抜く。「〜において、 LAWSON で ¥1,203 の」の LAWSON にあたるところ */
+function cardStore(text) {
+  const pats = [
+    // において、 LAWSON で ¥1,203
+    /において[、,]?\s*(.+?)\s*[でにて]\s*[¥￥]/,
+    // LAWSON で ¥1,203（「において」が無い形）
+    /([^\s、,。]{1,60})\s*で\s*[¥￥]/,
+    /* ご利用店名：LAWSON／加盟店名: LAWSON
+       店の名前には空白が入る（FAMILY MART）ので、空白では切らない。
+       そのかわり、次の見出し（ご利用金額 など）や句読点の手前で止める */
+    /(?:ご利用店名|ご利用先|加盟店名?|利用店舗)\s*[：:]\s*(.{1,60}?)(?=\s*(?:ご利用|利用|金額|日時|[、,。])|$)/,
+    // at SEVEN-ELEVEN（英語の文面）
+    /\bat\s+([^\n,.]{1,60})/i
+  ];
+  for (const re of pats) {
+    const m = re.exec(text);
+    if (!m) continue;
+    const s = String(m[1]).trim().replace(/\s+/g, ' ').slice(0, 60);
+    if (s) return s;
+  }
+  return '';
+}
+
+function zen2han(s) {
+  return String(s == null ? '' : s).replace(/[０-９]/g, (c) =>
+    String.fromCharCode(c.charCodeAt(0) - 0xfee0));
+}
+
+/* 文面から、店と金額を読む。
+   カードの下いくつかの桁は控えない（残す値打ちが無く、
+   夜のバックアップにも乗ってしまうため）。控えとして残す文面からも伏せる */
+function parseCard(text) {
+  const raw = String(text == null ? '' : text).replace(/\s+/g, ' ').trim().slice(0, 300);
+  return {
+    store: cardStore(raw),
+    amount: cardAmount(raw),
+    // 「下5桁 12345」のような桁は伏せてから控える
+    raw: raw.replace(/(下\s*\d+\s*桁\s*)[0-9０-９]{2,}/g, '$1*****')
+      .replace(/\b[0-9]{4,}\b(?=\s*\))/g, '*****')
+  };
+}
+
+/* カードだけの合鍵。体重のものと同じ作り */
+async function cardKey(request, env, cors, id) {
+  const mine = 'ckeyOf:' + id;
+
+  if (request.method === 'GET') {
+    const k = await env.SYNC.get(mine, 'text');
+    return json({ ok: true, key: k || null }, 200, cors);
+  }
+  if (request.method === 'POST') {
+    const old = await env.SYNC.get(mine, 'text');
+    if (old) await env.SYNC.delete('ckey:' + old);
+    const b = new Uint8Array(16);
+    crypto.getRandomValues(b);
+    const k = [...b].map(x => x.toString(16).padStart(2, '0')).join('');
+    await env.SYNC.put('ckey:' + k, id);
+    await env.SYNC.put(mine, k);
+    return json({ ok: true, key: k }, 200, cors);
+  }
+  if (request.method === 'DELETE') {
+    const old = await env.SYNC.get(mine, 'text');
+    if (old) await env.SYNC.delete('ckey:' + old);
+    await env.SYNC.delete(mine);
+    return json({ ok: true, key: null }, 200, cors);
+  }
+  return json({ error: 'not_found' }, 404, cors);
+}
+
+async function cards(request, env, cors, url, id) {
+  const key = 'cards:' + id;
+
+  /* 預ける。ショートカットからは、本文にそのまま通知の文面を入れてもらう。
+     JSON でも、素のテキストでも、?t= でも受ける */
+  if (url.pathname === '/v1/inbox/card') {
+    let text = '';
+    if (request.method === 'POST' || request.method === 'PUT') {
+      const body = await request.text().catch(() => '');
+      if (body) {
+        try {
+          const o = JSON.parse(body);
+          text = String((o && (o.text || o.body || o.message)) || '');
+          if (!text && typeof o === 'string') text = o;
+        } catch (e) { text = body; }
+      }
+    }
+    if (!text) text = url.searchParams.get('t') || url.searchParams.get('text') || '';
+
+    if (!String(text).trim()) {
+      /* ショートカットの ▶ で見たときに、どこが足りないのか分かる言い方にする */
+      return json({
+        error: 'no_text',
+        hint: '通知の文面が届いていません。ショートカットの「URLの内容を取得」を'
+          + 'POST にして、本文（要求を本文に追加 → テキスト）に'
+          + '通知の「メッセージ」を入れてください'
+      }, 400, cors);
+    }
+
+    const p = parseCard(text);
+    if (!p.amount) {
+      return json({
+        error: 'no_amount',
+        hint: '文面から金額を読めませんでした',
+        seen: p.raw.slice(0, 120)
+      }, 400, cors);
+    }
+
+    const at = new Date().toISOString();
+    const item = {
+      id: 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      at,
+      date: jstDate(Date.now()),
+      // 通知が届いた時刻（日本時間の HH:MM）。決済の時刻として使う
+      time: jstTime(Date.now()),
+      store: p.store,
+      amount: p.amount,
+      raw: p.raw
+    };
+    const box = (await env.SYNC.get(key, 'json')) || { list: [] };
+    /* 同じ通知が二度届くことがある（オートメーションの取りこぼし直し）。
+       同じ日・同じ店・同じ額が1分以内に来たら、同じものとみなす */
+    const dup = box.list.some(x => x.store === item.store && x.amount === item.amount
+      && Math.abs(Date.parse(x.at) - Date.parse(item.at)) < 60000);
+    if (!dup) {
+      box.list.unshift(item);
+      box.list = box.list.slice(0, MAX_CARDS);
+      await env.SYNC.put(key, JSON.stringify(box));
+    }
+    return json({
+      ok: true, dup, store: item.store, amount: item.amount,
+      time: item.date + ' ' + item.time, count: box.list.length
+    }, 200, cors);
+  }
+
+  if (url.pathname === '/v1/inbox/cards' && request.method === 'GET') {
+    const box = (await env.SYNC.get(key, 'json')) || { list: [] };
+    return json({ items: box.list, count: box.list.length }, 200, cors);
+  }
+
+  /* 取り込めたぶんを片づける。id を渡さなければ全部 */
+  if (url.pathname === '/v1/inbox/cards' && request.method === 'DELETE') {
+    let body = null;
+    try { body = await request.json(); } catch (e) { body = null; }
+    const ids = Array.isArray(body && body.ids) ? body.ids.map(String) : null;
+    const box = (await env.SYNC.get(key, 'json')) || { list: [] };
+    const before = box.list.length;
+    box.list = ids ? box.list.filter(x => ids.indexOf(String(x.id)) < 0) : [];
+    await env.SYNC.put(key, JSON.stringify(box));
+    return json({ ok: true, removed: before - box.list.length }, 200, cors);
+  }
+
+  /* 文面をためす。預けずに、どう読めるかだけ返す */
+  if (url.pathname === '/v1/inbox/card/try' && request.method === 'POST') {
+    let text = '';
+    const body = await request.text().catch(() => '');
+    try {
+      const o = JSON.parse(body);
+      text = String((o && (o.text || o.body)) || '');
+    } catch (e) { text = body; }
+    const p = parseCard(text);
+    return json({ ok: true, store: p.store, amount: p.amount, raw: p.raw }, 200, cors);
+  }
+
+  return json({ error: 'not_found' }, 404, cors);
+}
 
 /* ================= Fitbit から体重を取る =================
 

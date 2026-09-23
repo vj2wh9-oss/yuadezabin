@@ -176,6 +176,10 @@
     prices: {},
     // 作った料理の評価とメモ { '<ならした名前>': {name, stars, memo, at} }
     dishNotes: {},
+    /* カードの決済通知から取り込んだぶん。
+       経費にはまだ入れず、ここでいったん預かる（取込済み情報）。
+       [{id,at,date,time,store,amount,raw}] */
+    cardInbox: [],
     // いま手元に置いてあるプロット（1つだけ）
     plot: null,
     /* 筋トレ。体づくりの計画と記録
@@ -353,6 +357,8 @@
     s.settings.prices = normalizePrices(s.settings.prices);
     s.settings.dishNotes = normalizeDishNotes(s.settings.dishNotes);
     s.settings.savings = normalizeSavings(s.settings.savings);
+    s.settings.cardInbox = (s.settings.cardInbox || []).map(normalizeCardItem)
+      .filter(function (x) { return x.amount > 0; });
     s.settings.plot = normalizePlot(s.settings.plot);
     s.settings.fit = normalizeFit(s.settings.fit);
     s.settings.pantry = (s.settings.pantry || []).map(normalizePantry);
@@ -2116,6 +2122,80 @@
       }).filter(function (b) { return b.label || b.text || b.kind === 'adult'; })
     };
     return (out.title || out.beats.length) ? out : null;
+  }
+
+  /* ---------------- カードの決済通知（取込済み情報） ----------------
+
+     iPhone の通知から取り込んだ決済を、ここでいったん預かる。
+     経費に入れるかどうかは、経理の画面で1件ずつ決める。
+     入れたぶん・捨てたぶんは、この並びから外す。 */
+
+  var CARD_MAX = 300;
+
+  function normalizeCardItem(x) {
+    x = x || {};
+    var str = function (v, n) { return String(v == null ? '' : v).trim().slice(0, n); };
+    return {
+      id: x.id || U.uid(),
+      // 通知が届いた時刻。これを決済の時刻として使う
+      at: x.at || new Date().toISOString(),
+      date: U.isISO(x.date) ? x.date : U.today(),
+      time: /^\d{2}:\d{2}$/.test(String(x.time)) ? x.time : '',
+      store: str(x.store, 60),
+      amount: Math.max(0, Math.round(U.num(x.amount, 0))),
+      // 読み違えを直せるように、届いた文面も控えておく（カードの桁は伏せてある）
+      raw: str(x.raw, 300)
+    };
+  }
+
+  /** 預かっているぶん。新しい順 */
+  function cardInbox() {
+    return (state.settings.cardInbox || []).slice().sort(function (a, b) {
+      return U.cmp(String(b.at), String(a.at));
+    });
+  }
+
+  /**
+   * 取り込んだぶんを足す。同じものは足さない。
+   * @returns {boolean} 足したか
+   */
+  function addCardItem(x) {
+    var item = normalizeCardItem(x);
+    if (!item.amount) return false;
+    var list = state.settings.cardInbox || (state.settings.cardInbox = []);
+    // 同じ id は入れ直さない。id が違っても、同じ時刻・店・額なら同じもの
+    var same = list.some(function (o) {
+      return o.id === item.id
+        || (o.store === item.store && o.amount === item.amount
+          && Math.abs(Date.parse(o.at) - Date.parse(item.at)) < 60000);
+    });
+    if (same) return false;
+    list.unshift(item);
+    state.settings.cardInbox = list.slice(0, CARD_MAX);
+    save();
+    return true;
+  }
+
+  /** 1件だけ直す（店名や金額を手で合わせるとき） */
+  function updateCardItem(id, patch) {
+    var x = (state.settings.cardInbox || []).filter(function (o) { return o.id === id; })[0];
+    if (!x) return null;
+    Object.assign(x, patch);
+    normalizeCardItem(x);
+    save();
+    return x;
+  }
+
+  /** 預かりから外す（経費に入れたとき・捨てたとき） */
+  function removeCardItem(id) {
+    state.settings.cardInbox = (state.settings.cardInbox || [])
+      .filter(function (o) { return o.id !== id; });
+    save();
+  }
+
+  function clearCardInbox() {
+    state.settings.cardInbox = [];
+    save();
   }
 
   function getPlot() { return normalizePlot(state.settings.plot); }
@@ -3939,6 +4019,8 @@
     getLog: getLog, setLog: setLog, logDates: logDates, MOODS: MOODS,
     getMenu: getMenu, setMenu: setMenu, removeMenu: removeMenu,
     menusIn: menusIn, pastMenus: pastMenus, menuPlan: menuPlan, setMenuPlan: setMenuPlan,
+    cardInbox: cardInbox, addCardItem: addCardItem, updateCardItem: updateCardItem,
+    removeCardItem: removeCardItem, clearCardInbox: clearCardInbox,
     shopItems: shopItems, addShopItem: addShopItem, updateShopItem: updateShopItem,
     removeShopItem: removeShopItem, clearGotShopItems: clearGotShopItems,
     setShopGot: setShopGot, clearShopGot: clearShopGot, removeGotShop: removeGotShop,

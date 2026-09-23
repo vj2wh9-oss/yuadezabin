@@ -3127,3 +3127,35 @@ body.fit-theme input, body.fit-theme select, body.fit-theme textarea {
   .fit-intro, .fit-outro { display: none; }
 }
 }
+
+/* ---------------- カードの決済通知（取込済み情報） ----------------
+   通知から取り込んだぶんを、経費に入れる前にいったん並べておくところ */
+/* 預かりが空のときの入口。薄くして、目立たせない */
+.row.docs-entry.is-quiet { opacity: .6; }
+.ci-row { align-items: flex-start; gap: 8px; }
+.ci-amount { margin-left: auto; font-variant-numeric: tabular-nums; }
+/* 読み違えを手で直す入口。行の中に小さく置く */
+.ci-fix {
+  display: inline-flex; align-items: center; gap: 3px; font: inherit; font-size: 11.5px;
+  color: var(--accent); background: none; border: 0; padding: 0 2px; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 2px;
+}
+.ci-fix .icon { flex: none; }
+.ci-acts { display: flex; flex-direction: column; gap: 4px; flex: none; align-items: stretch; }
+.ci-acts .btn { white-space: nowrap; }
+/* 届いた文面。そのまま読めるよう、折り返して等幅で出す */
+.ci-raw {
+  margin: 2px 0 0; font-size: 12px; line-height: 1.6; color: var(--text);
+  background: var(--card2); border: 1px solid var(--line2); border-radius: var(--radius-s);
+  padding: 6px 8px; word-break: break-all;
+}
+/* ショートカットに貼る送り先。長いので折り返す */
+.ci-url {
+  margin: 0 0 6px; font-size: 11.5px; line-height: 1.5; word-break: break-all;
+  background: var(--card2); border: 1px solid var(--line2); border-radius: var(--radius-s);
+  padding: 6px 8px; font-variant-numeric: tabular-nums;
+}
+.ci-steps {
+  margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 5px;
+  font-size: 12.5px; line-height: 1.6;
+}
