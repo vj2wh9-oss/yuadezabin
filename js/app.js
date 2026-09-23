@@ -134,11 +134,7 @@
       if (['home', 'settings', 'orders'].indexOf(route.name) >= 0) checkOrders();
       /* カードの決済通知。預かっているぶんを、そっと取り込んでおく。
          経費に入れるかどうかは、経理の画面で決める（勝手には入れない） */
-      if (['home', 'books'].indexOf(route.name) >= 0 && DL.card && DL.card.ready()) {
-        DL.card.autoPull().then(function (r) {
-          if (r && r.added) render();
-        }).catch(function () { /* つながらないときは、次に開いたときに */ });
-      }
+      if (['home', 'books'].indexOf(route.name) >= 0) checkCards();
     }
 
     // ROOM RESERVE の取り込み。日常のカレンダーでだけ、更新ボタンの左に置く
@@ -562,6 +558,18 @@
     });
   }
 
+  /* カードの決済通知を取りに行く。
+     届いていたらその場で知らせ、ホームのお知らせにも出す（経費には入れない）。
+     force は引き下げて更新したときだけ（ふだんは 2分に1回に控える） */
+  function checkCards(force) {
+    if (!DL.card || !DL.card.ready()) return;
+    (force ? DL.card.pull() : DL.card.autoPull()).then(function (r) {
+      if (!r || !r.added) return;
+      ui.toast('カードの決済通知を ' + r.added + '件 受け取りました');
+      render();
+    }).catch(function () { /* つながらないときは、次に開いたときに */ });
+  }
+
   /* 通知の予定表を預け直す。連続して呼ばれても1回にまとめる */
   var notifyTimer = null;
   function queueNotify() {
@@ -801,6 +809,7 @@
           : r.status === 'merged' ? '統合しました' : '最新です');
         checkFanbox(true);
         checkOrders(true);
+        checkCards(true);
         render();
       }).catch(function () {
         busy = false;

@@ -62,6 +62,11 @@
       ]));
     }
 
+    /* ショートカットから受け取ったカードの決済通知。
+       経費に入れるか捨てるかを決めてもらうまで、ここに出しておく */
+    var cn = cardNotice();
+    if (cn) wrap.appendChild(cn);
+
     /* 警告。「重要」にした日常の予定は、その日いちばん上に出す */
     // 更新の近い固定費も、切るかどうかを決める日があるのでここに混ぜる
     var al = sc.alerts(today).concat(DL.expenses.renewAlerts(today));
@@ -132,6 +137,40 @@
     // 「近い締切」「進行中の案件」も同じ理由で出さない
 
     root.appendChild(wrap);
+  }
+
+  /* ショートカットから届いたカードの決済通知のお知らせ。
+     受け取ったものはここに出しておき、押すと経理の一覧（経費へ／捨てる）が開く。
+     預かりが空のときは何も出さない（普段のホームを賑やかにしない） */
+  function cardNotice() {
+    var C = DL.card;
+    if (!C || !C.ready()) return null;
+    var list = S.cardInbox();
+    if (!list.length) return null;
+    var yen = DL.docs.yen;
+    var x = list[0];
+    var when = x.date === U.today() ? (x.time || '') : U.fmtMD(x.date);
+
+    return el('button', {
+      type: 'button', class: 'row card-notice',
+      onclick: function () {
+        if (DL.views.books && DL.views.books.cardSheet) DL.views.books.cardSheet();
+        else location.hash = '#/books';
+      }
+    }, [
+      el('div', { class: 'row-main' }, [
+        el('div', { class: 'row-title' }, [
+          ui.icon('client', 17),
+          el('span', { text: 'カードの決済通知を ' + list.length + '件 受け取りました' })
+        ]),
+        el('div', { class: 'row-sub' }, [
+          ui.chip((when ? when + '　' : '') + (x.store || '店名なし') + '　' + yen(x.amount), 'warn'),
+          list.length > 1 ? ui.chip('ほか ' + (list.length - 1) + '件', 'ghosty') : null,
+          el('span', { class: 'muted small', text: '経費に入れるか、捨てるかを決めます' })
+        ])
+      ]),
+      el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+    ]);
   }
 
   /* ノルマ1行 */

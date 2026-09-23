@@ -2137,6 +2137,14 @@ a.tp-proj:active { color: var(--accent); }
 /* ホームの知らせ。押すと発注の画面へ行く */
 .order-notice { border-color: var(--accent); }
 
+/* ホームの知らせ（カードの決済通知）。押すと取込済みの一覧が開く。
+   押せる行なのでボタンだが、見た目はほかの行と同じにそろえる */
+.card-notice {
+  width: 100%; text-align: left; cursor: pointer;
+  border-color: var(--warn); border-left: 3px solid var(--warn);
+  padding-left: 11px;
+}
+
 /* ---------------- 設定のジャンル ---------------- */
 /* 項目が増えたので、ジャンルごとにたたむ */
 .settings-page { gap: 6px; }
