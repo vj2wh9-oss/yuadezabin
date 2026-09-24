@@ -128,11 +128,34 @@ h1, h2, h3, p { margin: 0; }
 .splash.out { opacity: 0; transform: scale(1.04); pointer-events: none; }
 @keyframes splash-bye { to { opacity: 0; visibility: hidden; } }
 
+/* ロゴと目盛りを縦に積む */
+.splash-body {
+  display: flex; flex-direction: column; align-items: center; gap: 26px;
+}
+
 .splash-logo {
   display: flex; align-items: baseline; gap: .04em;
   font-size: clamp(34px, 13.5vw, 62px); font-weight: 800; letter-spacing: .04em;
   line-height: 1; font-variant-numeric: tabular-nums;
 }
+
+/* 読み込みの目盛り。0 から 100 まで溜まったら、幕が開く */
+.splash-meter { display: flex; align-items: center; gap: 12px; width: min(232px, 62vw); }
+.sp-bar {
+  flex: 1; height: 8px; display: block; border-radius: 2px; overflow: hidden;
+  background: color-mix(in srgb, var(--indigo) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--indigo) 34%, transparent);
+}
+.sp-bar-in { display: block; height: 100%; width: 0; background: var(--indigo); }
+.sp-read {
+  display: flex; align-items: baseline; gap: 1px; color: var(--indigo);
+  font-variant-numeric: tabular-nums; min-width: 52px; justify-content: flex-end;
+}
+.sp-num { font-size: 22px; font-weight: 800; line-height: 1; letter-spacing: -.02em; }
+.sp-pct { font-size: 11px; font-weight: 700; }
+/* 溜まりきった合図。ひと呼吸だけ強く光らせる */
+.splash.full .sp-bar-in { background: var(--accent2); }
+.splash.full .sp-read { color: var(--accent2); }
 .splash-word { font-weight: 800; }
 .splash-num { display: flex; color: var(--indigo); }
 

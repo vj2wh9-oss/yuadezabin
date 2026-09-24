@@ -900,37 +900,117 @@
      読み込みが終わるのを待つが、数字が止まるまでは開けない。
      押せば飛ばせるし、読み込みでつまずいても必ず開く。
      @returns {function} 読み込みが終わったときに呼ぶ */
-  function startSplash() {
-    var box = U.$('#splash');
-    if (!box) return function () {};
-    var soft = !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-    var least = soft ? 1150 : 450;      // 数字が止まって、ひと呼吸おくまで
-    var t0 = Date.now();
-    var gone = false;
+  /* 起動の一枚の控え。背面から戻ったときに、同じものをもう一度出すため。
+     元の節を消す前に、そっくり写しておく */
+  var splashCopy = null;
+  var splashBusy = false;
 
-    var leave = function () {
-      if (gone) return;
-      gone = true;
+  function softly() {
+    return !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+
+  /**
+   * 目盛りを 0 から 100 まで動かす。
+   * @param {Element} box 幕
+   * @param {number} ms 溜まりきるまで
+   * @param {function} onFull 溜まりきったとき
+   * @returns {function} 途中でやめるとき
+   */
+  function fillGauge(box, ms, onFull) {
+    var num = box.querySelector('.sp-num');
+    var bar = box.querySelector('.sp-bar-in');
+    if (!num || !bar) { onFull(); return function () {}; }
+    var t0 = 0, raf = 0, done = false;
+    var step = function (now) {
+      if (!t0) t0 = now;
+      var t = Math.min(1, (now - t0) / ms);
+      // 終わりぎわをゆるめて、溜まりきる手前で「ぐっ」とくるようにする
+      var v = Math.round(100 * (1 - Math.pow(1 - t, 2.2)));
+      num.textContent = String(v);
+      bar.style.width = v + '%';
+      if (t < 1) { raf = requestAnimationFrame(step); return; }
+      if (done) return;
+      done = true;
+      box.classList.add('full');
+      onFull();
+    };
+    raf = requestAnimationFrame(step);
+    return function () { if (raf) cancelAnimationFrame(raf); };
+  }
+
+  /* 幕を開けて、片づける */
+  function dropSplash(box, intro) {
+    if (intro) {
       /* 幕の裏で描き終わってしまっているので、もう一度動かす。
          空にするのは幕が下りているいまのうちに済ませ、動きだすのは
          幕が開ききるころ。あとから空にすると、埋まった状態が
          幕ごしに一瞬見えてしまう */
       ui.introduce(view, 220);
-      box.classList.add('out');
-      // ヘッダーのロゴは、幕の裏では見えない。開きだすいま回す
-      spinTitle();
-      setTimeout(function () {
-        if (box.parentNode) box.parentNode.removeChild(box);
-      }, 320);
+    }
+    box.classList.add('out');
+    // ヘッダーのロゴは、幕の裏では見えない。開きだすいま回す
+    spinTitle();
+    setTimeout(function () {
+      if (box.parentNode) box.parentNode.removeChild(box);
+    }, 320);
+  }
+
+  function startSplash() {
+    var box = U.$('#splash');
+    if (!box) return function () {};
+    splashCopy = box.cloneNode(true);       // 背面から戻ったとき用の控え
+    var soft = softly();
+    var least = soft ? 1250 : 450;      // 数字が止まって、目盛りが溜まりきるまで
+    var gone = false, full = false, ready = false;
+
+    var leave = function () {
+      if (gone) return;
+      gone = true;
+      if (stop) stop();
+      dropSplash(box, true);
     };
+    // 目盛りが溜まりきって、読み込みも終わっていたら開ける
+    var maybe = function () { if (full && ready) leave(); };
+    var stop = fillGauge(box, least, function () { full = true; maybe(); });
 
     box.addEventListener('click', leave);          // 押せば飛ばせる
-    setTimeout(leave, soft ? 3000 : 1400);         // 何があっても開く
+    setTimeout(leave, soft ? 3200 : 1400);         // 何があっても開く
 
-    return function () {
-      setTimeout(leave, Math.max(0, least - (Date.now() - t0)));
-    };
+    return function () { ready = true; maybe(); };
   }
+
+  /**
+   * 背面から戻ってきたときに、起動の一枚をもう一度出す。
+   * 読み込みはもう終わっているので、目盛りが溜まりきったらすぐ開ける。
+   */
+  function replaySplash() {
+    if (!splashCopy || splashBusy) return;
+    if (document.getElementById('splash')) return;   // まだ出ている
+    splashBusy = true;
+    var soft = softly();
+    var box = splashCopy.cloneNode(true);
+    document.body.insertBefore(box, document.body.firstChild);
+    var gone = false;
+
+    var leave = function () {
+      if (gone) return;
+      gone = true;
+      splashBusy = false;
+      if (stop) stop();
+      // 中身は描いたままでよいので、出し直しはしない
+      dropSplash(box, false);
+    };
+    var stop = fillGauge(box, soft ? 900 : 350, leave);
+    box.addEventListener('click', leave);
+    setTimeout(leave, soft ? 2400 : 1000);
+  }
+
+  /* 背面から戻るたびに、起動の一枚を出す。
+     立ち上げたばかりのうちは出さない（最初の一枚と重なってしまう） */
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState !== 'visible') return;
+    replaySplash();
+  });
 
   function init() {
     mountIcons();

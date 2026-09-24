@@ -20,16 +20,24 @@
 </head>
 <body>
 
-<!-- 起動のいちばん最初に出る一枚。365 が回って止まったら、ホームに入る。
+<!-- 起動のいちばん最初に出る一枚。365 が回って止まり、
+     下の目盛りが 0 から 100 まで溜まったら、ホームに入る。
      ここに直に書いてあるので、読み込みを待たずにすぐ出る -->
 <div id="splash" class="splash" role="img" aria-label="METEO365">
-  <div class="splash-logo" aria-hidden="true">
-    <b class="splash-word">METEO</b>
-    <span class="splash-num">
-      <span class="splash-reel"><span class="splash-strip" style="--land:13"><i>0</i><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i><i>7</i><i>8</i><i>9</i><i>0</i><i>1</i><i>2</i><i>3</i></span></span>
-      <span class="splash-reel"><span class="splash-strip" style="--land:16"><i>0</i><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i><i>7</i><i>8</i><i>9</i><i>0</i><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i></span></span>
-      <span class="splash-reel"><span class="splash-strip" style="--land:15"><i>0</i><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i><i>7</i><i>8</i><i>9</i><i>0</i><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i></span></span>
-    </span>
+  <div class="splash-body">
+    <div class="splash-logo" aria-hidden="true">
+      <b class="splash-word">METEO</b>
+      <span class="splash-num">
+        <span class="splash-reel"><span class="splash-strip" style="--land:13"><i>0</i><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i><i>7</i><i>8</i><i>9</i><i>0</i><i>1</i><i>2</i><i>3</i></span></span>
+        <span class="splash-reel"><span class="splash-strip" style="--land:16"><i>0</i><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i><i>7</i><i>8</i><i>9</i><i>0</i><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i></span></span>
+        <span class="splash-reel"><span class="splash-strip" style="--land:15"><i>0</i><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i><i>7</i><i>8</i><i>9</i><i>0</i><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i></span></span>
+      </span>
+    </div>
+    <!-- 読み込みの目盛り。数は app.js が動かす -->
+    <div class="splash-meter" aria-hidden="true">
+      <span class="sp-bar"><i class="sp-bar-in"></i></span>
+      <span class="sp-read"><b class="sp-num">0</b><span class="sp-pct">%</span></span>
+    </div>
   </div>
 </div>
 
