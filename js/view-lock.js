@@ -39,17 +39,12 @@
 
   /* ---------------- ホームの入口 ---------------- */
 
-  /** ホームのいちばん下に置く入口 */
+  /** ホームのいちばん下に置く入口。名前だけの、静かな1行にする */
   function entry() {
-    var has = lk().hasVault();
     return el('a', { class: 'row lk-entry', href: '#/lock' }, [
       el('div', { class: 'row-main' }, [
         el('div', { class: 'row-title' }, [
           ui.icon('lock', 17), el('span', { class: 'lk-brand', text: 'METEO LOCK' })
-        ]),
-        el('div', { class: 'row-sub' }, [
-          ui.chip(has ? '鍵がかかっています' : 'まだ作っていません', has ? 'soft' : 'ghosty'),
-          el('span', { class: 'muted small', text: 'ID とパスワードの金庫' })
         ])
       ]),
       el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
