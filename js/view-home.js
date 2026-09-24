@@ -129,9 +129,10 @@
       wrap.appendChild(sp);
     }
 
-    /* プロット相談。中身はシートで開く（ホームは入口だけ） */
-    var pl = DL.views.plot && DL.views.plot.row();
-    if (pl) wrap.appendChild(pl);
+    /* ID とパスワードの金庫（METEO LOCK）。いちばん下に入口だけ置く。
+       プロット相談はここから外した——案件の画面から開けるようになったので、
+       ホームに二重に置いておく理由がなくなった */
+    if (DL.views.lock) wrap.appendChild(DL.views.lock.entry());
 
     // 「いまの様子」「売上」「1日の記録」は、それぞれのタブと重なるのでホームには出さない。
     // 「近い締切」「進行中の案件」も同じ理由で出さない

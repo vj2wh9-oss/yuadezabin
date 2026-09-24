@@ -409,6 +409,9 @@ async function sendBackup(env, id, how) {
   // 合言葉の潰した形は持ち出さない。4桁ならその場で総当たりされる。
   // 戻したあとは、顧客管理の合言葉を決め直してもらう
   if (state.settings) delete state.settings.crmPass;
+  /* METEO LOCK の金庫（settings.lock）は、ここには暗号のかたまりのまま乗る。
+     鍵は合言葉からしか作れず、こちらにも端末にも残っていないので、
+     この控えだけでは開かない。戻せば、そのまま同じ合言葉で開く。 */
 
   const body = new TextEncoder().encode(JSON.stringify(state));
   const gz = await gzip(body);

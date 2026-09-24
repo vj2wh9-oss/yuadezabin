@@ -3167,3 +3167,107 @@ body.fit-theme input, body.fit-theme select, body.fit-theme textarea {
   margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 5px;
   font-size: 12.5px; line-height: 1.6;
 }
+
+/* ---------------- METEO LOCK（ID とパスワードの金庫） ----------------
+
+   ホームの入口は、ほかの行と同じ見た目。
+   画面の中だけ、金庫らしく落ち着いた鋼の色に切り替える。 */
+
+/* ホームのいちばん下の入口 */
+.lk-entry { border-left: 3px solid var(--muted); padding-left: 11px; }
+.lk-brand { letter-spacing: .12em; font-weight: 700; }
+
+/* 画面ぜんたいの色。明るい設定でも、ここは金庫の色のまま */
+body.lock-theme {
+  --bg: #080b0e;
+  --bg2: #0c1116;
+  --card: #10161c;
+  --card2: #161e26;
+  --line: #222e38;
+  --line2: #33424f;
+  --text: #e9eff4;
+  --muted: #8ea2b3;
+
+  --accent: #3fbfa5;             /* 鋼に映える青緑 */
+  --accent-ink: #04120f;
+  --accent-soft: #102b27;
+  --accent2: #6fd8c2;
+  --ok: #3fbfa5;
+  --warn: #d9a441;
+  --danger: #e0574d;
+  color-scheme: dark;
+}
+body.lock-theme .appbar { background: #080b0e; }
+body.lock-theme .tabbar { background: #080b0e; }
+body.lock-theme .appbar-title { letter-spacing: .16em; font-size: 14px; }
+
+/* 見出し。鍵の印と、ひとこと */
+.lk-head { display: flex; gap: 12px; align-items: flex-start; padding: 6px 2px 2px; }
+.lk-mark {
+  flex: none; width: 46px; height: 46px; border-radius: var(--radius);
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent-soft); border: 1px solid var(--line2); color: var(--accent);
+}
+.lk-title { margin: 0; font-size: 16px; letter-spacing: .16em; }
+.lk-lead { margin: 4px 0 0; font-size: 12.5px; line-height: 1.6; color: var(--muted); }
+.lk-lead.small { font-size: 11.5px; }
+
+.lk-form { gap: 10px; }
+
+/* 合言葉の強さ。長さが効くので、伸びる帯で見せる */
+.lk-meter { height: 5px; background: var(--card2); border-radius: 3px; overflow: hidden; }
+.lk-meter i { display: block; height: 100%; width: 0; transition: width .2s, background .2s; }
+.lk-meter i.lv0 { width: 6%;   background: var(--danger); }
+.lk-meter i.lv1 { width: 25%;  background: var(--danger); }
+.lk-meter i.lv2 { width: 50%;  background: var(--warn); }
+.lk-meter i.lv3 { width: 75%;  background: var(--accent); }
+.lk-meter i.lv4 { width: 100%; background: var(--accent2); }
+.lk-note { margin: 0; font-size: 12px; color: var(--muted); min-height: 1em; }
+.lk-note.bad { color: var(--danger); }
+
+/* 忘れると開けられない、という断り書き */
+.lk-warn {
+  display: flex; flex-direction: column; gap: 4px;
+  background: var(--card2); border: 1px solid var(--line2); border-left: 3px solid var(--warn);
+  border-radius: var(--radius); padding: 9px 11px; font-size: 12px; line-height: 1.65;
+}
+
+/* 開いているあいだの帯。残り時間と、すぐ閉じるボタン */
+.lk-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 2px 2px 0;
+}
+.lk-left { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* 探すところ */
+.lk-find { position: relative; display: flex; align-items: center; }
+.lk-find .icon { position: absolute; left: 10px; color: var(--muted); pointer-events: none; }
+.lk-find .input { padding-left: 32px; }
+.lk-tools .btn { flex: 1; }
+.lk-count { margin: 2px 2px -2px; }
+
+/* 一覧の1行。左が中身、右に写すボタンを2つ並べる */
+.lk-row { gap: 8px; padding: 8px 10px 8px 12px; flex-wrap: nowrap; }
+.lk-main {
+  flex: 1; min-width: 0; text-align: left; background: none; border: 0; padding: 0;
+  color: inherit; font: inherit; cursor: pointer;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.lk-name { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.lk-user { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.lk-acts { flex: none; display: flex; flex-direction: column; gap: 4px; }
+.lk-copy { min-width: 74px; justify-content: center; white-space: nowrap; }
+.lk-copy.done { background: var(--ok); color: var(--accent-ink); border-color: var(--ok); }
+
+/* 1件を開いたとき */
+.lk-val { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.lk-big { margin: 0; font-size: 15px; font-weight: 600; }
+.lk-code {
+  margin: 0; flex: 1; min-width: 120px; font-size: 13.5px; line-height: 1.5;
+  font-variant-numeric: tabular-nums; word-break: break-all;
+  background: var(--card2); border: 1px solid var(--line2); border-radius: var(--radius-s);
+  padding: 7px 9px;
+}
+.lk-code.link { color: var(--accent2); text-decoration: none; }
+.lk-memo { margin: 0; font-size: 13px; line-height: 1.7; white-space: pre-wrap; }
+.lk-pw-tools { margin-top: 6px; }

@@ -72,7 +72,7 @@
       search: '検索', stock: '頒布と在庫', onsite: '当日モード', pages: '原稿のページ',
       fit: '筋トレ',
       log: '1日の記録', logs: '記録', ideas: 'ひらめきメモ', time: '1日の時間', orders: '発注',
-      crm: '顧客管理'
+      crm: '顧客管理', lock: 'METEO LOCK'
     };
     setTitle(titles[route.name] || 'METEO365');
 
@@ -82,6 +82,8 @@
     /* 筋トレのタブだけ、黄と黒の見た目に切り替える。
        シートは .view の外（#sheetRoot）に出るので、body に付ける */
     document.body.classList.toggle('fit-theme', route.name === 'fit');
+    /* METEO LOCK も専用の見た目にする。金庫らしく、落ち着いた鋼色で */
+    document.body.classList.toggle('lock-theme', route.name === 'lock');
     // 設定は下のタブから外し、題名の右の歯車から開く。
     // 歯車を出すのはホームだけにして、ほかのタブでは邪魔をしない
     // （設定の画面でも出しておかないと、開いた先で行き場が分からなくなる）
@@ -103,7 +105,7 @@
     if (onCal) drawModeBtn(life);
 
     // 売上は下のタブから直接開くので、戻るボタンは要らない
-    var showBack = ['project', 'pages', 'day', 'docs', 'doc', 'search', 'stock', 'onsite', 'log', 'logs', 'ideas', 'time', 'orders', 'crm'].indexOf(route.name) >= 0
+    var showBack = ['project', 'pages', 'day', 'docs', 'doc', 'search', 'stock', 'onsite', 'log', 'logs', 'ideas', 'time', 'orders', 'crm', 'lock'].indexOf(route.name) >= 0
       // 筋トレは、日付が付いているとき（その日の中身）だけ戻れるようにする
       || (route.name === 'fit' && !!route.params.date);
     backBtn.hidden = !showBack;
@@ -112,6 +114,12 @@
     if (route.name !== prevRoute) {
       // 当日モードを離れたら、画面を消さない設定は返す
       if (prevRoute === 'onsite') DL.views.onsite.left();
+      /* METEO LOCK を離れたら、その場で鍵をかける。
+         開けっ放しのまま別の画面に行けてしまうと、金庫の意味がない */
+      if (prevRoute === 'lock') {
+        DL.views.lock.stopTimer();
+        DL.lock.lock();
+      }
       /* 筋トレは黒、ほかのタブは明るい。そのまま切り替えると目に刺さるので、
          あいだに黒い幕をはさむ。入るときは降ろしてから溜め、出るときは上げる。
          中で日付を行き来するあいだは出さない（route の名前は fit のまま） */
@@ -179,6 +187,7 @@
       case 'ideas': DL.views.daylog.renderIdeas(view); break;
       case 'orders': DL.views.orders.render(view); break;
       case 'crm': DL.views.crm.render(view, route.params); break;
+      case 'lock': DL.views.lock.render(view); break;
       case 'search': DL.views.search.render(view); break;
       case 'settings': DL.views.settings.render(view); break;
       default: DL.views.home.render(view);
@@ -587,7 +596,7 @@
     /* カレンダーは画面いっぱいに出すので、重なるボタンは置かない。
        筋トレには案件を作る用がないので、ここも出さない。
        ホームは眺める場所で、案件を作るなら案件タブの＋を使うので、ここも出さない */
-    if (['home', 'settings', 'calendar', 'docs', 'doc', 'sales', 'search', 'onsite', 'log', 'logs', 'ideas', 'time', 'orders', 'crm', 'fit'].indexOf(route.name) >= 0) { fab.hidden = true; return; }
+    if (['home', 'settings', 'calendar', 'docs', 'doc', 'sales', 'search', 'onsite', 'log', 'logs', 'ideas', 'time', 'orders', 'crm', 'fit', 'lock'].indexOf(route.name) >= 0) { fab.hidden = true; return; }
     fab.hidden = false;
     fab.onclick = function () {
       /* 日別画面では、ここがその日の予定の追加口になる。

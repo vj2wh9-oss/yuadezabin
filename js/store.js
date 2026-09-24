@@ -180,6 +180,10 @@
        経費にはまだ入れず、ここでいったん預かる（取込済み情報）。
        [{id,at,date,time,store,amount,raw}] */
     cardInbox: [],
+    /* METEO LOCK の金庫。中身（サービス名・ID・パスワード）は暗号のかたまりで、
+       ここには読める形では一切入らない。合言葉から作る鍵でしか開かない。
+       { v, iter, salt, wrapIv, wrapped, iv, data, at } */
+    lock: null,
     // いま手元に置いてあるプロット（1つだけ）
     plot: null,
     /* 筋トレ。体づくりの計画と記録
@@ -205,7 +209,13 @@
   /* 端末ごとの設定。同期・読み込み・復元で持ち込まず、この端末のものを守る */
   var LOCAL_SETTING_KEYS = ['sync', 'scopeIssuerId', 'calMode', 'notifyDevice', 'lastBackupAt', 'lastAutoBackupAt',
     'weatherCache',    // 取ってきた予報は端末ごと。地点（weather）のほうは同期する
-    'crmFace'];        // 顔での解錠は、その端末に入っている鍵なので持ち出さない
+    'crmFace',         // 顔での解錠は、その端末に入っている鍵なので持ち出さない
+    /* METEO LOCK。金庫そのもの（settings.lock）は暗号のまま同期するが、
+       この3つは端末のものなので持ち出さない。
+       lockFace … 顔で開けるための、この端末だけの包み
+       lockOpts … 自動で鍵をかけるまでの時間など
+       lockGuard … 合言葉を間違えた回数と、次に試せる時刻 */
+    'lockFace', 'lockOpts', 'lockGuard'];
 
   var state = null;
   var listeners = [];
@@ -359,6 +369,9 @@
     s.settings.savings = normalizeSavings(s.settings.savings);
     s.settings.cardInbox = (s.settings.cardInbox || []).map(normalizeCardItem)
       .filter(function (x) { return x.amount > 0; });
+    // METEO LOCK の金庫。形だけそろえる（中身は暗号のままなので触らない）
+    s.settings.lock = (s.settings.lock && s.settings.lock.data && s.settings.lock.salt)
+      ? normalizeLockBox(s.settings.lock) : null;
     s.settings.plot = normalizePlot(s.settings.plot);
     s.settings.fit = normalizeFit(s.settings.fit);
     s.settings.pantry = (s.settings.pantry || []).map(normalizePantry);
@@ -737,6 +750,81 @@
     else delete state.settings.crmFace;
     save({ quiet: true });        // 端末ごとの設定。同期の「変更あり」にしない
     return crmFace();
+  }
+
+  /* ---------------- METEO LOCK（ID とパスワードの金庫） ----------------
+
+     ここが預かるのは「暗号のかたまり」だけ。
+     サービス名も ID もパスワードも、読める形では一度も置かない。
+     解いた中身は lock.js が記憶の中にだけ持ち、保存しない。
+
+     金庫そのもの（settings.lock）は端末をまたいで使いたいので同期する。
+     暗号のままなので、同期先やバックアップに渡っても中身は読めない。 */
+
+  function lockBox() { return state.settings.lock || null; }
+
+  /** @param {object|null} v 暗号のかたまり。null で金庫ごと捨てる */
+  function setLockBox(v) {
+    if (v && v.data && v.salt) state.settings.lock = normalizeLockBox(v);
+    else state.settings.lock = null;
+    save();
+    return lockBox();
+  }
+
+  function normalizeLockBox(v) {
+    v = v || {};
+    return {
+      v: U.num(v.v, 1) || 1,
+      iter: U.num(v.iter, 0) || 600000,
+      salt: String(v.salt || ''),
+      wrapIv: String(v.wrapIv || ''),
+      wrapped: String(v.wrapped || ''),
+      iv: String(v.iv || ''),
+      data: String(v.data || ''),
+      at: v.at || new Date().toISOString()
+    };
+  }
+
+  /* 顔で開けるための包み。その端末の中の鍵で解くものなので、持ち出さない */
+  function lockFace() { return state.settings.lockFace || null; }
+
+  function setLockFace(v) {
+    if (v && v.id && v.wrapped) {
+      state.settings.lockFace = {
+        id: String(v.id), prfSalt: String(v.prfSalt || ''),
+        iv: String(v.iv || ''), wrapped: String(v.wrapped)
+      };
+    } else delete state.settings.lockFace;
+    save({ quiet: true });
+    return lockFace();
+  }
+
+  /* 自動で鍵をかけるまでの時間など。端末ごとの好み */
+  function lockOpts() {
+    var o = state.settings.lockOpts || {};
+    return {
+      autoSec: Math.min(1800, Math.max(30, U.num(o.autoSec, 120) || 120)),
+      clipSec: Math.min(300, Math.max(0, U.num(o.clipSec, 30)))
+    };
+  }
+
+  function setLockOpts(patch) {
+    state.settings.lockOpts = Object.assign(lockOpts(), patch || {});
+    save({ quiet: true });
+    return lockOpts();
+  }
+
+  /* 合言葉を間違えた回数と、次に試せる時刻。
+     端末を取られたときに、何度も総当たりされないようにするためのもの */
+  function lockGuard() {
+    var g = state.settings.lockGuard || {};
+    return { fails: U.num(g.fails, 0), until: U.num(g.until, 0) };
+  }
+
+  function setLockGuard(v) {
+    state.settings.lockGuard = { fails: U.num(v && v.fails, 0), until: U.num(v && v.until, 0) };
+    save({ quiet: true });
+    return lockGuard();
   }
 
   /* 営業に行った記録。取引先の中に持たせる（新しい日が先） */
@@ -3985,6 +4073,8 @@
     putClientVisit: putClientVisit, removeClientVisit: removeClientVisit,
     CLIENT_STATUS: CLIENT_STATUS, VISIT_RESULT: VISIT_RESULT,
     crmPass: crmPass, setCrmPass: setCrmPass, crmFace: crmFace, setCrmFace: setCrmFace,
+    lockBox: lockBox, setLockBox: setLockBox, lockFace: lockFace, setLockFace: setLockFace,
+    lockOpts: lockOpts, setLockOpts: setLockOpts, lockGuard: lockGuard, setLockGuard: setLockGuard,
     clientProjects: clientProjects, clientDocs: clientDocs,
     folders: folders, getFolder: getFolder, addFolder: addFolder,
     folderChildren: folderChildren, folderPath: folderPath, setFolderColor: setFolderColor,
