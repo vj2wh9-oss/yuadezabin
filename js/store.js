@@ -2247,9 +2247,11 @@
     };
   }
 
-  /** 預かっているぶん。新しい順 */
+  /** 預かっているぶん。新しい順。片づけたものは、念のためここでも外す */
   function cardInbox() {
-    return (state.settings.cardInbox || []).slice().sort(function (a, b) {
+    return (state.settings.cardInbox || []).filter(function (x) {
+      return !isCardDone(x);
+    }).sort(function (a, b) {
       return U.cmp(String(b.at), String(a.at));
     });
   }
@@ -2262,7 +2264,7 @@
     var item = normalizeCardItem(x);
     if (!item.amount) return false;
     // もう片づけたぶんは、戻さない（サーバー側の消し込みが届かなかったとき用）
-    if (isCardDone(item.id)) return false;
+    if (isCardDone(item)) return false;
     var list = state.settings.cardInbox || (state.settings.cardInbox = []);
     // 同じ id は入れ直さない。id が違っても、同じ時刻・店・額なら同じもの
     var same = list.some(function (o) {
@@ -2277,17 +2279,62 @@
     return true;
   }
 
-  /* 片づけた通知の控え。経費に入れたぶんも、捨てたぶんも残す。
-     サーバーの消し込みが届かず もう一度降りてきても、これで弾く */
-  function isCardDone(id) {
-    return (state.settings.cardDone || []).indexOf(String(id)) >= 0;
+  /* ---- 片づけた通知の控え ----
+
+     経費に入れたぶんも、捨てたぶんも、ここに印を残す。
+     残すのは2つ。
+       ・その通知の id
+       ・日付＋時刻＋店＋金額 の合印（f: で始める）
+     id だけだと、同じ決済がもう一度サーバーに預けられたとき
+     （ショートカットが二度動いた、など）別の id になって戻ってきてしまう。
+     合印まで見ておけば、それも弾ける。 */
+
+  function cardFinger(x) {
+    return 'f:' + [x.date, x.time, String(x.store || '').trim(), x.amount].join('|');
   }
 
-  function markCardDone(id) {
-    if (!id || isCardDone(id)) return;
+  /** @param {object|string} x 取込済みの1件、または id */
+  function isCardDone(x) {
+    var done = state.settings.cardDone || [];
+    if (!x) return false;
+    if (typeof x === 'string') return done.indexOf(x) >= 0;
+    return done.indexOf(String(x.id)) >= 0 || done.indexOf(cardFinger(x)) >= 0;
+  }
+
+  function markCardDone(x) {
+    if (!x) return;
     var done = state.settings.cardDone || (state.settings.cardDone = []);
-    done.unshift(String(id));
+    var keys = typeof x === 'string' ? [x] : [String(x.id), cardFinger(x)];
+    keys.forEach(function (k) {
+      if (k && done.indexOf(k) < 0) done.unshift(k);
+    });
     state.settings.cardDone = done.slice(0, CARD_DONE_MAX);
+  }
+
+  /* 2つの控えを合わせる（同期で片方が古くても、印を失わないように） */
+  function unionCardDone(a, b) {
+    var out = [], seen = {};
+    (a || []).concat(b || []).forEach(function (k) {
+      k = String(k);
+      if (seen[k]) return;
+      seen[k] = true;
+      out.push(k);
+    });
+    return out.slice(0, CARD_DONE_MAX);
+  }
+
+  /* 2つの預かりを合わせて、片づけたものを外す */
+  function unionCardInbox(a, b) {
+    var out = [], seen = {};
+    (a || []).concat(b || []).forEach(function (x) {
+      if (!x || !x.id || seen[x.id]) return;
+      var item = normalizeCardItem(x);
+      if (isCardDone(item)) return;
+      seen[x.id] = true;
+      out.push(item);
+    });
+    return out.sort(function (p, q) { return U.cmp(String(q.at), String(p.at)); })
+      .slice(0, CARD_MAX);
   }
 
   /** 1件だけ直す（店名や金額を手で合わせるとき） */
@@ -2302,14 +2349,15 @@
 
   /** 預かりから外す（経費に入れたとき・捨てたとき）。もう戻ってこない */
   function removeCardItem(id) {
-    markCardDone(id);
+    var x = (state.settings.cardInbox || []).filter(function (o) { return o.id === id; })[0];
+    markCardDone(x || String(id));
     state.settings.cardInbox = (state.settings.cardInbox || [])
       .filter(function (o) { return o.id !== id; });
     save();
   }
 
   function clearCardInbox() {
-    (state.settings.cardInbox || []).forEach(function (o) { markCardDone(o.id); });
+    (state.settings.cardInbox || []).forEach(function (o) { markCardDone(o); });
     state.settings.cardInbox = [];
     save();
   }
@@ -3950,6 +3998,12 @@
       var dld = state.settings.dutyLogDone || (state.settings.dutyLogDone = {});
       Object.keys(incoming.settings.dutyLogDone || {}).forEach(function (k) { dld[k] = true; });
       state.settings.dutyLogDone = normalizeDutyLogDone(dld);
+      /* カードの決済通知。片づけた印は足し合わせ、預かりはそこから外す。
+         こうしないと、向こうがまだ持っている「経費に入れたはずのぶん」が戻る */
+      state.settings.cardDone = unionCardDone(state.settings.cardDone, incoming.settings.cardDone);
+      state.settings.cardInbox = unionCardInbox(state.settings.cardInbox, incoming.settings.cardInbox);
+      // 名前の言い換えも、こちらに無いものだけ足す
+      mergeById(state.settings.cardMap || (state.settings.cardMap = []), incoming.settings.cardMap || []);
       var have = {};
       state.projects.forEach(function (p) { have[p.id] = true; });
       incoming.projects.forEach(function (p) {
@@ -4006,6 +4060,11 @@
     var mine = state.settings;
     state = migrate(U.clone(remote));
     keepLocal(mine, state.settings);
+    /* カードの決済通知だけは、そのまま置き換えない。
+       サーバーの控えが片づける前のものだと、経費に入れたはずのものが
+       印ごと戻ってきてしまう。印は足し合わせ、預かりはそこから外す */
+    state.settings.cardDone = unionCardDone(mine.cardDone, state.settings.cardDone);
+    state.settings.cardInbox = unionCardInbox(mine.cardInbox, state.settings.cardInbox);
     save();
     return state;
   }
