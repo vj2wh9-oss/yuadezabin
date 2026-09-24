@@ -61,9 +61,6 @@
 
     if (!lk().ready()) {
       wrap.appendChild(head('この端末では使えません'));
-      wrap.appendChild(el('p', { class: 'muted small pad',
-        text: '暗号の仕掛けが使えないため、金庫を開けられません。'
-          + 'https で開き直すと使えるようになります。' }));
       root.appendChild(wrap);
       return;
     }
@@ -89,13 +86,12 @@
     });
   }
 
-  function head(text, sub) {
+  function head(text) {
     return el('div', { class: 'lk-head' }, [
       el('div', { class: 'lk-mark' }, ui.icon('lock', 30)),
       el('div', {}, [
         el('h2', { class: 'lk-title', text: 'METEO LOCK' }),
-        el('p', { class: 'lk-lead', text: text }),
-        sub ? el('p', { class: 'lk-lead small', text: sub }) : null
+        text ? el('p', { class: 'lk-lead', text: text }) : null
       ])
     ]);
   }
@@ -103,7 +99,7 @@
   /* ---------------- まだ金庫が無いとき ---------------- */
 
   function setupView(wrap) {
-    wrap.appendChild(head('ID とパスワードを、暗号ひとつで仕舞っておきます。'));
+    wrap.appendChild(head(''));
 
     var box = el('div', { class: 'form lk-form' });
     var p1 = ui.input({ type: 'password', autocomplete: 'new-password',
@@ -123,12 +119,9 @@
     box.appendChild(note);
     box.appendChild(ui.field('確かめ', p2));
 
-    box.appendChild(el('div', { class: 'lk-warn' }, [
-      el('b', { text: '忘れると、誰にも開けられません。' }),
-      el('span', { text: '暗号はこの金庫のどこにも残しません。'
-        + '中身は暗号から作る鍵でしか解けないので、こちらでも開けられません。'
-        + '長くて思い出せるもの（好きな一文など）にしてください。' })
-    ]));
+    // 取り返しがつかないところなので、この一行だけは残す
+    box.appendChild(el('div', { class: 'lk-warn' },
+      el('b', { text: '忘れると、誰にも開けられません。' })));
 
     var go = ui.btn('金庫を作る', 'primary full', function () {
       var bad = lk().passProblem(p1.value);
@@ -152,7 +145,7 @@
   /* ---------------- 鍵がかかっているとき ---------------- */
 
   function gateView(wrap) {
-    wrap.appendChild(head('鍵がかかっています。'));
+    wrap.appendChild(head(''));
 
     var box = el('div', { class: 'form lk-form' });
     var pass = ui.input({ type: 'password', autocomplete: 'current-password',
@@ -209,9 +202,6 @@
       }, 'faceid'));
     }
 
-    box.appendChild(el('p', { class: 'muted small',
-      text: '中身は解いていない形で仕舞ってあります。暗号を入れるまで、'
-        + 'この端末の中でも読める形にはなりません。' }));
     wrap.appendChild(box);
   }
 
@@ -469,7 +459,7 @@
         ], String(o.autoSec), function (e) {
           DL.store.setLockOpts({ autoSec: U.num(e.target.value, 120) });
           lk().touch();
-        }), '触らないまま この時間が過ぎたら、ひとりでに鍵をかけます'));
+        })));
 
       box.appendChild(ui.field('写したパスワードを消すまで',
         ui.select([
@@ -477,7 +467,7 @@
           { value: '30', label: '30秒' }, { value: '60', label: '1分' }
         ], String(o.clipSec), function (e) {
           DL.store.setLockOpts({ clipSec: U.num(e.target.value, 30) });
-        }), '貼り付けたあと、控えに残り続けないようにします'));
+        })));
 
       box.appendChild(ui.section('暗号'));
       box.appendChild(ui.btn('暗号を変える', 'ghost full', function () {
@@ -490,9 +480,6 @@
       drawFace(faceBox, draw);
 
       box.appendChild(ui.section('控え'));
-      box.appendChild(el('p', { class: 'muted small',
-        text: '解いていない、暗号のかたまりのまま写します。これだけでは中身は読めませんが、'
-          + '暗号が弱いと時間をかけて解かれます。強い暗号にしておいてください。' }));
       box.appendChild(ui.btn('控えを写す', 'ghost full', function () {
         U.copy(lk().exportBox()).then(function (ok) {
           ui.toast(ok ? '写しました' : '写せませんでした', ok ? '' : 'danger');
@@ -517,12 +504,9 @@
     function drawFace(node, again) {
       U.clear(node);
       if (!lk().faceReady()) {
-        node.appendChild(el('p', { class: 'muted small', text: 'この端末では使えません。' }));
         return;
       }
       if (lk().faceOn()) {
-        node.appendChild(el('p', { class: 'muted small',
-          text: 'この端末では、顔でも開けられます。' }));
         node.appendChild(ui.btn('顔での解錠をやめる', 'ghost full', function () {
           lk().forgetFace();
           ui.toast('やめました');
@@ -530,9 +514,6 @@
         }, 'close'));
         return;
       }
-      node.appendChild(el('p', { class: 'muted small',
-        text: '顔は「この端末の中にある鍵で包みを解く」ために使います。'
-          + '顔だけで開く蓋ではないので、端末が変われば暗号が要ります。' }));
       var b = ui.btn('この端末で Face ID を使う', 'ghost full', function () {
         b.disabled = true;
         lk().enrollFace().then(function (ok) {
@@ -576,9 +557,6 @@
     body.appendChild(meter);
     body.appendChild(note);
     body.appendChild(ui.field('確かめ', n2));
-    body.appendChild(el('p', { class: 'muted small',
-      text: '中身はそのままで、包み直すだけです。'
-        + 'この端末の Face ID の設定も、そのまま使えます。' }));
 
     var close = heldSheet({
       title: '暗号を変える',

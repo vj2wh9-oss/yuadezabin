@@ -147,9 +147,6 @@
     var res = el('div', { class: 'card' });
     body.appendChild(res);
 
-    res.appendChild(el('p', { class: 'muted small', text:
-      '結果を控えると、PC でも iPhone でも同じ状態が見えます。'
-      + 'お客様への返事は、下のボタンでメールアプリに下書きが入ります。' }));
 
     res.appendChild(ui.btn('照合できた（受領のご連絡）', 'primary full', function () {
       answer(o, 'matched', 'ok', close);

@@ -35,7 +35,6 @@
     var wrap = el('div', { class: 'page crm-lock' });
     wrap.appendChild(el('div', { class: 'crm-lock-icon' }, [ui.icon('lock', 34)]));
     wrap.appendChild(el('h2', { class: 'crm-lock-title', text: '顧客管理' }));
-    wrap.appendChild(el('p', { class: 'muted small', text: '合言葉を入れると開きます。' }));
 
     var pin = ui.input({ type: 'password', inputmode: 'numeric', autocomplete: 'off',
       placeholder: '合言葉', 'aria-label': '合言葉' });

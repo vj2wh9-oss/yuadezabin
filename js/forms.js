@@ -44,7 +44,7 @@
       ]));
     }
     startInput.addEventListener('change', updateStartNote);
-    startWrap.appendChild(ui.field('作業開始日', startInput, 'ここを起点に各タスクの期間と1日のノルマを計算します'));
+    startWrap.appendChild(ui.field('作業開始日', startInput));
     startWrap.appendChild(startNote);
 
     var titleInput = ui.input({ value: p.title, placeholder: '例）夏の新刊 / 表紙イラスト', maxlength: 60 });
@@ -92,7 +92,7 @@
         })),
         p.issuerId || ''
       );
-      body.appendChild(ui.field('名義', issuerSel, 'この案件をどちらの名義の仕事として扱うか。書類の発行元の初期値にもなります'));
+      body.appendChild(ui.field('名義', issuerSel));
     }
 
     body.appendChild(ui.field('タイトル', titleInput));
@@ -178,7 +178,7 @@
           el('span', { class: 'field-label', text: 'よく使うサイト' }), sitePresets
         ]));
         dynamic.appendChild(ui.field('プラン・支援者向け', f.plan));
-        dynamic.appendChild(ui.field('公開日（締切）', f.deadline, 'この日までに投稿できるようスケジュールを組みます'));
+        dynamic.appendChild(ui.field('公開日（締切）', f.deadline));
       } else {
         f.client = ui.input({ value: p.client, placeholder: '例）○○出版 / 個人依頼' });
         f.deadline = ui.input({ type: 'date', value: p.deadline || '' });
@@ -189,10 +189,8 @@
           var c = id && S.getClient(id);
           if (c) f.client.value = c.name;
         });
-        dynamic.appendChild(ui.field('取引先', f.clientSel,
-          '登録しておくと、請求書の宛名・住所・支払期限が自動で入ります'));
-        dynamic.appendChild(ui.field('クライアント名（表示用）', f.client,
-          '取引先を選ぶと自動で入ります。登録せずにここだけ書いても構いません'));
+        dynamic.appendChild(ui.field('取引先', f.clientSel));
+        dynamic.appendChild(ui.field('クライアント名（表示用）', f.client));
         dynamic.appendChild(ui.field('納品日（締切）', f.deadline));
         dynamic.appendChild(ui.field('報酬（円）', f.fee));
       }
@@ -476,7 +474,7 @@
       qtyBox,
       el('div', { class: 'grid2' }, [ui.field('開始日', startI), ui.field('終了日', endI)]),
       preview,
-      ui.field('重み', weightI, '自動スケジュールで日数を配分する比率'),
+      ui.field('重み', weightI),
       ui.field('メモ', noteI)
     ]);
 
@@ -612,7 +610,7 @@
         el('div', { class: 'dot', style: { background: p.color } }),
         el('div', {}, [el('strong', { text: p.title }), el('div', { class: 'muted small', text: t.name })])
       ]),
-      ui.field('日付', dateI, '予定に入っていない日でも記録できます'),
+      ui.field('日付', dateI),
       note,
       ui.field('実績（' + (unit || '完了数') + '）', step)
     ]);
@@ -723,7 +721,6 @@
           el('div', { class: 'muted small', text: p.title + '　' + U.fmtYMDW(date) })
         ])
       ]),
-      el('p', { class: 'muted small', text: '前の日はいまのまま押さえて、この日より後ろだけを割り振り直します。' }),
       ui.field('この日にやる量（' + unit + '）', step,
         head + unit + '目からの分です。この日から最後までの残りは ' + room + unit),
       range,
@@ -871,7 +868,7 @@
       ]),
       quicks,
       ui.field('いつから始める', dateI),
-      ui.field('動かし方', modeSeg, '「期間ごと」は同じ日数のまま前へ。「始まりだけ」は終わりを変えずに前へ広げます'),
+      ui.field('動かし方', modeSeg),
       out
     ]);
     preview();
@@ -953,9 +950,8 @@
     ], 'all');
 
     var body = el('div', { class: 'form' }, [
-      el('p', { class: 'muted small', text: '重みに応じて稼働日を配分し、各タスクの期間を割り当てます。' }),
       el('div', { class: 'grid2' }, [ui.field('作業開始日', startI), ui.field('締切日', endI)]),
-      ui.field('締切前の予備日', bufI, 'この日数だけ手前で作業を終える計画にします'),
+      ui.field('締切前の予備日', bufI),
       ui.field('対象', scope)
     ]);
 
@@ -1008,10 +1004,10 @@
     preview();
 
     var body = el('div', { class: 'form' }, [
-      ui.field('作業開始日', startI, 'ここを起点に各タスクの期間と1日のノルマを計算します'),
+      ui.field('作業開始日', startI),
       note,
       el('label', { class: 'row-check' }, [recalc, el('span', { text: 'タスクの期間とノルマを計算し直す' })]),
-      el('p', { class: 'muted small', text: '固定したノルマは自動配分に戻ります（実績は残ります）。' })
+      null
     ]);
 
     var close = ui.sheet({
@@ -1161,9 +1157,9 @@
     });
 
     var body = el('div', { class: 'form' }, [
-      ui.field('名義', t('name', '例）スタジオ○○'), '書類に大きく出る名前です'),
+      ui.field('名義', t('name', '例）スタジオ○○')),
       ui.field('代表者名', t('ownerName', '例）山田 太郎')),
-      ui.field('識別色', colorWrap, '案件一覧や名義の切り替えで、この色の目印が付きます'),
+      ui.field('識別色', colorWrap),
       el('div', { class: 'grid2' }, [
         ui.field('郵便番号', t('zip', '000-0000')),
         ui.field('電話番号', t('tel', '000-0000-0000'))
@@ -1173,7 +1169,7 @@
         ui.field('メール', t('email')),
         ui.field('Web', t('web'))
       ]),
-      ui.field('インボイス登録番号', t('invoiceNo', 'T1234567890123'), '登録している場合のみ。書類に記載されます'),
+      ui.field('インボイス登録番号', t('invoiceNo', 'T1234567890123')),
       imageField('logo', 'ロゴ', '書類の右上に入ります（長辺480pxに縮小して保存）'),
       imageField('seal', '印影', '発行元の右下に重ねて表示します（背景が白い画像でも構いません）', 300),
       ui.section('お振込先'),
@@ -1251,8 +1247,8 @@
     noteArea.addEventListener('input', function () { c.note = noteArea.value; });
 
     var body = el('div', { class: 'form' }, [
-      ui.field('取引先名', t('name', '例）株式会社○○'), '請求書・領収書の宛名に入ります'),
-      ui.field('敬称', honorific, '会社は「御中」、個人は「様」'),
+      ui.field('取引先名', t('name', '例）株式会社○○')),
+      ui.field('敬称', honorific),
       ui.field('担当者', t('contact', '例）編集部 山田さま')),
       el('div', { class: 'grid2' }, [
         ui.field('郵便番号', t('zip', '000-0000')),
@@ -1260,10 +1256,10 @@
       ]),
       ui.field('住所', t('address', '例）東京都○○区○○ 1-2-3')),
       ui.field('メール', t('email')),
-      ui.field('登録番号', t('invoiceNo', 'T1234567890123'), '先方のインボイス登録番号（控えとして保存するだけです）'),
+      ui.field('登録番号', t('invoiceNo', 'T1234567890123')),
       ui.section('書類の初期値'),
-      ui.field('消費税', taxSeg, 'この取引先の書類を作るときの初期値になります'),
-      ui.field('支払サイト（日）', term, '0 なら「翌月末」。30 と入れると発行日の30日後が支払期限になります'),
+      ui.field('消費税', taxSeg),
+      ui.field('支払サイト（日）', term),
       el('label', { class: 'row-check' }, [wh, el('span', { text: 'いつも源泉徴収される取引先' })]),
       ui.field('メモ', noteArea)
     ]);
@@ -1448,7 +1444,7 @@
     });
 
     var body = el('div', { class: 'form' }, [
-      ui.field('取引先', clientPick, '登録済みの取引先を選ぶと、宛名・住所・支払期限が入ります'),
+      ui.field('取引先', clientPick),
       ui.field('宛名', nameInput),
       ui.field('敬称', honorific),
       el('div', { class: 'grid2' }, [
@@ -1457,7 +1453,7 @@
       ]),
       ui.field('先方の住所', addrInput),
       isInvoice ? ui.field('お支払期限', dueInput) : null,
-      isEstimate ? ui.field('有効期限', date('validUntil'), 'この日までのお見積り、として書面に入ります') : null,
+      isEstimate ? ui.field('有効期限', date('validUntil')) : null,
       isReceipt ? null : ui.field('件名', txt('subject', '例）表紙イラスト制作')),
       ui.section('明細'),
       itemsBox,
@@ -1465,7 +1461,7 @@
       ui.field('消費税', taxSeg),
       ui.field('税率（%）', taxRate),
       el('label', { class: 'row-check' }, [wh, el('span', { text: '源泉徴収税を差し引く' })]),
-      ui.field('源泉徴収税率（%）', whRate, '報酬が100万円以下の場合は 10.21% です'),
+      ui.field('源泉徴収税率（%）', whRate),
       isEstimate ? ui.field('納期', txt('deliveryNote', '例）ご発注から3週間')) : null,
       isReceipt ? ui.field('但し書き', txt('proviso', '例）イラスト制作費として')) : null,
       isReceipt ? ui.field('お支払方法', txt('paymentMethod', '例）銀行振込')) : null,

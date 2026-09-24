@@ -333,7 +333,7 @@
             null
           ])
         ]),
-        ui.block('リマインダー', remWrap, '重要にした予定だけ鳴ります'),
+        ui.block('リマインダー', remWrap),
         ui.field('メモ', memoIn),
         !isNew ? ui.btn('この予定を削除', 'danger full mt', function () {
           var msg = ev.repeat

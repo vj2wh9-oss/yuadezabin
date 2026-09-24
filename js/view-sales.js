@@ -80,7 +80,9 @@
       wrap.appendChild(el('div', { class: 'card' }, [
         el('div', { class: 'sum-grid' }, [
           el('div', { class: 'sum-box' }, [
-            el('span', { text: '合計（税抜）' }), el('b', { class: 'big', text: D.yen(pipe.total) })
+            // 上の売上合計には入っていない数字なので、そこだけは添える
+            el('span', { text: '合計（税抜）・売上合計には未算入' }),
+            el('b', { class: 'big', text: D.yen(pipe.total) })
           ])
         ]),
         el('div', { class: 'list' }, pipe.rows.map(function (r) {
@@ -96,9 +98,7 @@
             el('b', { class: 'pipe-amt', text: D.yen(r.m.unbilled) })
           ]);
         })),
-        el('p', { class: 'muted small',
-          text: '案件に入れた報酬のうち、まだ請求書にしていないぶんです。'
-            + '上の売上合計には入っていません。' })
+        null
       ]));
     }
 
@@ -386,10 +386,7 @@
       ]));
     }
 
-    if (!rows.length) {
-      box.appendChild(el('p', { class: 'muted small',
-        text: 'FANBOX のページで「送るボタン」を押すと取り込めます（設定 →「FANBOX の取り込み」）。' }));
-    } else {
+    if (rows.length) {
       var list = el('div', { class: 'fb-list' });
       rows.slice().reverse().forEach(function (r) {
         list.appendChild(el('div', { class: 'fb-row' }, [

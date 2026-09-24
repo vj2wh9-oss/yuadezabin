@@ -668,7 +668,7 @@
           + '今日ぶん（' + (r.today < 0 ? '-' : '+') + yen(Math.abs(r.today)) + '）はまだ動きます。' }),
         ui.section('日ごと'),
         list,
-        el('p', { class: 'muted small', text: '月が変わると、また0から数え直します。' })
+        null
       ]),
       actions: [ui.btn('閉じる', 'ghost', function () { close(); })]
     });
@@ -1133,8 +1133,7 @@
       body: el('div', { class: 'form' }, [
         ui.field('いつの献立にするか', dateIn),
         moveRow, warn,
-        el('p', { class: 'muted small',
-          text: '買い物の印は付け直しになります（送った先では、まだ買っていない扱い）。' })
+        null
       ]),
       actions: [
         ui.btn('キャンセル', 'ghost', function () { close(); }),
@@ -1261,8 +1260,7 @@
         { value: 'normal', label: '通常予算' },
         { value: 'saving', label: '貯金予算' },
         { value: 'amount', label: '金額指定' }
-      ], mode, function (v) { mode = v; refresh(); }),
-        '通常＝その日の使える額／貯金＝貯金ぶんを引いた額'),
+      ], mode, function (v) { mode = v; refresh(); })),
       amountField,
       ui.field('どの食事', slotBox),
       ui.field('人数', ui.segmented([{ value: 1, label: '1人分' }, { value: 2, label: '2人分' }],
@@ -1273,8 +1271,7 @@
       el('label', { class: 'row-check' }, [skip,
         el('span', { text: 'すでに献立がある日は飛ばす' })]),
       note,
-      el('p', { class: 'muted small',
-        text: '似たものが続かないよう、前の日までに出たものは避けて考えてもらいます。' })
+      null
     ]);
     refresh();
 
@@ -1836,6 +1833,7 @@
       input,
       ui.btn('足す', 'ghost', push, 'plus')
     ]));
+    // 打ち止めは、そのとき初めて出す知らせなので残す
     if (mUse.length >= 8) {
       box.appendChild(el('p', { class: 'muted small', text: '足せるのは8つまでです。' }));
     }
@@ -2068,10 +2066,8 @@
     var close = ui.sheet({
       title: name,
       body: el('div', { class: 'form' }, [
-        ui.field('次に作るときのメモ', input,
-          '例）しょうゆを控えめに／煮る時間をもう5分'),
-        el('p', { class: 'muted small',
-          text: '同じ料理がまた出てきたときに、ここに書いたことを踏まえてもらいます。' })
+        ui.field('次に作るときのメモ', input),
+        null
       ]),
       actions: [
         ui.btn('キャンセル', 'ghost', function () { close(); }),
@@ -2147,9 +2143,7 @@
         ui.field('実際に払った額（円）', input,
           known ? '前に控えたのは ' + yen(known) + ' です'
             : '入れておくと、次の献立からこの値段で数えます'),
-        el('p', { class: 'muted small',
-          text: '献立の値段は見当なので、いつも行くお店とはずれます。'
-            + '買ったときの額を入れておくと、だんだん自分の店の値段に寄っていきます。' })
+        null
       ]),
       actions: [
         ui.btn('キャンセル', 'ghost', function () { close(); }),

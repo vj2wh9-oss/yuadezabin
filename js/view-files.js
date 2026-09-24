@@ -572,7 +572,7 @@
 
     var close = ui.sheet({
       title: f.name + ' の色',
-      body: el('div', { class: 'form' }, ui.field('フォルダの色', row, '左端の×で色なしに戻せます')),
+      body: el('div', { class: 'form' }, ui.field('フォルダの色', row)),
       actions: [
         ui.btn('キャンセル', 'ghost', function () { close(); }),
         ui.btn('保存', 'primary', function () {
@@ -919,7 +919,7 @@
       title: '案件に紐づける',
       body: el('div', { class: 'form' }, [
         ui.field('案件', sel),
-        el('p', { class: 'muted small', text: '大きいファイルは少し時間がかかります。' })
+        null
       ]),
       actions: [
         ui.btn('キャンセル', 'ghost', function () { close(); }),

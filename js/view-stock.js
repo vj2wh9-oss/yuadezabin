@@ -499,7 +499,7 @@
         ui.field('頒布価格（円）', priceIn),
         ui.field('発行日', dateIn)
       ]),
-      isNew ? ui.field('刷った部数', firstIn, '入れておくと、最初の入庫として記録します') : null,
+      isNew ? ui.field('刷った部数', firstIn) : null,
       el('div', { class: 'grid2' }, [
         ui.field('余部', extraIn,
           isNew ? '印刷所が足してくれたぶん' : '在庫のうち何部が余部か'),
@@ -508,7 +508,7 @@
       el('p', { class: 'muted small', text:
         '余部は「' + (titleIn.value.trim() || 'タイトル') + K.EXTRA_SUFFIX + '」'
         + D.yen(0) + ' として在庫に入り、減らすときはここから先に減ります。' }),
-      ui.field('1部あたりの原価（円）', costIn, '印刷費 ÷ 部数'),
+      ui.field('1部あたりの原価（円）', costIn),
       el('div', { class: 'panel' }, [
         el('span', { class: 'field-label', text: '原価の計算' }),
         el('div', { class: 'grid2' }, [
@@ -518,7 +518,7 @@
         calcBtn
       ]),
       ui.field('イベント', evSel),
-      ui.field('画像（表紙など）', coverBox, '一覧や当日モードにも出ます'),
+      ui.field('画像（表紙など）', coverBox),
       ui.field('メモ', memoIn),
       !isNew ? el('label', { class: 'row-check' }, [archived, el('span', { text: '頒布を終えた（一覧では畳む）' })]) : null,
       !isNew ? ui.btn('この頒布物を削除', 'danger full mt', function () {

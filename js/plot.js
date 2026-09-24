@@ -221,8 +221,6 @@
     box.appendChild(ui.field('ページ数', pagesIn));
     box.appendChild(tagField('ジャンル', form.genre, 8, '例）年の差　再会　上司と部下'));
     box.appendChild(tagField('入れたいシーン', form.want, 12, '例）雨宿り　朝まで帰さない　風呂場'));
-    box.appendChild(el('p', { class: 'muted small',
-      text: '足したものは、ぜんぶ入るように頼みます。読点で区切れば一度にいくつも足せます。' }));
     box.appendChild(ui.block('主要人物', peopleIn));
     box.appendChild(ui.btn(busy ? '考えています…' : 'プロットを出す', 'primary full', function () {
       form.pages = U.num(pagesIn.value, form.pages);
@@ -309,8 +307,6 @@
     if (!list.length) {
       body.appendChild(ui.empty('紐づけられる案件がありません。'));
     } else {
-      body.appendChild(el('p', { class: 'muted small',
-        text: '選んだ案件のプロットにします。案件の画面から、いつでも開けるようになります。' }));
       body.appendChild(el('div', { class: 'list' }, list.map(function (x) {
         return el('button', {
           type: 'button', class: 'row pl-pick',

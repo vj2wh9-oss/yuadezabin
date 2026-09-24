@@ -152,9 +152,7 @@
     if (!plan) {
       return el('div', { class: 'card' }, [
         el('div', { class: 'row-title', text: 'まだ計画がありません' }),
-        el('p', { class: 'muted small',
-          text: '「計画自動作成」を押すと、いまの体重と直近の記録から、'
-            + '部位を分けて何日かぶんをまとめて組んでもらえます。' })
+        null
       ]);
     }
     return el('button', {
@@ -211,15 +209,10 @@
       body: el('div', { class: 'form' }, [
         el('div', { class: 'card' }, [
           el('div', { class: 'row-title', text: 'からだと目標' }),
-          el('p', { class: 'muted small',
-            text: '身長・目標・週に何回・行く曜日。行く曜日を変えると、部位の回し方も変わります。' }),
           ui.btn('からだと目標', 'ghost full', function () { profileSheet(); }, 'settings')
         ]),
         el('div', { class: 'card' }, [
           el('div', { class: 'row-title', text: '体重' }),
-          el('p', { class: 'muted small',
-            text: 'ショートカットが毎朝そっと入れてくれます。'
-              + '手で入れたいときや、取り込み先を変えたいときだけ使ってください。' }),
           el('div', { class: 'row-wrap' }, [
             ui.btn('体重を入れる', 'ghost', function () { weightSheet(U.today()); }, 'plus'),
             ui.btn('体重計から取り込む', 'ghost', function () { importSheet(); }, 'cloud')
@@ -278,9 +271,6 @@
     ]));
 
     if (!plan) {
-      box.appendChild(el('p', { class: 'muted small',
-        text: '筋トレのホームの「計画自動作成」を押すと、いまの体重と直近の記録から、'
-          + '部位を分けて何日かぶんをまとめて組んでもらえます。' }));
       return box;
     }
 
@@ -587,8 +577,7 @@
           ui.chip('1回' + pr.minutes + '分', 'ghosty'),
           S.latestWeight() ? ui.chip(S.latestWeight().kg + 'kg', 'ghosty') : null
         ]),
-        el('p', { class: 'muted small',
-          text: 'いまの体重・直近の記録・種目ごとの重さを渡して組んでもらいます。' })
+        null
       ]),
       ui.field('いつから', fromIn),
       ui.field('どのくらい', daysSel),
@@ -820,8 +809,7 @@
             ])
           ]);
         })),
-        el('p', { class: 'muted small',
-          text: 'この重さは、次に計画を作るときの土台になります。' })
+        null
       ])
     });
   }
@@ -844,8 +832,7 @@
         ui.field('見出し', titleIn),
         ui.field('目安の時間(分)', minIn),
         ui.field('メモ', noteIn),
-        el('p', { class: 'muted small',
-          text: '種目の中身を大きく変えたいときは、「計画自動作成」から組み直すほうが早いです。' })
+        null
       ]),
       actions: [
         ui.btn('キャンセル', 'ghost', function () { close(); }),
@@ -917,25 +904,17 @@
       shortcutCard(),
       el('div', { class: 'card' }, [
         el('div', { class: 'row-title', text: '預かっているぶんを取り込む' }),
-        el('p', { class: 'muted small',
-          text: 'ショートカットや体重計のスクリプトが預けてくれたぶんを入れます。'
-            + 'この画面を開いたときにも、そっと取り込んでいます。' }),
         el('div', { class: 'row-wrap' }, [
           ui.btn('いま取り込む', 'primary', function () { pull(); }, 'cloud'),
           ui.btn('送り先を試す', 'ghost tiny', function () { check(); })
         ]),
-        el('p', { class: 'muted small',
-          text: 'ショートカットが通らないときは「送り先を試す」を押すと、'
-            + 'どこで止まっているか分かります。押しても何も書き換えません。' })
+        null
       ]),
       out,
       fitbitCard(),
-      ui.field('CSV を貼り付けて入れる', csv,
-        'EufyLife アプリ →「データのエクスポート」で出した CSV が読めます'),
+      ui.field('CSV を貼り付けて入れる', csv),
       ui.btn('CSV から入れる', 'ghost full', function () { fromCSV(); }, 'plus'),
-      el('p', { class: 'muted small',
-        text: 'PC やラズパイがあるなら、tools/eufy-weight.py で体重計から直に読むこともできます'
-          + '（乗るだけで入ります。立て方は sync/README.md）。' })
+      null
     ]);
 
     ui.sheet({ title: '体重の取り込み', body: body });
@@ -966,17 +945,10 @@
           box.appendChild(el('p', { class: 'mn-warn small' }, [
             ui.icon('alert', 14), el('span', { text: FB_OVER })
           ]));
-          box.appendChild(el('p', { class: 'muted small',
-            text: '（もし前に作った Fitbit の鍵が手元にあるなら、sync/setup.sh で '
-              + 'FITBIT_CLIENT_ID と FITBIT_CLIENT_SECRET を入れれば、ここは使えるようになります。）' }));
           if (st.redirect) {
             box.appendChild(el('div', { class: 'fit-url', text: st.redirect }));
           }
           return;
-        }
-        if (!st.linked) {
-          box.appendChild(el('p', { class: 'muted small',
-            text: 'Fitbit の Web API は 2026年9月で終わります。それまでの間だけ使えます。' }));
         }
         box.appendChild(el('p', { class: 'muted small',
           text: st.linked
@@ -1005,9 +977,6 @@
       out.appendChild(el('p', { class: 'muted small', text: '入口を用意しています…' }));
       F.fitbit.start().then(function (r) {
         U.clear(out);
-        out.appendChild(el('p', { class: 'muted small',
-          text: 'Fitbit の画面が開きます。許可したら、この画面に戻って'
-            + '「Fitbit から取り込む」を押してください。' }));
         // 別のタブで開く（アプリの画面はそのまま残す）
         window.open(r.url, '_blank');
       }).catch(function (e) {
@@ -1097,10 +1066,6 @@
         U.clear(box);
         box.appendChild(el('div', { class: 'row-title',
           text: 'iPhone だけで自動にする（ショートカット）' }));
-        box.appendChild(el('p', { class: 'muted small',
-          text: 'EufyLife は Apple の「ヘルスケア」へ体重を送れます。ブラウザから'
-            + 'ヘルスケアは読めないので、ショートカットに「ヘルスケアから読んで、'
-            + 'ここへ送る」をやってもらいます。PC もラズパイも要りません。' }));
 
         if (!F.postUrl()) {
           box.appendChild(el('p', { class: 'mn-warn small' }, [
@@ -1115,9 +1080,6 @@
         }
 
         if (!key) {
-          box.appendChild(el('p', { class: 'muted small',
-            text: 'まず送り先を作ります。体重を書き足すことしかできない合鍵が入るので、'
-              + 'ショートカット側で「ヘッダ」を足す必要がありません。' }));
           box.appendChild(ui.btn('ショートカット用の送り先を作る', 'primary full', function () {
             F.weightKey.create().then(function (r) {
               draw(r.key, false);
@@ -1159,11 +1121,6 @@
         ]));
         box.appendChild(el('ol', { class: 'fit-steps' },
           steps.map(function (t) { return el('li', { text: t }); })));
-        box.appendChild(el('p', { class: 'muted small',
-          text: '体脂肪も送るなら、うしろに &fat= と体脂肪の変数を足します。'
-            + '日付は付けなければ、送った日（日本時間）のぶんになります。'
-            + 'この送り先でできるのは体重を書き足すことだけで、'
-            + 'ほかのデータは読めません。本物の合鍵は URL に入れないでください。' }));
         box.appendChild(el('div', { class: 'row-title', text: 'つまずきやすいところ' }));
         box.appendChild(el('ul', { class: 'fit-traps' },
           traps.map(function (t) { return el('li', { text: t }); })));
@@ -1280,16 +1237,14 @@
           ui.field('身長(cm)', hIn), ui.field('年齢', aIn)
         ]),
         ui.field('目指す体型', goalSel),
-        ui.field('目標体重(kg)', gwIn, '決めていなければ空のままで大丈夫です'),
+        ui.field('目標体重(kg)', gwIn),
         ui.field('経験', lvSel),
         ui.field('通うジム', gymIn),
         el('div', { class: 'grid2' }, [
           ui.field('週に何回', daysIn), ui.field('1回の分数', minIn)
         ]),
-        ui.block('トレーニングする曜日', wdBox, '決めておくと、その曜日に計画が入ります'),
-        ui.block('そのうち自重でやる曜日', homeBox,
-          '選んだ曜日は、器具を使わない自重だけで組みます。'
-            + '選ばなければ、すべてジムの器具を使います'),
+        ui.block('トレーニングする曜日', wdBox),
+        ui.block('そのうち自重でやる曜日', homeBox),
         ui.field('気をつけること', noteIn)
       ]),
       actions: [

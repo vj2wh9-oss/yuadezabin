@@ -57,9 +57,6 @@
       el('b', { text: '値段の控え' }),
       ui.chip(keys.length + '点', 'ghosty')
     ]));
-    box.appendChild(el('p', { class: 'muted small', text:
-      '買い物リストの値段を押して入れた、実際に払った額です。'
-      + '次からの献立は、この額で数えます。' }));
 
     if (!keys.length) {
       box.appendChild(ui.empty('まだありません。買い物リストの値段を押すと入れられます。'));

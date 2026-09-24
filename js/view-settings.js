@@ -18,10 +18,9 @@
     at.appendChild(ui.section('作業の設定'));
 
     at.appendChild(el('div', { class: 'card' }, [
-      ui.field('締切前の予備日', numInput(s.bufferDays, function (v) { S.updateSettings({ bufferDays: v }); }), '自動スケジュールの既定値'),
+      ui.field('締切前の予備日', numInput(s.bufferDays, function (v) { S.updateSettings({ bufferDays: v }); })),
       ui.field('締切が近いと知らせる日数', numInput(s.warnDays, function (v) { S.updateSettings({ warnDays: v }); })),
-      ui.field('1日の作業量の上限', numInput(s.dailyLimit, function (v) { S.updateSettings({ dailyLimit: v }); }),
-        '0で無効。ページ数・枚数・点数の合計がこれを超える日を警告します'),
+      ui.field('1日の作業量の上限', numInput(s.dailyLimit, function (v) { S.updateSettings({ dailyLimit: v }); })),
       ui.field('週のはじまり', ui.segmented(
         [{ value: '0', label: '日曜' }, { value: '1', label: '月曜' }],
         String(s.weekStart), function (v) { S.updateSettings({ weekStart: U.num(v, 0) }); }
@@ -32,7 +31,7 @@
         [{ value: 'around', label: '円を囲う' }, { value: 'radial', label: 'これまで通り' }],
         s.pieLabels === 'radial' ? 'radial' : 'around',
         function (v) { S.updateSettings({ pieLabels: v }); DL.app.render(); }
-      ), '「円を囲う」は縦の重なりを避けて置き、線は斜めに伸びます')
+      ))
     ]));
 
     /* 休業日はカレンダーの日別画面から指定する（ここには置かない） */
@@ -106,8 +105,6 @@
       ]));
     });
     clientBox.appendChild(ui.btn('取引先を追加', 'ghost full', function () { DL.forms.clientSheet(null); }, 'plus'));
-    clientBox.appendChild(el('p', { class: 'muted small',
-      text: '会社概要や営業の記録、まだ契約していない営業先は、案件タブの人のボタン（顧客管理）から入れられます。同じ名簿です。' }));
     at.appendChild(clientBox);
 
     /* ---- 顧客管理の鍵 ---- */
@@ -163,7 +160,7 @@
       el('span', { class: 'field-hint', text: '日付が変わったあと、最初にアプリを開いたときに取ります。' }),
       ui.field('残す世代数', numInput(s.autoBackupKeep, function (v) {
         S.updateSettings({ autoBackupKeep: v }); S.pruneBackups(v);
-      }), '自動ぶんだけ古いものから消します。手動・操作前の控えは残ります'),
+      })),
       el('div', { class: 'info-row' }, [
         el('span', { class: 'info-k', text: '最後の自動バックアップ' }),
         el('span', { class: 'info-v', text: U.isISO(s.lastAutoBackupAt) ? U.fmtYMDW(s.lastAutoBackupAt) : 'まだありません' })
@@ -198,7 +195,6 @@
     /* ---- iCloud へ書き出す ---- */
     at.appendChild(ui.section('iCloud への書き出し'));
     at.appendChild(el('div', { class: 'card' }, [
-      el('p', { class: 'muted small', text: 'Safari の設定 →「ダウンロード」で保存先を iCloud Drive にしておくと、ボタンひとつでそこに入ります。' }),
       ui.btn('iCloud に書き出す', 'primary full', function () { exportToFile(); }, 'cloud'),
       ui.btn('保存先を選んで書き出す', 'ghost full', function () { shareToFile(); }, 'arrowUp'),
 
@@ -263,7 +259,6 @@
     /* ---- 情報 ---- */
     at.appendChild(ui.section('このアプリについて'));
     at.appendChild(el('div', { class: 'card info' }, [
-      el('p', { class: 'muted small', text: 'データはこの端末の中にあります。履歴の削除や機種変更で消えるので、ときどき書き出してください。' }),
       el('p', { class: 'muted small', text: '案件数：' + S.projects().length + '　取引先：' + S.clients().length + '件　バージョン：0.2' })
     ]));
 
@@ -342,8 +337,6 @@
       var close = ui.sheet({
         title: '暗号を開く',
         body: el('div', { class: 'form' }, [
-          el('p', { class: 'muted small',
-            text: 'Worker の BACKUP_KEY に入れた合言葉です。' }),
           ui.field('合言葉', input)
         ]),
         actions: [
@@ -358,9 +351,6 @@
 
   function discordSheet() {
     var box = el('div', { class: 'form' });
-    box.appendChild(el('p', { class: 'muted small',
-      text: '毎日0時（日本時間）に、同期サーバーが持っているデータを丸ごと Discord のチャンネルへ送ります。'
-        + 'iPhone を開いていなくても送られます。' }));
 
     var state = el('div', { class: 'card' }, [el('p', { class: 'muted small', text: '確認中…' })]);
     box.appendChild(state);
@@ -398,10 +388,10 @@
           : last.ok ? U.fmtYMD(last.at.slice(0, 10)) + '　' + last.name
           : '失敗（' + (last.why || '') + '）' })
       ]));
+      // 中身が読める形で残るかどうかは、知らせておく（安全にかかわるので）
       if (!st.encrypted) {
         state.appendChild(el('p', { class: 'muted small',
-          text: '暗号なしのままだと、顧客管理の連絡先もそのまま読める形でチャンネルに残ります。'
-            + 'Worker の secret に BACKUP_KEY を入れると、包んでから送るようになります。' }));
+          text: '暗号なし。そのまま読める形で置かれます。' }));
       }
       var go = ui.btn('いますぐ1回送る', 'ghost full', function () {
         go.disabled = true;
@@ -437,8 +427,6 @@
     var card = el('div', { class: 'card' });
 
     if (!C.hasPass()) {
-      card.appendChild(el('p', { class: 'muted small',
-        text: '合言葉を決めると、顧客管理を開くときに聞くようになります。いまは誰でも開けます。' }));
       card.appendChild(ui.btn('合言葉を決める', 'ghost full', function () {
         DL.views.crm.passSheet();
       }, 'lock'));
@@ -455,12 +443,9 @@
     C.faceAvailable().then(function (can) {
       if (!faceRow.isConnected) return;
       if (!can) {
-        faceRow.appendChild(el('p', { class: 'muted small',
-          text: 'この端末では Face ID / Touch ID が使えません（合言葉だけになります）。' }));
         return;
       }
       if (C.faceOn()) {
-        faceRow.appendChild(el('p', { class: 'muted small', text: 'この端末では顔でも開けます。' }));
         faceRow.appendChild(ui.btn('顔で開くのをやめる', 'ghost full', function () {
           C.forgetFace();
           ui.toast('この端末の顔の鍵を外しました');
@@ -486,8 +471,6 @@
         });
     }, 'trash'));
 
-    card.appendChild(el('p', { class: 'muted small',
-      text: 'これは人目に触れないようにする蓋です。中身の暗号化ではないので、端末そのもののロックもかけておいてください。' }));
     return card;
   }
 
@@ -502,9 +485,6 @@
     DL.expenses.BOOKS.forEach(function (b) {
       box.appendChild(catBook(b.value, b.label));
     });
-    box.appendChild(el('p', { class: 'muted small',
-      text: 'もとから入っている科目は消せません。自分で足したものだけ消せます。'
-        + '消しても、その科目で登録したレシートはそのまま残ります。' }));
     return box;
   }
 
@@ -557,10 +537,7 @@
   function tagCard() {
     var box = el('div', { class: 'card tag-list' });
     var list = S.tags();
-    if (!list.length) {
-      box.appendChild(el('p', { class: 'muted small',
-        text: 'レシートの品目ひとつずつに付ける札です。まだありません。' }));
-    }
+    if (!list.length) box.appendChild(el('p', { class: 'muted small', text: 'まだありません。' }));
     list.forEach(function (t, i) {
       var n = S.tagUseCount(t.id);
       box.appendChild(el('div', { class: 'tag-row' }, [
@@ -620,7 +597,7 @@
     var close = ui.sheet({
       title: isNew ? '分類を追加' : '分類を編集',
       body: el('div', { class: 'form' }, [
-        ui.field('名前', nameIn, 'レシートの品目ひとつずつに付けられます'),
+        ui.field('名前', nameIn),
         ui.block('色', colorWrap),
         !isNew ? ui.btn('この分類を削除', 'danger full mt', function () { removeThis(); }, 'trash') : null
       ]),
@@ -686,7 +663,6 @@
         }, 'close')
       ]));
     } else {
-      box.appendChild(el('p', { class: 'muted small', text: '地点を登録すると、ホームの日付の右に天気を出します。' }));
       box.appendChild(ui.btn('地点を登録する', 'primary full', function () { placeSheet(); }, 'plus'));
     }
     return box;
@@ -725,7 +701,7 @@
     input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); run(); } });
 
     var body = el('div', { class: 'form' }, [
-      ui.field('地名で探す', input, 'Open-Meteo の検索はローマ字で当たります（表示は日本語）'),
+      ui.field('地名で探す', input),
       el('div', { class: 'row-wrap' }, [
         ui.btn('探す', 'primary', run, 'search'),
         ui.btn('いまいる場所', 'ghost', function () {
@@ -762,10 +738,6 @@
     var cur = R.conf();
     var card = el('div', { class: 'card' });
 
-    card.appendChild(el('p', { class: 'muted small', text:
-      '予定表の URL を入れておくと、日常のカレンダーに「ROOM RESERVE 同期」のボタンが出ます。'
-      + '押したときだけ取りに行き、いまカレンダーに無い時間の登録だけを足します。'
-      + '締切やイベントは取り込みません。' }));
 
     var urlIn = ui.input({ value: cur.url, placeholder: 'https://....vercel.app/c/xxxxxxxx', maxlength: 300 });
     var note = el('p', { class: 'muted small' });
@@ -776,7 +748,7 @@
     }
     urlIn.addEventListener('input', showParsed);
     showParsed();
-    card.appendChild(ui.field('予定表の URL', urlIn, 'ロックの PIN は要りません（読み取りだけです）'));
+    card.appendChild(ui.field('予定表の URL', urlIn));
     card.appendChild(note);
 
     /* 取り込んだ予定に付ける色 */
@@ -875,9 +847,6 @@
           ]);
         })));
       } else {
-        body.appendChild(el('p', { class: 'muted small', text:
-          '勤務種別が見つかりませんでした。向こうが返しているキーは次のとおりです。'
-          + 'ここに勤務種別が入っていそうなら、その名前を教えてください。' }));
         body.appendChild(el('p', { class: 'muted small',
           text: '返事の項目：' + (r.keys.join('、') || 'なし') }));
         body.appendChild(el('p', { class: 'muted small',
@@ -895,9 +864,6 @@
 
   function orderCard() {
     var card = el('div', { class: 'card' });
-    card.appendChild(el('p', { class: 'muted small', text:
-      'yuadezabin.com の発注ページから届いた発注を、ここで受け取ります。'
-      + '発注ページ側には取引先の一覧を置いていないので、照合はこのアプリの中だけで行います。' }));
 
     if (!DL.sync.active()) {
       card.appendChild(el('div', { class: 'alert warn' }, [
@@ -979,7 +945,7 @@
       var titleI = ui.input({ value: f.title || '', maxlength: 60 });
       box.appendChild(ui.field('題名', titleI));
       var leadI = ui.textarea({ value: f.lead || '', rows: 3, maxlength: 300 });
-      box.appendChild(ui.field('題名の下の文', leadI, '改行するとそのまま2行で出ます'));
+      box.appendChild(ui.field('題名の下の文', leadI));
 
       /* ---- サービス種目・納品形式 ---- */
       var svcList = choiceList('サービス種目', services);
@@ -991,7 +957,7 @@
       box.appendChild(ui.section('納期の決まり'));
       var minI = ui.input({ type: 'number', value: U.num(dl.minLeadDays, 7), min: 0, max: 365 });
       var maxI = ui.input({ type: 'number', value: U.num(dl.maxAheadDays, 365), min: 1, max: 1095 });
-      box.appendChild(ui.field('何日先から選べるか', minI, '本日から数えた日数。7 なら1週間後から'));
+      box.appendChild(ui.field('何日先から選べるか', minI));
       box.appendChild(ui.field('何日先まで選べるか', maxI));
       var hintI = ui.textarea({ value: dl.hint || '', rows: 2, maxlength: 200 });
       box.appendChild(ui.field('納期の欄に添える文', hintI));
@@ -1034,9 +1000,6 @@
       }, 'check');
       box.appendChild(saveBtn);
 
-      box.appendChild(el('p', { class: 'muted small', text:
-        '※ 名前を直しても、すでに届いている発注の控えは変わりません。'
-        + '選択肢を減らすと、その種目は今後選べなくなります（過去の発注はそのまま残ります）。' }));
     }
 
     /** 並べ替え・追加・削除ができる選択肢の一覧 */
@@ -1123,9 +1086,7 @@
             ]),
             kvRow('接続先', url),
             kvRow('受け口', ok ? 'あり' : 'なし（古いままです）'),
-            el('p', { class: 'muted small', text:
-              '発注ページ側（order/ の Worker）にも、同じ合鍵と、この接続先を入れておく必要があります。'
-              + '手順は order/README.md にあります。' })
+            null
           ])
         });
       })
@@ -1134,9 +1095,6 @@
 
   function fanboxCard() {
     var card = el('div', { class: 'card' });
-    card.appendChild(el('p', { class: 'muted small', text:
-      'FANBOX のページで1回押すと、月ごとの支援金をまとめて送れます。'
-      + 'ログイン情報はアプリにもサーバーにも預けません。' }));
 
     if (!DL.sync.active()) {
       card.appendChild(el('div', { class: 'alert warn' }, [
@@ -1198,10 +1156,7 @@
             kvRow('接続先', url),
             kvRow('受け口', hasInbox ? 'あり' : 'なし（古いままです）'),
             kvRow('保管', d && d.bindings && d.bindings.kv ? 'つながっている' : 'つながっていない'),
-            el('p', { class: 'muted small', text:
-              '「送れませんでした：Failed to fetch」と出るときは、たいてい受け口が無いか、'
-              + 'Worker の ALLOW_ORIGIN が FANBOX を弾いています。'
-              + '新しい worker.js は fanbox.cc からの送信を通します。' })
+            null
           ])
         });
       })
@@ -1265,8 +1220,6 @@
           + '何で止まったかが出ます。Safari のプライベートブラウズや、'
           + '別のブラウザ（Chrome など）だと FANBOX のログインが渡らないことがあります。' })));
 
-      box.appendChild(el('p', { class: 'muted small', text:
-        '送ると、アプリの「売上」で取り込めます。' }));
     }).catch(function (e) {
       U.clear(box);
       box.appendChild(el('p', { class: 'muted small', text: '作れませんでした：' + e.message }));
@@ -1297,8 +1250,6 @@
     var st = N.status();
     var box = el('div', { class: 'card' });
 
-    box.appendChild(el('p', { class: 'muted small', text:
-      'アプリを閉じていても知らせます（「PC・iPhone の同期」が要ります）。' }));
 
     if (!st.ok) {
       box.appendChild(el('div', { class: 'alert warn mt' }, [
@@ -1331,7 +1282,6 @@
     box.appendChild(el('h3', { class: 'sub-title mt', text: '知らせるもの' }));
     var rules = N.rules();
     if (!rules.length) {
-      box.appendChild(el('p', { class: 'muted small', text: 'まだ何も決めていません。' }));
       box.appendChild(ui.btn('よく使う組み合わせを入れる', 'ghost full mt', function () {
         saveRules(N.defaultRules());
         ui.toast('前日20時・当日8時・今日やること を入れました');
@@ -1417,7 +1367,7 @@
       }
 
       if (when === 'beforeMin') {
-        whenWrap.appendChild(ui.field('何分前', minIn, '時刻を決めた予定にだけ効きます'));
+        whenWrap.appendChild(ui.field('何分前', minIn));
       } else {
         // 日数を使う種別だけ、何日前（後）を聞く
         if (k.days && (when === 'beforeDay' || when === 'afterDay')) {
@@ -1541,8 +1491,6 @@
     var body = el('div', { class: 'form' });
     var close = ui.sheet({ title: '通知サーバーの鍵を作る', body: body });
 
-    body.appendChild(el('p', { class: 'muted small', text:
-      '「作る」を押すと出る文字列を、Cloudflare の Worker →「設定」→「変数とシークレット」に貼ってください。' }));
 
     var out = el('div', { class: 'mt' });
     body.appendChild(ui.btn('作る', 'primary full', function () {
@@ -1561,8 +1509,6 @@
           out.appendChild(keyRow('VAPID_SUBJECT', 'mailto:' + (S.settings.issuers[0] && S.settings.issuers[0].email || 'you@example.com'), '変数（テキスト）'));
           out.appendChild(el('p', { class: 'muted small mt', text:
             'あわせて、Worker の「トリガー」に Cron を1つ足してください（* * * * * ＝毎分）。これが通知を送るきっかけになります。' }));
-          out.appendChild(el('p', { class: 'muted small', text:
-            '※ この画面を閉じると秘密鍵は消えます（アプリには保存しません）。貼り終わってから閉じてください。' }));
         }).catch(function (e) { ui.toast('作れませんでした：' + e.message, 'danger'); });
     }, 'plus'));
     body.appendChild(out);
@@ -1591,14 +1537,13 @@
     var card = el('div', { class: 'card' });
 
     if (!DL.sync.ready()) {
-      card.appendChild(el('p', { class: 'muted small', text: '接続先と合鍵を入れると、PC と iPhone が自動で揃います（立て方は sync/README.md）。' }));
     }
 
     var urlInput = ui.input({ value: c.url, placeholder: 'https://....workers.dev', inputmode: 'url', autocapitalize: 'off', autocorrect: 'off', spellcheck: false });
     urlInput.addEventListener('change', function () {
       S.updateSync({ url: urlInput.value.trim(), rev: 0, baseSavedAt: '', lastError: '' });
     });
-    card.appendChild(ui.field('接続先', urlInput, 'wrangler deploy のあとに出る URL'));
+    card.appendChild(ui.field('接続先', urlInput));
 
     var tokenInput = ui.input({
       value: c.token, placeholder: '（未設定）', type: 'password',
@@ -1607,7 +1552,7 @@
     tokenInput.addEventListener('change', function () {
       S.updateSync({ token: tokenInput.value.trim(), rev: 0, baseSavedAt: '', lastError: '' });
     });
-    card.appendChild(ui.field('合鍵', tokenInput, '両方の端末で同じものを入れます。サーバーには保存されません'));
+    card.appendChild(ui.field('合鍵', tokenInput));
     card.appendChild(el('div', { class: 'row-wrap' }, [
       ui.btn(c.token ? '合鍵を作り直す' : '合鍵を作る', 'ghost tiny', function () {
         var make = function () {
@@ -1736,10 +1681,8 @@
     S.listBackups().then(function (list) {
       U.clear(body);
       if (!list.length) {
-        body.appendChild(el('p', { class: 'muted small', text: 'まだ控えがありません。' }));
         return;
       }
-      body.appendChild(el('p', { class: 'muted small', text: '戻す直前の状態も控えに残るので、やり直せます。' }));
       var box = el('div', { class: 'list' });
       list.forEach(function (b) {
         var when = fmtAt(b.at);
@@ -1831,7 +1774,6 @@
     render();
 
     var body = el('div', { class: 'form' }, [
-      el('p', { class: 'muted small', text: '重みは日数の配分比率です。' }),
       list,
       ui.btn('初期設定に戻す', 'ghost full', function () {
         items = U.clone(S.TEMPLATES[cat]); render();
@@ -1858,8 +1800,7 @@
     var alarmSel = ui.select(sc.ICS_ALARMS.map(function (a) { return { value: a.value, label: a.label }; }),
       S.settings.icsAlarm || '');
     var body = el('div', { class: 'form' }, [
-      el('p', { class: 'muted small', text: '書き出したファイルを開くと、標準カレンダーに取り込めます。' }),
-      ui.field('通知', alarmSel, '取り込んだ予定に通知を付けます。アプリを開かなくても締切に気づけます'),
+      ui.field('通知', alarmSel),
       el('label', { class: 'row-check' }, [withTasks, el('span', { text: '毎日のノルマも書き出す（予定が多くなります）' })])
     ]);
     var close = ui.sheet({
@@ -1906,7 +1847,7 @@
         el('span', { class: 'alert-icon' }, ui.icon(verdict.cls === 'warn' ? 'alert' : 'info', 17)),
         el('span', { text: verdict.text })
       ]),
-      el('p', { class: 'muted small', text: '「統合」は、いま無いものだけを足します（中身は書き換えません）。実行前の状態は控えに残ります。' })
+      null
     ]);
     var close = ui.sheet({
       title: 'バックアップの読み込み', body: body,

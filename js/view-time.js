@@ -537,9 +537,7 @@
     var nb = nowBanner(date);
     if (nb) card.appendChild(nb);
 
-    if (!list.length) {
-      card.appendChild(el('p', { class: 'muted small', text: 'まだ書いていません。時間を足すか、勤務のプリセットから入れられます。' }));
-    } else {
+    if (list.length) {
       /* 円は真ん中に大きく。名前は円のまわりに置くので、横に並べない */
       card.appendChild(el('div', { class: 'tp-pie-wrap' },
         pie(date, { onPick: function (b) { blockSheet(b.carry ? b.date : date, b); } })));

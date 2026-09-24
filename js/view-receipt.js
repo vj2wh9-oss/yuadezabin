@@ -208,7 +208,7 @@
       ]),
       ui.field('店舗名', storeIn),
       ui.field('科目', catSel),
-      ui.field('案件', projSel, '印刷費などを案件に紐づけるときに'),
+      ui.field('案件', projSel),
       ui.section('購入品目'),
       itemBox,
       sumNote

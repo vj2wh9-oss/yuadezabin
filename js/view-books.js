@@ -12,6 +12,7 @@
   var year = 0;          // 表示中の年（0 なら今年）
   var cat = '';          // 科目の絞り込み（空＝すべて）
   var tagId = '';        // 分類の絞り込み（空＝すべて）
+  var listOpen = false;  // 支出（経費）の一覧。長いので、ふだんは畳んでおく
   var thumbs = {};       // ファイルID → 表示用URL（この画面を開いている間だけ）
   var io = null;
 
@@ -95,22 +96,44 @@
       return true;
     });
     var filtered = !!(cat || tagId);
-    wrap.appendChild(ui.section(isLife ? '支出の一覧' : '経費の一覧',
-      filtered ? ui.btn('絞り込みを外す', 'ghost tiny', function () { cat = ''; tagId = ''; DL.app.render(); }) : null));
+    /* 一覧は長くなるので、ふだんは畳んでおく。
+       絞り込んでいるときは、その結果を見たいところなので開けておく */
+    var open = listOpen || filtered;
+    var body = el('div', { class: 'sg-body', hidden: !open });
+    var head = el('button', {
+      class: 'sg-head', type: 'button', 'aria-expanded': open ? 'true' : 'false',
+      onclick: function () {
+        listOpen = body.hidden;
+        body.hidden = !listOpen;
+        fold.classList.toggle('on', listOpen);
+        head.setAttribute('aria-expanded', listOpen ? 'true' : 'false');
+      }
+    }, [
+      el('div', { class: 'xp-fold-title' }, [
+        el('strong', { text: isLife ? '支出の一覧' : '経費の一覧' }),
+        ui.chip(shown.length + '件', 'ghosty'),
+        ui.chip(D.yen(E.total(shown)), 'soft')
+      ]),
+      el('span', { class: 'sg-chev' }, ui.icon('chevronDown', 18))
+    ]);
+    var fold = el('div', { class: 'sgroup xp-fold' + (open ? ' on' : '') }, [head, body]);
+
     if (filtered) {
       var picked = tagId ? tagRows.filter(function (t) { return t.tagId === tagId; })[0] : null;
-      wrap.appendChild(el('div', { class: 'row-wrap pad' }, [
+      body.appendChild(el('div', { class: 'row-wrap' }, [
         cat ? ui.chip(cat + '　' + D.yen(E.total(shown)), 'soft') : null,
-        picked ? ui.chip(picked.name + '　' + D.yen(picked.amount) + '（' + picked.count + '品目）', 'soft') : null
+        picked ? ui.chip(picked.name + '　' + D.yen(picked.amount) + '（' + picked.count + '品目）', 'soft') : null,
+        ui.btn('絞り込みを外す', 'ghost tiny', function () { cat = ''; tagId = ''; DL.app.render(); })
       ]));
     }
     if (!shown.length) {
-      wrap.appendChild(ui.empty(filtered ? 'この絞り込みに合う記録はありません。' : y + '年の記録はまだありません。'));
+      body.appendChild(ui.empty(filtered ? 'この絞り込みに合う記録はありません。' : y + '年の記録はまだありません。'));
     } else {
       var list = el('div', { class: 'list' });
       shown.forEach(function (x) { list.appendChild(expenseRow(x)); });
-      wrap.appendChild(list);
+      body.appendChild(list);
     }
+    wrap.appendChild(fold);
 
     // カードの決済通知から取り込んだぶん。まだ経費に入れていないもの
     var cardRow = cardEntry();
@@ -355,9 +378,6 @@
       title: '1ヶ月の予算',
       body: el('div', { class: 'form' }, [
         ui.field('予算（円）', input),
-        el('p', { class: 'muted small',
-          text: '事業と日常を合わせた、1ヶ月に使えるお金です。'
-            + 'ここから固定費を引いた残りを日数で割ったものが、ホームの「今日の予算」になります。' }),
         // いま何にいくら出ているか。棒を押した人がまず知りたいところ
         b ? budgetBreak(b) : null
       ]),
@@ -437,9 +457,6 @@
     var close = ui.sheet({
       title: '固定費をまとめて記録',
       body: el('div', { class: 'form' }, [
-        el('p', { class: 'muted small', text:
-          '記録するものを選んでください。選ばなかったものは、その月だけ固定費に数えません'
-          + '（翌月からはまた出てきます）。' }),
         list,
         foot,
         el('div', { class: 'row-wrap' }, [
@@ -470,9 +487,7 @@
 
   function fixedCard(list) {
     var box = el('div', { class: 'card' });
-    if (!list.length) {
-      box.appendChild(el('p', { class: 'muted small', text: '毎月きまって出るものを登録できます。' }));
-    } else {
+    if (list.length) {
       var nowYm = U.today().slice(0, 7);
       var rows = el('div', { class: 'fx-list' });
       list.forEach(function (r) {
@@ -820,7 +835,7 @@
     var close = ui.sheet({
       title: '目標入力',
       body: el('div', { class: 'form' }, [
-        ui.field('目標（円）', goal, '0 で目標なし'),
+        ui.field('目標（円）', goal),
         ui.field('いつまでに', on)
       ]),
       actions: [
@@ -942,8 +957,6 @@
       body.appendChild(el('p', { class: 'muted small',
         text: E.bookLabel(book) + 'の支出がまだありません。レシートを入れてから使えます。' }));
     } else {
-      body.appendChild(el('p', { class: 'muted small',
-        text: '同じ支払先・同じ科目でまとめています。月をまたいで何度も出ているものほど上に並びます。' }));
 
       var list = el('div', { class: 'fx-list' });
       cands.slice(0, 40).forEach(function (c) {
@@ -1026,14 +1039,13 @@
         ui.field('名前', nameIn),
         el('div', { class: 'grid2' }, [
           ui.field('金額（円）', amountIn),
-          ui.field('毎月何日', dayIn, '無い日は月末に寄せます')
+          ui.field('毎月何日', dayIn)
         ]),
         ui.field('科目', catSel),
         ui.field('支払先', vendorIn),
         ui.field('いつから', startIn,
           from ? '最後に出た月の翌月にしてあります。さかのぼるとその月ぶんも起こします' : ''),
-        ui.field('契約解除した月', endIn,
-          '入れると、その次の月から固定費に数えません（空なら続いています）'),
+        ui.field('契約解除した月', endIn),
         ui.field('次の更新日', renewIn),
         el('p', { class: 'muted small', text: '年でいくら：'
           + D.yen(E.yearlyOf({ amount: U.num(amountIn.value, 0) || v.amount || 0 })) }),
@@ -1450,8 +1462,6 @@
           ]),
           /* この名前を覚えさせる入口。毎回 直さずに済むように */
           el('div', {}, [
-            el('p', { class: 'muted small',
-              text: 'この名前が毎回 同じように届くなら、言い換えを覚えさせられます。' }),
             ui.btn('この名前の変換を作る', 'ghost full', function () {
               close();
               cardMapForm({ from: x.store }, draw);
@@ -1499,9 +1509,6 @@
       var list = S.cardMaps();
       var box = el('div', { class: 'form' });
 
-      box.appendChild(el('p', { class: 'muted small',
-        text: 'カード会社から届く名前は読みにくいので、家計簿に載せる名前に'
-          + '置き換えます。科目もいっしょに決めておけます。' }));
 
       box.appendChild(ui.btn('言い換えを足す', 'primary full', function () {
         cardMapForm(null, function () { draw(); if (after) after(); });
@@ -1563,7 +1570,7 @@
       if (catNow && E.categories(bk).indexOf(catNow) < 0) catNow = '';
       catBox.appendChild(ui.field('科目', ui.select(opts, catNow, function (e) {
         catNow = e.target.value;
-      }), '経費に入れるとき、はじめからこの科目にします'));
+      })));
     }
 
     var bookSel = ui.select([
@@ -1573,9 +1580,8 @@
     ], bookNow, function (e) { bookNow = e.target.value; drawCat(); });
 
     var body = el('div', { class: 'form' }, [
-      ui.field('通知の名前（変換元）', fromIn,
-        '通知に出てくる名前。一部だけでも構いません（含んでいれば当たります）'),
-      ui.field('家計簿の名前（変換後）', toIn, '空にすると、通知の名前のまま入ります'),
+      ui.field('通知の名前（変換元）', fromIn),
+      ui.field('家計簿の名前（変換後）', toIn),
       ui.field('帳簿', bookSel),
       catBox
     ]);
@@ -1615,10 +1621,6 @@
       U.clear(host);
       var box = el('div', { class: 'form' });
 
-      box.appendChild(el('p', { class: 'muted small',
-        text: 'iPhone の「通知を受け取ったとき」のオートメーションで、'
-          + 'Amex のアプリの通知をここへ送ります。'
-          + 'この合鍵で送れるのは決済の文面だけで、ほかのものは触れません。' }));
 
       if (!k) {
         box.appendChild(ui.btn('合鍵を作る', 'primary full', function () {
@@ -1652,9 +1654,6 @@
         '完了。次に Amex から通知が来たら、そのまま届きます'
       ].map(function (t) { return el('li', { text: t }); })));
 
-      box.appendChild(el('p', { class: 'muted small',
-        text: '届いたぶんは、この画面の「いま取りに行く」か、'
-          + 'アプリを開いた拍子に取り込まれます。' }));
 
       box.appendChild(ui.section('文面をためす'));
       var tryIn = ui.textarea({ rows: 3, maxlength: 300,
@@ -1671,8 +1670,6 @@
         }).catch(function (e) { out.textContent = e.message; });
       }, 'idea'));
       box.appendChild(out);
-      box.appendChild(el('p', { class: 'muted small',
-        text: '通知の言い回しが変わって読めなくなったときは、ここで確かめられます。' }));
 
       box.appendChild(ui.section('合鍵'));
       box.appendChild(el('div', { class: 'row-wrap' }, [
@@ -2003,7 +2000,7 @@
           ui.field('日付', dateIn),
           ui.field('金額（円）', amountIn)
         ]),
-        ui.block('帳簿', bookSeg, '事業＝仕事の経費／日常＝家計簿'),
+        ui.block('帳簿', bookSeg),
         ui.field('科目', catSel),
         ui.field('支払先', vendorIn),
         ui.field('メモ', memoIn),
@@ -2016,12 +2013,6 @@
           close();
           recurringSheet(null, fixedFrom(x));
         }, 'refresh') : null,
-        (!isNew && x.recurringId) ? el('p', { class: 'muted small',
-          text: 'これは固定費から起こした記録です。1日に使えるお金からは引いていません'
-            + '（月の予算から先に取りのけてあります）。' }) : null,
-        (!isNew && !x.recurringId && E.isFixedExpense(x)) ? el('p', { class: 'muted small',
-          text: '同じ支払先・同じ科目の固定費があるので、これは固定費ぶんとして扱います。'
-            + '1日に使えるお金からは引いていません。' }) : null,
         !isNew ? ui.btn('この経費を削除', 'danger full mt', function () { removeThis(); }, 'trash') : null
       ]),
       actions: [

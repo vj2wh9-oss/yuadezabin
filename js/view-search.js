@@ -89,7 +89,7 @@
       el('div', { class: 'row-wrap mt' }, DL.search.KINDS.map(function (k) {
         return ui.chip(k.label, 'ghosty');
       })),
-      el('p', { class: 'muted small', text: '空白で区切ると、どちらも入っているものを探します。' })
+      null
     ]);
   }
 

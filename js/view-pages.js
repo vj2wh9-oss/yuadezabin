@@ -204,9 +204,7 @@
     var close = ui.sheet({
       title: '総' + word + '数',
       body: el('div', { class: 'form' }, [
-        ui.field('本文の' + word + '数', step,
-          '表紙まわりは入れずに、本文だけの数を入れてください。'
-          + '（未入力のときは案件の「数量」を使います）')
+        ui.field('本文の' + word + '数', step)
       ]),
       actions: [
         ui.btn('キャンセル', 'ghost', function () { close(); }),

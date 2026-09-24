@@ -299,7 +299,7 @@
     var close = ui.sheet({
       title: '釣銭の準備金',
       body: el('div', { class: 'form' }, [
-        ui.field('はじめに用意した現金（円）', inp, '手元の現金は、これに頒布の売上を足して数えます')
+        ui.field('はじめに用意した現金（円）', inp)
       ]),
       actions: [
         ui.btn('キャンセル', 'ghost', function () { close(); }),
