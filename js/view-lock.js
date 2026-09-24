@@ -1,8 +1,8 @@
 /* METEO LOCK — ID とパスワードの金庫（専用の画面）
 
    画面は3つの顔を持つ。
-     ・金庫がまだ無い  … 合言葉を決めてもらう
-     ・鍵がかかっている … 合言葉（使えるなら顔でも）で開ける
+     ・金庫がまだ無い  … 暗号を決めてもらう
+     ・鍵がかかっている … 暗号（使えるなら顔でも）で開ける
      ・開いている      … 探す・写す・足す・直す
 
    守りかたの中身は lock.js にある。ここは見せかたと操作だけ。 */
@@ -16,6 +16,20 @@
   var drawnOpen = null;       // いま描いてある顔
 
   function lk() { return L || (L = DL.lock); }
+
+  /* シートを開いているあいだは、時間で鍵をかけない。
+     打ち込んでいる途中に閉じられてしまうと、書いたものが消えるため。
+     開くときに掛け金を1つ増やし、畳むときに戻す。 */
+  function heldSheet(opts) {
+    var done = false;
+    var onClose = opts.onClose;
+    lk().hold(true);
+    opts.onClose = function () {
+      if (!done) { done = true; lk().hold(false); }
+      if (onClose) onClose();
+    };
+    return ui.sheet(opts);
+  }
 
   /* ボタンの字を書き換える（ui.btn は中に span を置くので、そこだけ差し替える） */
   function label(b, text) {
@@ -94,11 +108,11 @@
   /* ---------------- まだ金庫が無いとき ---------------- */
 
   function setupView(wrap) {
-    wrap.appendChild(head('ID とパスワードを、合言葉ひとつで仕舞っておきます。'));
+    wrap.appendChild(head('ID とパスワードを、暗号ひとつで仕舞っておきます。'));
 
     var box = el('div', { class: 'form lk-form' });
     var p1 = ui.input({ type: 'password', autocomplete: 'new-password',
-      placeholder: '合言葉（' + lk().MIN_PASS + '文字以上）' });
+      placeholder: '暗号（' + lk().MIN_PASS + '文字以上）' });
     var p2 = ui.input({ type: 'password', autocomplete: 'new-password', placeholder: 'もう一度' });
     var meter = el('div', { class: 'lk-meter' }, el('i'));
     var note = el('p', { class: 'lk-note' });
@@ -109,15 +123,15 @@
       note.textContent = p1.value ? '強さ：' + s.text : '';
     });
 
-    box.appendChild(ui.field('合言葉', p1));
+    box.appendChild(ui.field('暗号', p1));
     box.appendChild(meter);
     box.appendChild(note);
     box.appendChild(ui.field('確かめ', p2));
 
     box.appendChild(el('div', { class: 'lk-warn' }, [
       el('b', { text: '忘れると、誰にも開けられません。' }),
-      el('span', { text: '合言葉はこの金庫のどこにも残しません。'
-        + '中身は合言葉から作る鍵でしか解けないので、こちらでも開けられません。'
+      el('span', { text: '暗号はこの金庫のどこにも残しません。'
+        + '中身は暗号から作る鍵でしか解けないので、こちらでも開けられません。'
         + '長くて思い出せるもの（好きな一文など）にしてください。' })
     ]));
 
@@ -147,7 +161,7 @@
 
     var box = el('div', { class: 'form lk-form' });
     var pass = ui.input({ type: 'password', autocomplete: 'current-password',
-      placeholder: '合言葉', enterkeyhint: 'go' });
+      placeholder: '暗号', enterkeyhint: 'go' });
     var msg = el('p', { class: 'lk-note' });
 
     var pen = lk().penalty();
@@ -162,7 +176,7 @@
     var open = ui.btn('開ける', 'primary full', function () { tryPass(); }, 'lock');
 
     function tryPass() {
-      if (!pass.value) { ui.toast('合言葉を入れてください', 'warn'); return; }
+      if (!pass.value) { ui.toast('暗号を入れてください', 'warn'); return; }
       open.disabled = true;
       label(open, '開けています…');
       lk().unlock(pass.value).then(function (ok) {
@@ -172,7 +186,7 @@
         pass.value = '';
         var p = lk().penalty();
         msg.className = 'lk-note bad';
-        msg.textContent = '合言葉が違います。'
+        msg.textContent = '暗号が違います。'
           + (p.wait > 0 ? ' しばらく待ってから、もう一度。' : '');
       }).catch(function (e) {
         open.disabled = false;
@@ -186,7 +200,7 @@
       if (e.key === 'Enter') { e.preventDefault(); tryPass(); }
     });
 
-    box.appendChild(ui.field('合言葉', pass));
+    box.appendChild(ui.field('暗号', pass));
     box.appendChild(msg);
     box.appendChild(open);
 
@@ -195,13 +209,13 @@
       box.appendChild(ui.btn('Face ID で開ける', 'ghost full', function () {
         lk().faceUnlock().then(function (ok) {
           if (ok) { DL.app.render(); return; }
-          ui.toast('開けられませんでした。合言葉で開けてください', 'warn');
+          ui.toast('開けられませんでした。暗号で開けてください', 'warn');
         }).catch(function (e) { ui.toast(e.message, 'danger'); });
       }, 'faceid'));
     }
 
     box.appendChild(el('p', { class: 'muted small',
-      text: '中身は暗号のまま仕舞ってあります。合言葉を入れるまで、'
+      text: '中身は解いていない形で仕舞ってあります。暗号を入れるまで、'
         + 'この端末の中でも読める形にはなりません。' }));
     wrap.appendChild(box);
   }
@@ -345,7 +359,7 @@
     body.appendChild(el('p', { class: 'muted small',
       text: '更新：' + U.fmtYMD(String(x.at).slice(0, 10)) }));
 
-    var close = ui.sheet({
+    var close = heldSheet({
       title: x.name,
       body: body,
       actions: [
@@ -422,7 +436,7 @@
     body.appendChild(ui.field('メモ', note));
     drawMeter();
 
-    var close = ui.sheet({
+    var close = heldSheet({
       title: isNew ? '追加' : '直す',
       body: body,
       actions: [
@@ -470,8 +484,8 @@
           DL.store.setLockOpts({ clipSec: U.num(e.target.value, 30) });
         }), '貼り付けたあと、控えに残り続けないようにします'));
 
-      box.appendChild(ui.section('合言葉'));
-      box.appendChild(ui.btn('合言葉を変える', 'ghost full', function () {
+      box.appendChild(ui.section('暗号'));
+      box.appendChild(ui.btn('暗号を変える', 'ghost full', function () {
         passSheet();
       }, 'edit'));
 
@@ -482,8 +496,8 @@
 
       box.appendChild(ui.section('控え'));
       box.appendChild(el('p', { class: 'muted small',
-        text: '暗号のかたまりのまま写します。これだけでは中身は読めませんが、'
-          + '合言葉が弱いと時間をかけて解かれます。強い合言葉にしておいてください。' }));
+        text: '解いていない、暗号のかたまりのまま写します。これだけでは中身は読めませんが、'
+          + '暗号が弱いと時間をかけて解かれます。強い暗号にしておいてください。' }));
       box.appendChild(ui.btn('控えを写す', 'ghost full', function () {
         U.copy(lk().exportBox()).then(function (ok) {
           ui.toast(ok ? '写しました' : '写せませんでした', ok ? '' : 'danger');
@@ -523,7 +537,7 @@
       }
       node.appendChild(el('p', { class: 'muted small',
         text: '顔は「この端末の中にある鍵で包みを解く」ために使います。'
-          + '顔だけで開く蓋ではないので、端末が変われば合言葉が要ります。' }));
+          + '顔だけで開く蓋ではないので、端末が変われば暗号が要ります。' }));
       var b = ui.btn('この端末で Face ID を使う', 'ghost full', function () {
         b.disabled = true;
         lk().enrollFace().then(function (ok) {
@@ -538,7 +552,7 @@
       node.appendChild(b);
     }
 
-    var close = ui.sheet({
+    var close = heldSheet({
       title: 'METEO LOCK の設定',
       body: host,
       actions: [ui.btn('閉じる', 'ghost full', function () { close(); })],
@@ -547,7 +561,7 @@
     draw();
   }
 
-  /* 合言葉の入れ替え */
+  /* 暗号の入れ替え */
   function passSheet() {
     var body = el('div', { class: 'form' });
     var cur = ui.input({ type: 'password', autocomplete: 'current-password' });
@@ -562,8 +576,8 @@
       note.textContent = n1.value ? '強さ：' + s.text : '';
     });
 
-    body.appendChild(ui.field('いまの合言葉', cur));
-    body.appendChild(ui.field('新しい合言葉', n1));
+    body.appendChild(ui.field('いまの暗号', cur));
+    body.appendChild(ui.field('新しい暗号', n1));
     body.appendChild(meter);
     body.appendChild(note);
     body.appendChild(ui.field('確かめ', n2));
@@ -571,8 +585,8 @@
       text: '中身はそのままで、包み直すだけです。'
         + 'この端末の Face ID の設定も、そのまま使えます。' }));
 
-    var close = ui.sheet({
-      title: '合言葉を変える',
+    var close = heldSheet({
+      title: '暗号を変える',
       body: body,
       actions: [
         ui.btn('やめる', 'ghost', function () { close(); }),
@@ -593,6 +607,8 @@
     stopTimer();
     var draw = function () {
       if (!lk().isOpen()) { stopTimer(); return; }
+      // 入力の途中は数えない。そのことも出しておく
+      if (lk().held()) { node.textContent = '入力中は鍵をかけません'; return; }
       var s = lk().leftSec();
       node.textContent = 'あと ' + (s >= 60 ? Math.ceil(s / 60) + '分' : s + '秒') + 'で鍵がかかります';
     };
@@ -605,5 +621,130 @@
     timer = null;
   }
 
-  DL.views.lock = { render: render, entry: entry, stopTimer: stopTimer };
+  /* ---------------- 出入りの幕 ----------------
+
+     筋トレと同じ作りで、黒い幕を降ろしてから中身を入れ替える。
+     幕の中では、南京錠の下で目盛りが 0 から 100 まで溜まる。
+     溜まりきったら幕が開いて、METEO LOCK の画面が出る。
+
+     幕を降ろすのは中身を入れ替える前。そうしないと、
+     前の画面が一瞬で消えてしまい、幕をはさむ意味がなくなる。 */
+
+  var CURTAIN_MS = 300;        // 幕が降りきるまで
+  var LIFT_MS = 380;           // 幕が上がりきるまで
+  var FILL_MS = 760;           // 0 から 100 まで
+  /* 南京錠の絵は 24 のマスの縦 4.3〜20.5 あたりにしかない。
+     枠いっぱいで切ると、溜まりきる前に染まり終わってしまう */
+  var CLIP_LO = 85.5, CLIP_HI = 15.5;
+
+  var fx = null;
+  var fxRaf = 0;
+  var fxTimers = [];
+  var fxParts = null;
+  var curtainDown = false;
+
+  function calmly() {
+    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+
+  /* 幕を出してよいか。動きを控えめにしている人と、
+     起動の幕がまだ出ているあいだは、何もしない */
+  function mayPlay() {
+    if (calmly()) return false;
+    var splash = document.getElementById('splash');
+    return !(splash && !splash.classList.contains('out'));
+  }
+
+  function later(fn, ms) { fxTimers.push(setTimeout(fn, ms)); }
+
+  /**
+   * 黒い幕を降ろす。降りきったら again() を呼ぶ。
+   * @returns {boolean} true なら、こちらで引き取ったので描き直しを待ってほしい
+   */
+  function dropCurtain(again) {
+    if (!mayPlay() || curtainDown) return false;
+    closeFx();
+    buildFx();
+    curtainDown = true;
+    fx.style.setProperty('--lk-ms', CURTAIN_MS + 'ms');
+    document.body.appendChild(fx);
+    later(again, CURTAIN_MS);
+    return true;
+  }
+
+  /** 幕が降りきって、裏で描き直せた、そのとき */
+  function intro() {
+    if (!curtainDown || !fx) return;
+    fx.classList.add('down');
+    fill();
+  }
+
+  function buildFx() {
+    var bar = el('i', { class: 'lki-bar-in' });
+    var shut = ui.icon('lock', 104, 'lki-lock lki-lock-on');
+    var num = el('b', { class: 'lki-num', text: '0' });
+
+    fx = el('div', { id: 'lockIntro', class: 'lock-intro', 'aria-hidden': 'true' }, [
+      el('div', { class: 'lki-curtain' }),
+      el('div', { class: 'lki-body' }, [
+        // 南京錠。下から色が上がっていく
+        el('div', { class: 'lki-stage' }, [
+          ui.icon('lock', 104, 'lki-lock lki-lock-off'), shut
+        ]),
+        // その下に名前
+        el('div', { class: 'lki-word', text: 'METEO LOCK' }),
+        // さらに下に目盛り
+        el('div', { class: 'lki-meter' }, [
+          el('span', { class: 'lki-bar' }, bar),
+          el('span', { class: 'lki-read' }, [num, el('span', { class: 'lki-pct', text: '%' })])
+        ])
+      ])
+    ]);
+    fxParts = { bar: bar, shut: shut, num: num };
+  }
+
+  function fill() {
+    var t0 = 0;
+    var step = function (now) {
+      if (!fx || !fxParts) return;
+      if (!t0) t0 = now;
+      var t = Math.min(1, (now - t0) / FILL_MS);
+      // 終わりぎわをゆるめて、閉まりきる手前で「ぐっ」とくるようにする
+      var v = Math.round(100 * (1 - Math.pow(1 - t, 2.2)));
+      fxParts.num.textContent = String(v);
+      fxParts.bar.style.width = v + '%';
+      fxParts.shut.style.clipPath =
+        'inset(' + (CLIP_LO - (CLIP_LO - CLIP_HI) * v / 100).toFixed(2) + '% 0 0 0)';
+      if (t < 1) { fxRaf = requestAnimationFrame(step); return; }
+      // 溜まりきった。錠が閉まる音の代わりに、ひと締めしてから幕を開ける
+      fx.classList.add('full');
+      later(closeFx, 240);
+    };
+    fxRaf = requestAnimationFrame(step);
+  }
+
+  /** 出るとき。張ってある幕が、下から上へ上がる */
+  function outro() {
+    if (!mayPlay()) return;
+    closeFx();
+    fx = el('div', { id: 'lockOutro', class: 'lock-outro', 'aria-hidden': 'true' });
+    fx.style.setProperty('--lk-ms', LIFT_MS + 'ms');
+    document.body.appendChild(fx);
+    later(closeFx, LIFT_MS);
+  }
+
+  function closeFx() {
+    if (fxRaf) { cancelAnimationFrame(fxRaf); fxRaf = 0; }
+    fxTimers.forEach(clearTimeout);
+    fxTimers = [];
+    if (fx && fx.parentNode) fx.parentNode.removeChild(fx);
+    fx = null;
+    fxParts = null;
+    curtainDown = false;
+  }
+
+  DL.views.lock = {
+    render: render, entry: entry, stopTimer: stopTimer,
+    dropCurtain: dropCurtain, intro: intro, outro: outro, closeFx: closeFx
+  };
 })(window.DL);

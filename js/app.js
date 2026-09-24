@@ -52,6 +52,9 @@
     var next = parseHash();
     if (next.name === 'fit' && prevRoute !== 'fit'
       && DL.views.fit.dropCurtain(render)) return;
+    /* METEO LOCK も同じ。幕の中で南京錠が閉まりきってから、金庫の画面を出す */
+    if (next.name === 'lock' && prevRoute !== 'lock'
+      && DL.views.lock.dropCurtain(render)) return;
 
     route = next;
     var key = location.hash;
@@ -114,18 +117,20 @@
     if (route.name !== prevRoute) {
       // 当日モードを離れたら、画面を消さない設定は返す
       if (prevRoute === 'onsite') DL.views.onsite.left();
-      /* METEO LOCK を離れたら、その場で鍵をかける。
-         開けっ放しのまま別の画面に行けてしまうと、金庫の意味がない */
-      if (prevRoute === 'lock') {
-        DL.views.lock.stopTimer();
-        DL.lock.lock();
-      }
+      /* METEO LOCK を離れるとき。ここでは鍵をかけない——
+         決めた時間（はじめは2分）を過ぎるまでは開けたままにしておき、
+         数えるのは lock.js の時計に任せる。残り時間の表示だけ止める */
+      if (prevRoute === 'lock') DL.views.lock.stopTimer();
       /* 筋トレは黒、ほかのタブは明るい。そのまま切り替えると目に刺さるので、
          あいだに黒い幕をはさむ。入るときは降ろしてから溜め、出るときは上げる。
          中で日付を行き来するあいだは出さない（route の名前は fit のまま） */
       if (route.name === 'fit') DL.views.fit.intro();
       else if (prevRoute === 'fit') DL.views.fit.outro();
       else DL.views.fit.closeFx();
+
+      if (route.name === 'lock') DL.views.lock.intro();
+      else if (prevRoute === 'lock') DL.views.lock.outro();
+      else DL.views.lock.closeFx();
       prevRoute = route.name;
       // 別の画面へ移ったら、開きっぱなしのシートは畳む。
       // （検索から経費を開いたあと戻る、のように画面をまたぐ移動があるため）

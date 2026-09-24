@@ -1,31 +1,37 @@
 /* METEO LOCK — ID とパスワードの金庫。
 
+   ここでいう「暗号」は、金庫を開けるために入れてもらう文字列のこと
+   （画面でもそう呼んでいる）。暗号そのものは、どこにも保存しない。
+
    守りかたの考えかた（ここは手を抜くと意味が無いので、長めに書く）
 
-   1) 中身は必ず暗号で持つ。
+   1) 中身は必ず暗号で守る。
       サービス名も ID もパスワードも、読める形では一度も保存しない。
       IndexedDB にも localStorage にも、同期先にも、控えにも、
       入るのは「暗号のかたまり」だけ。
 
    2) 鍵は二段にする。
       ・金庫の鍵（vault key）… 作るときに1本だけ、でたらめに作る 256bit
-      ・合言葉の鍵（KEK）    … 合言葉を PBKDF2 で 60万回 練って作る
-      金庫の鍵を、合言葉の鍵で包んでしまっておく。
-      こうしておくと、合言葉を変えても包み直すだけで済み、
+      ・暗号から作る鍵（KEK）… 入れてもらった暗号を PBKDF2 で 60万回 練る
+      金庫の鍵を、暗号から作る鍵で包んでしまっておく。
+      こうしておくと、暗号を変えても包み直すだけで済み、
       中身を全部つけ替えずに済む。顔での解錠も同じ鍵を別に包むだけ。
 
    3) 解いた中身は記憶の中だけ。
       解いたものは変数にしか置かない。保存もしないし、同期にも乗せない。
-      しばらく触らなければ自分から鍵をかけ、画面を離れても鍵をかける。
+      決めた時間 触らなければ、自分から鍵をかける。
+      ほかのアプリに移っているあいだも同じように数える
+      （切り替えた拍子に閉じてしまうと、入れ直してばかりになるため）。
+      入力の途中だけは、数えるのを止める（hold）。
 
    4) 顔だけでは開けない。
       顔（Face ID）は「その端末の中にある鍵で、包みを解く」ためのもの。
       WebAuthn の PRF が使える端末でだけ用意する。使えない端末では出さない。
-      顔の登録が無い端末では、合言葉でしか開かない。
+      顔の登録が無い端末では、暗号でしか開かない。
       ——「顔を見せれば画面が出る」だけの蓋にはしない。
 
-   5) 合言葉は預けない。
-      合言葉そのものも、その潰した形も、どこにも保存しない。
+   5) 暗号は預けない。
+      暗号そのものも、その潰した形も、どこにも保存しない。
       合っているかどうかは「包みが解けたかどうか」で分かる（AES-GCM の検め）。
       忘れたら誰にも開けられない。そのぶん、中身は誰にも読めない。 */
 (function (DL) {
@@ -34,8 +40,9 @@
 
   var VER = 1;
   var ITER = 600000;        // PBKDF2 の回し数（OWASP の目安）
-  /* 合言葉の最短の長さ。金庫の控えは同期先にもバックアップにも渡る（暗号のまま）ので、
-     万一それが人手に渡ったときに時間をかけて解かれない長さにしておく */
+  /* 暗号の最短の長さ。金庫の控えは、暗号を解いていない形のまま
+     同期先にもバックアップにも渡る。万一それが人手に渡っても、
+     時間をかけて解かれない長さにしておく */
   var MIN_PASS = 12;
   var MAX_ITEMS = 500;
 
@@ -46,6 +53,9 @@
   var tick = null;
   var clipTimer = null;
   var listeners = [];
+  /* 入力の途中など、いま鍵をかけられては困るあいだの数。
+     0より大きいうちは、時間で閉じない */
+  var holds = 0;
 
   /* ---------------- 下ごしらえ ---------------- */
 
@@ -77,7 +87,7 @@
   function enc(s) { return new TextEncoder().encode(s); }
   function dec(buf) { return new TextDecoder().decode(buf); }
 
-  /* 合言葉から鍵を練る。ここが重いほど、総当たりが割に合わなくなる */
+  /* 暗号から鍵を練る。ここが重いほど、総当たりが割に合わなくなる */
   function kekFrom(pass, salt, iter) {
     return sub().importKey('raw', enc(String(pass)), 'PBKDF2', false, ['deriveKey'])
       .then(function (base) {
@@ -138,7 +148,7 @@
 
   /**
    * 金庫を作る（はじめてのとき）。
-   * @param {string} pass 合言葉
+   * @param {string} pass 暗号
    * @returns {Promise<boolean>}
    */
   function create(pass) {
@@ -167,7 +177,7 @@
   }
 
   /**
-   * 合言葉で開ける。
+   * 暗号で開ける。
    * @returns {Promise<boolean>} 合っていなければ false（待ち時間中は例外）
    */
   function unlock(pass) {
@@ -188,7 +198,7 @@
       });
   }
 
-  /* 金庫の鍵（生）で開ける。合言葉からでも、顔からでも、ここに合流する */
+  /* 金庫の鍵（生）で開ける。暗号からでも、顔からでも、ここに合流する */
   function openWith(raw, box) {
     box = box || S.lockBox();
     return importVaultKey(raw).then(function (k) {
@@ -212,6 +222,7 @@
   function lock() {
     vaultKey = null;
     items = null;
+    holds = 0;
     stopTick();
     emit();
   }
@@ -236,6 +247,8 @@
     if (tick) return;
     tick = setInterval(function () {
       if (!isOpen()) { stopTick(); return; }
+      // 入力の途中は数えない（打っている最中に閉じられては困る）
+      if (holds > 0) { lastTouch = Date.now(); return; }
       if (leftSec() <= 0) lock();
     }, 1000);
   }
@@ -245,12 +258,26 @@
     tick = null;
   }
 
-  /* 画面を後ろに回したら、その場で鍵をかける。
-     ほかのアプリを触っているあいだ、開いたままにしない */
+  /**
+   * いま鍵をかけられては困る、と伝える（入力のシートを開いているあいだなど）。
+   * 開くときに true、閉じるときに false。入れ子でも数で合う。
+   */
+  function hold(on) {
+    holds = Math.max(0, holds + (on ? 1 : -1));
+    touch();
+  }
+
+  /** 入力の途中かどうか（画面が「まだ閉じません」と出すため） */
+  function held() { return holds > 0; }
+
+  /* ほかのアプリに移っているあいだも、時間で数える。
+     戻ってきたときに、もう過ぎていれば その場で鍵をかける。
+     （後ろに回した瞬間に閉じてしまうと、ちょっと切り替えるたびに
+       入れ直すことになるので、決めた時間のうちは開けたままにする） */
   document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState === 'hidden') lock();
+    if (document.visibilityState !== 'visible') return;
+    if (isOpen() && holds <= 0 && leftSec() <= 0) lock();
   });
-  window.addEventListener('pagehide', function () { lock(); });
 
   /* ---------------- 間違えたときの待ち時間 ----------------
 
@@ -354,10 +381,10 @@
   /** 何件入っているか（開いているときだけ分かる） */
   function count() { return isOpen() ? items.length : -1; }
 
-  /* ---------------- 合言葉を変える ---------------- */
+  /* ---------------- 暗号を変える ---------------- */
 
   /**
-   * 合言葉を入れ替える。中身はそのまま、包み直すだけ。
+   * 暗号を入れ替える。中身はそのまま、包み直すだけ。
    * 顔の包みは金庫の鍵を包んだものなので、そのまま使える。
    */
   function changePass(cur, next) {
@@ -365,10 +392,10 @@
     var bad = passProblem(next);
     if (bad) return Promise.reject(new Error(bad));
     var box = S.lockBox();
-    // いまの合言葉が合っているか、包みを解いて確かめる
+    // いまの暗号が合っているか、包みを解いて確かめる
     return kekFrom(cur, unb64(box.salt), box.iter)
       .then(function (kek) { return gcmDecrypt(kek, unb64(box.wrapIv), unb64(box.wrapped)); })
-      .catch(function () { throw new Error('いまの合言葉が違います'); })
+      .catch(function () { throw new Error('いまの暗号が違います'); })
       .then(function (raw) {
         var salt = rand(16), wrapIv = rand(12);
         return kekFrom(next, salt, ITER).then(function (kek2) {
@@ -387,13 +414,13 @@
     lock();
   }
 
-  /* ---------------- 合言葉の強さ ---------------- */
+  /* ---------------- 暗号の強さ ---------------- */
 
   /** だめな理由。問題なければ '' */
   function passProblem(pass) {
     var p = String(pass == null ? '' : pass);
-    if (p.length < MIN_PASS) return '合言葉は ' + MIN_PASS + '文字以上にしてください';
-    if (/^(.)\1+$/.test(p)) return '同じ文字だけの合言葉は使えません';
+    if (p.length < MIN_PASS) return '暗号は ' + MIN_PASS + '文字以上にしてください';
+    if (/^(.)\1+$/.test(p)) return '同じ文字だけの暗号は使えません';
     if (/^[0-9]+$/.test(p) && p.length < 16) return '数字だけなら 16文字以上にしてください';
     return '';
   }
@@ -603,7 +630,7 @@
   /* ---------------- 控え ----------------
 
      暗号のかたまりのまま写す。これ自体はどこに置いても中身は読めないが、
-     合言葉が弱いと時間をかけて破られる。強い合言葉にしておくこと。 */
+     暗号が弱いと時間をかけて破られる。強い暗号にしておくこと。 */
 
   function exportBox() {
     var box = S.lockBox();
@@ -617,6 +644,7 @@
     changePass: changePass, passProblem: passProblem, strength: strength,
     genPass: genPass, copy: copy,
     touch: touch, leftSec: leftSec, autoSec: autoSec, penalty: penalty,
+    hold: hold, held: held,
     faceReady: faceReady, faceAvailable: faceAvailable, faceOn: faceOn,
     enrollFace: enrollFace, forgetFace: forgetFace, faceUnlock: faceUnlock,
     exportBox: exportBox,

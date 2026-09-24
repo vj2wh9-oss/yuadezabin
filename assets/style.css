@@ -3271,3 +3271,80 @@ body.lock-theme .appbar-title { letter-spacing: .16em; font-size: 14px; }
 .lk-code.link { color: var(--accent2); text-decoration: none; }
 .lk-memo { margin: 0; font-size: 13px; line-height: 1.7; white-space: pre-wrap; }
 .lk-pw-tools { margin-top: 6px; }
+
+/* ---- METEO LOCK の出入りの幕 ----
+
+   入るとき … 上から黒い幕が降り、南京錠の下の目盛りが 0→100 に溜まり、
+              閉まりきったら幕が開く
+   出るとき … 張ってある黒い幕が、下から上へ上がる
+   筋トレの幕と同じ組み立てで、色だけ金庫のものにする。 */
+.lock-intro, .lock-outro { position: fixed; inset: 0; z-index: 95; pointer-events: none; }
+
+/* 降りてくる幕 */
+.lki-curtain {
+  position: absolute; inset: 0; background: #05080a;
+  transform-origin: top; transform: scaleY(0);
+  /* 長さは view-lock.js が --lk-ms で渡す（js の待ち時間とそろえるため） */
+  animation: lkiDrop var(--lk-ms, .3s) cubic-bezier(.3, 0, .2, 1) forwards;
+}
+@keyframes lkiDrop { to { transform: scaleY(1); } }
+
+/* 中身。幕が降りきるまでは出さない */
+.lki-body {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 18px; opacity: 0;
+}
+.lock-intro.down .lki-body { animation: lkiIn .14s ease-out forwards; }
+@keyframes lkiIn { to { opacity: 1; } }
+
+/* 上がっていく幕。裏の画面が下から出てくる */
+.lock-outro {
+  background: #05080a;
+  transform-origin: top; transform: scaleY(1);
+  animation: lkiLift var(--lk-ms, .38s) cubic-bezier(.4, 0, .2, 1) forwards;
+}
+@keyframes lkiLift { to { transform: scaleY(0); } }
+
+/* 南京錠。下から色が上がっていく */
+.lki-stage { position: relative; width: 104px; height: 104px; }
+.lki-lock { position: absolute; inset: 0; width: 104px; height: 104px; stroke-width: 1.3; }
+.lki-lock-off { color: #1b2830; }
+/* 染まるほう。clip-path は view-lock.js が毎フレーム動かす */
+.lki-lock-on { color: #3fbfa5; clip-path: inset(85.5% 0 0 0); }
+
+/* 名前。錠の下に置く */
+.lki-word {
+  font-size: 15px; font-weight: 700; letter-spacing: .34em; color: #e9eff4;
+  padding-left: .34em;
+}
+
+/* 目盛り */
+.lki-meter { display: flex; align-items: center; gap: 12px; width: 212px; }
+.lki-bar {
+  flex: 1; height: 8px; background: #0d161b; border: 1px solid #22303a; display: block;
+  border-radius: 2px; overflow: hidden;
+}
+.lki-bar-in { display: block; height: 100%; width: 0; background: #3fbfa5; }
+.lki-read {
+  display: flex; align-items: baseline; gap: 1px; color: #3fbfa5;
+  font-variant-numeric: tabular-nums; min-width: 54px; justify-content: flex-end;
+}
+.lki-num { font-size: 24px; font-weight: 800; line-height: 1; letter-spacing: -.02em; }
+.lki-pct { font-size: 12px; font-weight: 700; }
+
+/* 閉まりきった瞬間。錠をひと締めしてから、幕を開ける */
+.lock-intro.full { animation: lkiOut .24s ease-in forwards; }
+.lock-intro.full .lki-lock-on { animation: lkiShut .24s ease-out; }
+.lock-intro.full .lki-word { color: #3fbfa5; }
+@keyframes lkiOut { to { opacity: 0; } }
+@keyframes lkiShut {
+  0% { transform: scale(1); }
+  40% { transform: scale(.92); }
+  100% { transform: scale(1); }
+}
+
+/* 動きを控えめにしている人には、そもそも出さない（js 側でも見ている） */
+@media (prefers-reduced-motion: reduce) {
+  .lock-intro, .lock-outro { display: none; }
+}
