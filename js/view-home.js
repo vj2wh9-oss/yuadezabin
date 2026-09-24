@@ -165,9 +165,9 @@
           el('span', { text: 'カードの決済通知を ' + list.length + '件 受け取りました' })
         ]),
         el('div', { class: 'row-sub' }, [
-          ui.chip((when ? when + '　' : '') + (x.store || '店名なし') + '　' + yen(x.amount), 'warn'),
-          list.length > 1 ? ui.chip('ほか ' + (list.length - 1) + '件', 'ghosty') : null,
-          el('span', { class: 'muted small', text: '経費に入れるか、捨てるかを決めます' })
+          // 名前は、覚えさせた言い換えを当ててから出す
+          ui.chip((when ? when + '　' : '') + (C.nameOf(x) || '店名なし') + '　' + yen(x.amount), 'warn'),
+          list.length > 1 ? ui.chip('ほか ' + (list.length - 1) + '件', 'ghosty') : null
         ])
       ]),
       el('span', { class: 'chev' }, ui.icon('chevronRight', 16))

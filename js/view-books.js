@@ -1348,6 +1348,7 @@
             ui.toast(e.message, 'danger');
           });
         }, 'refresh'),
+        ui.btn('名前の変換', 'ghost', function () { cardMapSheet(draw); }, 'swap'),
         ui.btn('iPhone の設定', 'ghost', function () { cardSetupSheet(); }, 'settings')
       ]));
 
@@ -1371,7 +1372,9 @@
         ui.confirm('預かっている ' + list.length + '件を、ぜんぶ捨てます。\n'
           + '経費には入りません。', { danger: true, okText: '捨てる' }).then(function (ok) {
           if (!ok) return;
+          var ids = list.map(function (o) { return o.id; });
           S.clearCardInbox();
+          C.forget(ids);
           draw();
           ui.toast('捨てました');
         });
@@ -1379,16 +1382,21 @@
       host.appendChild(box);
     }
 
-    /* 1件ぶん。押すと中身を直せる。右に「経費へ」と「捨てる」 */
+    /* 1件ぶん。押すと中身を直せる。右に「経費へ」と「捨てる」。
+       名前は覚えさせた言い換えを当ててから出す（元の名前も小さく添える） */
     function cardRow(x) {
+      var m = C.look(x.store);
+      var changed = m.hit && m.name !== x.store;
       return el('div', { class: 'row ci-row' }, [
         el('div', { class: 'row-main' }, [
           el('div', { class: 'row-title' }, [
-            el('span', { text: x.store || '（店名なし）' }),
+            el('span', { text: m.name || '（店名なし）' }),
             el('b', { class: 'ci-amount', text: D.yen(x.amount) })
           ]),
           el('div', { class: 'row-sub' }, [
             ui.chip(U.fmtMD(x.date) + (x.time ? ' ' + x.time : ''), 'soft'),
+            m.category ? ui.chip(m.category, 'ghosty') : null,
+            changed ? el('span', { class: 'muted small ci-from', text: x.store }) : null,
             el('button', {
               type: 'button', class: 'ci-fix',
               onclick: function () { fixSheet(x); }
@@ -1398,10 +1406,9 @@
         el('div', { class: 'ci-acts' }, [
           ui.btn('経費へ', 'primary tiny', function () { apply(x); }),
           el('button', {
-            type: 'button', class: 'btn tiny only ghost', 'aria-label': x.store + 'を捨てる',
+            type: 'button', class: 'btn tiny only ghost', 'aria-label': m.name + 'を捨てる',
             onclick: function () {
-              S.removeCardItem(x.id);
-              draw();
+              drop(x);
               ui.toast('捨てました');
             }
           }, ui.icon('trash', 14))
@@ -1409,16 +1416,22 @@
       ]);
     }
 
+    /* 預かりから外す。向こうにも「もう要らない」と伝えておく
+       （伝わらなくても、こちら側で二度と足さないようにしてある） */
+    function drop(x) {
+      S.removeCardItem(x.id);
+      C.forget([x.id]);
+      draw();
+    }
+
     /* 経費に入れる。いつもの経費の入力を、通知のぶんで埋めて開く。
        どの帳簿の、どの分類にするかは、そこで決めてもらう */
     function apply(x) {
+      var preset = C.toExpense(x, book);
       addExpense({
-        book: book,
-        preset: C.toExpense(x, book),
-        onSaved: function () {
-          S.removeCardItem(x.id);
-          draw();
-        }
+        book: preset.book,
+        preset: preset,
+        onSaved: function () { drop(x); }
       });
     }
 
@@ -1434,6 +1447,15 @@
           el('div', { class: 'grid2' }, [
             ui.field('金額（円）', amountIn),
             ui.field('日付', dateIn)
+          ]),
+          /* この名前を覚えさせる入口。毎回 直さずに済むように */
+          el('div', {}, [
+            el('p', { class: 'muted small',
+              text: 'この名前が毎回 同じように届くなら、言い換えを覚えさせられます。' }),
+            ui.btn('この名前の変換を作る', 'ghost full', function () {
+              close();
+              cardMapForm({ from: x.store }, draw);
+            }, 'swap')
           ]),
           x.raw ? el('div', {}, [
             el('p', { class: 'muted small', text: '届いた通知の文面' }),
@@ -1461,6 +1483,126 @@
       title: 'カードの決済通知',
       body: host,
       actions: [ui.btn('閉じる', 'ghost', function () { closeAll(); })]
+    });
+  }
+
+  /* ---------------- 決済通知の名前の言い換え ----------------
+
+     「SUICAKEITAIKESSAI」→「Suica・交通費」のように、
+     通知の名前と、家計簿に載せる名前を組で覚えさせておく。 */
+
+  function cardMapSheet(after) {
+    var host = el('div');
+
+    function draw() {
+      U.clear(host);
+      var list = S.cardMaps();
+      var box = el('div', { class: 'form' });
+
+      box.appendChild(el('p', { class: 'muted small',
+        text: 'カード会社から届く名前は読みにくいので、家計簿に載せる名前に'
+          + '置き換えます。科目もいっしょに決めておけます。' }));
+
+      box.appendChild(ui.btn('言い換えを足す', 'primary full', function () {
+        cardMapForm(null, function () { draw(); if (after) after(); });
+      }, 'plus'));
+
+      if (!list.length) {
+        box.appendChild(ui.empty('まだ何も覚えていません。'));
+        host.appendChild(box);
+        return;
+      }
+
+      box.appendChild(el('div', { class: 'list' }, list.map(function (m) {
+        return el('button', {
+          type: 'button', class: 'row cm-row',
+          onclick: function () { cardMapForm(m, function () { draw(); if (after) after(); }); }
+        }, [
+          el('div', { class: 'row-main' }, [
+            el('div', { class: 'row-title cm-line' }, [
+              el('span', { class: 'cm-from', text: m.from }),
+              ui.icon('arrowRight', 14),
+              el('b', { text: m.to || m.from })
+            ]),
+            (m.category || m.book) ? el('div', { class: 'row-sub' }, [
+              m.book ? ui.chip(E.bookLabel(m.book), 'soft') : null,
+              m.category ? ui.chip(m.category, 'ghosty') : null
+            ]) : null
+          ]),
+          el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+        ]);
+      })));
+      host.appendChild(box);
+    }
+
+    draw();
+    var close = ui.sheet({
+      title: '名前の変換',
+      body: host,
+      actions: [ui.btn('閉じる', 'ghost full', function () { close(); })]
+    });
+  }
+
+  /* 1件ぶんの入力。変換元・変換後・帳簿・科目 */
+  function cardMapForm(m, after) {
+    var isNew = !(m && m.id);
+    var v = m || {};
+    var fromIn = ui.input({ value: v.from || '', maxlength: 60,
+      placeholder: 'SUICAKEITAIKESSAI', autocapitalize: 'off', spellcheck: 'false' });
+    var toIn = ui.input({ value: v.to || '', maxlength: 60, placeholder: 'Suica' });
+    var bookNow = v.book || '';
+    var catNow = v.category || '';
+    var catBox = el('div');
+
+    function drawCat() {
+      U.clear(catBox);
+      // 帳簿を決めていないときは、日常の科目から選べるようにしておく
+      var bk = bookNow || 'life';
+      var opts = [{ value: '', label: '決めない' }].concat(
+        E.categories(bk).map(function (c) { return { value: c, label: c }; }));
+      if (catNow && E.categories(bk).indexOf(catNow) < 0) catNow = '';
+      catBox.appendChild(ui.field('科目', ui.select(opts, catNow, function (e) {
+        catNow = e.target.value;
+      }), '経費に入れるとき、はじめからこの科目にします'));
+    }
+
+    var bookSel = ui.select([
+      { value: '', label: '決めない（そのとき選ぶ）' },
+      { value: 'life', label: '日常' },
+      { value: 'work', label: '事業' }
+    ], bookNow, function (e) { bookNow = e.target.value; drawCat(); });
+
+    var body = el('div', { class: 'form' }, [
+      ui.field('通知の名前（変換元）', fromIn,
+        '通知に出てくる名前。一部だけでも構いません（含んでいれば当たります）'),
+      ui.field('家計簿の名前（変換後）', toIn, '空にすると、通知の名前のまま入ります'),
+      ui.field('帳簿', bookSel),
+      catBox
+    ]);
+    drawCat();
+
+    var close = ui.sheet({
+      title: isNew ? '言い換えを足す' : '言い換えを直す',
+      body: body,
+      actions: [
+        isNew ? ui.btn('やめる', 'ghost', function () { close(); })
+          : ui.btn('消す', 'ghost danger', function () {
+            S.removeCardMap(v.id);
+            close();
+            if (after) after();
+            ui.toast('消しました');
+          }, 'trash'),
+        ui.btn('保存', 'primary', function () {
+          if (!fromIn.value.trim()) { ui.toast('通知の名前を入れてください', 'warn'); return; }
+          S.putCardMap({
+            id: v.id, from: fromIn.value, to: toIn.value,
+            book: bookNow, category: catNow
+          });
+          close();
+          if (after) after();
+          ui.toast('覚えました');
+        }, 'check')
+      ]
     });
   }
 

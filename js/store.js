@@ -180,6 +180,12 @@
        経費にはまだ入れず、ここでいったん預かる（取込済み情報）。
        [{id,at,date,time,store,amount,raw}] */
     cardInbox: [],
+    /* 片づけた通知の id。経費に入れたぶんも、捨てたぶんもここに残す。
+       サーバー側の消し込みに取りこぼしがあっても、二度と戻ってこないようにする */
+    cardDone: [],
+    /* 決済通知の名前の言い換え。辞書引きのように使う
+       [{id, from:'SUICAKEITAIKESSAI', to:'Suica', book:'life', category:'交通費'}] */
+    cardMap: [],
     /* METEO LOCK の金庫。中身（サービス名・ID・パスワード）は暗号のかたまりで、
        ここには読める形では一切入らない。合言葉から作る鍵でしか開かない。
        { v, iter, salt, wrapIv, wrapped, iv, data, at } */
@@ -369,6 +375,9 @@
     s.settings.savings = normalizeSavings(s.settings.savings);
     s.settings.cardInbox = (s.settings.cardInbox || []).map(normalizeCardItem)
       .filter(function (x) { return x.amount > 0; });
+    s.settings.cardDone = (s.settings.cardDone || []).map(String).slice(0, CARD_DONE_MAX);
+    s.settings.cardMap = (s.settings.cardMap || []).map(normalizeCardMap)
+      .filter(function (x) { return x.from; });
     // METEO LOCK の金庫。形だけそろえる（中身は暗号のままなので触らない）
     s.settings.lock = (s.settings.lock && s.settings.lock.data && s.settings.lock.salt)
       ? normalizeLockBox(s.settings.lock) : null;
@@ -2219,6 +2228,8 @@
      入れたぶん・捨てたぶんは、この並びから外す。 */
 
   var CARD_MAX = 300;
+  var CARD_DONE_MAX = 500;
+  var CARD_MAP_MAX = 200;
 
   function normalizeCardItem(x) {
     x = x || {};
@@ -2250,6 +2261,8 @@
   function addCardItem(x) {
     var item = normalizeCardItem(x);
     if (!item.amount) return false;
+    // もう片づけたぶんは、戻さない（サーバー側の消し込みが届かなかったとき用）
+    if (isCardDone(item.id)) return false;
     var list = state.settings.cardInbox || (state.settings.cardInbox = []);
     // 同じ id は入れ直さない。id が違っても、同じ時刻・店・額なら同じもの
     var same = list.some(function (o) {
@@ -2264,6 +2277,19 @@
     return true;
   }
 
+  /* 片づけた通知の控え。経費に入れたぶんも、捨てたぶんも残す。
+     サーバーの消し込みが届かず もう一度降りてきても、これで弾く */
+  function isCardDone(id) {
+    return (state.settings.cardDone || []).indexOf(String(id)) >= 0;
+  }
+
+  function markCardDone(id) {
+    if (!id || isCardDone(id)) return;
+    var done = state.settings.cardDone || (state.settings.cardDone = []);
+    done.unshift(String(id));
+    state.settings.cardDone = done.slice(0, CARD_DONE_MAX);
+  }
+
   /** 1件だけ直す（店名や金額を手で合わせるとき） */
   function updateCardItem(id, patch) {
     var x = (state.settings.cardInbox || []).filter(function (o) { return o.id === id; })[0];
@@ -2274,15 +2300,65 @@
     return x;
   }
 
-  /** 預かりから外す（経費に入れたとき・捨てたとき） */
+  /** 預かりから外す（経費に入れたとき・捨てたとき）。もう戻ってこない */
   function removeCardItem(id) {
+    markCardDone(id);
     state.settings.cardInbox = (state.settings.cardInbox || [])
       .filter(function (o) { return o.id !== id; });
     save();
   }
 
   function clearCardInbox() {
+    (state.settings.cardInbox || []).forEach(function (o) { markCardDone(o.id); });
     state.settings.cardInbox = [];
+    save();
+  }
+
+  /* ---------------- 決済通知の名前の言い換え ----------------
+
+     カード会社から届く名前は「SUICAKEITAIKESSAI」のように読みにくい。
+     辞書引きのように、通知の名前（変換元）と 家計簿に載せる名前（変換後）を
+     組にして覚えておき、経費に入れるときに差し替える。
+     ついでに、その名前なら決まってこの科目、というのも一緒に覚える。 */
+
+  function normalizeCardMap(v) {
+    v = v || {};
+    var str = function (s, n) { return String(s == null ? '' : s).trim().slice(0, n); };
+    var book = v.book === 'life' || v.book === 'work' ? v.book : '';
+    return {
+      id: v.id || U.uid(),
+      from: str(v.from, 60),      // 通知に出てくる名前
+      to: str(v.to, 60),          // 家計簿に載せる名前
+      book: book,                 // 入れる帳簿（決めないときは空）
+      category: str(v.category, 30)
+    };
+  }
+
+  /** 覚えている言い換え。変換元の長い順（細かいほうを先に当てる） */
+  function cardMaps() {
+    return (state.settings.cardMap || []).slice().sort(function (a, b) {
+      return b.from.length - a.from.length || U.cmp(a.from, b.from);
+    });
+  }
+
+  /** 足す・書き換える */
+  function putCardMap(v) {
+    var m = normalizeCardMap(v);
+    if (!m.from) return null;
+    var list = state.settings.cardMap || (state.settings.cardMap = []);
+    var i = list.map(function (o) { return o.id; }).indexOf(m.id);
+    if (i >= 0) list[i] = m;
+    else {
+      if (list.length >= CARD_MAP_MAX) return null;
+      list.push(m);
+    }
+    save();
+    return m;
+  }
+
+  function removeCardMap(id) {
+    state.settings.cardMap = (state.settings.cardMap || [])
+      .filter(function (o) { return o.id !== id; });
     save();
   }
 
@@ -4111,6 +4187,8 @@
     menusIn: menusIn, pastMenus: pastMenus, menuPlan: menuPlan, setMenuPlan: setMenuPlan,
     cardInbox: cardInbox, addCardItem: addCardItem, updateCardItem: updateCardItem,
     removeCardItem: removeCardItem, clearCardInbox: clearCardInbox,
+    isCardDone: isCardDone,
+    cardMaps: cardMaps, putCardMap: putCardMap, removeCardMap: removeCardMap,
     shopItems: shopItems, addShopItem: addShopItem, updateShopItem: updateShopItem,
     removeShopItem: removeShopItem, clearGotShopItems: clearGotShopItems,
     setShopGot: setShopGot, clearShopGot: clearShopGot, removeGotShop: removeGotShop,

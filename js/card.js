@@ -82,6 +82,19 @@
     });
   }
 
+  /**
+   * 預かってもらっているぶんを、向こうからも消す。
+   * 経費に入れたあと・捨てたあとに呼ぶ。消せなくてもアプリ側で弾くので、
+   * 通らなくても困らない（念のための後始末）。
+   * @param {string[]} ids
+   */
+  function forget(ids) {
+    if (!ready() || !ids || !ids.length) return Promise.resolve(false);
+    return api('/v1/inbox/cards', {
+      method: 'DELETE', body: JSON.stringify({ ids: ids.map(String) })
+    }).then(function () { return true; }, function () { return false; });
+  }
+
   /* 画面を開いたときの、そっとした取り込み。
      何度も叩かないよう、しばらくは控える */
   var pulledAt = 0;
@@ -119,10 +132,57 @@
     }, function () { throw new Error('通信できませんでした'); });
   }
 
+  /* ---------------- 名前の言い換え ----------------
+
+     カード会社から届く名前は「SUICAKEITAIKESSAI」のように読みにくい。
+     覚えさせておいた組（変換元 → 変換後）に当てはめて、
+     家計簿には読める名前で載せる。科目も一緒に決めておける。 */
+
+  /* 比べるための形にそろえる。大文字小文字・空白・記号は見ない */
+  function flat(s) {
+    return String(s || '')
+      .replace(/[Ａ-Ｚａ-ｚ０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); })
+      .replace(/[\s　・．.\-ー－_/／\\()（）*＊]/g, '')
+      .toLowerCase();
+  }
+
+  /**
+   * 通知の名前を引く。覚えていなければ、そのまま返す。
+   * まるごと同じものを先に見て、無ければ含んでいるものを見る。
+   * @param {string} store 通知に出てきた名前
+   * @returns {{name:string, category:string, book:string, hit:object|null}}
+   */
+  function look(store) {
+    var raw = String(store || '');
+    var key = flat(raw);
+    var list = S.cardMaps ? S.cardMaps() : [];
+    var hit = null;
+    var i;
+    for (i = 0; i < list.length; i++) {
+      if (flat(list[i].from) && flat(list[i].from) === key) { hit = list[i]; break; }
+    }
+    if (!hit) {
+      for (i = 0; i < list.length; i++) {
+        var f = flat(list[i].from);
+        if (f && key.indexOf(f) >= 0) { hit = list[i]; break; }
+      }
+    }
+    return {
+      name: (hit && hit.to) || raw,
+      category: (hit && hit.category) || '',
+      book: (hit && hit.book) || '',
+      hit: hit
+    };
+  }
+
+  /** 家計簿に載せる名前（言い換えたあと） */
+  function nameOf(x) { return look(x && x.store).name || (x && x.store) || ''; }
+
   /* ---------------- 経費に入れる ----------------
 
      入れる中身は、通知から分かるぶんだけ（日付・時刻・店・金額）。
-     どの帳簿の、どの分類にするかは、入れるときに決めてもらう。 */
+     名前と科目は、覚えさせてある言い換えがあればそれを使う。
+     どの帳簿にするかは、入れるときに決めてもらう。 */
 
   /**
    * 取込済みの1件から、経費の下ごしらえを作る。
@@ -130,14 +190,21 @@
    * @param {string} book 'work' | 'life'
    */
   function toExpense(x, book) {
-    return {
-      book: book === 'work' ? 'work' : 'life',
+    var m = look(x.store);
+    var bk = m.book || (book === 'work' ? 'work' : 'life');
+    var out = {
+      book: bk,
       date: x.date,
       amount: x.amount,
-      vendor: x.store || '',
+      vendor: m.name,
       // 何時の決済だったかは、メモに残す（経費そのものは日付までしか持たない）
       memo: x.time ? 'カード ' + x.time : 'カード'
     };
+    // 科目は、その帳簿にあるものだけ入れる（無い名前を入れても選べない）
+    if (m.category && DL.expenses.categories(bk).indexOf(m.category) >= 0) {
+      out.category = m.category;
+    }
+    return out;
   }
 
   /** 預かっている件数。経理の入口に出す */
@@ -145,7 +212,8 @@
 
   DL.card = {
     ready: ready, key: key, postUrl: postUrl,
-    pull: pull, autoPull: autoPull, tryText: tryText,
+    pull: pull, autoPull: autoPull, tryText: tryText, forget: forget,
+    look: look, nameOf: nameOf,
     toExpense: toExpense, pending: pending
   };
 })(window.DL);
