@@ -675,6 +675,88 @@
     return s.id;
   }
 
+  /* この端末で、いま何を宛先として預けてあるか（端末の中だけの控え） */
+  function known() { return S.settings.notifyDevice || {}; }
+
+  function remember(endpoint) {
+    S.updateSettings({ notifyDevice: Object.assign({}, known(), {
+      id: deviceId(), endpoint: String(endpoint || '').slice(0, 800),
+      at: new Date().toISOString()
+    }) });
+  }
+
+  /**
+   * いまの宛先が、サーバーの鍵（VAPID）で作られたものか。
+   * サーバーの鍵を入れ替えると、前の鍵で作った宛先は
+   * 送っても弾かれる（403）。見た目は「急に来なくなった」になる。
+   */
+  function sameKey(sub, key) {
+    try {
+      var got = sub && sub.options && sub.options.applicationServerKey;
+      if (!got || !key) return false;       // 確かめられないなら、作り直す
+      var a = new Uint8Array(got), b = urlBase64ToUint8Array(key);
+      if (a.length !== b.length) return false;
+      for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+      return true;
+    } catch (e) { return false; }
+  }
+
+  /**
+   * いまの鍵で作った宛先を用意する。合っていなければ作り直す。
+   * @returns {Promise<{sub:PushSubscription, made:boolean}>}
+   */
+  function subscribeFresh(reg, key) {
+    return reg.pushManager.getSubscription().then(function (cur) {
+      if (cur && sameKey(cur, key)) return { sub: cur, made: false };
+      var drop = cur ? cur.unsubscribe().catch(function () { }) : Promise.resolve();
+      return drop.then(function () {
+        return reg.pushManager.subscribe({
+          userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(key)
+        });
+      }).then(function (sub) { return { sub: sub, made: true }; });
+    });
+  }
+
+  function putSub(sub) {
+    var json = sub.toJSON ? sub.toJSON() : sub;
+    return api('PUT', '/v1/push/sub', {
+      sub: json,
+      deviceId: deviceId(),
+      name: (S.settings.sync && S.settings.sync.deviceName) || ''
+    }).then(function (r) { remember(json.endpoint); return r; });
+  }
+
+  /**
+   * この端末が、いまも宛先として登録されているか確かめ、外れていれば入れ直す。
+   *
+   * 通知が「設定を触っていないのに来なくなる」のは、たいていこの2つ。
+   *   ・ブラウザの都合で宛先が作り直された（そのままでは届かない）
+   *   ・サーバーの鍵を入れ替えた（前の鍵の宛先は弾かれる）
+   * どちらも黙って直せるので、アプリを開いたときに直しておく。
+   * @returns {Promise<{ok:boolean, fixed?:boolean, why?:string}>}
+   */
+  function check() {
+    if (!settings().enabled) return Promise.resolve({ ok: false, why: 'off' });
+    if (!DL.sync.active()) return Promise.resolve({ ok: false, why: 'nosync' });
+    if (!supported() || Notification.permission !== 'granted') {
+      return Promise.resolve({ ok: false, why: 'perm' });
+    }
+    return state().then(function (st) {
+      if (!st || !st.vapidPublic) return { ok: false, why: 'nokey' };
+      var here = (st.subs || []).filter(function (x) { return x.deviceId === deviceId(); })[0];
+      return navigator.serviceWorker.ready.then(function (reg) {
+        return subscribeFresh(reg, st.vapidPublic).then(function (r) {
+          var json = r.sub.toJSON ? r.sub.toJSON() : r.sub;
+          // 向こうに無い・作り直した・前と違う宛先 のどれかなら、入れ直す
+          if (here && !r.made && known().endpoint === json.endpoint) return { ok: true };
+          return putSub(r.sub).then(function () { return { ok: true, fixed: true }; });
+        });
+      });
+    }).catch(function (e) {
+      return { ok: false, why: String((e && e.message) || e) };
+    });
+  }
+
   /**
    * 通知を許可してもらい、この端末を宛先として登録する。
    * @returns {Promise<{ok:boolean, why?:string}>}
@@ -691,19 +773,11 @@
       return serverKey().then(function (key) {
         if (!key) return { ok: false, why: 'サーバーに通知の鍵（VAPID）が設定されていません' };
         return navigator.serviceWorker.ready.then(function (reg) {
-          return reg.pushManager.getSubscription().then(function (cur) {
-            if (cur) return cur;
-            return reg.pushManager.subscribe({
-              userVisibleOnly: true,
-              applicationServerKey: urlBase64ToUint8Array(key)
-            });
-          });
-        }).then(function (sub) {
-          return api('PUT', '/v1/push/sub', {
-            sub: sub.toJSON ? sub.toJSON() : sub,
-            deviceId: deviceId(),
-            name: (S.settings.sync && S.settings.sync.deviceName) || ''
-          });
+          /* いまの宛先をそのまま使い回さない。サーバーの鍵を入れ替えていると、
+             前の鍵で作った宛先はいくら送っても弾かれる */
+          return subscribeFresh(reg, key);
+        }).then(function (r) {
+          return putSub(r.sub);
         }).then(function () {
           S.updateSettings({ notify: Object.assign({}, settings(), { enabled: true }) });
           return sync();
@@ -774,6 +848,7 @@
     KINDS: KINDS, build: build, rules: rules, settings: settings, defaultRules: defaultRules,
     status: status, supported: supported, standalone: standalone,
     enable: enable, disable: disable, sync: sync, state: state, testSend: testSend,
+    check: check, deviceId: deviceId,
     atLocal: atLocal, eventReminders: eventReminders, blockReminders: blockReminders,
     rainReminders: rainReminders, rainPop: rainPop, RAIN_LEAD: RAIN_LEAD,
     OFFICE_TIME: OFFICE_TIME, STAY_TIME: STAY_TIME, STAY_UNTIL: STAY_UNTIL

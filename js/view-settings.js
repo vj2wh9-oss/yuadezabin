@@ -1272,8 +1272,17 @@
           }, 'alert'),
       nf.enabled ? ui.btn('テスト送信', 'ghost', function () {
         N.testSend().then(function (r) {
-          ui.toast(r.ok ? '送りました。数秒で届きます' : '送れませんでした', r.ok ? '' : 'danger');
+          ui.toast(sendWord(r), r.ok ? '' : 'danger');
         }, function (e) { ui.toast(e.message, 'danger'); });
+      }, 'refresh') : null,
+      /* 宛先が切れているときの入れ直し。ふだんは開いたときに黙って直すが、
+         「来ないな」と思ったときに自分で押せるようにもしておく */
+      nf.enabled ? ui.btn('宛先を入れ直す', 'ghost', function () {
+        ui.toast('確かめています…');
+        N.check().then(function (r) {
+          ui.toast(r.ok ? (r.fixed ? '入れ直しました' : '宛先は生きています')
+            : '入れ直せませんでした（' + whyWord(r.why) + '）', r.ok ? '' : 'danger');
+        });
       }, 'refresh') : null,
       ui.btn('様子を見る', 'ghost tiny', function () { notifyStateSheet(); }, 'info'),
       ui.btn('サーバーの鍵を作る', 'ghost tiny', function () { vapidSheet(); }, 'settings')
@@ -1437,6 +1446,33 @@
     });
   }
 
+  /* テスト送信の返事を、読める言葉にする */
+  function sendWord(r) {
+    if (!r) return '送れませんでした';
+    var bad = (r.detail || []).filter(function (x) { return !(x.status === 201 || (x.status >= 200 && x.status < 300)); });
+    if (r.ok && !bad.length) return '送りました。数秒で届きます';
+    var why = bad.map(function (x) {
+      return (x.name || '端末') + '：' + statusWord(x);
+    }).join(' / ');
+    return (r.sent ? r.sent + '台へ送りました。' : '送れませんでした。') + why;
+  }
+
+  /* 押し戻された理由。数字のままだと分からないので言い換える */
+  function statusWord(x) {
+    if (x.error) return x.error;
+    if (x.status === 201 || (x.status >= 200 && x.status < 300)) return '届きました';
+    if (x.status === 403) return '鍵が合いません（サーバーの鍵を入れ替えたときは、宛先を入れ直してください）';
+    if (x.status === 404 || x.status === 410) return '宛先が切れています（宛先を入れ直してください）';
+    if (x.status === 413) return '中身が大きすぎます';
+    if (x.status === 429) return '送りすぎで断られました';
+    return 'HTTP ' + x.status + (x.note ? '　' + x.note : '');
+  }
+
+  function whyWord(why) {
+    return { off: '通知が切になっています', nosync: '同期の接続先が未設定です',
+      perm: '通知が許可されていません', nokey: 'サーバーの鍵がありません' }[why] || why;
+  }
+
   /* いま何件が控えているか、次はいつか */
   function notifyStateSheet() {
     var body = el('div', { class: 'form' }, el('p', { class: 'muted', text: '見に行っています…' }));
@@ -1444,14 +1480,38 @@
     var items = DL.notify.build();
     DL.notify.state().then(function (st) {
       U.clear(body);
+      var me = (st.subs || []).filter(function (x) { return x.deviceId === DL.notify.deviceId(); })[0];
       body.appendChild(el('div', { class: 'kv' }, [
         kvRow('サーバーの鍵（VAPID）', st.vapid ? '設定済み' : '未設定'),
         kvRow('受け取る端末', (st.subs || []).length + '台'),
+        kvRow('この端末', me ? '登録されています' : '登録されていません'),
         kvRow('預けてある予定', st.queued + '件（これから ' + st.pending + '件）'),
         kvRow('送信済み', st.sent + '件'),
         kvRow('この端末で作った予定', items.length + '件'),
         kvRow('次に鳴るもの', st.next ? (fmtAt(st.next.at) + '　' + st.next.title) : 'なし')
       ]));
+      /* 最後に送ったときの結果。届かない理由は、たいていここに出ている */
+      if (st.last) {
+        body.appendChild(el('h3', { class: 'sub-title mt', text: '最後に送ったとき' }));
+        var lb = el('div', { class: 'kv' }, [
+          kvRow('いつ', fmtAt(st.last.at)),
+          kvRow('きっかけ', st.last.where === 'test' ? 'テスト送信' : '時刻が来たもの'),
+          kvRow('結果', st.last.sent + '台へ送信' + (st.last.failed ? '／' + st.last.failed + '台 失敗' : ''))
+        ]);
+        (st.last.detail || []).forEach(function (d) {
+          var who = d.device === DL.notify.deviceId() ? 'この端末'
+            : (d.name || 'ほかの端末');
+          lb.appendChild(kvRow(who, statusWord(d)));
+        });
+        body.appendChild(lb);
+      }
+      if (!me) {
+        body.appendChild(ui.btn('この端末を入れ直す', 'primary full mt', function () {
+          DL.notify.check().then(function (r) {
+            ui.toast(r.ok ? '入れ直しました' : whyWord(r.why), r.ok ? '' : 'danger');
+          });
+        }, 'refresh'));
+      }
       if (items.length) {
         body.appendChild(el('h3', { class: 'sub-title mt', text: 'これから鳴る予定（先頭10件）' }));
         var list = el('div', { class: 'list' });

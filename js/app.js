@@ -1034,6 +1034,12 @@
       render();
       splashDone();
       DL.sync.start();
+      /* 通知の宛先が切れていないか確かめ、切れていたら入れ直す。
+         ブラウザの都合で宛先が作り直されたり、サーバーの鍵を入れ替えたりすると、
+         設定を触っていないのに来なくなる。開いたときに黙って直しておく */
+      DL.notify.check().then(function (r) {
+        if (r && r.fixed) queueNotify();
+      }).catch(function () { /* つながらないときは、次に開いたときに */ });
       return S.autoBackupIfDue();
     }).catch(function (e) {
       console.error('読み込みに失敗しました', e);

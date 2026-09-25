@@ -1,5 +1,5 @@
 /* オフライン用のシンプルなキャッシュ（アプリ本体のみ。データは localStorage） */
-var CACHE = 'shimekiri-v169';
+var CACHE = 'shimekiri-v170';
 var ASSETS = [
   './', './index.html', './assets/style.css', './manifest.webmanifest',
   './assets/icon-180.png', './assets/icon-192.png', './assets/icon-512.png',
@@ -72,6 +72,19 @@ self.addEventListener('push', function (e) {
     badge: './assets/favicon-64.png',
     data: { url: d.url || '#/home' }
   }));
+});
+
+/* ブラウザの都合で宛先が作り直されたとき。
+   ここでは作り直すところまでやる。サーバーへ伝えるのは、
+   次にアプリを開いたとき（notify.check）。
+   これをしないと、宛先が変わったまま誰も気づかず、通知だけが来なくなる */
+self.addEventListener('pushsubscriptionchange', function (e) {
+  var old = e.oldSubscription || {};
+  var key = old.options && old.options.applicationServerKey;
+  if (!key) return;
+  e.waitUntil(self.registration.pushManager.subscribe({
+    userVisibleOnly: true, applicationServerKey: key
+  }).catch(function () { /* 作り直せなければ、アプリ側で入れ直す */ }));
 });
 
 // 通知を押したら、その画面を開く（すでに開いていればそこへ移す）

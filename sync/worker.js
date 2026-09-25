@@ -3769,6 +3769,7 @@ async function push(request, env, cors, url, id) {
     const subs = (await env.SYNC.get(subsKey, 'json')) || [];
     const queue = (await env.SYNC.get(queueKey, 'json')) || [];
     const sent = (await env.SYNC.get(sentKey, 'json')) || {};
+    const last = (await env.SYNC.get('push:' + id + ':last', 'json')) || null;
     const now = Date.now();
     return json({
       ok: true,
@@ -3777,6 +3778,8 @@ async function push(request, env, cors, url, id) {
       vapidPublic: env.VAPID_PUBLIC || '',
       subject: env.VAPID_SUBJECT || '',
       subs: subs.map(x => ({ deviceId: x.deviceId, name: x.name, addedAt: x.addedAt })),
+      // 最後に送ったときの結果（端末ごとの返事つき）。届かないときの手がかり
+      last: last,
       queued: queue.length,
       pending: queue.filter(x => Date.parse(x.at) > now).length,
       sent: Object.keys(sent).length,
@@ -3795,6 +3798,7 @@ async function push(request, env, cors, url, id) {
     if (r.gone.length) {
       await env.SYNC.put(subsKey, JSON.stringify(subs.filter(x => r.gone.indexOf(x.endpoint) < 0)));
     }
+    await notePush(env, id, 'test', r);
     return json({ ok: r.sent > 0, sent: r.sent, failed: r.failed, detail: r.detail }, 200, cors);
   }
 
@@ -3835,11 +3839,14 @@ async function sendDueOne(env, id, now) {
   if (!due.length) return;
 
   let live = subs;
+  let last = null;
   for (const item of due) {
     const r = await deliver(env, live, item);
     if (r.gone.length) live = live.filter(x => r.gone.indexOf(x.endpoint) < 0);
     sent[item.id] = now;      // 送れなくても印を付ける（毎分ぶつけ続けない）
+    last = r;
   }
+  if (last) await notePush(env, id, 'due', last);
 
   // 古い印を落とす
   for (const k of Object.keys(sent)) if (now - sent[k] > SENT_KEEP_MS) delete sent[k];
@@ -3874,13 +3881,29 @@ async function deliver(env, subs, item) {
       if (res.status === 404 || res.status === 410) { gone.push(s.endpoint); failed++; }
       else if (res.ok || res.status === 201) sentN++;
       else failed++;
-      detail.push({ device: s.deviceId, status: res.status });
+      /* うまくいかなかったときは、向こうの言い分も短く控える。
+         403 は鍵（VAPID）の食い違い、410 は宛先が切れている、が多い */
+      let note = '';
+      if (!(res.ok || res.status === 201)) {
+        note = await res.text().then(t => String(t || '').slice(0, 120)).catch(() => '');
+      }
+      detail.push({ device: s.deviceId, name: s.name || '', status: res.status, note: note });
     } catch (e) {
       failed++;
-      detail.push({ device: s.deviceId, error: String(e && e.message || e).slice(0, 80) });
+      detail.push({ device: s.deviceId, name: s.name || '', error: String(e && e.message || e).slice(0, 80) });
     }
   }
   return { sent: sentN, failed: failed, gone: gone, detail: detail };
+}
+
+/* 最後に送ったときの結果。あとから「なぜ届かなかったか」を見るために残す */
+async function notePush(env, id, where, r) {
+  try {
+    await env.SYNC.put('push:' + id + ':last', JSON.stringify({
+      at: new Date().toISOString(),
+      where: where, sent: r.sent, failed: r.failed, detail: r.detail.slice(0, 10)
+    }));
+  } catch (e) { /* 控えが取れなくても、送るほうは止めない */ }
 }
 
 /* ---------------- Web Push の暗号化（RFC 8291 aes128gcm / RFC 8292 VAPID） ----------------
