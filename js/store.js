@@ -179,6 +179,10 @@
     /* カードの決済通知から取り込んだぶん。
        経費にはまだ入れず、ここでいったん預かる（取込済み情報）。
        [{id,at,date,time,store,amount,raw}] */
+    /* 即売会のチケット。1つの即売会につき1枚。
+       その即売会の原稿（新刊など）・頒布物・準備を、この下にまとめる。
+       [{id, name, date, venue, space, memo, prep:[{id,name,done}]}] */
+    tickets: [],
     cardInbox: [],
     /* 片づけた通知の id。経費に入れたぶんも、捨てたぶんもここに残す。
        サーバー側の消し込みに取りこぼしがあっても、二度と戻ってこないようにする */
@@ -388,7 +392,71 @@
     s.settings.notify = normalizeNotify(s.settings.notify);
     s.settings.docSeq = migrateDocSeq(s.settings.docSeq);
     s.projects = (s.projects || []).map(normalizeProject);
+    s.settings.tickets = (s.settings.tickets || []).map(normalizeTicket);
+    buildTickets(s);
     return s;
+  }
+
+  /* 即売会のチケットを組み立てる。
+
+     もとは即売会も1件ずつの案件だった。同じ即売会に出す
+     新刊・グッズ・ポスターが、別々の案件として並んでいた。
+     これを「イベント名のチケット1枚」にまとめる。
+     中身（案件そのもの）は触らず、束ねる紙をかぶせるだけ。
+
+     束ねかたは、イベント名と開催日が同じもの。
+     イベント名が入っていない古いものは、その案件の名前で1枚にする。 */
+  function buildTickets(s) {
+    var list = s.settings.tickets;
+    var byKey = {};
+    list.forEach(function (t) { byKey[ticketKey(t.name, t.date)] = t; });
+
+    (s.projects || []).forEach(function (p) {
+      if (p.kind !== 'event') return;
+      if (p.ticketId && list.filter(function (t) { return t.id === p.ticketId; }).length) return;
+      var name = (p.eventName || p.title || '即売会').trim();
+      var key = ticketKey(name, p.eventDate);
+      var t = byKey[key];
+      if (!t) {
+        t = normalizeTicket({
+          name: name, date: p.eventDate || '', venue: p.venue || '', space: p.space || '',
+          createdAt: p.createdAt
+        });
+        list.push(t);
+        byKey[key] = t;
+      }
+      // 会場とスペースは、入っているほうを採る（片方にしか無いことがある）
+      if (!t.venue && p.venue) t.venue = p.venue;
+      if (!t.space && p.space) t.space = p.space;
+      p.ticketId = t.id;
+    });
+    s.settings.tickets = list;
+    return s;
+  }
+
+  function ticketKey(name, date) {
+    return String(name || '').trim() + '\u0000' + String(date || '');
+  }
+
+  function normalizeTicket(t) {
+    t = t || {};
+    var str = function (v, n) { return String(v == null ? '' : v).trim().slice(0, n); };
+    return {
+      id: t.id || U.uid(),
+      name: str(t.name, 80) || '即売会',
+      date: U.isISO(t.date) ? t.date : '',
+      venue: str(t.venue, 80),
+      space: str(t.space, 40),
+      memo: String(t.memo || '').slice(0, 2000),
+      prep: (t.prep || []).map(function (x) {
+        return {
+          id: x.id || U.uid(),
+          name: str(x.name, 60) || '準備',
+          done: !!x.done
+        };
+      }).slice(0, 200),
+      createdAt: t.createdAt || new Date().toISOString()
+    };
   }
 
   /* 旧形式 {invoice:12} は「今年ぶんの連番」として引き継ぐ（以後は年ごとにリセット） */
@@ -436,6 +504,8 @@
        plotMemo は、そのプロットから思いついたことを書き留めておくところ */
     p.plot = normalizePlot(p.plot);
     p.plotMemo = String(p.plotMemo || '').slice(0, 4000);
+    // 即売会のときだけ使う。どのチケット（即売会）のぶんか
+    p.ticketId = p.kind === 'event' ? String(p.ticketId || '') : '';
     p.createdAt = p.createdAt || new Date().toISOString();
     // 作業開始日が未設定の既存データは、一番早いタスクの開始日で補う
     if (!p.startDate) {
@@ -694,6 +764,93 @@
   }
 
   function scopedProjects() { return state.projects.filter(inScope); }
+
+  /* ---------------- 即売会のチケット ----------------
+
+     1つの即売会につき1枚。その即売会に出す原稿（新刊など）と頒布物、
+     それに当日までの準備を、この1枚の下にまとめる。
+     案件そのものは今までどおりで、チケットは束ねる紙にあたる。 */
+
+  /** 近い順（日付の無いものは後ろ） */
+  function tickets() {
+    return (state.settings.tickets || []).slice().sort(function (a, b) {
+      return U.cmp(a.date || '9999-99-99', b.date || '9999-99-99');
+    });
+  }
+
+  function getTicket(id) {
+    return (state.settings.tickets || []).filter(function (t) { return t.id === id; })[0] || null;
+  }
+
+  /** そのチケットに入っている案件（原稿など） */
+  function ticketProjects(id) {
+    return state.projects.filter(function (p) { return p.kind === 'event' && p.ticketId === id; });
+  }
+
+  function createTicket(v) {
+    var t = normalizeTicket(v);
+    (state.settings.tickets || (state.settings.tickets = [])).push(t);
+    save();
+    return t;
+  }
+
+  /**
+   * チケットを直す。名前・日付・会場・スペースは、中の案件にも通す
+   * （カレンダーや当日モードは、案件のほうを見ているため）。
+   */
+  function updateTicket(id, patch) {
+    var t = getTicket(id);
+    if (!t) return null;
+    Object.assign(t, patch);
+    var fixed = normalizeTicket(t);
+    var i = state.settings.tickets.indexOf(t);
+    state.settings.tickets[i] = fixed;
+    ticketProjects(id).forEach(function (p) {
+      p.eventName = fixed.name;
+      p.eventDate = fixed.date;
+      p.venue = fixed.venue;
+      p.space = fixed.space;
+    });
+    save();
+    return fixed;
+  }
+
+  /** チケットだけ捨てる。中の案件は残す（紐付けを外すだけ） */
+  function removeTicket(id) {
+    state.settings.tickets = (state.settings.tickets || [])
+      .filter(function (t) { return t.id !== id; });
+    ticketProjects(id).forEach(function (p) { p.ticketId = ''; });
+    save();
+  }
+
+  /* 準備の1つ。名前だけ渡せば足す、id も渡せば書き換える */
+  function putTicketPrep(id, v) {
+    var t = getTicket(id);
+    if (!t) return null;
+    var item = { id: (v && v.id) || U.uid(), name: String((v && v.name) || '').trim().slice(0, 60), done: !!(v && v.done) };
+    if (!item.name) return null;
+    var i = t.prep.map(function (x) { return x.id; }).indexOf(item.id);
+    if (i >= 0) t.prep[i] = item; else t.prep.push(item);
+    save();
+    return item;
+  }
+
+  function toggleTicketPrep(id, prepId) {
+    var t = getTicket(id);
+    if (!t) return null;
+    var x = t.prep.filter(function (o) { return o.id === prepId; })[0];
+    if (!x) return null;
+    x.done = !x.done;
+    save();
+    return x;
+  }
+
+  function removeTicketPrep(id, prepId) {
+    var t = getTicket(id);
+    if (!t) return;
+    t.prep = t.prep.filter(function (o) { return o.id !== prepId; });
+    save();
+  }
 
   function unassignedCount() {
     return state.projects.filter(function (p) { return !p.issuerId && p.status !== 'archived'; }).length;
@@ -3569,9 +3726,24 @@
 
   function createProject(data) {
     var p = normalizeProject(Object.assign({ id: U.uid(), color: pickColor() }, data));
+    // 即売会なら、同じ名前・同じ日のチケットに入れる。無ければ1枚作る
+    if (p.kind === 'event' && !p.ticketId) p.ticketId = ticketFor(p).id;
     state.projects.push(p);
     save();
     return p;
+  }
+
+  /** その即売会のチケット。無ければ作る */
+  function ticketFor(p) {
+    var name = (p.eventName || p.title || '即売会').trim();
+    var key = ticketKey(name, p.eventDate);
+    var t = (state.settings.tickets || []).filter(function (o) {
+      return ticketKey(o.name, o.date) === key;
+    })[0];
+    if (t) return t;
+    t = normalizeTicket({ name: name, date: p.eventDate || '', venue: p.venue || '', space: p.space || '' });
+    (state.settings.tickets || (state.settings.tickets = [])).push(t);
+    return t;
   }
 
   function updateProject(id, patch) {
@@ -4004,6 +4176,8 @@
       state.settings.cardInbox = unionCardInbox(state.settings.cardInbox, incoming.settings.cardInbox);
       // 名前の言い換えも、こちらに無いものだけ足す
       mergeById(state.settings.cardMap || (state.settings.cardMap = []), incoming.settings.cardMap || []);
+      // 即売会のチケットも、こちらに無いものだけ足す
+      mergeById(state.settings.tickets || (state.settings.tickets = []), incoming.settings.tickets || []);
       var have = {};
       state.projects.forEach(function (p) { have[p.id] = true; });
       incoming.projects.forEach(function (p) {
@@ -4203,6 +4377,10 @@
     updateIssuer: updateIssuer, removeIssuer: removeIssuer, issuerColor: issuerColor,
     scopeId: scopeId, scopeIssuer: scopeIssuer, setScope: setScope,
     inScope: inScope, scopedProjects: scopedProjects, unassignedCount: unassignedCount,
+    tickets: tickets, getTicket: getTicket, ticketProjects: ticketProjects,
+    createTicket: createTicket, updateTicket: updateTicket, removeTicket: removeTicket,
+    putTicketPrep: putTicketPrep, toggleTicketPrep: toggleTicketPrep,
+    removeTicketPrep: removeTicketPrep,
     clients: clients, getClient: getClient, addClient: addClient,
     updateClient: updateClient, removeClient: removeClient,
     putClientVisit: putClientVisit, removeClientVisit: removeClientVisit,

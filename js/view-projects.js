@@ -34,7 +34,12 @@
 
     function renderList() {
       U.clear(listBox);
+      /* 即売会は1件ずつではなく、イベントごとのチケットで並べる。
+         チケットの中に、その即売会の原稿・頒布物・準備がまとまっている */
+      var tk = tickets(today);
       var items = S.scopedProjects().filter(function (p) {
+        // 即売会の案件は、チケットの中で見る（ここには並べない）
+        if (p.kind === 'event' && p.ticketId) return false;
         // 進行中：作業開始日が来ていて、まだ終わっていないものだけ
         if (filter === 'active') return p.status === 'active' && sc.projectStatus(p, today) !== 'before';
         if (filter === 'done') return p.status === 'done';
@@ -56,7 +61,17 @@
         return U.cmp(a.deadline || '9999-99-99', b.deadline || '9999-99-99');
       });
 
+      if (tk.length || filter === 'event') {
+        listBox.appendChild(ui.section('チケット',
+          ui.btn('作る', 'ghost tiny', function () { DL.views.ticket.form(null); }, 'plus')));
+        listBox.appendChild(tk.length
+          ? el('div', { class: 'tk-deck' },
+            tk.map(function (t) { return DL.views.ticket.card(t, today); }))
+          : ui.empty('まだありません。'));
+      }
+
       if (!items.length) {
+        if (tk.length) return;      // チケットだけ並んでいる。空の案内は出さない
         listBox.appendChild(ui.empty(
           S.projects().length ? '該当する案件はありません。' : 'まだ案件がありません。',
           ui.btn('案件を作成', 'primary', function () { DL.forms.projectForm(); })
@@ -78,6 +93,27 @@
 
     renderList();
     root.appendChild(wrap);
+  }
+
+  /* いま出すチケット。絞り込みと言葉の検索は、案件と同じように効かせる */
+  function tickets(today) {
+    if (['active', 'event', 'all'].indexOf(filter) < 0) return [];
+    var list = S.tickets().filter(function (t) {
+      var ps = S.ticketProjects(t.id);
+      // 名義で絞っているときは、その名義の原稿が入っているものだけ
+      if (ps.length && !ps.some(S.inScope)) return false;
+      if (filter === 'all') return true;
+      // 終わった即売会は、進行中には出さない（当日まで出す）
+      return !t.date || U.cmp(t.date, today) >= 0;
+    });
+    var k = keyword.trim().toLowerCase();
+    if (k) {
+      list = list.filter(function (t) {
+        var ps = S.ticketProjects(t.id).map(function (p) { return p.title; }).join(' ');
+        return [t.name, t.venue, t.space, t.memo, ps].join(' ').toLowerCase().indexOf(k) >= 0;
+      });
+    }
+    return list;
   }
 
   function card(p, today) {

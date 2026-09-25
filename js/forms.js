@@ -5,16 +5,22 @@
 
   /* =============== 案件（イベント／仕事） =============== */
 
-  function projectForm(existing) {
+  /**
+   * 案件の入力。
+   * @param {object} [existing] 直すとき。新しく作るときは渡さない
+   * @param {object} [opts] preset … 新しく作るときの初期値（チケットから作るときなど）
+   */
+  function projectForm(existing, opts) {
+    opts = opts || {};
     var isNew = !existing;
-    var p = existing ? U.clone(existing) : {
+    var p = existing ? U.clone(existing) : Object.assign({
       kind: 'event', category: 'manga', title: '', status: 'active',
       eventName: '', eventDate: '', venue: '', space: '',
       client: '', fee: '', site: '', plan: '', deadline: '', startDate: U.today(),
       qty: 20, memo: '', printings: [], color: S.pickColor(),
       // 新規は「いま見ている名義」→既定の名義 の順で初期選択する
       issuerId: S.scopeId() || S.settings.defaultIssuerId || ''
-    };
+    }, opts.preset || {});
 
     var body = el('div', { class: 'form' });
     var dynamic = el('div');           // 種別で切り替わる部分
@@ -265,6 +271,8 @@
           }
 
           if (isNew) {
+            // チケットから作ったときは、そのチケットに入れる
+            if (opts.preset && opts.preset.ticketId) data.ticketId = opts.preset.ticketId;
             var np = S.createProject(data);
             if (autoCheck && autoCheck.checked) {
               np.tasks = S.templateTasks(np.category, np.qty);

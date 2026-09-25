@@ -39,6 +39,7 @@
     if (name === 'log') params.date = parts[1];
     if (name === 'time') params.date = parts[1];
     if (name === 'crm') params.id = parts[1];
+    if (name === 'ticket') params.id = parts[1];
     if (name === 'calendar' && parts[1]) params.month = parts[1] + '-01';
     return { name: name, params: params };
   }
@@ -75,11 +76,11 @@
       search: '検索', stock: '頒布と在庫', onsite: '当日モード', pages: '原稿のページ',
       fit: '筋トレ',
       log: '1日の記録', logs: '記録', ideas: 'ひらめきメモ', time: '1日の時間', orders: '発注',
-      crm: '顧客管理', lock: 'METEO LOCK'
+      crm: '顧客管理', lock: 'METEO LOCK', ticket: 'チケット'
     };
     setTitle(titles[route.name] || 'METEO365');
 
-    var tab = { home: 'home', fit: 'fit', calendar: 'calendar', day: 'calendar', log: 'calendar', logs: 'calendar', time: 'calendar', projects: 'projects', project: 'projects', pages: 'projects', docs: 'projects', doc: 'projects', crm: 'projects', sales: 'sales', stock: 'sales', onsite: 'sales', books: 'books', files: 'files' }[route.name];
+    var tab = { home: 'home', fit: 'fit', calendar: 'calendar', day: 'calendar', log: 'calendar', logs: 'calendar', time: 'calendar', projects: 'projects', project: 'projects', pages: 'projects', docs: 'projects', doc: 'projects', crm: 'projects', ticket: 'projects', sales: 'sales', stock: 'sales', onsite: 'sales', books: 'books', files: 'files' }[route.name];
     U.$$('.tab').forEach(function (t) { t.classList.toggle('on', t.dataset.tab === tab); });
 
     /* 筋トレのタブだけ、黄と黒の見た目に切り替える。
@@ -108,7 +109,7 @@
     if (onCal) drawModeBtn(life);
 
     // 売上は下のタブから直接開くので、戻るボタンは要らない
-    var showBack = ['project', 'pages', 'day', 'docs', 'doc', 'search', 'stock', 'onsite', 'log', 'logs', 'ideas', 'time', 'orders', 'crm', 'lock'].indexOf(route.name) >= 0
+    var showBack = ['project', 'pages', 'day', 'docs', 'doc', 'search', 'stock', 'onsite', 'log', 'logs', 'ideas', 'time', 'orders', 'crm', 'lock', 'ticket'].indexOf(route.name) >= 0
       // 筋トレは、日付が付いているとき（その日の中身）だけ戻れるようにする
       || (route.name === 'fit' && !!route.params.date);
     backBtn.hidden = !showBack;
@@ -192,6 +193,7 @@
       case 'ideas': DL.views.daylog.renderIdeas(view); break;
       case 'orders': DL.views.orders.render(view); break;
       case 'crm': DL.views.crm.render(view, route.params); break;
+      case 'ticket': DL.views.ticket.render(view, route.params); break;
       case 'lock': DL.views.lock.render(view); break;
       case 'search': DL.views.search.render(view); break;
       case 'settings': DL.views.settings.render(view); break;
@@ -601,7 +603,7 @@
     /* カレンダーは画面いっぱいに出すので、重なるボタンは置かない。
        筋トレには案件を作る用がないので、ここも出さない。
        ホームは眺める場所で、案件を作るなら案件タブの＋を使うので、ここも出さない */
-    if (['home', 'settings', 'calendar', 'docs', 'doc', 'sales', 'search', 'onsite', 'log', 'logs', 'ideas', 'time', 'orders', 'crm', 'fit', 'lock'].indexOf(route.name) >= 0) { fab.hidden = true; return; }
+    if (['home', 'settings', 'calendar', 'docs', 'doc', 'sales', 'search', 'onsite', 'log', 'logs', 'ideas', 'time', 'orders', 'crm', 'fit', 'lock', 'ticket'].indexOf(route.name) >= 0) { fab.hidden = true; return; }
     fab.hidden = false;
     fab.onclick = function () {
       /* 日別画面では、ここがその日の予定の追加口になる。

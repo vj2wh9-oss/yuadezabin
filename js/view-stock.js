@@ -422,7 +422,13 @@
 
   /* ---------------- 頒布物の登録 ---------------- */
 
-  function itemForm(x) {
+  /**
+   * 頒布物の入力。
+   * @param {object} [x] 直すとき
+   * @param {object} [opts] projectId … はじめから結びつけておく即売会
+   */
+  function itemForm(x, opts) {
+    opts = opts || {};
     var isNew = !x;
     var titleIn = ui.input({ value: x ? x.title : '', maxlength: 80, placeholder: '例）『夏の本』' });
     var priceIn = ui.input({ type: 'number', inputmode: 'numeric', min: 0, value: x ? x.price : '', placeholder: '700' });
@@ -462,7 +468,7 @@
         .sort(function (a, b) { return U.cmp(b.eventDate || '', a.eventDate || ''); })
         .map(function (p) { return { value: p.id, label: p.eventName || p.title }; })
     );
-    var evSel = ui.select(evOpts, x ? x.projectId : '');
+    var evSel = ui.select(evOpts, x ? x.projectId : (opts.projectId || ''));
 
     /* 表紙の画像。大きいままだと持ちきれないので、縮めて dataURL で持つ */
     var coverBox = el('div', { class: 'imgfield' });
@@ -615,7 +621,7 @@
   DL.views = DL.views || {};
   DL.views.stock = {
     render: render,
-    addItem: function () { itemForm(null); },
+    addItem: function (opts) { itemForm(null, opts); },
     openItem: itemSheet,
     reset: function () { year = 0; showArchived = false; }
   };

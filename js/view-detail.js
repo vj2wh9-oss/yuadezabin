@@ -56,6 +56,20 @@
       ])
     ]));
 
+    /* 即売会の原稿は、チケットの下にある。1押しで戻れるようにしておく */
+    var tk = p.kind === 'event' && p.ticketId ? S.getTicket(p.ticketId) : null;
+    if (tk) {
+      wrap.appendChild(el('a', { class: 'row tk-back', href: '#/ticket/' + tk.id }, [
+        el('div', { class: 'row-main' }, [
+          el('div', { class: 'row-title' }, [
+            ui.icon('event', 16), el('span', { text: tk.name }),
+            tk.date ? ui.chip(U.fmtMD(tk.date), 'soft') : null
+          ])
+        ]),
+        el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+      ]));
+    }
+
     /* ---- 基本情報 ---- */
     var info = [];
     var issuer = p.issuerId ? S.issuers().filter(function (x) { return x.id === p.issuerId; })[0] : null;

@@ -3391,3 +3391,96 @@ body.lock-theme .appbar-title { letter-spacing: .16em; font-size: 14px; }
 .xp-fold { margin-top: 4px; }
 .xp-fold-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .xp-fold .sg-body { padding-top: 10px; }
+
+/* ---------------- 即売会のチケット ----------------
+
+   即売会だけは案件と別に、1枚のチケットとして扱う。
+   もぎり線（点線）と、両脇の切り欠きで、券らしく見せる。
+   切り欠きは背景色の丸を重ねて作る（画像は使わない）。 */
+
+.tk-deck { display: flex; flex-direction: column; gap: 10px; }
+
+.tk-card, .tk-hero {
+  position: relative; display: flex; align-items: stretch; gap: 0;
+  background: var(--card); border: 1px solid var(--line);
+  border-radius: var(--radius); overflow: hidden; color: inherit; text-decoration: none;
+}
+/* 近い即売会は縁を強く、終わったものは薄く */
+.tk-card.soon { border-color: var(--accent); }
+.tk-card.past, .tk-hero.past { opacity: .62; }
+
+.tk-card-main, .tk-body {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px;
+  padding: 11px 12px 11px 13px;
+}
+.tk-card-head { display: flex; align-items: center; gap: 6px; }
+.tk-card-head .icon { color: var(--event); flex: none; }
+.tk-card-name, .tk-name {
+  font-size: 15px; font-weight: 700; letter-spacing: .01em; overflow-wrap: anywhere;
+}
+.tk-name { font-size: 17px; }
+.tk-card-sub, .tk-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+/* 右のもぎり（半券）。ここに残り日数を大きく出す */
+.tk-card-stub, .tk-stub {
+  flex: none; width: 82px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 1px;
+  background: var(--card2); border-left: 1px dashed var(--line2);
+  font-variant-numeric: tabular-nums;
+}
+.tk-num { font-size: 22px; font-weight: 800; line-height: 1; letter-spacing: -.02em; }
+.tk-unit { font-size: 10.5px; color: var(--muted); font-weight: 700; }
+.tk-card.soon .tk-num { color: var(--accent); }
+
+/* もぎり線の上下の切り欠き。地の色の丸を半分だけのぞかせる */
+.tk-card::before, .tk-card::after,
+.tk-hero::before, .tk-hero::after {
+  content: ''; position: absolute; right: 82px; width: 12px; height: 12px;
+  margin-right: -6px; border-radius: 50%; background: var(--bg);
+  border: 1px solid var(--line);
+}
+.tk-card::before, .tk-hero::before { top: -7px; }
+.tk-card::after, .tk-hero::after { bottom: -7px; }
+
+/* チケットの画面の見出し。一覧のカードより少し大きく */
+.tk-hero { margin-bottom: 4px; }
+.tk-hero .tk-stub { width: 92px; }
+.tk-hero .tk-num { font-size: 26px; }
+.tk-edit { align-self: flex-start; margin-top: 2px; }
+
+/* 中に並べる頒布物 */
+.tk-item {
+  width: 100%; text-align: left; background: var(--card); cursor: pointer;
+  font: inherit; color: inherit; gap: 10px;
+}
+.tk-cover {
+  flex: none; width: 38px; height: 38px; object-fit: cover;
+  border-radius: var(--radius-s); border: 1px solid var(--line2);
+}
+.tk-cover.none {
+  display: flex; align-items: center; justify-content: center;
+  background: var(--card2); color: var(--muted);
+}
+
+/* 当日までの準備 */
+.tk-prep { display: flex; flex-direction: column; gap: 8px; }
+.tk-prep-list { display: flex; flex-direction: column; }
+.tk-prep-row {
+  display: flex; align-items: center; gap: 9px; padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+}
+.tk-prep-row:last-child { border-bottom: 0; }
+.tk-prep-row.on .tk-prep-name { color: var(--muted); text-decoration: line-through; }
+.tk-prep-name { flex: 1; min-width: 0; font-size: 13.5px; overflow-wrap: anywhere; }
+.tk-check {
+  flex: none; width: 22px; height: 22px; border-radius: var(--radius-s);
+  border: 1px solid var(--line2); background: var(--card2); color: var(--accent-ink);
+  display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;
+}
+.tk-prep-row.on .tk-check { background: var(--ok); border-color: var(--ok); color: #fff; }
+.tk-prep-add { display: flex; align-items: center; gap: 6px; }
+.tk-prep-add .input { flex: 1; }
+
+/* 当日モードの入口と、原稿からチケットへ戻る行 */
+.tk-onsite { border-left: 3px solid var(--event); padding-left: 11px; }
+.tk-back { border-left: 3px solid var(--event); padding-left: 11px; margin-bottom: 8px; }
