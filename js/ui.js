@@ -333,14 +333,17 @@
     var p = iso.split('-'), w = U.dow(iso);
     // 祝日は日付のすぐ右に、日付と同じ大きさで添える
     var hol = DL.holidays ? DL.holidays.name(iso) : '';
+    /* 年・曜日・祝日は i で包む。板を平行四辺形に倒す見た目のとき、
+       中の文字だけ起こしてまっすぐ読めるようにするため */
     return el('div', { class: 'today-date' }, [
-      el('span', { class: 'td-year', text: (+p[0]) + '年' }),
+      el('span', { class: 'td-year' }, el('i', { text: (+p[0]) + '年' })),
       el('b', { class: 'td-num', text: String(+p[1]) }),
       el('span', { class: 'td-unit', text: '月' }),
       el('b', { class: 'td-num', text: String(+p[2]) }),
       el('span', { class: 'td-unit', text: '日' }),
-      el('span', { class: 'td-wd ' + (w === 0 || hol ? 'sun' : w === 6 ? 'sat' : ''), text: U.wdName(w) }),
-      hol ? el('span', { class: 'td-holiday', text: hol }) : null
+      el('span', { class: 'td-wd ' + (w === 0 || hol ? 'sun' : w === 6 ? 'sat' : '') },
+        el('i', { text: U.wdName(w) })),
+      hol ? el('span', { class: 'td-holiday' }, el('i', { text: hol })) : null
     ]);
   }
 
