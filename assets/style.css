@@ -3624,7 +3624,7 @@ body.skin-bar .section-title {
    向かい合う角から覗かせる */
 body.skin-bar .section-title::before {
   content: ''; position: absolute; inset: 0;
-  background: var(--ylw); transform: rotate(4.2deg);
+  background: var(--ylw); transform: rotate(3deg);
 }
 /* 手前の青い板。中にも網点をうっすら敷く（帯の地紋） */
 body.skin-bar .section-title::after {
@@ -3895,3 +3895,40 @@ body.skin-bar .tp-flow i { animation-name: tp-flow-bar; }
 @keyframes tp-flow-bar {
   0% { opacity: .28; } 20% { opacity: 1; } 60%, 100% { opacity: .28; }
 }
+
+/* ---- 円グラフも、板と同じ流儀に ----
+   境目をはっきり抜き、輪にふちどりを入れて計器らしくする。
+   目盛りと数字は濃く、まわりの名前は倒した板にそろえる。 */
+body.skin-bar .tp-rest { stroke: color-mix(in srgb, var(--line) 85%, transparent); }
+/* 帯どうしの切れ目を太く抜く */
+body.skin-bar .tp-slice { stroke: var(--card); stroke-width: 1.7; }
+/* 輪のふちどり（外と内） */
+.tp-ring { fill: none; stroke: none; }
+body.skin-bar .tp-ring {
+  stroke: color-mix(in srgb, var(--text) 24%, transparent); stroke-width: .9;
+}
+/* 目盛りは長めに、濃く */
+body.skin-bar .tp-hair { stroke: var(--line2); stroke-width: 1.1; opacity: 1; }
+/* 0/6/12/18 の数字。等幅で字間を開け、しっかり読ませる */
+body.skin-bar .tp-htick {
+  font-size: 7.5px; font-weight: 800; fill: var(--muted); opacity: .9;
+  letter-spacing: .08em; font-variant-numeric: tabular-nums;
+}
+/* まん中。予定名は大きく、時刻は等幅で字間を開ける */
+body.skin-bar .tp-mid-v { font-size: 12px; }
+body.skin-bar .tp-mid-l {
+  font-size: 7.5px; font-weight: 700; letter-spacing: .08em;
+  font-variant-numeric: tabular-nums;
+}
+/* まわりに置く名前は、節の見出しと同じ倒した板に */
+body.skin-bar .tp-tag rect {
+  rx: 0;
+  transform: skewX(var(--skew));
+  transform-box: fill-box; transform-origin: center;
+}
+body.skin-bar .tp-tag-t { font-weight: 800; }
+/* 名前へ引く線も、細く硬く */
+body.skin-bar .tp-lead { stroke-width: 1; opacity: .95; stroke-linecap: butt; }
+/* ホームの帯グラフも、切れ目と目盛りをはっきりさせる */
+body.skin-bar .tp-bar { border-color: var(--line2); }
+body.skin-bar .tp-tick { opacity: 1; }

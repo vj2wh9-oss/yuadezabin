@@ -55,6 +55,12 @@
       slices.push({ node: p, start: b.start, end: b.end });
     });
 
+    /* 輪のふちどり。計器らしく、外と内に細い線をひと回り。
+       板の組みのときだけ見える（それ以外は線を引かない） */
+    [R, r].forEach(function (rad) {
+      svg.appendChild(svgEl('circle', { class: 'tp-ring', cx: C, cy: CY, r: rad }));
+    });
+
     /* 円を囲う目盛り。数字を置く 0/6/12/18 以外の時刻に、細い線を1本ずつ */
     TICK_HOURS.forEach(function (h) {
       var a = ang(h * 60);
