@@ -3561,14 +3561,12 @@ body.skin-bar::before {
   background-image: radial-gradient(circle,
     var(--accent) var(--dot-r), transparent calc(var(--dot-r) + .6px));
   background-size: var(--dot-p) var(--dot-p);
-  /* カードの隙間にしか見えないので、カードに敷いていたときより少し濃く */
-  opacity: calc(var(--dots) * 1.2);
-  /* 右上がいちばん濃く、左下へ向かって薄くなる。消しきらずに、
-     画面の隅ずみまで地の模様として残す */
-  -webkit-mask-image: radial-gradient(150% 105% at 100% 0%,
-    #000 0%, rgba(0, 0, 0, .55) 42%, rgba(0, 0, 0, .16) 100%);
-  mask-image: radial-gradient(150% 105% at 100% 0%,
-    #000 0%, rgba(0, 0, 0, .55) 42%, rgba(0, 0, 0, .16) 100%);
+  opacity: calc(var(--dots) * .95);
+  /* 画面の右下から湧いて、左上へ向かって消えていく */
+  -webkit-mask-image: radial-gradient(125% 78% at 100% 100%,
+    #000 0%, rgba(0, 0, 0, .42) 38%, transparent 76%);
+  mask-image: radial-gradient(125% 78% at 100% 100%,
+    #000 0%, rgba(0, 0, 0, .42) 38%, transparent 76%);
 }
 
 /* 筋トレのタブは今のままがちょうどいいので、地には敷かず、
