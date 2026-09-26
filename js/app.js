@@ -88,6 +88,9 @@
     document.body.classList.toggle('fit-theme', route.name === 'fit');
     /* METEO LOCK も専用の見た目にする。金庫らしく、落ち着いた鋼色で */
     document.body.classList.toggle('lock-theme', route.name === 'lock');
+    /* カードの見た目。既定はバーの組み。
+       設定で「前のまま」を選ぶと、左端に色の帯が立つ元の組みに戻る */
+    document.body.classList.toggle('skin-bar', S.settings.cardSkin !== 'classic');
     // 設定は下のタブから外し、題名の右の歯車から開く。
     // 歯車を出すのはホームだけにして、ほかのタブでは邪魔をしない
     // （設定の画面でも出しておかないと、開いた先で行き場が分からなくなる）

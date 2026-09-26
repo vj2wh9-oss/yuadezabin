@@ -691,12 +691,14 @@ body.kb-open .tabbar, body.kb-open .fab { display: none; }
 .alert.overdue { animation: overdue-pulse 3.6s ease-in-out infinite; }
 /* 遅れが出ているものも同じようにゆっくり点滅させる（色は注意の黄のまま） */
 .alert.behind { --overdue-a: var(--behind-a); animation: overdue-pulse 3.6s ease-in-out infinite; }
+/* 地の色だけを行き来させる（background の一括指定にすると、
+   上辺のバー＝background-image まで消えてしまう） */
 @keyframes overdue-pulse {
-  0%, 100% { background: var(--overdue-b); }
-  50% { background: var(--overdue-a); }
+  0%, 100% { background-color: var(--overdue-b); }
+  50% { background-color: var(--overdue-a); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .alert.overdue, .alert.behind { animation: none; background: var(--overdue-a); }
+  .alert.overdue, .alert.behind { animation: none; background-color: var(--overdue-a); }
 }
 .alert.warn { border-left-color: var(--warn); }
 .alert.warn .alert-icon { color: var(--warn); }
@@ -3519,3 +3521,102 @@ body.lock-theme .appbar-title { letter-spacing: .16em; font-size: 14px; }
 .tk-back { border-left: 3px solid var(--event); padding-left: 11px; margin-bottom: 8px; }
 .tk-back.tk-work { border-left-color: var(--accent2); }
 .tk-back.tk-support { border-left-color: var(--indigo); }
+
+/* ================== カードの見た目：バー ==================
+
+   左端に色の帯を立てるのをやめ、代わりに「バー」で組む。
+
+     ・角は落とす（--radius を 0 にする）
+     ・節の見出しは、斜めに切った小さな板 → 文字 → 右へ伸びる罫 の一本
+     ・カードは上辺に細いバーを1本通す。頭だけ色を差して、あとは罫
+     ・案件の色は、左の帯ではなく左上の隅を切り落とした印で出す
+
+   設定 →「作業と表示」→「カードの見た目」で、前の組みに戻せる。
+   ここを丸ごと外しても、元の見た目に戻るだけで壊れない。 */
+
+body.skin-bar {
+  --radius: 0px;
+  --radius-s: 0px;
+  --barw: 30px;          /* 上辺のバーの、頭に差す色の長さ */
+  --bar: var(--accent);  /* その色。要素ごとに差し替える */
+}
+
+/* ---- 節の見出し。板・文字・罫を横一列に並べて、1本のバーに見せる ---- */
+body.skin-bar .section { gap: 10px; margin-top: 14px; }
+body.skin-bar .section-title {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
+  border-left: 0; padding-left: 0;
+  color: var(--text); font-size: 12px; letter-spacing: .12em;
+}
+/* 頭の板。平行四辺形に倒して、まっすぐな罫と対にする */
+body.skin-bar .section-title::before {
+  content: ''; flex: none; width: 9px; height: 13px;
+  background: var(--accent); transform: skewX(-20deg);
+}
+/* 文字のうしろを、右端まで細い罫で埋める */
+body.skin-bar .section-title::after {
+  content: ''; flex: 1; min-width: 10px; height: 1px;
+  background: linear-gradient(90deg, var(--line2), transparent);
+}
+/* 筋トレと METEO LOCK は、それぞれの見た目を持っているので触らない */
+body.skin-bar.fit-theme .view-fit .section-title::before,
+body.skin-bar.lock-theme .section-title::before { background: currentColor; }
+
+/* ---- カードの上辺に通すバー ----
+   枠線ではなく背景で描くので、::before を使っている飾りとぶつからない */
+body.skin-bar .card,
+body.skin-bar .phead,
+body.skin-bar .sgroup,
+body.skin-bar .alert,
+body.skin-bar .docs-entry,
+body.skin-bar .due-card,
+body.skin-bar .card-notice,
+body.skin-bar .lk-entry,
+body.skin-bar .lk-warn,
+body.skin-bar .preview,
+body.skin-bar .tk-onsite,
+body.skin-bar .tk-back {
+  border-left-width: 1px;
+  border-left-color: var(--line);
+  /* 頭に色を差し、そのまま細い罫になって右へ抜けていく1本 */
+  background-image: linear-gradient(90deg,
+    var(--bar) 0 var(--barw),
+    color-mix(in srgb, var(--line2) 85%, transparent) var(--barw) 62%,
+    transparent 100%);
+  background-repeat: no-repeat;
+  background-size: 100% 2px;
+  background-position: 0 0;
+}
+/* 帯の色は、それぞれが持っていた左端の色を引き継ぐ */
+body.skin-bar .phead { --bar: var(--pc, var(--accent)); }
+body.skin-bar .card-notice, body.skin-bar .lk-warn { --bar: var(--warn); }
+body.skin-bar .lk-entry { --bar: var(--muted); }
+body.skin-bar .tk-onsite, body.skin-bar .tk-back { --bar: var(--event); }
+body.skin-bar .tk-back.tk-work { --bar: var(--accent2); }
+body.skin-bar .tk-back.tk-support { --bar: var(--indigo); }
+body.skin-bar .alert.danger { --bar: var(--danger); }
+body.skin-bar .alert.warn { --bar: var(--warn); }
+body.skin-bar .alert.ok { --bar: var(--ok); }
+/* 左端の帯ぶんだけ空けていた余白は、ほかの行とそろえる */
+body.skin-bar .lk-entry,
+body.skin-bar .tk-onsite,
+body.skin-bar .tk-back { padding-left: 13px; }
+/* バーのぶん、中身を少しだけ下げる */
+body.skin-bar .card,
+body.skin-bar .phead,
+body.skin-bar .card-notice,
+body.skin-bar .lk-warn,
+body.skin-bar .preview { padding-top: 13px; }
+body.skin-bar .alert { padding-top: 9px; }
+
+/* ---- 行の色は、左上の隅を切り落とした印で出す ----
+   .row-bar（左端いっぱいの帯）を、隅の三角に組み替える */
+body.skin-bar .row { padding-left: 11px; }
+body.skin-bar .row-bar {
+  top: 0; left: 0; bottom: auto; width: 11px; height: 11px;
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+
+/* ---- 上の帯と下のタブも、同じ細い罫でそろえる ---- */
+body.skin-bar .appbar { box-shadow: inset 0 -2px 0 -1px var(--line); }
+body.skin-bar .sheet { border-top-width: 2px; }

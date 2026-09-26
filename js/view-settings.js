@@ -31,6 +31,13 @@
         [{ value: 'around', label: '円を囲う' }, { value: 'radial', label: 'これまで通り' }],
         s.pieLabels === 'radial' ? 'radial' : 'around',
         function (v) { S.updateSettings({ pieLabels: v }); DL.app.render(); }
+      )),
+      /* カードの組み。左端に色の帯を立てるのをやめ、上辺にバーを通す組みにした。
+         前の見た目のほうが好みなら、ここで戻せる */
+      ui.field('カードの見た目', ui.segmented(
+        [{ value: 'bar', label: 'バー' }, { value: 'classic', label: '前のまま' }],
+        s.cardSkin === 'classic' ? 'classic' : 'bar',
+        function (v) { S.updateSettings({ cardSkin: v }); DL.app.render(); }
       ))
     ]));
 
