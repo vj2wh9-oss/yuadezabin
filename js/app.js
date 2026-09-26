@@ -217,9 +217,9 @@
   }
 
   /* アプリの名前のところだけロゴの組みにする。ほかの画面は画面名の文字のまま。
-     ロゴはそのまま置かず、最初の一枚（splash）と同じように 365 を回して止める。
-     ホームに入ったときだけ回し、保存のたびの描き直しでは動かさない
-     （組み直すと、そのたびに回ってしまうので、すでにロゴなら触らない） */
+     ロゴはそのまま置かず、最初の一枚（splash）と同じように 365 を1桁ずつ弾ませる。
+     ホームに入ったときだけ弾ませ、保存のたびの描き直しでは動かさない
+     （組み直すと、そのたびに弾んでしまうので、すでにロゴなら触らない） */
   function setTitle(text) {
     var isLogo = text === 'METEO365';
     if (isLogo && titleEl.classList.contains('is-logo')) return;
@@ -227,55 +227,40 @@
     titleEl.classList.toggle('is-logo', isLogo);
     if (!isLogo) { titleEl.textContent = text; return; }
     titleEl.appendChild(logoWord());
-    /* 起動の一枚が出ているあいだは、その裏で回っても見えない。
-       そのときは回さず、幕が開くとき（startSplash）に回す */
+    /* 起動の一枚が出ているあいだは、その裏で弾んでも見えない。
+       そのときは弾ませず、幕が開くとき（startSplash）に弾ませる */
     var sp = document.getElementById('splash');
     if (!sp || sp.classList.contains('out')) spinTitle();
   }
 
-  /* 止まる先の数字と、そこまでに回る周数。
-     左ほど短く回るので、3 → 6 → 5 と1つずつ止まる。
-     どれも「ちょうど何周」にしてあり、帯のはじめと終わりが同じ数字になる。
-     回る・止まる・また回りだす、の時間の割り振りは assets/style.css の側 */
-  var LOGO_REELS = [
-    { n: 3, turns: 3, spin: 'logoSpin1' },
-    { n: 6, turns: 4, spin: 'logoSpin2' },
-    { n: 5, turns: 6, spin: 'logoSpin3' }
-  ];
+  /* 肩に乗る 365 の3桁。左から順に弾ませるので、--i に順番を入れる。
+     弾む・休む・また弾む、の時間の割り振りは assets/style.css の側（logoBop） */
+  var LOGO_DIGITS = ['3', '6', '5'];
 
   /**
-   * ロゴの組み。METEO はそのまま、365 は1桁ずつ窓に入れて回す。
-   * 押すともう一度回る（押せることは文字では出さない。触れば分かる程度の遊び）
+   * ロゴの組み。METEO はそのまま、365 は1桁ずつ弾ませる。
+   * 押すともう一度弾む（押せることは文字では出さない。触れば分かる程度の遊び）
    */
   function logoWord() {
     var node = el('span', { class: 'logo-word', role: 'img', 'aria-label': 'METEO365' }, [
       el('b', { text: 'METEO', 'aria-hidden': 'true' }),
-      el('span', { class: 'logo-num', 'aria-hidden': 'true' }, LOGO_REELS.map(reel))
+      el('span', { class: 'logo-num', 'aria-hidden': 'true' }, LOGO_DIGITS.map(digit))
     ]);
     node.addEventListener('click', function () { spinLogo(node); });
     return node;
 
-    /* 数字1桁ぶんの窓。止まる先の数字から始めて 0〜9 を何周ぶんも並べ、
-       land 番目まで送って止める。ちょうど何周ぶんなので、いちばん上と
-       いちばん下は同じ数字になる。繰り返すとき、戻るところが見えない */
-    function reel(r) {
-      var land = r.turns * 10;
-      var strip = el('span', {
-        class: 'logo-strip',
-        style: { '--land': String(land), '--spin': r.spin }
-      });
-      for (var k = 0; k <= land; k++) strip.appendChild(el('i', { text: String((r.n + k) % 10) }));
-      return el('span', { class: 'logo-reel' }, strip);
+    function digit(d, i) {
+      return el('i', { text: d, style: { '--i': String(i) } });
     }
   }
 
-  /* いまヘッダーに出ているロゴを回す。ロゴでなければ何もしない */
+  /* いまヘッダーに出ているロゴを弾ませる。ロゴでなければ何もしない */
   function spinTitle() {
     var w = titleEl.querySelector('.logo-word');
     if (w) spinLogo(w);
   }
 
-  /* もう一度回す。付けっぱなしだと2度目が動かないので、
+  /* もう一度弾ませる。付けっぱなしだと2度目が動かないので、
      いったん外し、そこで一度measureして（ブラウザに気づかせて）から入れ直す */
   function spinLogo(node) {
     node.classList.remove('spin');
@@ -898,8 +883,8 @@
 
   /* 起動の一枚を、そろそろ開ける。
 
-     絵と回りだしは CSS と index.html の側にあるので、ここは幕を引くだけ。
-     読み込みが終わるのを待つが、数字が止まるまでは開けない。
+     絵と弾みは CSS と index.html の側にあるので、ここは幕を引くだけ。
+     読み込みが終わるのを待つが、数字が弾み終わるまでは開けない。
      押せば飛ばせるし、読み込みでつまずいても必ず開く。
      @returns {function} 読み込みが終わったときに呼ぶ */
   /* 起動の一枚の控え。背面から戻ったときに、同じものをもう一度出すため。
@@ -950,7 +935,7 @@
       ui.introduce(view, 220);
     }
     box.classList.add('out');
-    // ヘッダーのロゴは、幕の裏では見えない。開きだすいま回す
+    // ヘッダーのロゴは、幕の裏では見えない。開きだすいま弾ませる
     spinTitle();
     setTimeout(function () {
       if (box.parentNode) box.parentNode.removeChild(box);

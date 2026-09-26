@@ -112,9 +112,9 @@ h1, h2, h3, p { margin: 0; }
 
 /* ---------------- 起動の一枚 ----------------
 
-   ロゴを大きく出して、365 の数字を回してから止める。
+   ロゴを大きく出して、365 の数字を1桁ずつ弾ませる。
    index.html に直に書いてあるので、読み込みを待たずに出る。
-   回すのは CSS のアニメーションなので、絵が出たその場から動き始める。 */
+   弾むのは CSS のアニメーションなので、絵が出たその場から動き始める。 */
 .splash {
   position: fixed; inset: 0; z-index: 100;
   display: flex; align-items: center; justify-content: center;
@@ -160,25 +160,26 @@ h1, h2, h3, p { margin: 0; }
 .splash.full .sp-read { color: var(--accent2); }
 .splash-word { font-weight: 800; }
 .splash-num {
-  display: flex; color: var(--indigo);
-  font-size: .46em; letter-spacing: .12em; margin-left: .3em; padding-top: .12em;
+  display: flex; color: var(--indigo); font-variant-numeric: tabular-nums;
+  font-size: .56em; letter-spacing: .12em; margin-left: .3em; padding-top: .1em;
 }
 
-/* 数字1桁ぶんの窓。中の帯が上に動いて、狙った数字で止まる */
-.splash-reel { display: block; height: 1em; overflow: hidden; }
-.splash-strip {
-  display: block;
-  transform: translateY(calc(var(--land) * -1em));   /* 止まったところ */
-  animation: splash-reel .8s cubic-bezier(.16, 1, .3, 1) var(--delay, 0s) both;
+/* 1桁ずつ、上から落ちてきて弾む。左から順に、少しずつ遅らせる */
+.splash-num i {
+  display: inline-block; font-style: normal; transform-origin: 50% 100%;
+  animation: splashBop .74s cubic-bezier(.3, .8, .4, 1) calc(var(--i, 0) * .12s) both;
 }
-.splash-strip i { display: block; height: 1em; font-style: normal; text-align: center; }
-.splash-reel:nth-child(2) .splash-strip { --delay: .09s; }
-.splash-reel:nth-child(3) .splash-strip { --delay: .18s; }
-@keyframes splash-reel { from { transform: translateY(0); } }
+@keyframes splashBop {
+  0%   { transform: translateY(-.62em) scaleY(1.14) scaleX(.92); opacity: 0; }
+  42%  { transform: translateY(0) scaleY(.82) scaleX(1.12); opacity: 1; }   /* 着地でつぶれる */
+  66%  { transform: translateY(-.24em) scaleY(1.06) scaleX(.97); }          /* 小さく跳ね返る */
+  86%  { transform: translateY(0) scaleY(.94) scaleX(1.05); }
+  100% { transform: translateY(0) scaleY(1) scaleX(1); }
+}
 
 @media (prefers-reduced-motion: reduce) {
-  /* 回さずに、はじめから 365 を出す */
-  .splash-strip { animation: none; }
+  /* 弾ませずに、はじめから 365 を出す */
+  .splash-num i { animation: none; }
   .splash { animation-delay: 1.4s; }
 }
 
@@ -197,10 +198,11 @@ h1, h2, h3, p { margin: 0; }
 }
 /* ロゴは縮めない。右に「次の締切まで」の板が並んでも 365 まで出しきる
    （画面名の文字のときは、今までどおり縮んで「…」になってよい） */
-.appbar-title.is-logo { flex: none; }
+/* 弾んだ 365 が上で切れないように、ロゴのときだけ はみ出しを許す */
+.appbar-title.is-logo { flex: none; overflow: visible; }
 /* ロゴ（文字だけ）。アプリの名前を出すところで、365 をインディゴにする。
-   最初の一枚（splash）と同じように、365 は1桁ずつ回して止める。
-   ホームに入るたびに回り、押すともう一度回る */
+   最初の一枚（splash）と同じように、365 は1桁ずつ弾ませる。
+   ホームに入るたびに弾み、押すともう一度弾む */
 .logo-word {
   /* 365 は METEO の右肩に小さく乗せる。上でそろえたいので baseline にしない */
   display: inline-flex; align-items: flex-start; gap: 0;
@@ -209,48 +211,32 @@ h1, h2, h3, p { margin: 0; }
 }
 .logo-word b { font-weight: 800; }
 .logo-num {
-  /* 帯では地の文字が小さいので、肩の 365 は少しだけ大きめに取る（読める下限） */
+  /* 帯では地の文字が小さいので、肩の 365 は少しだけ大きめに取る */
   display: flex; color: var(--indigo); font-variant-numeric: tabular-nums;
-  font-size: .53em; letter-spacing: .1em; margin-left: .28em; padding-top: .1em;
+  font-size: .64em; letter-spacing: .08em; margin-left: .26em; padding-top: .06em;
 }
-/* 数字1桁ぶんの窓。中の帯が上に動いて、狙った数字で止まる */
-.logo-reel { display: block; height: 1em; overflow: hidden; }
-.logo-strip { display: block; transform: translateY(calc(var(--land) * -1em)); }
-.logo-strip i { display: block; height: 1em; font-style: normal; text-align: center; }
-/* 回って、1つずつ止まって、しばらく置いて、また回りだす。7秒でひと回り。
-   帯のいちばん上といちばん下は同じ数字（js/app.js 側でそう並べている）ので、
-   繰り返しの継ぎ目は見えない */
-.logo-word.spin .logo-strip { animation: var(--spin) 7s infinite both; }
-/* どの桁も、はじめは同じ速さでぐるぐる回し、最後の1周ぶんでゆっくり止める。
-   止まるのは 1.5 秒 → 2.1 秒 → 2.7 秒（7秒のうちの 21.4% → 30% → 38.6%）。
-   そのあとは 4.3 秒ほど 365 のまま止まって、また回りだす */
-@keyframes logoSpin1 {
-  0% { transform: translateY(0); animation-timing-function: linear; }
-  11.8% {
-    transform: translateY(calc((var(--land) - 11) * -1em));
-    animation-timing-function: cubic-bezier(.12, .7, .3, 1);
-  }
-  21.4%, 100% { transform: translateY(calc(var(--land) * -1em)); }
+/* 弾むぶんの余白を上に取る。ここが無いと、跳ね上がった頭が帯で切れる */
+.logo-num i {
+  display: inline-block; font-style: normal; transform-origin: 50% 100%;
 }
-@keyframes logoSpin2 {
-  0% { transform: translateY(0); animation-timing-function: linear; }
-  16.5% {
-    transform: translateY(calc((var(--land) - 11) * -1em));
-    animation-timing-function: cubic-bezier(.12, .7, .3, 1);
-  }
-  30%, 100% { transform: translateY(calc(var(--land) * -1em)); }
+/* 1桁ずつ、左から順に跳ね上がって、着地でつぶれる。7秒でひと回り。
+   弾むのは頭の 1 秒ほどで、あとの 6 秒は 365 のまま静かにしている */
+.logo-word.spin .logo-num i {
+  animation: logoBop 7s cubic-bezier(.3, .8, .4, 1) calc(var(--i, 0) * .13s) infinite both;
 }
-@keyframes logoSpin3 {
-  0% { transform: translateY(0); animation-timing-function: linear; }
-  21.2% {
-    transform: translateY(calc((var(--land) - 11) * -1em));
-    animation-timing-function: cubic-bezier(.12, .7, .3, 1);
-  }
-  38.6%, 100% { transform: translateY(calc(var(--land) * -1em)); }
+/* 7秒のうち、0.75 秒ぶん（0〜10.7%）だけ動く。
+   ぐっと沈んでから跳ね上がり、着地でつぶれて、小さくもう一度跳ねる */
+@keyframes logoBop {
+  0%    { transform: translateY(0) scaleY(1) scaleX(1); }
+  1.8%  { transform: translateY(0) scaleY(.86) scaleX(1.1); }      /* 踏み込む */
+  5%    { transform: translateY(-.52em) scaleY(1.12) scaleX(.92); } /* 跳ね上がる */
+  7.6%  { transform: translateY(0) scaleY(.88) scaleX(1.08); }      /* 着地でつぶれる */
+  9.4%  { transform: translateY(-.14em) scaleY(1.04) scaleX(.98); } /* 小さくもう一度 */
+  10.7%, 100% { transform: translateY(0) scaleY(1) scaleX(1); }
 }
 @media (prefers-reduced-motion: reduce) {
-  /* 回さずに、はじめから 365 を出す */
-  .logo-word.spin .logo-strip { animation: none; }
+  /* 弾ませずに、はじめから 365 を出す */
+  .logo-word.spin .logo-num i { animation: none; }
 }
 
 .appbar-gap { flex: 1; }
