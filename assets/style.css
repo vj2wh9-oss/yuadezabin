@@ -3550,6 +3550,64 @@ body.skin-bar {
 /* 明るい地では網点が目立ちやすいので、薄めに敷く */
 @media (prefers-color-scheme: light) { body.skin-bar { --dots: .12; } }
 
+/* ---- 網点は、いちばん奥の地にだけ敷く ----
+   カードの中には入れない。画面の右上から流れ出して、左下へ消えていく。
+   位置を固定してあるので、中身を送っても地の模様は動かない。 */
+/* 地の色は html のほうに任せる。body に色が乗っていると、
+   z-index:-1 の層がそのうしろへ回ってしまい、模様が見えない */
+body.skin-bar { background: transparent; }
+body.skin-bar::before {
+  content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background-image: radial-gradient(circle,
+    var(--accent) var(--dot-r), transparent calc(var(--dot-r) + .6px));
+  background-size: var(--dot-p) var(--dot-p);
+  /* カードの隙間にしか見えないので、カードに敷いていたときより少し濃く */
+  opacity: calc(var(--dots) * 1.2);
+  /* 右上がいちばん濃く、左下へ向かって薄くなる。消しきらずに、
+     画面の隅ずみまで地の模様として残す */
+  -webkit-mask-image: radial-gradient(150% 105% at 100% 0%,
+    #000 0%, rgba(0, 0, 0, .55) 42%, rgba(0, 0, 0, .16) 100%);
+  mask-image: radial-gradient(150% 105% at 100% 0%,
+    #000 0%, rgba(0, 0, 0, .55) 42%, rgba(0, 0, 0, .16) 100%);
+}
+
+/* 筋トレのタブは今のままがちょうどいいので、地には敷かず、
+   カードの右の網点だけをそのまま残す */
+body.skin-bar.fit-theme::before { content: none; }
+body.skin-bar.fit-theme .card { position: relative; isolation: isolate; }
+body.skin-bar.fit-theme .card::after {
+  content: ''; position: absolute; top: 2px; right: 0; bottom: 0; width: 44%;
+  z-index: -1; pointer-events: none;
+  background-image: radial-gradient(circle,
+    var(--bar) var(--dot-r), transparent calc(var(--dot-r) + .6px));
+  background-size: var(--dot-p) var(--dot-p);
+  opacity: var(--dots);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, rgba(0, 0, 0, .35) 48%, #000 100%);
+  mask-image: linear-gradient(90deg, transparent 0, rgba(0, 0, 0, .35) 48%, #000 100%);
+}
+/* そのカードの中では、地を持たない押しものに面の色を敷いて点を透かさない */
+body.skin-bar.fit-theme { --surface: var(--bg); }
+body.skin-bar.fit-theme .card,
+body.skin-bar.fit-theme .row { --surface: var(--card); }
+body.skin-bar.fit-theme .panel { --surface: var(--card2); }
+body.skin-bar.fit-theme .card .btn.ghost,
+body.skin-bar.fit-theme .card .btn.danger,
+body.skin-bar.fit-theme .card .iconbtn,
+body.skin-bar.fit-theme .card .checkbtn { background-color: var(--surface); }
+
+/* ---- 知らせの印（△!）は、倒した板に入れて大きく ---- */
+body.skin-bar .alert-icon {
+  width: 30px; height: 30px; align-items: center; justify-content: center;
+  background: color-mix(in srgb, currentColor 15%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 45%, transparent);
+  transform: skewX(var(--skew));
+}
+body.skin-bar .alert-icon .icon {
+  width: 19px; height: 19px;
+  transform: skewX(calc(var(--skew) * -1));
+}
+body.skin-bar .alert { gap: 10px; }
+
 /* ---- 節の見出しは、倒した板 ---- */
 body.skin-bar .section { gap: 0; margin-top: 15px; align-items: center; }
 body.skin-bar .section-title {
@@ -3604,8 +3662,6 @@ body.skin-bar .tp-nowbar,
 body.skin-bar .tk-card,
 body.skin-bar .tk-hero {
   position: relative;
-  /* 網点を中身の下へ敷くための足場。これが無いと文字の上に乗る */
-  isolation: isolate;
   border-left-width: 1px;
   border-left-color: var(--line);
   /* 頭に色を差し、そのまま細い罫になって右へ抜けていく1本 */
@@ -3616,29 +3672,6 @@ body.skin-bar .tk-hero {
   background-repeat: no-repeat;
   background-size: 100% 2px;
   background-position: 0 0;
-}
-/* 右側のハーフトーン。その札の色で、うっすらと */
-body.skin-bar .card::after,
-body.skin-bar .phead::after,
-body.skin-bar .sgroup::after,
-body.skin-bar .alert::after,
-body.skin-bar .docs-entry::after,
-body.skin-bar .due-card::after,
-body.skin-bar .card-notice::after,
-body.skin-bar .lk-entry::after,
-body.skin-bar .lk-warn::after,
-body.skin-bar .preview::after,
-body.skin-bar .tk-onsite::after,
-body.skin-bar .tk-back::after {
-  content: ''; position: absolute; top: 2px; right: 0; bottom: 0; width: 44%;
-  z-index: -1; pointer-events: none;
-  background-image: radial-gradient(circle,
-    var(--bar) var(--dot-r), transparent calc(var(--dot-r) + .6px));
-  background-size: var(--dot-p) var(--dot-p);
-  opacity: var(--dots);
-  /* 左へ向かってすっと消す。右の端がいちばん濃い */
-  -webkit-mask-image: linear-gradient(90deg, transparent 0, rgba(0, 0, 0, .35) 48%, #000 100%);
-  mask-image: linear-gradient(90deg, transparent 0, rgba(0, 0, 0, .35) 48%, #000 100%);
 }
 /* 帯と網点の色は、それぞれが持っていた左端の色を引き継ぐ */
 body.skin-bar .phead { --bar: var(--pc, var(--accent)); }
@@ -3717,45 +3750,6 @@ body.skin-bar .filter-label { display: inline-block; transform: skewX(calc(var(-
 /* ---- 上の帯とシートも、同じ細い罫でそろえる ---- */
 body.skin-bar .appbar { box-shadow: inset 0 -2px 0 -1px var(--line); }
 body.skin-bar .sheet { border-top-width: 3px; }
-
-/* 円グラフの画面（今日の予定の詳細）は、図と網点が重なって読みにくいので敷かない */
-body.skin-bar .view-time .card::after,
-body.skin-bar .view-time .alert::after,
-body.skin-bar .view-time .docs-entry::after,
-body.skin-bar .view-time .preview::after { content: none; }
-
-/* ---- 網点が押しものに透けないようにする ----
-
-   網点はカードの地のすぐ上（中身の下）に敷いてある。地を持たない押しもの
-   （枠だけのボタン・絵だけのボタン）はそのまま透けるので、点がボタンの上に
-   乗っているように見える。そこで、その押しものに「いま乗っている面の色」を
-   敷いて点を隠す。--surface は面ごとに持たせてあり、入れ子の div をまたいでも
-   いちばん近い面の色が伝わる（見た目は今までと同じで、点だけが消える）。 */
-body.skin-bar { --surface: var(--bg); }
-body.skin-bar .sheet { --surface: var(--bg2); }
-body.skin-bar .card,
-body.skin-bar .row,
-body.skin-bar .phead,
-body.skin-bar .sgroup,
-body.skin-bar .alert,
-body.skin-bar .tk-card,
-body.skin-bar .tk-hero { --surface: var(--card); }
-body.skin-bar .panel,
-body.skin-bar .tpl-row,
-body.skin-bar .preview,
-body.skin-bar .lk-warn,
-body.skin-bar .tp-nowbar,
-body.skin-bar .tk-card-stub,
-body.skin-bar .tk-stub { --surface: var(--card2); }
-
-body.skin-bar .btn.ghost,
-body.skin-bar .btn.danger,
-body.skin-bar .iconbtn,
-body.skin-bar .checkbtn,
-body.skin-bar .tpl-summary,
-body.skin-bar .stepper .stepbtn { background-color: var(--surface); }
-/* 押したときの色は今までどおり */
-body.skin-bar .iconbtn:active { background-color: var(--card2); }
 
 /* ---- 日付の見出し ----
    年・曜日・祝日は倒した板に入れ、日にちの数字は等幅で大きく出す。
