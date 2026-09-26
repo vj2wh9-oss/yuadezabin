@@ -3611,31 +3611,36 @@ body.skin-bar .alert { gap: 10px; }
 
 /* ---- 節の見出しは、倒した板＋後ろを抜ける黄色の斜線 ---- */
 body.skin-bar .section { gap: 0; margin-top: 17px; align-items: center; }
+/* 板そのものは入れ物だけにして、地は ::after（青）と ::before（黄）で描く。
+   こうしないと、黄色を青の後ろへ回せない */
 body.skin-bar .section-title {
   position: relative; flex: none; order: 0;
-  color: var(--accent-ink);
+  background: none; color: var(--accent-ink);
   border-left: 0; padding: 8px 18px 9px;
   transform: skewX(var(--skew));
   font-size: 13px; font-weight: 800; letter-spacing: .1em;
-  /* 板の中にも網点をうっすら敷く（帯の地紋） */
+}
+/* 後ろに同じ大きさの黄色い平行四辺形。少しだけ時計回りに回して、
+   向かい合う角から覗かせる */
+body.skin-bar .section-title::before {
+  content: ''; position: absolute; inset: 0;
+  background: var(--ylw); transform: rotate(2.6deg);
+}
+/* 手前の青い板。中にも網点をうっすら敷く（帯の地紋） */
+body.skin-bar .section-title::after {
+  content: ''; position: absolute; inset: 0;
   background-color: var(--accent);
   background-image: radial-gradient(circle,
     rgba(255, 255, 255, .16) 1px, transparent 1.1px);
   background-size: 5px 5px;
 }
-/* 黄色の線は、板の長い辺に沿わせる。
-   上の線は左へ、下の線は右へはみ出して、帯の外まで伸びる。
-   板の中には掛からないので、字は読みやすいまま */
-body.skin-bar .section-title::before,
-body.skin-bar .section-title::after {
-  content: ''; position: absolute; height: 5px;
-  background: var(--ylw); pointer-events: none;
-}
-body.skin-bar .section-title::before { left: -11px; right: 22%; top: -6px; }
-body.skin-bar .section-title::after { left: 30%; right: -17px; bottom: -6px; }
 .section-slash { display: none; }
-/* 中の文字だけ起こす。板は倒したまま、字はまっすぐ読める */
-body.skin-bar .section-label { display: inline-block; transform: skewX(calc(var(--skew) * -1)); }
+/* 中の文字だけ起こす。板は倒したまま、字はまっすぐ読める。
+   2枚の板（黄と青）より手前に出す */
+body.skin-bar .section-label {
+  position: relative; z-index: 1;
+  display: inline-block; transform: skewX(calc(var(--skew) * -1));
+}
 /* 板の中の文字だけ、濃い縁で囲う。
    paint-order が効かない環境では縁が字を食べて痩せるので、効くときだけ掛ける */
 @supports (paint-order: stroke) {
@@ -3659,8 +3664,6 @@ body.skin-bar.lock-theme .section-title {
 }
 body.skin-bar.fit-theme .view-fit .section-label,
 body.skin-bar.lock-theme .section-label { transform: none; -webkit-text-stroke: 0; }
-body.skin-bar.fit-theme .view-fit .section-title,
-body.skin-bar.lock-theme .section-title { background-image: none; }
 body.skin-bar.fit-theme .view-fit .section-title::before,
 body.skin-bar.fit-theme .view-fit .section-title::after,
 body.skin-bar.lock-theme .section-title::before,
@@ -3848,6 +3851,10 @@ body.skin-bar .tab.on {
      となりの札に隠れないよう、選んでいる札だけ上へ出す */
   position: relative; z-index: 1;
   box-shadow: 3px 3px 0 var(--ylw);
+}
+/* 筋トレのタブは地の色が黄色なので、ずらすぶんは濃いほうで */
+body.skin-bar.fit-theme .tab.on {
+  box-shadow: 3px 3px 0 color-mix(in srgb, var(--accent) 45%, #000);
 }
 /* 上の細い線はもう要らない（札そのものが塗られるので） */
 body.skin-bar .tab.on::before { content: none; }
