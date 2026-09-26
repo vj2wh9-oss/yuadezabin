@@ -3610,7 +3610,7 @@ body.skin-bar .alert-icon .icon {
 body.skin-bar .alert { gap: 10px; }
 
 /* ---- 節の見出しは、倒した板＋後ろを抜ける黄色の斜線 ---- */
-body.skin-bar .section { gap: 0; margin-top: 17px; align-items: center; }
+body.skin-bar .section { gap: 0; margin: 18px 0 12px; align-items: center; }
 /* 板そのものは入れ物だけにして、地は ::after（青）と ::before（黄）で描く。
    こうしないと、黄色を青の後ろへ回せない */
 body.skin-bar .section-title {
@@ -3624,7 +3624,7 @@ body.skin-bar .section-title {
    向かい合う角から覗かせる */
 body.skin-bar .section-title::before {
   content: ''; position: absolute; inset: 0;
-  background: var(--ylw); transform: rotate(2.6deg);
+  background: var(--ylw); transform: rotate(4.2deg);
 }
 /* 手前の青い板。中にも網点をうっすら敷く（帯の地紋） */
 body.skin-bar .section-title::after {
@@ -3863,6 +3863,12 @@ body.skin-bar .tab.on::before { content: none; }
     paint-order: stroke fill;
     -webkit-text-stroke: 2px color-mix(in srgb, var(--accent) 45%, #000);
   }
+}
+/* 選んでいる札の名前だけ、太く大きく。少しはみ出しても切らない
+   （札の隙間に収まる範囲で、となりには掛からない） */
+body.skin-bar .tab.on > span:last-child {
+  font-size: 9.6px; font-weight: 800; letter-spacing: -.05em;
+  max-width: none; overflow: visible;
 }
 body.skin-bar .tab:active { transform: translateY(1px); }
 
