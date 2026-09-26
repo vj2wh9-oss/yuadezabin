@@ -3612,24 +3612,28 @@ body.skin-bar .alert { gap: 10px; }
 /* ---- 節の見出しは、倒した板＋後ろを抜ける黄色の斜線 ---- */
 body.skin-bar .section { gap: 0; margin-top: 17px; align-items: center; }
 body.skin-bar .section-title {
-  flex: none; order: 0;
-  background: var(--accent); color: var(--accent-ink);
-  border-left: 0; padding: 7px 17px 8px;
+  position: relative; flex: none; order: 0;
+  color: var(--accent-ink);
+  border-left: 0; padding: 8px 18px 9px;
   transform: skewX(var(--skew));
-  box-shadow: 3px 3px 0 var(--hard);
   font-size: 13px; font-weight: 800; letter-spacing: .1em;
+  /* 板の中にも網点をうっすら敷く（帯の地紋） */
+  background-color: var(--accent);
+  background-image: radial-gradient(circle,
+    rgba(255, 255, 255, .16) 1px, transparent 1.1px);
+  background-size: 5px 5px;
 }
-/* 太い斜線と、そのすぐ右の細い斜線。板の下へもぐり込ませて、
-   板の後ろから右へ抜けていくように見せる */
+/* 黄色の線は、板の長い辺に沿わせる。
+   上の線は左へ、下の線は右へはみ出して、帯の外まで伸びる。
+   板の中には掛からないので、字は読みやすいまま */
+body.skin-bar .section-title::before,
+body.skin-bar .section-title::after {
+  content: ''; position: absolute; height: 5px;
+  background: var(--ylw); pointer-events: none;
+}
+body.skin-bar .section-title::before { left: -11px; right: 22%; top: -6px; }
+body.skin-bar .section-title::after { left: 30%; right: -17px; bottom: -6px; }
 .section-slash { display: none; }
-body.skin-bar .section-slash {
-  display: block; order: 1; flex: none;
-  width: 30px; height: 36px; margin-left: -13px;
-  transform: skewX(var(--skew));
-  background: linear-gradient(90deg,
-    var(--ylw) 0 19px, transparent 19px 24px, var(--ylw) 24px 30px);
-  filter: drop-shadow(3px 3px 0 var(--hard));
-}
 /* 中の文字だけ起こす。板は倒したまま、字はまっすぐ読める */
 body.skin-bar .section-label { display: inline-block; transform: skewX(calc(var(--skew) * -1)); }
 /* 板の中の文字だけ、濃い縁で囲う。
@@ -3655,8 +3659,12 @@ body.skin-bar.lock-theme .section-title {
 }
 body.skin-bar.fit-theme .view-fit .section-label,
 body.skin-bar.lock-theme .section-label { transform: none; -webkit-text-stroke: 0; }
-body.skin-bar.fit-theme .view-fit .section-slash,
-body.skin-bar.lock-theme .section-slash { display: none; }
+body.skin-bar.fit-theme .view-fit .section-title,
+body.skin-bar.lock-theme .section-title { background-image: none; }
+body.skin-bar.fit-theme .view-fit .section-title::before,
+body.skin-bar.fit-theme .view-fit .section-title::after,
+body.skin-bar.lock-theme .section-title::before,
+body.skin-bar.lock-theme .section-title::after { content: none; }
 
 /* ---- カードの上辺に通すバーと、右のハーフトーン ----
    バーは背景で描くので、飾りに使う ::before とぶつからない */
@@ -3821,12 +3829,12 @@ body.skin-bar .today-sub {
    青く塗って、少しせり上がる。字は太めで、白の縁を付けて締める。 */
 body.skin-bar .tabbar {
   background: var(--bg2); border-top: 2px solid var(--line2);
-  gap: 1px; padding: 5px 2px calc(env(safe-area-inset-bottom) + 4px);
+  gap: 2px; padding: 5px 2px calc(env(safe-area-inset-bottom) + 4px);
   align-items: end;
 }
 body.skin-bar .tab {
   height: calc(var(--tab-h) - 8px); gap: 3px; border-radius: 8px 8px 3px 3px;
-  padding: 0; font-size: 8.8px; letter-spacing: -.07em;
+  padding: 0; font-size: 8.4px; letter-spacing: -.07em;
   background: var(--card2); border: 1px solid var(--line2); border-bottom-width: 2px;
   font-weight: 700; color: var(--muted);
 }
@@ -3836,7 +3844,10 @@ body.skin-bar .tab.on {
   background: var(--accent); border-color: var(--accent);
   color: var(--accent-ink);
   height: calc(var(--tab-h) - 2px);
-  box-shadow: 0 2px 0 color-mix(in srgb, var(--accent) 55%, #000);
+  /* 節の見出しと同じで、少しずらした黄色を後ろに覗かせる。
+     となりの札に隠れないよう、選んでいる札だけ上へ出す */
+  position: relative; z-index: 1;
+  box-shadow: 3px 3px 0 var(--ylw);
 }
 /* 上の細い線はもう要らない（札そのものが塗られるので） */
 body.skin-bar .tab.on::before { content: none; }
