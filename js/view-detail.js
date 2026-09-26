@@ -70,6 +70,11 @@
       ]));
     }
 
+    /* ---- 原稿のページ管理表 ----
+       いちばんよく開くので、基本情報より上に置く */
+    var pgEntry = pagesEntry(p, today);
+    if (pgEntry) wrap.appendChild(pgEntry);
+
     /* ---- 基本情報 ---- */
     var info = [];
     var issuer = p.issuerId ? S.issuers().filter(function (x) { return x.id === p.issuerId; })[0] : null;
@@ -202,10 +207,6 @@
       wrap.appendChild(ui.section('かかった時間'));
       wrap.appendChild(spent);
     }
-
-    /* ---- 原稿のページ管理表 ---- */
-    var pgEntry = pagesEntry(p, today);
-    if (pgEntry) wrap.appendChild(pgEntry);
 
     /* ---- プロットとメモ ---- */
     plotSection(wrap, p);
