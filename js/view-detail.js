@@ -56,13 +56,13 @@
       ])
     ]));
 
-    /* 即売会の原稿は、チケットの下にある。1押しで戻れるようにしておく */
-    var tk = p.kind === 'event' && p.ticketId ? S.getTicket(p.ticketId) : null;
+    /* 原稿はチケットの下にある。1押しで戻れるようにしておく */
+    var tk = p.ticketId ? S.getTicket(p.ticketId) : null;
     if (tk) {
-      wrap.appendChild(el('a', { class: 'row tk-back', href: '#/ticket/' + tk.id }, [
+      wrap.appendChild(el('a', { class: 'row tk-back tk-' + tk.kind, href: '#/ticket/' + tk.id }, [
         el('div', { class: 'row-main' }, [
           el('div', { class: 'row-title' }, [
-            ui.icon('event', 16), el('span', { text: tk.name }),
+            ui.icon(ui.KIND_ICON[tk.kind], 16), el('span', { text: tk.name }),
             tk.date ? ui.chip(U.fmtMD(tk.date), 'soft') : null
           ])
         ]),

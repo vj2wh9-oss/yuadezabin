@@ -158,6 +158,88 @@
     return out;
   }
 
+  /* ---------------- 即売会に持っていくぶん ----------------
+
+     チケットに「登録してある在庫から選んで、持ち込む部数」を入れておく。
+     イベントが終わったら持ち帰った部数を入れると、
+
+       販売数 ＝ 持ち込み − 持ち帰り
+
+     で頒布数が出る。当日モードでその場その場を記録していることもあるので、
+     すでに記録してあるぶんは差し引いて、足りないぶんだけを記録する。 */
+
+  /**
+   * チケット1枚ぶんの集計。
+   * @param {object} t チケット
+   * @param {Array} projects そのチケットに入っている案件（記録済みを拾うのに使う）
+   * @returns {object} {lines, total}
+   */
+  function ticketTally(t, projects) {
+    var ids = (projects || []).map(function (p) { return p.id; });
+    var out = {
+      lines: [],
+      total: { bring: 0, back: 0, sold: 0, recorded: 0, rest: 0, revenue: 0, counted: 0 }
+    };
+    ((t && t.stock) || []).forEach(function (row) {
+      var item = S.getItem(row.itemId);
+      if (!item) return;
+      var bring = Math.max(0, U.num(row.bring, 0));
+      var counted = row.back != null;
+      var back = counted ? Math.min(bring, Math.max(0, U.num(row.back, 0))) : 0;
+      var sold = counted ? Math.max(0, bring - back) : 0;
+      var recorded = recordedSold(row.itemId, ids, t);
+      var line = {
+        row: row, item: item, bring: bring, counted: counted, back: back,
+        sold: sold, recorded: recorded,
+        rest: Math.max(0, sold - recorded),
+        revenue: sold * U.num(item.price, 0),
+        left: summary(item).left
+      };
+      out.lines.push(line);
+      out.total.bring += bring;
+      out.total.back += back;
+      out.total.sold += sold;
+      out.total.recorded += recorded;
+      out.total.rest += line.rest;
+      out.total.revenue += line.revenue;
+      if (counted) out.total.counted++;
+    });
+    return out;
+  }
+
+  /** その頒布物を、このイベントで何部 記録済みか（当日モードのぶんを含む） */
+  function recordedSold(itemId, projectIds, t) {
+    var name = (t && t.name) || '';
+    return S.stockMoves({ itemId: itemId, kind: 'sale' }).reduce(function (n, m) {
+      var mine = (m.projectId && projectIds.indexOf(m.projectId) >= 0)
+        || (!m.projectId && name && m.place === name);
+      return mine ? n + U.num(m.qty, 0) : n;
+    }, 0);
+  }
+
+  /**
+   * 集計を頒布として記録する。まだ記録していないぶんだけを足す。
+   * @returns {object} {items, qty} 記録した品数と部数
+   */
+  function recordTicketTally(t, projects) {
+    var tally = ticketTally(t, projects);
+    var main = (projects || [])[0];
+    var date = U.isISO(t && t.date) ? t.date : U.today();
+    var out = { items: 0, qty: 0 };
+    tally.lines.forEach(function (line) {
+      if (line.rest <= 0) return;
+      S.addMove({
+        itemId: line.item.id, date: date, kind: 'sale', qty: line.rest,
+        extra: takeExtra(line.item.id, line.rest),
+        price: U.num(line.item.price, 0),
+        projectId: main ? main.id : '', place: t.name
+      });
+      out.items++;
+      out.qty += line.rest;
+    });
+    return out;
+  }
+
   /** 頒布の売上（年・月ごと）。売上タブで請求書・支援金と並べるのに使う */
   function salesOf(year) {
     var out = { total: 0, months: [] };
@@ -178,6 +260,7 @@
     extraDelta: extraDelta, extraLeft: extraLeft, takeExtra: takeExtra,
     EXTRA_SUFFIX: EXTRA_SUFFIX, extraTitle: extraTitle,
     summary: summary, all: all, totals: totals,
+    ticketTally: ticketTally, recordTicketTally: recordTicketTally,
     eventSummary: eventSummary, salesOf: salesOf
   };
 })(window.DL);

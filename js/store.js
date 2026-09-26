@@ -397,29 +397,34 @@
     return s;
   }
 
-  /* 即売会のチケットを組み立てる。
+  /* チケットを組み立てる。
 
-     もとは即売会も1件ずつの案件だった。同じ即売会に出す
-     新刊・グッズ・ポスターが、別々の案件として並んでいた。
-     これを「イベント名のチケット1枚」にまとめる。
+     もとは案件が1件ずつ並んでいた。同じ即売会に出す新刊・グッズ・ポスターも、
+     同じ取引先からの依頼も、同じ支援サイトへの投稿も、別々に並んでいた。
+     これを「1枚のチケット」にまとめる。
      中身（案件そのもの）は触らず、束ねる紙をかぶせるだけ。
 
-     束ねかたは、イベント名と開催日が同じもの。
-     イベント名が入っていない古いものは、その案件の名前で1枚にする。 */
+     束ねかたは種別ごとに違う。
+       即売会 … イベント名と開催日が同じもの
+       仕事　 … 取引先が同じもの
+       支援　 … サイトが同じもの
+     名前が入っていない古いものは、その案件の名前で1枚にする。 */
   function buildTickets(s) {
     var list = s.settings.tickets;
     var byKey = {};
-    list.forEach(function (t) { byKey[ticketKey(t.name, t.date)] = t; });
+    list.forEach(function (t) { byKey[ticketKey(t.kind, t.name, t.date)] = t; });
 
     (s.projects || []).forEach(function (p) {
-      if (p.kind !== 'event') return;
       if (p.ticketId && list.filter(function (t) { return t.id === p.ticketId; }).length) return;
-      var name = (p.eventName || p.title || '即売会').trim();
-      var key = ticketKey(name, p.eventDate);
+      var kind = p.kind;
+      var name = ticketNameOf(p);
+      var date = kind === 'event' ? (p.eventDate || '') : '';
+      var key = ticketKey(kind, name, date);
       var t = byKey[key];
       if (!t) {
         t = normalizeTicket({
-          name: name, date: p.eventDate || '', venue: p.venue || '', space: p.space || '',
+          kind: kind, name: name, date: date,
+          venue: p.venue || '', space: p.space || '',
           createdAt: p.createdAt
         });
         list.push(t);
@@ -434,16 +439,30 @@
     return s;
   }
 
-  function ticketKey(name, date) {
-    return String(name || '').trim() + '\u0000' + String(date || '');
+  /** その案件が入るチケットの名前。束ねる手がかりになるものを採る */
+  function ticketNameOf(p) {
+    if (p.kind === 'work') return String(p.client || p.title || '仕事').trim();
+    if (p.kind === 'support') return String(p.site || p.title || '支援サイト').trim();
+    return String(p.eventName || p.title || '即売会').trim();
   }
+
+  function ticketKey(kind, name, date) {
+    return String(kind || 'event') + '\u0000'
+      + String(name || '').trim() + '\u0000' + String(date || '');
+  }
+
+  var TICKET_KINDS = ['event', 'work', 'support'];
+  var TICKET_FALLBACK = { event: '即売会', work: '仕事', support: '支援サイト' };
+  var TICKET_STOCK_MAX = 200;
 
   function normalizeTicket(t) {
     t = t || {};
     var str = function (v, n) { return String(v == null ? '' : v).trim().slice(0, n); };
+    var kind = TICKET_KINDS.indexOf(t.kind) >= 0 ? t.kind : 'event';
     return {
       id: t.id || U.uid(),
-      name: str(t.name, 80) || '即売会',
+      kind: kind,
+      name: str(t.name, 80) || TICKET_FALLBACK[kind],
       date: U.isISO(t.date) ? t.date : '',
       venue: str(t.venue, 80),
       space: str(t.space, 40),
@@ -455,7 +474,24 @@
           done: !!x.done
         };
       }).slice(0, 200),
+      /* 当日そこへ持っていく頒布物。登録してある在庫から選んで部数を入れる。
+         back（持ち帰り）は、イベントが終わってから入れる。
+         販売数 ＝ 持ち込み − 持ち帰り。在庫そのものは、集計を記録したときに動く */
+      stock: (t.stock || []).map(normalizeTicketStock)
+        .filter(function (x) { return x.itemId; }).slice(0, TICKET_STOCK_MAX),
       createdAt: t.createdAt || new Date().toISOString()
+    };
+  }
+
+  function normalizeTicketStock(x) {
+    x = x || {};
+    var n = function (v) { return Math.max(0, Math.min(99999, Math.round(U.num(v, 0)))); };
+    return {
+      id: x.id || U.uid(),
+      itemId: String(x.itemId || ''),
+      bring: n(x.bring),
+      // 持ち帰りはまだ数えていないことがあるので、空（null）を許す
+      back: x.back === '' || x.back == null ? null : n(x.back)
     };
   }
 
@@ -504,8 +540,8 @@
        plotMemo は、そのプロットから思いついたことを書き留めておくところ */
     p.plot = normalizePlot(p.plot);
     p.plotMemo = String(p.plotMemo || '').slice(0, 4000);
-    // 即売会のときだけ使う。どのチケット（即売会）のぶんか
-    p.ticketId = p.kind === 'event' ? String(p.ticketId || '') : '';
+    // どのチケットのぶんか（即売会・仕事・支援サイトのどれでも束ねる）
+    p.ticketId = String(p.ticketId || '');
     p.createdAt = p.createdAt || new Date().toISOString();
     // 作業開始日が未設定の既存データは、一番早いタスクの開始日で補う
     if (!p.startDate) {
@@ -765,16 +801,20 @@
 
   function scopedProjects() { return state.projects.filter(inScope); }
 
-  /* ---------------- 即売会のチケット ----------------
+  /* ---------------- チケット ----------------
 
-     1つの即売会につき1枚。その即売会に出す原稿（新刊など）と頒布物、
-     それに当日までの準備を、この1枚の下にまとめる。
+     案件を束ねる紙。即売会は1つのイベントにつき1枚、仕事は取引先ごとに1枚、
+     支援サイトはサイトごとに1枚。その下に原稿（案件そのもの）と、
+     即売会なら頒布物と当日までの準備をまとめる。
      案件そのものは今までどおりで、チケットは束ねる紙にあたる。 */
 
   /** 近い順（日付の無いものは後ろ） */
-  function tickets() {
-    return (state.settings.tickets || []).slice().sort(function (a, b) {
-      return U.cmp(a.date || '9999-99-99', b.date || '9999-99-99');
+  function tickets(q) {
+    q = q || {};
+    return (state.settings.tickets || []).filter(function (t) {
+      return !q.kind || t.kind === q.kind;
+    }).sort(function (a, b) {
+      return U.cmp(ticketDate(a) || '9999-99-99', ticketDate(b) || '9999-99-99');
     });
   }
 
@@ -782,9 +822,21 @@
     return (state.settings.tickets || []).filter(function (t) { return t.id === id; })[0] || null;
   }
 
+  /**
+   * そのチケットの日。即売会は開催日、ほかは中の案件のいちばん近い締切。
+   * 一覧を近い順に並べるのと、半券の残り日数に使う。
+   */
+  function ticketDate(t) {
+    if (!t) return '';
+    if (t.kind === 'event') return t.date || '';
+    var due = ticketProjects(t.id).filter(function (p) { return p.status === 'active'; })
+      .map(function (p) { return p.deadline; }).filter(U.isISO).sort();
+    return due[0] || '';
+  }
+
   /** そのチケットに入っている案件（原稿など） */
   function ticketProjects(id) {
-    return state.projects.filter(function (p) { return p.kind === 'event' && p.ticketId === id; });
+    return state.projects.filter(function (p) { return p.ticketId === id; });
   }
 
   function createTicket(v) {
@@ -795,7 +847,7 @@
   }
 
   /**
-   * チケットを直す。名前・日付・会場・スペースは、中の案件にも通す
+   * チケットを直す。名前などは、中の案件にも通す
    * （カレンダーや当日モードは、案件のほうを見ているため）。
    */
   function updateTicket(id, patch) {
@@ -806,6 +858,8 @@
     var i = state.settings.tickets.indexOf(t);
     state.settings.tickets[i] = fixed;
     ticketProjects(id).forEach(function (p) {
+      if (fixed.kind === 'work') { p.client = fixed.name; return; }
+      if (fixed.kind === 'support') { p.site = fixed.name; return; }
       p.eventName = fixed.name;
       p.eventDate = fixed.date;
       p.venue = fixed.venue;
@@ -849,6 +903,34 @@
     var t = getTicket(id);
     if (!t) return;
     t.prep = t.prep.filter(function (o) { return o.id !== prepId; });
+    save();
+  }
+
+  /* 持っていく頒布物の1つ。
+     itemId だけ渡せば足す（同じものは1行にまとめる）、id も渡せば書き換える。
+     在庫そのものはここでは動かさない。動くのは集計を記録したとき */
+  function putTicketStock(id, v) {
+    var t = getTicket(id);
+    if (!t) return null;
+    var row = normalizeTicketStock(v);
+    if (!row.itemId || !getItem(row.itemId)) return null;
+    var at = -1;
+    t.stock.forEach(function (o, i) {
+      if (o.id === row.id || (!(v && v.id) && o.itemId === row.itemId)) at = i;
+    });
+    if (at >= 0) { row.id = t.stock[at].id; t.stock[at] = row; }
+    else {
+      if (t.stock.length >= TICKET_STOCK_MAX) return null;
+      t.stock.push(row);
+    }
+    save();
+    return row;
+  }
+
+  function removeTicketStock(id, rowId) {
+    var t = getTicket(id);
+    if (!t) return;
+    t.stock = t.stock.filter(function (o) { return o.id !== rowId; });
     save();
   }
 
@@ -3726,22 +3808,26 @@
 
   function createProject(data) {
     var p = normalizeProject(Object.assign({ id: U.uid(), color: pickColor() }, data));
-    // 即売会なら、同じ名前・同じ日のチケットに入れる。無ければ1枚作る
-    if (p.kind === 'event' && !p.ticketId) p.ticketId = ticketFor(p).id;
+    // 同じ束（即売会・取引先・サイト）のチケットに入れる。無ければ1枚作る
+    if (!p.ticketId) p.ticketId = ticketFor(p).id;
     state.projects.push(p);
     save();
     return p;
   }
 
-  /** その即売会のチケット。無ければ作る */
+  /** その案件が入るチケット。無ければ作る */
   function ticketFor(p) {
-    var name = (p.eventName || p.title || '即売会').trim();
-    var key = ticketKey(name, p.eventDate);
+    var name = ticketNameOf(p);
+    var date = p.kind === 'event' ? (p.eventDate || '') : '';
+    var key = ticketKey(p.kind, name, date);
     var t = (state.settings.tickets || []).filter(function (o) {
-      return ticketKey(o.name, o.date) === key;
+      return ticketKey(o.kind, o.name, o.date) === key;
     })[0];
     if (t) return t;
-    t = normalizeTicket({ name: name, date: p.eventDate || '', venue: p.venue || '', space: p.space || '' });
+    t = normalizeTicket({
+      kind: p.kind, name: name, date: date,
+      venue: p.venue || '', space: p.space || ''
+    });
     (state.settings.tickets || (state.settings.tickets = [])).push(t);
     return t;
   }
@@ -3751,8 +3837,24 @@
     if (!p) return null;
     Object.assign(p, patch);
     normalizeProject(p);
+    rehomeTicket(p);
     save();
     return p;
+  }
+
+  /* 束ねる手がかり（イベント名・取引先・サイト）を書き換えたら、
+     その案件はいまのチケットから出て、新しい束のチケットへ移る。
+     出たあとが空になったチケットは、束ねる相手がいないので畳む */
+  function rehomeTicket(p) {
+    var t = p.ticketId ? getTicket(p.ticketId) : null;
+    if (!t) return;
+    var date = p.kind === 'event' ? (p.eventDate || '') : '';
+    if (ticketKey(t.kind, t.name, t.date) === ticketKey(p.kind, ticketNameOf(p), date)) return;
+    p.ticketId = ticketFor(p).id;
+    if (!ticketProjects(t.id).length) {
+      state.settings.tickets = (state.settings.tickets || [])
+        .filter(function (o) { return o.id !== t.id; });
+    }
   }
 
   /**
@@ -4378,9 +4480,11 @@
     scopeId: scopeId, scopeIssuer: scopeIssuer, setScope: setScope,
     inScope: inScope, scopedProjects: scopedProjects, unassignedCount: unassignedCount,
     tickets: tickets, getTicket: getTicket, ticketProjects: ticketProjects,
+    ticketDate: ticketDate, TICKET_KINDS: TICKET_KINDS,
     createTicket: createTicket, updateTicket: updateTicket, removeTicket: removeTicket,
     putTicketPrep: putTicketPrep, toggleTicketPrep: toggleTicketPrep,
     removeTicketPrep: removeTicketPrep,
+    putTicketStock: putTicketStock, removeTicketStock: removeTicketStock,
     clients: clients, getClient: getClient, addClient: addClient,
     updateClient: updateClient, removeClient: removeClient,
     putClientVisit: putClientVisit, removeClientVisit: removeClientVisit,

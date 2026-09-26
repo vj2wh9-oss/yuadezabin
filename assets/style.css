@@ -1058,6 +1058,8 @@ a.alert-main { text-decoration: none; }
 /* 絵だけのボタン。字が無いぶん左右を詰める */
 .btn.only { padding: 10px; }
 .btn:active { opacity: .75; }
+/* いま押しても何も起きないボタン。押せないことが見て分かるようにする */
+.btn.disabled { opacity: .45; pointer-events: none; }
 
 .row-wrap { display: flex; gap: 6px; flex-wrap: wrap; }
 /* 同じ幅のボタンを3つ、折り返さずに並べる（狭い画面では字を小さくする） */
@@ -3388,9 +3390,10 @@ body.lock-theme .appbar-title { letter-spacing: .16em; font-size: 14px; }
 .xp-fold-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .xp-fold .sg-body { padding-top: 10px; }
 
-/* ---------------- 即売会のチケット ----------------
+/* ---------------- チケット ----------------
 
-   即売会だけは案件と別に、1枚のチケットとして扱う。
+   案件は1件ずつではなく、1枚のチケットとして扱う。
+   即売会はイベントごと、仕事は取引先ごと、支援サイトはサイトごと。
    もぎり線（点線）と、両脇の切り欠きで、券らしく見せる。
    切り欠きは背景色の丸を重ねて作る（画像は使わない）。 */
 
@@ -3409,8 +3412,11 @@ body.lock-theme .appbar-title { letter-spacing: .16em; font-size: 14px; }
   flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px;
   padding: 11px 12px 11px 13px;
 }
-.tk-card-head { display: flex; align-items: center; gap: 6px; }
-.tk-card-head .icon { color: var(--event); flex: none; }
+.tk-card-head, .tk-name { display: flex; align-items: center; gap: 6px; }
+.tk-card-head .icon, .tk-name .icon { color: var(--event); flex: none; }
+/* 種別ごとに、券の顔になる色を変える（チップの色と揃える） */
+.tk-work .tk-card-head .icon, .tk-work .tk-name .icon { color: var(--accent2); }
+.tk-support .tk-card-head .icon, .tk-support .tk-name .icon { color: var(--indigo); }
 .tk-card-name, .tk-name {
   font-size: 15px; font-weight: 700; letter-spacing: .01em; overflow-wrap: anywhere;
 }
@@ -3477,6 +3483,39 @@ body.lock-theme .appbar-title { letter-spacing: .16em; font-size: 14px; }
 .tk-prep-add { display: flex; align-items: center; gap: 6px; }
 .tk-prep-add .input { flex: 1; }
 
+/* 在庫から持ち込む部数を決めるところ（シートの中） */
+.tk-pick {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 0; border-bottom: 1px solid var(--line);
+}
+.tk-pick:last-child { border-bottom: 0; }
+.tk-pick-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.tk-pick-name { font-size: 13.5px; font-weight: 700; overflow-wrap: anywhere; }
+.tk-bring-in { flex: none; width: 66px; text-align: right; }
+
+/* イベントのあとの集計。持ち帰りを入れると、販売数が出る */
+.tk-tally { display: flex; flex-direction: column; gap: 10px; }
+.tk-tally-list { display: flex; flex-direction: column; }
+.tk-tally-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px 0; border-bottom: 1px solid var(--line);
+}
+.tk-tally-row:last-child { border-bottom: 0; }
+.tk-tally-name {
+  flex: 1 1 100%; min-width: 0; font-size: 13.5px; font-weight: 700; overflow-wrap: anywhere;
+}
+.tk-tally-num {
+  display: flex; align-items: center; gap: 5px;
+  font-variant-numeric: tabular-nums; font-size: 14px;
+}
+.tk-lbl { font-size: 10.5px; color: var(--muted); font-weight: 700; }
+.tk-back-in { width: 62px; text-align: right; padding: 5px 7px; }
+.tk-sold { font-size: 16px; font-weight: 800; color: var(--accent); min-width: 22px; }
+.tk-tally-foot { display: flex; flex-direction: column; gap: 8px; }
+.tk-tally-sum { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
 /* 当日モードの入口と、原稿からチケットへ戻る行 */
 .tk-onsite { border-left: 3px solid var(--event); padding-left: 11px; }
 .tk-back { border-left: 3px solid var(--event); padding-left: 11px; margin-bottom: 8px; }
+.tk-back.tk-work { border-left-color: var(--accent2); }
+.tk-back.tk-support { border-left-color: var(--indigo); }

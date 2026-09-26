@@ -34,12 +34,13 @@
 
     function renderList() {
       U.clear(listBox);
-      /* 即売会は1件ずつではなく、イベントごとのチケットで並べる。
-         チケットの中に、その即売会の原稿・頒布物・準備がまとまっている */
+      /* 案件は1件ずつではなく、チケットで並べる。
+         即売会はイベントごと、仕事は取引先ごと、支援サイトはサイトごとに1枚。
+         チケットの中に、その原稿（と即売会なら頒布物・準備）がまとまっている */
       var tk = tickets(today);
       var items = S.scopedProjects().filter(function (p) {
-        // 即売会の案件は、チケットの中で見る（ここには並べない）
-        if (p.kind === 'event' && p.ticketId) return false;
+        // チケットに入っている案件は、チケットの中で見る（ここには並べない）
+        if (p.ticketId) return false;
         // 進行中：作業開始日が来ていて、まだ終わっていないものだけ
         if (filter === 'active') return p.status === 'active' && sc.projectStatus(p, today) !== 'before';
         if (filter === 'done') return p.status === 'done';
@@ -61,7 +62,7 @@
         return U.cmp(a.deadline || '9999-99-99', b.deadline || '9999-99-99');
       });
 
-      if (tk.length || filter === 'event') {
+      if (tk.length || ['event', 'work', 'support'].indexOf(filter) >= 0) {
         listBox.appendChild(ui.section('チケット',
           ui.btn('作る', 'ghost tiny', function () { DL.views.ticket.form(null); }, 'plus')));
         listBox.appendChild(tk.length
@@ -97,14 +98,18 @@
 
   /* いま出すチケット。絞り込みと言葉の検索は、案件と同じように効かせる */
   function tickets(today) {
-    if (['active', 'event', 'all'].indexOf(filter) < 0) return [];
     var list = S.tickets().filter(function (t) {
       var ps = S.ticketProjects(t.id);
       // 名義で絞っているときは、その名義の原稿が入っているものだけ
       if (ps.length && !ps.some(S.inScope)) return false;
       if (filter === 'all') return true;
-      // 終わった即売会は、進行中には出さない（当日まで出す）
-      return !t.date || U.cmp(t.date, today) >= 0;
+      if (['event', 'work', 'support'].indexOf(filter) >= 0) {
+        return t.kind === filter && !ticketDone(t, ps, today);
+      }
+      if (filter === 'done') return ticketDone(t, ps, today);
+      // 進行中。終わった即売会は出さない（当日まで出す）
+      if (ticketDone(t, ps, today)) return false;
+      return t.kind !== 'event' || !t.date || U.cmp(t.date, today) >= 0;
     });
     var k = keyword.trim().toLowerCase();
     if (k) {
@@ -114,6 +119,14 @@
       });
     }
     return list;
+  }
+
+  /* 中の原稿がぜんぶ終わっていれば、そのチケットも終わり */
+  function ticketDone(t, ps, today) {
+    if (!ps.length) return false;
+    return ps.every(function (p) {
+      return p.status === 'done' || sc.projectStatus(p, today) === 'done';
+    });
   }
 
   function card(p, today) {

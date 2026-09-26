@@ -1,17 +1,18 @@
-/* 即売会のチケット。
+/* チケット。
 
-   即売会だけは、ほかの案件と扱いを変えている。
-   1つの即売会につきチケットを1枚。その下に
+   案件は1件ずつではなく、チケット1枚の下に束ねて管理する。
 
-     ・原稿（新刊など）… これまでどおりの案件。1件ずつ中で進める
-     ・頒布物（グッズ・ポスターなど）… 在庫のほうに入っているもの
-     ・準備 … 当日までに済ませる、こまごまとしたこと
+     即売会 … 1つのイベントにつき1枚。原稿（新刊など）・頒布物・準備をまとめる
+     仕事　 … 取引先ごとに1枚。その取引先からの依頼をまとめる
+     支援　 … サイトごとに1枚。そのサイトへの投稿をまとめる
 
-   をまとめて置く。案件そのものの作りは変えていないので、
-   カレンダーも当日モードも今までどおり動く。 */
+   案件そのものの作りは変えていないので、カレンダーも当日モードも
+   今までどおり動く。 */
 (function (DL) {
   'use strict';
   var U = DL.util, ui = DL.ui, S = DL.store, sc = DL.schedule, K = DL.stock, el = U.el;
+
+  var UNIT = { manga: 'P', illust: '枚', design: '点' };
 
   /* ---------------- チケット1枚 ---------------- */
 
@@ -27,9 +28,10 @@
     var today = U.today();
     var projects = S.ticketProjects(t.id);
 
-    wrap.appendChild(hero(t, today));
+    wrap.appendChild(hero(t, projects, today));
 
     /* ---- 原稿など ---- */
+    /* 必要入稿総数は上の券に出してあるので、ここでは足すボタンだけ */
     wrap.appendChild(ui.section('原稿',
       ui.btn('足す', 'ghost tiny', function () { addProject(t); }, 'plus')));
     if (!projects.length) {
@@ -39,23 +41,32 @@
         projects.map(function (p) { return projectRow(p, today); })));
     }
 
-    /* ---- 頒布物 ---- */
-    var items = itemsOf(projects);
-    wrap.appendChild(ui.section('頒布物',
-      ui.btn('足す', 'ghost tiny', function () { addItem(t, projects); }, 'plus')));
-    if (!items.length) {
-      wrap.appendChild(ui.empty('まだありません。'));
-    } else {
-      wrap.appendChild(el('div', { class: 'list' }, items.map(itemRow)));
+    /* ---- 頒布物（即売会だけ） ---- */
+    if (t.kind === 'event') {
+      var tally = K.ticketTally(t, projects);
+      var rows = tally.lines.concat(linked(t, projects, tally));
+      wrap.appendChild(ui.section('頒布物', el('div', { class: 'row-wrap' }, [
+        ui.btn('在庫から', 'ghost tiny', function () { bringSheet(t); }, 'books'),
+        ui.btn('新しく', 'ghost tiny', function () { addItem(projects); }, 'plus')
+      ])));
+      if (!rows.length) {
+        wrap.appendChild(ui.empty('まだありません。'));
+      } else {
+        wrap.appendChild(el('div', { class: 'list' }, rows.map(stockRow)));
+      }
+      if (tally.lines.length) {
+        wrap.appendChild(ui.section('集計', tallyChip(tally)));
+        wrap.appendChild(tallyCard(t, projects));
+      }
     }
 
     /* ---- 準備 ---- */
     wrap.appendChild(ui.section('準備', prepCount(t)));
     wrap.appendChild(prepCard(t));
 
-    /* ---- 当日モード ---- */
+    /* ---- 当日モード（即売会だけ） ---- */
     var main = projects[0];
-    if (main) {
+    if (t.kind === 'event' && main) {
       wrap.appendChild(el('a', { class: 'row tk-onsite', href: '#/onsite/' + main.id }, [
         el('div', { class: 'row-main' }, [
           el('div', { class: 'row-title' }, [
@@ -74,35 +85,104 @@
   }
 
   /* 上のチケットそのもの。押すと中身を直せる */
-  function hero(t, today) {
-    var left = t.date ? U.diffDays(today, t.date) : null;
-    return el('div', { class: 'tk-hero' + (left !== null && left < 0 ? ' past' : '') }, [
+  function hero(t, projects, today) {
+    var date = S.ticketDate(t);
+    var left = date ? U.diffDays(today, date) : null;
+    return el('div', {
+      class: 'tk-hero tk-' + t.kind + (left !== null && left < 0 ? ' past' : '')
+    }, [
       el('div', { class: 'tk-body' }, [
-        el('div', { class: 'tk-name', text: t.name }),
-        el('div', { class: 'tk-meta' }, [
-          t.date ? ui.chip(U.fmtMDW(t.date), 'soft') : null,
-          t.venue ? ui.chip(t.venue, 'ghosty') : null,
-          t.space ? ui.chip(t.space, 'ghosty') : null
+        el('div', { class: 'tk-name' }, [
+          ui.icon(ui.KIND_ICON[t.kind], 16),
+          el('span', { text: t.name })
         ]),
+        el('div', { class: 'tk-meta' }, metaChips(t, projects, date, left !== null && left < 0)),
         el('button', {
           type: 'button', class: 'btn ghost tiny tk-edit',
           onclick: function () { ticketForm(t); }
         }, [ui.icon('edit', 14), el('span', { text: '直す' })])
       ]),
-      el('div', { class: 'tk-stub' }, left === null ? [
-        el('b', { class: 'tk-num', text: '—' })
-      ] : [
-        el('b', { class: 'tk-num', text: left > 0 ? String(left) : left === 0 ? '当日' : String(-left) }),
-        el('span', { class: 'tk-unit', text: left > 0 ? '日' : left === 0 ? '' : '日前' })
-      ])
+      stub(left)
     ]);
+  }
+
+  /* 日付・会場・配置番号・必要入稿総数。一覧の札と同じ並びにする */
+  function metaChips(t, projects, date, past) {
+    var out = [];
+    if (date) out.push(ui.iconChip('deadline', U.fmtMDW(date), past ? 'ghosty' : 'soft'));
+    if (t.kind === 'event') {
+      if (t.venue) out.push(ui.iconChip('event', t.venue, 'ghosty'));
+      if (t.space) out.push(ui.chip(t.space, 'ghosty'));
+    }
+    var need = needChip(projects);
+    if (need) out.push(need);
+    var money = moneyChip(t, projects);
+    if (money) out.push(money);
+    return out;
+  }
+
+  /* 残り日数の半券 */
+  function stub(left, cls) {
+    return el('div', { class: cls || 'tk-stub' }, left === null ? [
+      el('b', { class: 'tk-num', text: '—' })
+    ] : [
+      el('b', { class: 'tk-num', text: left > 0 ? String(left) : left === 0 ? '当日' : String(-left) }),
+      el('span', { class: 'tk-unit', text: left > 0 ? '日' : left === 0 ? '' : '日前' })
+    ]);
+  }
+
+  /**
+   * 必要入稿総数。中の原稿のページ数（枚数）を足し上げる。
+   * 漫画のページと、イラストの枚数は単位が違うので分けて数える。
+   */
+  function needTotal(projects) {
+    var by = {};
+    (projects || []).forEach(function (p) {
+      if (p.status === 'archived') return;
+      var n = S.pageTotal(p);
+      if (!n) return;
+      var u = UNIT[p.category] || 'P';
+      by[u] = (by[u] || 0) + n;
+    });
+    return by;
+  }
+
+  function needLabel(projects) {
+    var by = needTotal(projects);
+    return ['P', '枚', '点'].filter(function (u) { return by[u]; })
+      .map(function (u) { return by[u] + u; }).join('・');
+  }
+
+  function needChip(projects) {
+    var label = needLabel(projects);
+    return label ? ui.iconChip('manga', '入稿 ' + label, 'ghosty') : null;
+  }
+
+  /**
+   * いくらの仕事か。請求まで済んでいれば、そちらの額のほうが確かなので
+   * そちらを出す（見込みは請求前の目安）。取引先ごとに足し上げる。
+   */
+  function moneyChip(t, projects) {
+    if (t.kind !== 'work') return null;
+    var sum = { invoiced: 0, unpaid: 0, fee: 0 };
+    projects.forEach(function (p) {
+      var m = DL.docs.projectMoney(p);
+      sum.invoiced += m.invoiced;
+      sum.unpaid += m.unpaid;
+      sum.fee += m.fee;
+    });
+    if (sum.invoiced) {
+      return ui.chip(DL.docs.yen(sum.invoiced) + (sum.unpaid ? '（未入金）' : '（入金済）'),
+        sum.unpaid ? 'warn' : 'ok');
+    }
+    return sum.fee ? ui.chip(DL.docs.yen(sum.fee) + '（見込み）', 'soft') : null;
   }
 
   /* 原稿の1行。進み具合まで出す */
   function projectRow(p, today) {
     var prog = sc.projectProgress(p);
     var st = sc.projectStatus(p, today);
-    var unit = p.category === 'manga' ? 'P' : '枚';
+    var unit = UNIT[p.category] || 'P';
     return el('a', { class: 'row proj card-row st-' + st, href: '#/project/' + p.id }, [
       el('div', { class: 'row-bar', style: { background: p.color } }),
       el('div', { class: 'row-main' }, [
@@ -122,17 +202,30 @@
     ]);
   }
 
-  /* そのチケットの案件に結びついている頒布物 */
-  function itemsOf(projects) {
+  /* ---------------- 頒布物 ---------------- */
+
+  /**
+   * その案件に結びつけてあるのに、まだ持ち込む部数を入れていないもの。
+   * 部数を入れる前でも一覧から消えないよう、続けて並べる。
+   */
+  function linked(t, projects, tally) {
     var ids = {};
     projects.forEach(function (p) { ids[p.id] = true; });
+    var had = {};
+    tally.lines.forEach(function (o) { had[o.item.id] = true; });
     return K.all({ withArchived: true }).filter(function (r) {
-      return ids[r.item.projectId];
+      return ids[r.item.projectId] && !had[r.item.id];
+    }).map(function (r) {
+      return {
+        item: r.item, bring: 0, counted: false, back: 0, sold: 0,
+        recorded: 0, rest: 0, revenue: 0, left: r.left, unset: true
+      };
     });
   }
 
-  function itemRow(r) {
-    var x = r.item;
+  /* 持っていく1つ。押すと頒布物そのものを開く */
+  function stockRow(line) {
+    var x = line.item;
     return el('button', {
       type: 'button', class: 'row tk-item',
       onclick: function () { DL.views.stock.openItem(x); }
@@ -142,14 +235,173 @@
       el('div', { class: 'row-main' }, [
         el('div', { class: 'row-title', text: x.title }),
         el('div', { class: 'row-sub' }, [
-          ui.chip(K.kindLabel(x.kind), 'ghosty'),
-          x.price ? ui.chip(DL.docs.yen(x.price), 'soft') : null,
-          ui.chip('在庫 ' + r.left, r.left > 0 ? 'ghosty' : 'warn')
+          ui.chip('持ち込み ' + (line.unset ? '—' : line.bring), line.unset ? 'ghosty' : 'soft'),
+          line.counted ? ui.chip('持ち帰り ' + line.back, 'ghosty') : null,
+          line.counted ? ui.chip('販売 ' + line.sold, line.sold ? 'ok' : 'ghosty') : null,
+          x.price ? ui.chip(DL.docs.yen(x.price), 'ghosty') : null,
+          ui.chip('在庫 ' + line.left, line.left > 0 ? 'ghosty' : 'warn')
         ])
       ]),
       el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
     ]);
   }
+
+  function tallyChip(tally) {
+    if (!tally.total.counted) return ui.chip('未集計', 'soft');
+    return ui.chip('販売 ' + tally.total.sold, tally.total.sold ? 'ok' : 'soft');
+  }
+
+  /**
+   * イベントが終わってからの集計。
+   * 持ち帰った部数を入れると、販売数と売上が出る。
+   * 記録すると、まだ記録していないぶんだけが頒布として在庫から引かれる。
+   */
+  function tallyCard(t, projects) {
+    var box = el('div', { class: 'card tk-tally' });
+    var rows = el('div', { class: 'tk-tally-list' });
+    var foot = el('div', { class: 'tk-tally-foot' });
+    var inputs = {};
+
+    function nowTally() { return K.ticketTally(S.getTicket(t.id) || t, projects); }
+
+    function drawRows() {
+      U.clear(rows);
+      Object.keys(inputs).forEach(function (k) { delete inputs[k]; });
+      nowTally().lines.forEach(function (line) {
+        var back = ui.input({
+          type: 'number', inputmode: 'numeric', min: 0, max: line.bring,
+          value: line.counted ? String(line.back) : '',
+          placeholder: '0', class: 'input tk-back-in'
+        });
+        inputs[line.row.id] = back;
+        var sold = el('b', { class: 'tk-sold', text: line.counted ? String(line.sold) : '—' });
+        var put = function () {
+          var v = back.value.trim();
+          S.putTicketStock(t.id, {
+            id: line.row.id, itemId: line.row.itemId, bring: line.bring,
+            back: v === '' ? null : Math.min(line.bring, Math.max(0, U.num(v, 0)))
+          });
+          var fresh = nowTally().lines.filter(function (o) { return o.row.id === line.row.id; })[0];
+          sold.textContent = fresh && fresh.counted ? String(fresh.sold) : '—';
+          drawFoot();
+        };
+        back.addEventListener('change', put);
+        back.addEventListener('blur', put);
+
+        rows.appendChild(el('div', { class: 'tk-tally-row' }, [
+          el('span', { class: 'tk-tally-name', text: line.item.title }),
+          el('span', { class: 'tk-tally-num' }, [
+            el('span', { class: 'tk-lbl', text: '持ち込み' }),
+            el('b', { text: String(line.bring) })
+          ]),
+          el('span', { class: 'tk-tally-num' }, [
+            el('span', { class: 'tk-lbl', text: '持ち帰り' }), back
+          ]),
+          el('span', { class: 'tk-tally-num' }, [
+            el('span', { class: 'tk-lbl', text: '販売' }), sold
+          ])
+        ]));
+      });
+    }
+
+    function drawFoot() {
+      U.clear(foot);
+      var tl = nowTally();
+      foot.appendChild(el('div', { class: 'tk-tally-sum' }, [
+        ui.chip('販売 ' + tl.total.sold + '部', tl.total.sold ? 'ok' : 'soft'),
+        ui.chip(DL.docs.yen(tl.total.revenue), 'soft'),
+        tl.total.recorded ? ui.chip('記録済み ' + tl.total.recorded + '部', 'ghosty') : null
+      ]));
+      foot.appendChild(ui.btn(
+        tl.total.rest ? '頒布として記録（' + tl.total.rest + '部）' : '記録するぶんはありません',
+        'primary full' + (tl.total.rest ? '' : ' disabled'),
+        function () {
+          if (!tl.total.rest) return;
+          ui.confirm(tl.total.rest + '部を頒布として記録します。',
+            { okText: '記録する' }).then(function (ok) {
+            if (!ok) return;
+            var r = K.recordTicketTally(S.getTicket(t.id) || t, projects);
+            ui.toast(r.qty + '部を記録しました');
+            DL.app.render();
+          });
+        }, 'check'));
+    }
+
+    box.appendChild(rows);
+    box.appendChild(foot);
+    drawRows();
+    drawFoot();
+    return box;
+  }
+
+  /**
+   * 持ち込む部数を決める。登録してある在庫がそのまま並ぶので、
+   * そこへ部数を入れる。0 か空にすると、そのチケットから外れる。
+   */
+  function bringSheet(t) {
+    var list = K.all({ withArchived: false });
+    var body = el('div', { class: 'form' });
+    if (!list.length) {
+      body.appendChild(ui.empty('登録してある頒布物がありません。',
+        ui.btn('頒布物を登録する', 'primary', function () {
+          close();
+          DL.views.stock.addItem();
+        }, 'plus')));
+    }
+    var now = S.getTicket(t.id) || t;
+    var byItem = {};
+    now.stock.forEach(function (r) { byItem[r.itemId] = r; });
+
+    var inputs = [];
+    list.forEach(function (s) {
+      var x = s.item;
+      var had = byItem[x.id];
+      var inp = ui.input({
+        type: 'number', inputmode: 'numeric', min: 0,
+        value: had ? String(had.bring) : '', placeholder: '0', class: 'input tk-bring-in'
+      });
+      inputs.push({ item: x, input: inp, had: had });
+      body.appendChild(el('div', { class: 'tk-pick' }, [
+        x.cover ? el('img', { class: 'tk-cover', src: x.cover, alt: '' })
+          : el('span', { class: 'tk-cover none' }, ui.icon(x.kind === 'goods' ? 'star' : 'manga', 16)),
+        el('div', { class: 'tk-pick-main' }, [
+          el('div', { class: 'tk-pick-name', text: x.title }),
+          el('div', { class: 'row-sub' }, [
+            ui.chip(K.kindLabel(x.kind), 'ghosty'),
+            x.price ? ui.chip(DL.docs.yen(x.price), 'ghosty') : null,
+            ui.chip('在庫 ' + s.left, s.left > 0 ? 'ghosty' : 'warn')
+          ])
+        ]),
+        inp
+      ]));
+    });
+
+    var close = ui.sheet({
+      title: '持ち込む部数',
+      body: body,
+      actions: [
+        ui.btn('やめる', 'ghost', function () { close(); }),
+        ui.btn('保存', 'primary', function () {
+          inputs.forEach(function (o) {
+            var n = Math.max(0, Math.round(U.num(o.input.value, 0)));
+            if (!n) {
+              if (o.had) S.removeTicketStock(t.id, o.had.id);
+              return;
+            }
+            S.putTicketStock(t.id, {
+              id: o.had ? o.had.id : null, itemId: o.item.id, bring: n,
+              back: o.had ? o.had.back : null
+            });
+          });
+          close();
+          DL.app.render();
+          ui.toast('保存しました');
+        }, 'check')
+      ]
+    });
+  }
+
+  /* ---------------- 準備・メモ ---------------- */
 
   function prepCount(t) {
     if (!t.prep.length) return null;
@@ -226,41 +478,67 @@
 
   /* ---------------- 足す・直す ---------------- */
 
+  /* そのチケットの中身として案件を作る。束ねる手がかりは先に入れておく */
   function addProject(t) {
-    DL.forms.projectForm(null, {
-      preset: {
-        kind: 'event', ticketId: t.id,
-        eventName: t.name, eventDate: t.date, venue: t.venue, space: t.space,
-        deadline: t.date ? U.addDays(t.date, -14) : ''
-      }
-    });
+    var preset = { kind: t.kind, ticketId: t.id };
+    if (t.kind === 'work') preset.client = t.name;
+    else if (t.kind === 'support') preset.site = t.name;
+    else {
+      preset.eventName = t.name;
+      preset.eventDate = t.date;
+      preset.venue = t.venue;
+      preset.space = t.space;
+      preset.deadline = t.date ? U.addDays(t.date, -14) : '';
+    }
+    DL.forms.projectForm(null, { preset: preset });
   }
 
-  function addItem(t, projects) {
-    if (!projects.length) {
-      ui.toast('先に原稿を1つ作ってください', 'warn');
-      return;
-    }
-    DL.views.stock.addItem({ projectId: projects[0].id });
+  function addItem(projects) {
+    DL.views.stock.addItem(projects.length ? { projectId: projects[0].id } : {});
   }
 
   /** チケットを作る・直す */
   function ticketForm(t) {
     var isNew = !t;
-    var v = t || { name: '', date: '', venue: '', space: '' };
-    var name = ui.input({ value: v.name, maxlength: 80, placeholder: '例）コミックマーケット' });
+    var v = t || { kind: 'event', name: '', date: '', venue: '', space: '' };
+    var kind = v.kind || 'event';
+
+    var name = ui.input({ value: v.name, maxlength: 80 });
     var date = ui.input({ type: 'date', value: v.date });
     var venue = ui.input({ value: v.venue, maxlength: 80, placeholder: '東京ビッグサイト' });
     var space = ui.input({ value: v.space, maxlength: 40, placeholder: 'あ-12b' });
 
+    var dynamic = el('div');
+    function drawDynamic() {
+      U.clear(dynamic);
+      if (kind === 'event') {
+        name.placeholder = '例）コミックマーケット';
+        dynamic.appendChild(ui.field('イベント名', name));
+        dynamic.appendChild(ui.field('開催日', date));
+        dynamic.appendChild(ui.field('会場', venue));
+        dynamic.appendChild(ui.field('配置番号', space));
+      } else if (kind === 'work') {
+        name.placeholder = '例）○○出版';
+        dynamic.appendChild(ui.field('取引先', name));
+      } else {
+        name.placeholder = '例）pixivFANBOX';
+        dynamic.appendChild(ui.field('サイト', name));
+      }
+    }
+
+    var body = el('div', { class: 'form' });
+    if (isNew) {
+      body.appendChild(ui.block('種別', ui.segmented(
+        S.TICKET_KINDS.map(function (k) { return { value: k, label: ui.KIND_LABEL[k] }; }),
+        kind, function (val) { kind = val; drawDynamic(); }
+      )));
+    }
+    body.appendChild(dynamic);
+    drawDynamic();
+
     var close = ui.sheet({
       title: isNew ? '新しいチケット' : 'チケットを直す',
-      body: el('div', { class: 'form' }, [
-        ui.field('イベント名', name),
-        ui.field('開催日', date),
-        ui.field('会場', venue),
-        ui.field('スペース', space)
-      ]),
+      body: body,
       actions: [
         isNew ? ui.btn('やめる', 'ghost', function () { close(); })
           : ui.btn('捨てる', 'ghost danger', function () {
@@ -274,11 +552,13 @@
             });
           }, 'trash'),
         ui.btn('保存', 'primary', function () {
-          if (!name.value.trim()) { ui.toast('イベント名を入れてください', 'warn'); return; }
-          var data = {
-            name: name.value.trim(), date: date.value,
-            venue: venue.value.trim(), space: space.value.trim()
-          };
+          if (!name.value.trim()) { ui.toast('名前を入れてください', 'warn'); return; }
+          var data = { kind: kind, name: name.value.trim() };
+          if (kind === 'event') {
+            data.date = date.value;
+            data.venue = venue.value.trim();
+            data.space = space.value.trim();
+          }
           if (isNew) {
             var made = S.createTicket(data);
             close();
@@ -299,46 +579,41 @@
 
   /**
    * 一覧に並べる1枚。もぎり線の入った、チケットらしい見た目にする。
+   * 日付・会場・配置番号・必要入稿総数を、そのまま札の上に出す。
    * @param {object} t チケット
    * @param {string} today
    */
   function card(t, today) {
     var projects = S.ticketProjects(t.id);
-    var left = t.date ? U.diffDays(today, t.date) : null;
+    var date = S.ticketDate(t);
+    var left = date ? U.diffDays(today, date) : null;
     var soon = left !== null && left >= 0 && left <= 14;
     var past = left !== null && left < 0;
-    var done = projects.length
-      ? projects.filter(function (p) { return sc.projectStatus(p, today) === 'done'; }).length
-      : 0;
+    var done = projects.filter(function (p) { return sc.projectStatus(p, today) === 'done'; }).length;
     var prepLeft = t.prep.filter(function (x) { return !x.done; }).length;
+    var sold = t.kind === 'event' ? K.ticketTally(t, projects).total : null;
 
     return el('a', {
-      class: 'tk-card' + (soon ? ' soon' : '') + (past ? ' past' : ''),
+      class: 'tk-card tk-' + t.kind + (soon ? ' soon' : '') + (past ? ' past' : ''),
       href: '#/ticket/' + t.id
     }, [
       el('div', { class: 'tk-card-main' }, [
         el('div', { class: 'tk-card-head' }, [
-          ui.icon('event', 15),
+          ui.icon(ui.KIND_ICON[t.kind], 15),
           el('span', { class: 'tk-card-name', text: t.name })
         ]),
+        el('div', { class: 'tk-card-sub' }, metaChips(t, projects, date, past)),
         el('div', { class: 'tk-card-sub' }, [
-          t.date ? ui.chip(U.fmtMDW(t.date), past ? 'ghosty' : 'soft') : null,
-          t.space ? ui.chip(t.space, 'ghosty') : null
-        ]),
-        el('div', { class: 'tk-card-sub' }, [
-          ui.chip('原稿 ' + done + ' / ' + projects.length, done === projects.length && projects.length ? 'ok' : 'ghosty'),
-          prepLeft ? ui.chip('準備 のこり ' + prepLeft, 'warn') : null
+          ui.chip('原稿 ' + done + ' / ' + projects.length,
+            projects.length && done === projects.length ? 'ok' : 'ghosty'),
+          prepLeft ? ui.chip('準備 のこり ' + prepLeft, 'warn') : null,
+          sold && sold.sold ? ui.chip('販売 ' + sold.sold + '部', 'ok') : null
         ])
       ]),
-      el('div', { class: 'tk-card-stub' }, left === null ? [
-        el('b', { class: 'tk-num', text: '—' })
-      ] : [
-        el('b', { class: 'tk-num', text: left > 0 ? String(left) : left === 0 ? '当日' : String(-left) }),
-        el('span', { class: 'tk-unit', text: left > 0 ? '日' : left === 0 ? '' : '日前' })
-      ])
+      stub(left, 'tk-card-stub')
     ]);
   }
 
   DL.views = DL.views || {};
-  DL.views.ticket = { render: render, card: card, form: ticketForm };
+  DL.views.ticket = { render: render, card: card, form: ticketForm, needLabel: needLabel };
 })(window.DL);
