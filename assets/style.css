@@ -3562,6 +3562,14 @@ body.skin-bar .section-title {
 }
 /* 中の文字だけ起こす。板は倒したまま、字はまっすぐ読める */
 body.skin-bar .section-label { display: inline-block; transform: skewX(calc(var(--skew) * -1)); }
+/* 板の中の文字だけ、濃い縁で囲う。
+   paint-order が効かない環境では縁が字を食べて痩せるので、効くときだけ掛ける */
+@supports (paint-order: stroke) {
+  body.skin-bar .section-label {
+    paint-order: stroke fill;
+    -webkit-text-stroke: 2px color-mix(in srgb, var(--accent) 42%, #000);
+  }
+}
 /* 板の右から、細い罫が伸びて画面の端へ抜ける */
 body.skin-bar .section::after {
   content: ''; order: 1; flex: 1; min-width: 12px; height: 2px; margin-left: 12px;
@@ -3575,6 +3583,8 @@ body.skin-bar.lock-theme .section-title {
   background: transparent; color: var(--accent); box-shadow: none;
   transform: none; padding-left: 8px;
 }
+body.skin-bar.fit-theme .view-fit .section-label,
+body.skin-bar.lock-theme .section-label { transform: none; -webkit-text-stroke: 0; }
 
 /* ---- カードの上辺に通すバーと、右のハーフトーン ----
    バーは背景で描くので、飾りに使う ::before とぶつからない */
@@ -3628,24 +3638,6 @@ body.skin-bar .tk-back::after {
   /* 左へ向かってすっと消す。右の端がいちばん濃い */
   -webkit-mask-image: linear-gradient(90deg, transparent 0, rgba(0, 0, 0, .35) 48%, #000 100%);
   mask-image: linear-gradient(90deg, transparent 0, rgba(0, 0, 0, .35) 48%, #000 100%);
-}
-/* 右下のかぎ括弧。上辺のバーの頭（左上）と、対角でつり合わせる */
-body.skin-bar .card::before,
-body.skin-bar .phead::before,
-body.skin-bar .sgroup::before,
-body.skin-bar .alert::before,
-body.skin-bar .docs-entry::before,
-body.skin-bar .due-card::before,
-body.skin-bar .card-notice::before,
-body.skin-bar .lk-entry::before,
-body.skin-bar .lk-warn::before,
-body.skin-bar .preview::before,
-body.skin-bar .tk-onsite::before,
-body.skin-bar .tk-back::before {
-  content: ''; position: absolute; right: 0; bottom: 0;
-  width: 15px; height: 15px; pointer-events: none;
-  border-right: 3px solid var(--bar);
-  border-bottom: 3px solid var(--bar);
 }
 /* 帯と網点の色は、それぞれが持っていた左端の色を引き継ぐ */
 body.skin-bar .phead { --bar: var(--pc, var(--accent)); }
