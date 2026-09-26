@@ -134,8 +134,10 @@ h1, h2, h3, p { margin: 0; }
 }
 
 .splash-logo {
-  display: flex; align-items: baseline; gap: .04em;
-  font-size: clamp(34px, 13.5vw, 62px); font-weight: 800; letter-spacing: .04em;
+  /* 365 は METEO の右肩に小さく乗せる（上の帯のロゴと同じ組み）。
+     幅が縮んだぶん、文字そのものは少し大きくできる */
+  display: flex; align-items: flex-start; gap: 0;
+  font-size: clamp(38px, 15.5vw, 70px); font-weight: 800; letter-spacing: .04em;
   line-height: 1; font-variant-numeric: tabular-nums;
 }
 
@@ -157,7 +159,10 @@ h1, h2, h3, p { margin: 0; }
 .splash.full .sp-bar-in { background: var(--accent2); }
 .splash.full .sp-read { color: var(--accent2); }
 .splash-word { font-weight: 800; }
-.splash-num { display: flex; color: var(--indigo); }
+.splash-num {
+  display: flex; color: var(--indigo);
+  font-size: .46em; letter-spacing: .12em; margin-left: .3em; padding-top: .12em;
+}
 
 /* 数字1桁ぶんの窓。中の帯が上に動いて、狙った数字で止まる */
 .splash-reel { display: block; height: 1em; overflow: hidden; }
@@ -197,12 +202,17 @@ h1, h2, h3, p { margin: 0; }
    最初の一枚（splash）と同じように、365 は1桁ずつ回して止める。
    ホームに入るたびに回り、押すともう一度回る */
 .logo-word {
-  display: inline-flex; align-items: baseline; gap: .04em;
-  font-size: 16.5px; font-weight: 800; letter-spacing: .05em; line-height: 1;
+  /* 365 は METEO の右肩に小さく乗せる。上でそろえたいので baseline にしない */
+  display: inline-flex; align-items: flex-start; gap: 0;
+  font-size: 17px; font-weight: 800; letter-spacing: .04em; line-height: 1;
   cursor: pointer; -webkit-tap-highlight-color: transparent;
 }
 .logo-word b { font-weight: 800; }
-.logo-num { display: flex; color: var(--indigo); font-variant-numeric: tabular-nums; }
+.logo-num {
+  /* 帯では地の文字が小さいので、肩の 365 は少しだけ大きめに取る（読める下限） */
+  display: flex; color: var(--indigo); font-variant-numeric: tabular-nums;
+  font-size: .53em; letter-spacing: .1em; margin-left: .28em; padding-top: .1em;
+}
 /* 数字1桁ぶんの窓。中の帯が上に動いて、狙った数字で止まる */
 .logo-reel { display: block; height: 1em; overflow: hidden; }
 .logo-strip { display: block; transform: translateY(calc(var(--land) * -1em)); }
