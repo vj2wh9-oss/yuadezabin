@@ -28,9 +28,9 @@
     var tabs = el('div', { class: 'filters' });
     [{ v: 'todo', l: '未対応' }, { v: 'all', l: 'すべて' }].forEach(function (o) {
       tabs.appendChild(el('button', {
-        class: 'filter' + (filter === o.v ? ' on' : ''), text: o.l,
+        class: 'filter' + (filter === o.v ? ' on' : ''),
         onclick: function () { filter = o.v; DL.app.render(); }
-      }));
+      }, el('span', { class: 'filter-label', text: o.l })));
     });
     wrap.appendChild(tabs);
 

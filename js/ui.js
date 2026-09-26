@@ -346,7 +346,9 @@
 
   function section(title, right) {
     return el('div', { class: 'section' }, [
-      el('h2', { class: 'section-title', text: title }),
+      /* 文字は span で包む。見出しを平行四辺形に倒す見た目のとき、
+         中の文字だけ起こして読めるようにするため */
+      el('h2', { class: 'section-title' }, el('span', { class: 'section-label', text: title })),
       right ? el('div', { class: 'section-right' }, right) : null
     ]);
   }

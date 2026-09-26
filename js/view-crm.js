@@ -121,9 +121,9 @@
     [{ v: 'all', l: 'すべて' }, { v: 'client', l: '取引中' }, { v: 'prospect', l: '見込み' }]
       .forEach(function (o) {
         tabs.appendChild(el('button', {
-          class: 'filter' + (filter === o.v ? ' on' : ''), text: o.l,
+          class: 'filter' + (filter === o.v ? ' on' : ''),
           onclick: function () { filter = o.v; DL.app.render(); }
-        }));
+        }, el('span', { class: 'filter-label', text: o.l })));
       });
     wrap.appendChild(tabs);
 

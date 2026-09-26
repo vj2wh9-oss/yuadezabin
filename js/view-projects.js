@@ -23,9 +23,9 @@
       { v: 'support', l: '支援サイト' }, { v: 'done', l: '完了' }, { v: 'all', l: 'すべて' }
     ].forEach(function (o) {
       tabs.appendChild(el('button', {
-        class: 'filter' + (filter === o.v ? ' on' : ''), text: o.l,
+        class: 'filter' + (filter === o.v ? ' on' : ''),
         onclick: function () { filter = o.v; DL.app.render(); }
-      }));
+      }, el('span', { class: 'filter-label', text: o.l })));
     });
     wrap.appendChild(tabs);
 
