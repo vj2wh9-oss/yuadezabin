@@ -3543,10 +3543,12 @@ body.skin-bar {
   --bar: var(--accent);  /* その色。要素ごとに差し替える */
   --skew: -12deg;        /* 板の倒し方 */
   --hard: color-mix(in srgb, var(--text) 26%, transparent);  /* 硬い影 */
-  --dots: .22;           /* 右の網点の濃さ */
+  --dots: .2;            /* 右の網点の濃さ */
+  --dot-r: 3.1px;        /* 網点1つの半径 */
+  --dot-p: 13px;         /* 網点の間隔 */
 }
 /* 明るい地では網点が目立ちやすいので、薄めに敷く */
-@media (prefers-color-scheme: light) { body.skin-bar { --dots: .14; } }
+@media (prefers-color-scheme: light) { body.skin-bar { --dots: .12; } }
 
 /* ---- 節の見出しは、倒した板 ---- */
 body.skin-bar .section { gap: 0; margin-top: 15px; align-items: center; }
@@ -3617,14 +3619,33 @@ body.skin-bar .lk-warn::after,
 body.skin-bar .preview::after,
 body.skin-bar .tk-onsite::after,
 body.skin-bar .tk-back::after {
-  content: ''; position: absolute; top: 2px; right: 0; bottom: 0; width: 52%;
+  content: ''; position: absolute; top: 2px; right: 0; bottom: 0; width: 44%;
   z-index: -1; pointer-events: none;
-  background-image: radial-gradient(circle, var(--bar) 1.05px, transparent 1.15px);
-  background-size: 7px 7px;
+  background-image: radial-gradient(circle,
+    var(--bar) var(--dot-r), transparent calc(var(--dot-r) + .6px));
+  background-size: var(--dot-p) var(--dot-p);
   opacity: var(--dots);
   /* 左へ向かってすっと消す。右の端がいちばん濃い */
-  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 88%);
-  mask-image: linear-gradient(90deg, transparent 0, #000 88%);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, rgba(0, 0, 0, .35) 48%, #000 100%);
+  mask-image: linear-gradient(90deg, transparent 0, rgba(0, 0, 0, .35) 48%, #000 100%);
+}
+/* 右下のかぎ括弧。上辺のバーの頭（左上）と、対角でつり合わせる */
+body.skin-bar .card::before,
+body.skin-bar .phead::before,
+body.skin-bar .sgroup::before,
+body.skin-bar .alert::before,
+body.skin-bar .docs-entry::before,
+body.skin-bar .due-card::before,
+body.skin-bar .card-notice::before,
+body.skin-bar .lk-entry::before,
+body.skin-bar .lk-warn::before,
+body.skin-bar .preview::before,
+body.skin-bar .tk-onsite::before,
+body.skin-bar .tk-back::before {
+  content: ''; position: absolute; right: 0; bottom: 0;
+  width: 15px; height: 15px; pointer-events: none;
+  border-right: 3px solid var(--bar);
+  border-bottom: 3px solid var(--bar);
 }
 /* 帯と網点の色は、それぞれが持っていた左端の色を引き継ぐ */
 body.skin-bar .phead { --bar: var(--pc, var(--accent)); }
@@ -3642,6 +3663,20 @@ body.skin-bar .alert.ok { --bar: var(--ok); }
 body.skin-bar .tk-card, body.skin-bar .tk-hero { --bar: var(--event); }
 body.skin-bar .tk-card.tk-work, body.skin-bar .tk-hero.tk-work { --bar: var(--accent2); }
 body.skin-bar .tk-card.tk-support, body.skin-bar .tk-hero.tk-support { --bar: var(--indigo); }
+
+/* チケットの網点は、券の本体（もぎり線の左側）に敷く。
+   券そのものは ::before/::after を切り欠きに使っているため */
+body.skin-bar .tk-card-main, body.skin-bar .tk-body { position: relative; isolation: isolate; }
+body.skin-bar .tk-card-main::after, body.skin-bar .tk-body::after {
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; width: 52%;
+  z-index: -1; pointer-events: none;
+  background-image: radial-gradient(circle,
+    var(--bar) var(--dot-r), transparent calc(var(--dot-r) + .6px));
+  background-size: var(--dot-p) var(--dot-p);
+  opacity: var(--dots);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, rgba(0, 0, 0, .35) 48%, #000 100%);
+  mask-image: linear-gradient(90deg, transparent 0, rgba(0, 0, 0, .35) 48%, #000 100%);
+}
 
 /* 左端の帯ぶんだけ空けていた余白は、ほかの行とそろえる */
 body.skin-bar .lk-entry,
