@@ -27,7 +27,7 @@
       )),
       /* 円グラフの予定名の並べ方。混んでくると重なるので囲う置き方を既定にしたが、
          前の見た目のほうが好みなら戻せるようにしておく */
-      ui.field('1日の時間の予定名', ui.segmented(
+      ui.field('円グラフの予定名', ui.segmented(
         [{ value: 'around', label: '円を囲う' }, { value: 'radial', label: 'これまで通り' }],
         s.pieLabels === 'radial' ? 'radial' : 'around',
         function (v) { S.updateSettings({ pieLabels: v }); DL.app.render(); }

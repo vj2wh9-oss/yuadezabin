@@ -58,7 +58,7 @@
           if (!on && DL.timeblocks.hasPreset(d.value)) {
             var had = S.timeblocks(date).length;
             DL.views.time.offerPreset(date, d.value, had > 0);
-            if (!had) msg += '\n1日の時間もプリセットで入れました';
+            if (!had) msg += '\n今日の予定もプリセットで入れました';
           }
           ui.toast(msg);
           // 休みが増えたぶん、残りの割り振りを組み直すか聞く

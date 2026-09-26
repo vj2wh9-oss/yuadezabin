@@ -75,7 +75,7 @@
       docs: '書類', doc: '書類', sales: '売上', files: 'ファイル', books: '経理',
       search: '検索', stock: '頒布と在庫', onsite: '当日モード', pages: '原稿のページ',
       fit: '筋トレ',
-      log: '1日の記録', logs: '記録', ideas: 'ひらめきメモ', time: '1日の時間', orders: '発注',
+      log: '1日の記録', logs: '記録', ideas: 'ひらめきメモ', time: '今日の予定', orders: '発注',
       crm: '顧客管理', lock: 'METEO LOCK', ticket: 'チケット'
     };
     setTitle(titles[route.name] || 'METEO365');

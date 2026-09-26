@@ -90,7 +90,7 @@
     }
 
     /* 今日の時間の振り分け。横長の帯で、いまがどこかも出す */
-    wrap.appendChild(ui.section('今日の時間'));
+    wrap.appendChild(ui.section('今日の予定'));
     wrap.appendChild(DL.views.time.homeCard(today));
 
     /* 今日のノルマと、日常の予定 */
@@ -436,7 +436,7 @@
 
      勤務を選んである日は、仕事が終わる頃にここでうながす。
      リモート・出社はその日の16:30、泊まり勤務は翌日の8:30。
-     押すとその日の「1日の時間」へ。チェックで消える。 */
+     押すとその日の「今日の予定」へ。チェックで消える。 */
 
   function workLogAlerts(wrap) {
     var due = DL.timeblocks.dueWorkLogs();

@@ -3600,6 +3600,7 @@ body.skin-bar .lk-warn,
 body.skin-bar .preview,
 body.skin-bar .tk-onsite,
 body.skin-bar .tk-back,
+body.skin-bar .tp-nowbar,
 body.skin-bar .tk-card,
 body.skin-bar .tk-hero {
   position: relative;
@@ -3649,6 +3650,8 @@ body.skin-bar .tk-back.tk-support { --bar: var(--indigo); }
 body.skin-bar .alert.danger { --bar: var(--danger); }
 body.skin-bar .alert.warn { --bar: var(--warn); }
 body.skin-bar .alert.ok { --bar: var(--ok); }
+/* いま→次 の帯。左端の赤をやめ、流れの矢印と同じ色を上辺に差す */
+body.skin-bar .tp-nowbar { --bar: var(--accent2); border-left-width: 1px; padding-top: 11px; }
 /* チケットは半券の切り欠きを ::before/::after で描いているので、
    上辺のバーだけ通して網点は敷かない（券の地紋と喧嘩する）。
    帯の色は券の種別に合わせる */
@@ -3656,19 +3659,23 @@ body.skin-bar .tk-card, body.skin-bar .tk-hero { --bar: var(--event); }
 body.skin-bar .tk-card.tk-work, body.skin-bar .tk-hero.tk-work { --bar: var(--accent2); }
 body.skin-bar .tk-card.tk-support, body.skin-bar .tk-hero.tk-support { --bar: var(--indigo); }
 
-/* チケットの網点は、券の本体（もぎり線の左側）に敷く。
-   券そのものは ::before/::after を切り欠きに使っているため */
-body.skin-bar .tk-card-main, body.skin-bar .tk-body { position: relative; isolation: isolate; }
-body.skin-bar .tk-card-main::after, body.skin-bar .tk-body::after {
-  content: ''; position: absolute; top: 0; right: 0; bottom: 0; width: 52%;
-  z-index: -1; pointer-events: none;
-  background-image: radial-gradient(circle,
-    var(--bar) var(--dot-r), transparent calc(var(--dot-r) + .6px));
-  background-size: var(--dot-p) var(--dot-p);
-  opacity: var(--dots);
-  -webkit-mask-image: linear-gradient(90deg, transparent 0, rgba(0, 0, 0, .35) 48%, #000 100%);
-  mask-image: linear-gradient(90deg, transparent 0, rgba(0, 0, 0, .35) 48%, #000 100%);
+/* チケットには網点を敷かず、半券にバーコードを刷る。
+   紙の券らしさは、もぎり線・切り欠き・バーコードで出す */
+body.skin-bar .tk-card-stub, body.skin-bar .tk-stub {
+  position: relative; padding-bottom: 28px; justify-content: center;
 }
+body.skin-bar .tk-card-stub::after, body.skin-bar .tk-stub::after {
+  content: ''; position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%);
+  width: 54px; height: 19px; pointer-events: none; opacity: .55;
+  /* 太さの違う棒を並べて、読み取り用のコードらしく見せる */
+  background-image: repeating-linear-gradient(90deg,
+    var(--muted) 0 1px, transparent 1px 3px,
+    var(--muted) 3px 5px, transparent 5px 6px,
+    var(--muted) 6px 7px, transparent 7px 9px,
+    var(--muted) 9px 12px, transparent 12px 13px,
+    var(--muted) 13px 14px, transparent 14px 17px);
+}
+body.skin-bar .tk-hero .tk-stub::after { width: 62px; height: 21px; }
 
 /* 左端の帯ぶんだけ空けていた余白は、ほかの行とそろえる */
 body.skin-bar .lk-entry,
@@ -3710,3 +3717,9 @@ body.skin-bar .filter-label { display: inline-block; transform: skewX(calc(var(-
 /* ---- 上の帯とシートも、同じ細い罫でそろえる ---- */
 body.skin-bar .appbar { box-shadow: inset 0 -2px 0 -1px var(--line); }
 body.skin-bar .sheet { border-top-width: 3px; }
+
+/* 円グラフの画面（今日の予定の詳細）は、図と網点が重なって読みにくいので敷かない */
+body.skin-bar .view-time .card::after,
+body.skin-bar .view-time .alert::after,
+body.skin-bar .view-time .docs-entry::after,
+body.skin-bar .view-time .preview::after { content: none; }

@@ -504,7 +504,7 @@
     var card = el('a', { class: 'card tp-home', href: '#/time/' + date });
     if (!list.length) {
       card.appendChild(el('div', { class: 'tp-empty' }, [
-        el('span', { class: 'muted small', text: '今日の時間の振り分けはまだありません。' }),
+        el('span', { class: 'muted small', text: '今日の予定の振り分けはまだありません。' }),
         el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
       ]));
       return card;
@@ -529,7 +529,7 @@
    */
   function dayCard(wrap, date) {
     var list = T.ofDay(date);
-    wrap.appendChild(ui.section('1日の時間'));
+    wrap.appendChild(ui.section('今日の予定'));
 
     var card = el('div', { class: 'card tp-card' });
 
@@ -579,7 +579,7 @@
       T.applyPreset(date, duty, true);
       return Promise.resolve(true);
     }
-    return ui.confirm(msg, { title: '1日の時間', okText: '入れる' }).then(function (ok) {
+    return ui.confirm(msg, { title: '今日の予定', okText: '入れる' }).then(function (ok) {
       if (!ok) return false;
       T.applyPreset(date, duty, true);
       ui.toast('プリセットを入れました');
@@ -1261,7 +1261,7 @@
       el('a', { class: 'iconbtn', href: '#/time/' + U.addDays(date, -1), 'aria-label': '前の日' }, ui.icon('chevronLeft', 20)),
       el('div', { class: 'daytitle' }, [
         ui.dateHead(date),
-        el('div', { class: 'today-sub', text: '1日の時間' })
+        el('div', { class: 'today-sub', text: '今日の予定' })
       ]),
       el('a', { class: 'iconbtn', href: '#/time/' + U.addDays(date, 1), 'aria-label': '次の日' }, ui.icon('chevronRight', 20))
     ]));
