@@ -3546,16 +3546,19 @@ body.skin-bar {
   --dots: .2;            /* 右の網点の濃さ */
   --dot-r: 3.1px;        /* 網点1つの半径 */
   --dot-p: 13px;         /* 網点の間隔 */
+  --ylw: #f2c81e;        /* 差し色の黄。板の後ろの斜線に使う */
 }
+@media (prefers-color-scheme: light) { body.skin-bar { --ylw: #ecbb00; } }
 /* 明るい地では網点が目立ちやすいので、薄めに敷く */
 @media (prefers-color-scheme: light) { body.skin-bar { --dots: .12; } }
 
 /* ---- 網点は、いちばん奥の地にだけ敷く ----
    カードの中には入れない。画面の右上から流れ出して、左下へ消えていく。
    位置を固定してあるので、中身を送っても地の模様は動かない。 */
-/* 地の色は html のほうに任せる。body に色が乗っていると、
-   z-index:-1 の層がそのうしろへ回ってしまい、模様が見えない */
-body.skin-bar { background: transparent; }
+/* body を一つの積み重ねの入れ物にしておく。こうしないと z-index:-1 の層が
+   body の地色のうしろへ回って見えなくなる。地色は body に持たせたまま
+   （html 側に預けると、筋トレや METEO LOCK の色が乗らず地が白くなる） */
+body.skin-bar { isolation: isolate; }
 body.skin-bar::before {
   content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
   background-image: radial-gradient(circle,
@@ -3606,15 +3609,26 @@ body.skin-bar .alert-icon .icon {
 }
 body.skin-bar .alert { gap: 10px; }
 
-/* ---- 節の見出しは、倒した板 ---- */
-body.skin-bar .section { gap: 0; margin-top: 15px; align-items: center; }
+/* ---- 節の見出しは、倒した板＋後ろを抜ける黄色の斜線 ---- */
+body.skin-bar .section { gap: 0; margin-top: 17px; align-items: center; }
 body.skin-bar .section-title {
   flex: none; order: 0;
   background: var(--accent); color: var(--accent-ink);
-  border-left: 0; padding: 4px 13px 5px;
+  border-left: 0; padding: 7px 17px 8px;
   transform: skewX(var(--skew));
   box-shadow: 3px 3px 0 var(--hard);
-  font-size: 11.5px; font-weight: 800; letter-spacing: .1em;
+  font-size: 13px; font-weight: 800; letter-spacing: .1em;
+}
+/* 太い斜線と、そのすぐ右の細い斜線。板の下へもぐり込ませて、
+   板の後ろから右へ抜けていくように見せる */
+.section-slash { display: none; }
+body.skin-bar .section-slash {
+  display: block; order: 1; flex: none;
+  width: 30px; height: 36px; margin-left: -13px;
+  transform: skewX(var(--skew));
+  background: linear-gradient(90deg,
+    var(--ylw) 0 19px, transparent 19px 24px, var(--ylw) 24px 30px);
+  filter: drop-shadow(3px 3px 0 var(--hard));
 }
 /* 中の文字だけ起こす。板は倒したまま、字はまっすぐ読める */
 body.skin-bar .section-label { display: inline-block; transform: skewX(calc(var(--skew) * -1)); }
@@ -3628,11 +3642,11 @@ body.skin-bar .section-label { display: inline-block; transform: skewX(calc(var(
 }
 /* 板の右から、細い罫が伸びて画面の端へ抜ける */
 body.skin-bar .section::after {
-  content: ''; order: 1; flex: 1; min-width: 12px; height: 2px; margin-left: 12px;
+  content: ''; order: 2; flex: 1; min-width: 12px; height: 2px; margin-left: 12px;
   background: linear-gradient(90deg,
     color-mix(in srgb, var(--line2) 90%, transparent) 0 40%, transparent 100%);
 }
-body.skin-bar .section-right { order: 2; margin-left: 8px; }
+body.skin-bar .section-right { order: 3; margin-left: 8px; }
 /* 筋トレと METEO LOCK は、それぞれの見た目を持っているので板にしない */
 body.skin-bar.fit-theme .view-fit .section-title,
 body.skin-bar.lock-theme .section-title {
@@ -3641,6 +3655,8 @@ body.skin-bar.lock-theme .section-title {
 }
 body.skin-bar.fit-theme .view-fit .section-label,
 body.skin-bar.lock-theme .section-label { transform: none; -webkit-text-stroke: 0; }
+body.skin-bar.fit-theme .view-fit .section-slash,
+body.skin-bar.lock-theme .section-slash { display: none; }
 
 /* ---- カードの上辺に通すバーと、右のハーフトーン ----
    バーは背景で描くので、飾りに使う ::before とぶつからない */
@@ -3798,4 +3814,60 @@ body.skin-bar .daytitle .td-wd { font-size: 11px; padding: 3px 8px 4px; }
 /* 日付の下の小見出し（「今日の予定」など）は、節の見出しと同じ字づかいに */
 body.skin-bar .today-sub {
   font-size: 10.5px; font-weight: 800; letter-spacing: .16em; margin-top: 5px;
+}
+
+/* ---- 下のタブを、押せる札らしく ----
+   1つずつ独立した札にして、上の角を丸める。いま開いているところは
+   青く塗って、少しせり上がる。字は太めで、白の縁を付けて締める。 */
+body.skin-bar .tabbar {
+  background: var(--bg2); border-top: 2px solid var(--line2);
+  gap: 1px; padding: 5px 2px calc(env(safe-area-inset-bottom) + 4px);
+  align-items: end;
+}
+body.skin-bar .tab {
+  height: calc(var(--tab-h) - 8px); gap: 3px; border-radius: 8px 8px 3px 3px;
+  padding: 0; font-size: 8.8px; letter-spacing: -.07em;
+  background: var(--card2); border: 1px solid var(--line2); border-bottom-width: 2px;
+  font-weight: 700; color: var(--muted);
+}
+body.skin-bar .tab .tabicon svg { width: 21px; height: 21px; }
+/* いま開いているところ。塗って、白の縁で浮かせ、1段せり上げる */
+body.skin-bar .tab.on {
+  background: var(--accent); border-color: var(--accent);
+  color: var(--accent-ink);
+  height: calc(var(--tab-h) - 2px);
+  box-shadow: 0 2px 0 color-mix(in srgb, var(--accent) 55%, #000);
+}
+/* 上の細い線はもう要らない（札そのものが塗られるので） */
+body.skin-bar .tab.on::before { content: none; }
+@supports (paint-order: stroke) {
+  body.skin-bar .tab.on > span:last-child {
+    paint-order: stroke fill;
+    -webkit-text-stroke: 2px color-mix(in srgb, var(--accent) 45%, #000);
+  }
+}
+body.skin-bar .tab:active { transform: translateY(1px); }
+
+/* ---- METEO365 のロゴも、板と同じ字づかいに ---- */
+body.skin-bar .logo-word { letter-spacing: .04em; }
+body.skin-bar .logo-num {
+  font-size: .68em; letter-spacing: .1em; color: var(--accent);
+}
+/* 名前の右に、節の見出しと同じ黄色の斜線を1本添える。
+   縁取りはこの大きさだとにじむので入れない */
+body.skin-bar .logo-word::after {
+  content: ''; flex: none; align-self: stretch;
+  width: 6px; margin-left: 6px;
+  background: var(--ylw);
+  transform: skewX(var(--skew));
+}
+
+/* ---- いま→次 の矢印。太く、濃く ---- */
+body.skin-bar .tp-flow { gap: 1px; color: var(--accent); }
+body.skin-bar .tp-flow i {
+  width: 16px; height: 16px; border-width: 4px; opacity: .28;
+}
+body.skin-bar .tp-flow i { animation-name: tp-flow-bar; }
+@keyframes tp-flow-bar {
+  0% { opacity: .28; } 20% { opacity: 1; } 60%, 100% { opacity: .28; }
 }

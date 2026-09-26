@@ -351,6 +351,9 @@
     return el('div', { class: 'section' }, [
       /* 文字は span で包む。見出しを平行四辺形に倒す見た目のとき、
          中の文字だけ起こして読めるようにするため */
+      /* 板の後ろから右へ抜ける黄色の斜線。板より先に置いて下に敷き、
+         並びは CSS の order で板の右へ回す。前の見た目のときは出さない */
+      el('i', { class: 'section-slash', 'aria-hidden': 'true' }),
       el('h2', { class: 'section-title' }, el('span', { class: 'section-label', text: title })),
       right ? el('div', { class: 'section-right' }, right) : null
     ]);
