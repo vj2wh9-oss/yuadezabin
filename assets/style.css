@@ -3723,3 +3723,36 @@ body.skin-bar .view-time .card::after,
 body.skin-bar .view-time .alert::after,
 body.skin-bar .view-time .docs-entry::after,
 body.skin-bar .view-time .preview::after { content: none; }
+
+/* ---- 網点が押しものに透けないようにする ----
+
+   網点はカードの地のすぐ上（中身の下）に敷いてある。地を持たない押しもの
+   （枠だけのボタン・絵だけのボタン）はそのまま透けるので、点がボタンの上に
+   乗っているように見える。そこで、その押しものに「いま乗っている面の色」を
+   敷いて点を隠す。--surface は面ごとに持たせてあり、入れ子の div をまたいでも
+   いちばん近い面の色が伝わる（見た目は今までと同じで、点だけが消える）。 */
+body.skin-bar { --surface: var(--bg); }
+body.skin-bar .sheet { --surface: var(--bg2); }
+body.skin-bar .card,
+body.skin-bar .row,
+body.skin-bar .phead,
+body.skin-bar .sgroup,
+body.skin-bar .alert,
+body.skin-bar .tk-card,
+body.skin-bar .tk-hero { --surface: var(--card); }
+body.skin-bar .panel,
+body.skin-bar .tpl-row,
+body.skin-bar .preview,
+body.skin-bar .lk-warn,
+body.skin-bar .tp-nowbar,
+body.skin-bar .tk-card-stub,
+body.skin-bar .tk-stub { --surface: var(--card2); }
+
+body.skin-bar .btn.ghost,
+body.skin-bar .btn.danger,
+body.skin-bar .iconbtn,
+body.skin-bar .checkbtn,
+body.skin-bar .tpl-summary,
+body.skin-bar .stepper .stepbtn { background-color: var(--surface); }
+/* 押したときの色は今までどおり */
+body.skin-bar .iconbtn:active { background-color: var(--card2); }
