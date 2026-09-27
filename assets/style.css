@@ -3687,7 +3687,8 @@ body.skin-bar .alert {
   background-image:
     linear-gradient(var(--bar), var(--bar)), linear-gradient(var(--bar), var(--bar)),
     linear-gradient(var(--bar), var(--bar)), linear-gradient(var(--bar), var(--bar));
-  background-size: 15px 3px, 3px 18px, 15px 3px, 3px 18px;
+  /* 横の腕は短いまま、縦の辺だけ上から下まで通す（[ ] のかたち） */
+  background-size: 15px 2px, 2px 100%, 15px 2px, 2px 100%;
   background-position: left top, left top, right bottom, right bottom;
   background-repeat: no-repeat;
   /* 枠の外側の角から描く。padding-box のままだと、線のぶん角が欠ける */
