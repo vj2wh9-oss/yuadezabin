@@ -44,6 +44,9 @@
   --radius-s: 3px;
   --tab-h: 54px;
   --bar-h: 48px;
+  /* 画面下の余白（iPhone のホームバーぶん）。
+     まとめて名前を付けておくと、下タブの高さの計算に使いやすい */
+  --sab: env(safe-area-inset-bottom);
   color-scheme: dark;
 }
 
@@ -779,7 +782,16 @@ a.alert-main { text-decoration: none; }
   position: relative; padding: 2px 2px 1px;
   background: var(--card); border: 1px solid var(--line); border-radius: 0;
   display: flex; flex-direction: column; gap: 1px;
-  overflow-x: hidden;   /* 横は切る。縦は行数ぶん伸ばす */
+  /* 横は切る。縦は行数ぶん伸びるので切れない。
+     overflow-x:hidden だけだと縦が auto に化け、PC ではマスごとに
+     スクロールバーが出てしまうので、両方まとめて切る */
+  overflow: hidden;
+}
+/* 使える環境では clip を使い、縦は素のまま（visible）にしておく。
+   clip は「切る入れ物」ではないので、そのままだと中身の幅ぶんマスが
+   広がってしまう。min-width を 0 にして、7列が画面に収まるようにする */
+@supports (overflow: clip) {
+  .cal-cell { overflow-x: clip; overflow-y: visible; min-width: 0; }
 }
 .cal-cell.out { opacity: .4; }
 .cal-cell.off { background: var(--card2); }
@@ -815,11 +827,11 @@ a.alert-main { text-decoration: none; }
    どの日を見ているか分かるようにする（左上の小さな日付はそのまま） */
 .cal-big {
   position: absolute; right: 1px; bottom: 0; z-index: 0; pointer-events: none;
-  font-size: 25px; font-weight: 800; line-height: 1; letter-spacing: -.04em;
-  font-variant-numeric: tabular-nums; color: var(--text); opacity: .085;
+  font-size: 32px; font-weight: 900; line-height: 1; letter-spacing: -.05em;
+  font-variant-numeric: tabular-nums; color: var(--text); opacity: .055;
 }
 /* 暗い地では白い字が浮きやすいので、もう少し落とす */
-@media (prefers-color-scheme: dark) { .cal-big { opacity: .065; } }
+@media (prefers-color-scheme: dark) { .cal-big { opacity: .045; } }
 /* 予定の文字は日付より手前に置く */
 .cal-top, .cal-lines { position: relative; z-index: 1; }
 
@@ -3855,12 +3867,15 @@ body.skin-bar .today-sub {
    青く塗って、少しせり上がる。字は太めで、白の縁を付けて締める。 */
 body.skin-bar .tabbar {
   background: var(--bg2); border-top: 2px solid var(--line2);
-  gap: 2px; padding: 5px 2px calc(env(safe-area-inset-bottom) + 4px);
+  gap: 2px; padding: 5px 2px 0;
   align-items: end;
 }
+/* iPhone のホームバーのぶんは、札の下に空白として空けるのではなく
+   札そのものを画面の下端まで伸ばして、その中の余白にする。
+   PC では --sab が 0 なので、これまでと同じ高さになる */
 body.skin-bar .tab {
-  height: calc(var(--tab-h) - 8px); gap: 3px; border-radius: 8px 8px 3px 3px;
-  padding: 0; font-size: 8.4px; letter-spacing: -.07em;
+  height: calc(var(--tab-h) - 8px + var(--sab)); gap: 3px; border-radius: 8px 8px 3px 3px;
+  padding: 0 0 var(--sab); font-size: 8.4px; letter-spacing: -.07em;
   background: var(--card2); border: 1px solid var(--line2); border-bottom-width: 2px;
   font-weight: 700; color: var(--muted);
 }
@@ -3869,7 +3884,7 @@ body.skin-bar .tab .tabicon svg { width: 21px; height: 21px; }
 body.skin-bar .tab.on {
   background: var(--accent); border-color: var(--accent);
   color: var(--accent-ink);
-  height: calc(var(--tab-h) - 2px);
+  height: calc(var(--tab-h) - 2px + var(--sab));
   /* 節の見出しと同じで、少しずらした黄色を後ろに覗かせる。
      となりの札に隠れないよう、選んでいる札だけ上へ出す */
   position: relative; z-index: 1;
