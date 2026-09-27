@@ -3655,15 +3655,55 @@ body.skin-bar .alert {
   transform: skewX(var(--skew));
   /* 倒したぶん左右の端が斜めに入ってくるので、横の余白を足しておく */
   padding-left: 15px; padding-right: 15px;
+  position: relative; isolation: isolate;
+  border-left-width: 1px; border-left-color: var(--line);
+  /* 上辺のバーはやめ、向かい合う隅のブラケットにする。
+     ::before / ::after は網点に使うので、かぎ括弧は背景の4本で描く */
+  background-image:
+    linear-gradient(var(--bar), var(--bar)), linear-gradient(var(--bar), var(--bar)),
+    linear-gradient(var(--bar), var(--bar)), linear-gradient(var(--bar), var(--bar));
+  background-size: 13px 2px, 2px 13px, 13px 2px, 2px 13px;
+  background-position: left top, left top, right bottom, right bottom;
+  background-repeat: no-repeat;
+}
+/* 右下の隅だけ、大きめの網点をうっすら。字より奥へ置く */
+body.skin-bar .alert::after {
+  content: ''; position: absolute; right: 2px; bottom: 0; z-index: -1;
+  width: 62px; height: 30px; pointer-events: none;
+  background-image: radial-gradient(circle, var(--bar) 3.2px, transparent 3.7px);
+  background-size: 14px 14px;
+  background-position: right bottom;
+  opacity: .22;
+  -webkit-mask-image: radial-gradient(110% 110% at 100% 100%,
+    #000 0%, rgba(0, 0, 0, .55) 45%, transparent 88%);
+  mask-image: radial-gradient(110% 110% at 100% 100%,
+    #000 0%, rgba(0, 0, 0, .55) 45%, transparent 88%);
 }
 body.skin-bar .alert-icon {
   width: auto; height: auto; background: none; border: 0;
   align-items: center; justify-content: center; transform: none;
 }
-body.skin-bar .alert-icon .icon { width: 25px; height: 25px; transform: none; }
+body.skin-bar .alert-icon .icon { width: 30px; height: 30px; transform: none; }
 /* 中身だけ起こして、字はまっすぐ読めるようにする
    （.alert の直下に限る。板の中の入れ物は上で起こしてある） */
 body.skin-bar .alert > * { transform: skewX(calc(var(--skew) * -1)); }
+/* 点滅するのは板ぜんたいではなく、△! だけ。
+   地はいちばん濃いときの色で止めておく（目には残したまま、うるさくしない） */
+body.skin-bar .alert.overdue,
+body.skin-bar .alert.behind {
+  animation: none; background-color: var(--overdue-a);
+}
+body.skin-bar .alert.overdue .alert-icon,
+body.skin-bar .alert.behind .alert-icon {
+  animation: alert-mark 1.5s ease-in-out infinite;
+}
+@keyframes alert-mark {
+  0%, 100% { opacity: 1; } 50% { opacity: .25; }
+}
+@media (prefers-reduced-motion: reduce) {
+  body.skin-bar .alert.overdue .alert-icon,
+  body.skin-bar .alert.behind .alert-icon { animation: none; }
+}
 
 /* ---- 節の見出しは、倒した板＋後ろを抜ける黄色の斜線 ---- */
 body.skin-bar .section { gap: 0; margin: 18px 0 12px; align-items: center; }
@@ -3730,7 +3770,6 @@ body.skin-bar.lock-theme .section-title::after { content: none; }
 body.skin-bar .card,
 body.skin-bar .phead,
 body.skin-bar .sgroup,
-body.skin-bar .alert,
 body.skin-bar .docs-entry,
 body.skin-bar .due-card,
 body.skin-bar .card-notice,
