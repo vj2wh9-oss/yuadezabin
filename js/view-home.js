@@ -79,9 +79,10 @@
         var pulse = a.overdue ? ' overdue' : a.behind ? ' behind' : '';
         box.appendChild(el('a', { class: 'alert ' + a.level + pulse, href: href }, [
           el('span', { class: 'alert-icon' }, ui.icon(a.level === 'info' ? 'info' : 'alert', 17)),
-          el('span', {}, [
-            a.project ? el('b', { text: a.project.title }) : null,
-            el('span', { text: (a.project ? '　' : '') + a.text })
+          /* 案件名を1行目、中身を2行目に分ける */
+          el('span', { class: 'alert-body' }, [
+            a.project ? el('b', { class: 'alert-name', text: a.project.title }) : null,
+            el('span', { class: 'alert-text', text: a.text })
           ])
         ]));
       });

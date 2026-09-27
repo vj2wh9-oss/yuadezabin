@@ -241,7 +241,9 @@
         text: String(load.qty)
       }) : null
       ]),
-      lines
+      lines,
+      // 右下にうっすら大きく。マスのどこを見ていても日が分かるように
+      el('span', { class: 'cal-big', 'aria-hidden': 'true', text: String(+date.slice(8)) })
     ]);
   }
 
@@ -278,7 +280,8 @@
     // 予定はそのまま行として並ぶので、件数の数字は付けない（ノルマと違って数える意味がない）
     return el('a', { class: cls, href: '#/day/' + date }, [
       el('span', { class: 'cal-top' }, el('span', { class: 'cal-n', text: String(+date.slice(8)) })),
-      lines
+      lines,
+      el('span', { class: 'cal-big', 'aria-hidden': 'true', text: String(+date.slice(8)) })
     ]);
   }
 

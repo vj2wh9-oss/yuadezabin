@@ -685,6 +685,10 @@ body.kb-open .tabbar, body.kb-open .fab { display: none; }
   border-radius: var(--radius-s);
 }
 .alert-icon { flex: none; display: flex; }
+/* 案件名を1行目、中身を2行目に置く（横に並べると長い名前で押し出される） */
+.alert-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.alert-name { font-weight: 700; line-height: 1.3; }
+.alert-text { font-size: 12.5px; line-height: 1.35; }
 .alert.danger { border-left-color: var(--danger); }
 .alert.danger .alert-icon { color: var(--danger); }
 /* 期限を過ぎている知らせは、薄い赤と地の色をゆっくり行き来させて目を引く */
@@ -807,6 +811,17 @@ a.alert-main { text-decoration: none; }
 }
 .cal-sum.done { color: var(--ok); background: color-mix(in srgb, var(--ok) 20%, transparent); }
 .cal-sum.over { color: var(--warn); background: color-mix(in srgb, var(--warn) 26%, transparent); }
+/* マスの右下に、うっすら大きな日付。予定で埋まっていても
+   どの日を見ているか分かるようにする（左上の小さな日付はそのまま） */
+.cal-big {
+  position: absolute; right: 1px; bottom: 0; z-index: 0; pointer-events: none;
+  font-size: 25px; font-weight: 800; line-height: 1; letter-spacing: -.04em;
+  font-variant-numeric: tabular-nums; color: var(--text); opacity: .085;
+}
+/* 暗い地では白い字が浮きやすいので、もう少し落とす */
+@media (prefers-color-scheme: dark) { .cal-big { opacity: .065; } }
+/* 予定の文字は日付より手前に置く */
+.cal-top, .cal-lines { position: relative; z-index: 1; }
 
 /* 日ごとの中身。行数に応じてマスが伸びるよう、ここでは高さを抑えない */
 .cal-lines { display: flex; flex-direction: column; gap: 1px; }
@@ -3572,6 +3587,11 @@ body.skin-bar::before {
     #000 0%, rgba(0, 0, 0, .42) 38%, transparent 76%);
 }
 
+/* カレンダーの格子の中には網点を見せない。マスの隙間や薄いマスから
+   透けると日付が読みにくいので、格子の裏に地の色を敷いて止める */
+body.skin-bar .cal-head,
+body.skin-bar .cal-grid { background: var(--bg); }
+
 /* 筋トレのタブは今のままがちょうどいいので、地には敷かず、
    カードの右の網点だけをそのまま残す */
 body.skin-bar.fit-theme::before { content: none; }
@@ -3596,18 +3616,21 @@ body.skin-bar.fit-theme .card .btn.danger,
 body.skin-bar.fit-theme .card .iconbtn,
 body.skin-bar.fit-theme .card .checkbtn { background-color: var(--surface); }
 
-/* ---- 知らせの印（△!）は、倒した板に入れて大きく ---- */
-body.skin-bar .alert-icon {
-  width: 30px; height: 30px; align-items: center; justify-content: center;
-  background: color-mix(in srgb, currentColor 15%, transparent);
-  border: 1px solid color-mix(in srgb, currentColor 45%, transparent);
+/* ---- 知らせは倒した板（平行四辺形）。印は枠を外して、△! だけを大きく ---- */
+body.skin-bar .alert {
+  gap: 10px;
   transform: skewX(var(--skew));
+  /* 倒したぶん左右の端が斜めに入ってくるので、横の余白を足しておく */
+  padding-left: 15px; padding-right: 15px;
 }
-body.skin-bar .alert-icon .icon {
-  width: 19px; height: 19px;
-  transform: skewX(calc(var(--skew) * -1));
+body.skin-bar .alert-icon {
+  width: auto; height: auto; background: none; border: 0;
+  align-items: center; justify-content: center; transform: none;
 }
-body.skin-bar .alert { gap: 10px; }
+body.skin-bar .alert-icon .icon { width: 25px; height: 25px; transform: none; }
+/* 中身だけ起こして、字はまっすぐ読めるようにする
+   （.alert の直下に限る。板の中の入れ物は上で起こしてある） */
+body.skin-bar .alert > * { transform: skewX(calc(var(--skew) * -1)); }
 
 /* ---- 節の見出しは、倒した板＋後ろを抜ける黄色の斜線 ---- */
 body.skin-bar .section { gap: 0; margin: 18px 0 12px; align-items: center; }
