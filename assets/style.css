@@ -3976,7 +3976,23 @@ body.skin-bar .tab {
   background: var(--card2); border: 1px solid var(--line2); border-bottom-width: 2px;
   font-weight: 700; color: var(--muted);
 }
-body.skin-bar .tab .tabicon svg { width: 21px; height: 21px; }
+/* 絵は線を太く、角と先を丸めて、ぽってりさせる（下のタブだけ） */
+body.skin-bar .tab .tabicon svg {
+  width: 22px; height: 22px;
+  stroke-width: 2.3; stroke-linecap: round; stroke-linejoin: round;
+}
+body.skin-bar .tab.on .tabicon svg { stroke-width: 2.7; }
+/* 押して切り替わった絵は、ひと跳ねしてから落ち着く */
+@keyframes tab-pop {
+  0% { transform: scale(.66); }
+  55% { transform: scale(1.2); }
+  80% { transform: scale(.95); }
+  100% { transform: scale(1); }
+}
+body.skin-bar .tab.on .tabicon { animation: tab-pop .3s cubic-bezier(.3, 1.4, .5, 1); }
+@media (prefers-reduced-motion: reduce) {
+  body.skin-bar .tab.on .tabicon { animation: none; }
+}
 /* いま開いているところ。塗って、白の縁で浮かせ、1段せり上げる */
 body.skin-bar .tab.on {
   background: var(--accent); border-color: var(--accent);
@@ -4002,7 +4018,7 @@ body.skin-bar .tab.on::before { content: none; }
 /* 選んでいる札の名前だけ、太く大きく。少しはみ出しても切らない
    （札の隙間に収まる範囲で、となりには掛からない） */
 body.skin-bar .tab.on > span:last-child {
-  font-size: 9.6px; font-weight: 800; letter-spacing: -.05em;
+  font-size: 9.6px; font-weight: 900; letter-spacing: -.05em;
   max-width: none; overflow: visible;
 }
 body.skin-bar .tab:active { transform: translateY(1px); }
