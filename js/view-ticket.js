@@ -695,7 +695,7 @@
     var prepLeft = t.prep.filter(function (x) { return !x.done; }).length;
     var sold = t.kind === 'event' ? K.ticketTally(t, projects).total : null;
 
-    return el('a', {
+    var node = el('a', {
       class: 'tk-card tk-' + t.kind + (soon ? ' soon' : '') + (past ? ' past' : ''),
       href: '#/ticket/' + t.id
     }, [
@@ -716,6 +716,68 @@
       ]),
       stub(left, 'tk-card-stub')
     ]);
+
+    /* 押したら、この券だけを残してまわりを消してから開く。
+       ふつうの遷移も残しておきたいので、動かせたときだけ横取りする */
+    node.addEventListener('click', function (e) {
+      if (e.defaultPrevented || e.button > 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      if (pickFly(node)) e.preventDefault();
+    });
+    return node;
+  }
+
+  /* ---------------- 券を選んだときの動き ----------------
+
+     ① 選んだ券を、いまの場所そのままに body へ写す（まわりの消え方に巻き込まれないように）
+     ② 画面まるごとをゆっくり消す。写した券はその場に残る
+     ③ 消えきったら、券だけが上へ動く
+     ④ 着いたところでチケットの画面に切り替え、写しをそっと外す */
+
+  var FADE = 380;      // まわりが消えるまで
+  var RISE = 320;      // 券が上がるまで
+  var flying = null;
+
+  function pickFly(node) {
+    if (flying) return false;
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false;
+    var view = node.closest ? node.closest('.view') : null;
+    if (!view) return false;
+
+    var r = node.getBoundingClientRect();
+    var clone = node.cloneNode(true);
+    clone.classList.add('tk-fly');
+    clone.removeAttribute('href');
+    /* 位置は直に書く。券そのものが position: relative を持っているので、
+       class だけでは浮かせられない */
+    clone.style.position = 'fixed';
+    clone.style.zIndex = '30';
+    clone.style.margin = '0';
+    clone.style.left = r.left + 'px';
+    clone.style.top = r.top + 'px';
+    clone.style.width = r.width + 'px';
+    clone.style.height = r.height + 'px';
+    document.body.appendChild(clone);
+    flying = clone;
+
+    view.classList.add('tk-picking');
+    document.body.classList.add('tk-picking');
+    // チケットの画面で、券の見出しが座る高さ（上の帯のぶん＋ページの余白）
+    var top = parseFloat(getComputedStyle(view).paddingTop) + 10;
+
+    setTimeout(function () {
+      clone.style.transition = 'transform ' + RISE + 'ms cubic-bezier(.3, .9, .3, 1)';
+      clone.style.transform = 'translateY(' + Math.round(top - r.top) + 'px)';
+      setTimeout(function () {
+        location.hash = node.getAttribute('href');
+        // 見出しが出てから外す（入れ替わりが見えないように）
+        setTimeout(function () {
+          if (clone.parentNode) clone.parentNode.removeChild(clone);
+          document.body.classList.remove('tk-picking');
+          if (flying === clone) flying = null;
+        }, 90);
+      }, RISE);
+    }, FADE);
+    return true;
   }
 
   DL.views = DL.views || {};

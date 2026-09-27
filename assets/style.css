@@ -3461,6 +3461,31 @@ body.lock-theme .appbar-title { letter-spacing: .16em; font-size: 14px; }
 
 .tk-deck { display: flex; flex-direction: column; gap: 10px; }
 
+/* ---- 券の出入り ----
+   一覧は、下から流れてきた券が下のものから順に積み上がる。
+   押すと、その券だけを残してまわりがゆっくり消え、消えきってから
+   券が上へ動いて、そのままチケットの画面の見出しになる。 */
+@keyframes tk-deal {
+  from { transform: translateY(46px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.tk-deck .tk-card { animation: tk-deal .42s cubic-bezier(.22, .9, .3, 1) both; }
+/* まわりを消すのは画面まるごと。選んだ券は body へ写して残す。
+   画面の外に浮いている丸ボタンも、いっしょに消す */
+.view.tk-picking { opacity: 0; transition: opacity .36s ease; pointer-events: none; }
+body.tk-picking .fab { opacity: 0; transition: opacity .36s ease; pointer-events: none; }
+.tk-fly { position: fixed; z-index: 30; pointer-events: none; margin: 0; }
+/* 上がってきた券と入れ替わりに、見出しがその場に出る */
+@keyframes tk-hero-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.tk-hero { animation: tk-hero-in .24s ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .tk-deck .tk-card, .tk-hero { animation: none; }
+  .view.tk-picking { transition: none; }
+}
+
 .tk-card, .tk-hero {
   position: relative; display: flex; align-items: stretch; gap: 0;
   background: var(--card); border: 1px solid var(--line);

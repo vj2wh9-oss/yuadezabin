@@ -65,9 +65,14 @@
       if (tk.length || ['event', 'work', 'support'].indexOf(filter) >= 0) {
         listBox.appendChild(ui.section('チケット',
           ui.btn('作る', 'ghost tiny', function () { DL.views.ticket.form(null); }, 'plus')));
-        listBox.appendChild(tk.length
-          ? el('div', { class: 'tk-deck' },
-            tk.map(function (t) { return DL.views.ticket.card(t, today); }))
+        /* 券は下から流れてきて、下のものから順に積み上がる。
+           いちばん下を先に置き、上へ向かって少しずつ遅らせる */
+        var cards = tk.map(function (t) { return DL.views.ticket.card(t, today); });
+        cards.forEach(function (n, i) {
+          n.style.animationDelay = ((cards.length - 1 - i) * 55) + 'ms';
+        });
+        listBox.appendChild(cards.length
+          ? el('div', { class: 'tk-deck' }, cards)
           : ui.empty('まだありません。'));
       }
 
