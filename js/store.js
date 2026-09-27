@@ -308,6 +308,12 @@
     (target.settings && target.settings.items || []).forEach(function (x) {
       if (!x.cover && byItem[x.id]) x.cover = byItem[x.id].cover || '';
     });
+    // チケットのロゴも同じように戻す
+    var byTicket = {};
+    (source.settings && source.settings.tickets || []).forEach(function (x) { byTicket[x.id] = x; });
+    (target.settings && target.settings.tickets || []).forEach(function (x) {
+      if (!x.logo && byTicket[x.id]) x.logo = byTicket[x.id].logo || '';
+    });
     delete target.compact;
     return target;
   }
@@ -470,6 +476,8 @@
       date: U.isISO(t.date) ? t.date : '',
       venue: str(t.venue, 80),
       space: str(t.space, 40),
+      /* 券の顔になるロゴ（縮めた dataURL）。一覧の券の右下にうっすら敷く */
+      logo: /^data:image\//.test(String(t.logo || '')) ? String(t.logo).slice(0, 400000) : '',
       memo: String(t.memo || '').slice(0, 2000),
       prep: (t.prep || []).map(function (x) {
         return {
@@ -3773,8 +3781,9 @@
   function compact(s) {
     var c = U.clone(s);
     (c.settings.issuers || []).forEach(function (x) { x.logo = ''; x.seal = ''; });
-    // 頒布物の表紙も、控えには残さない（本体は IndexedDB にある）
+    // 頒布物の表紙と、チケットのロゴも控えには残さない（本体は IndexedDB にある）
     (c.settings.items || []).forEach(function (x) { x.cover = ''; });
+    (c.settings.tickets || []).forEach(function (x) { x.logo = ''; });
     c.compact = true;
     return c;
   }

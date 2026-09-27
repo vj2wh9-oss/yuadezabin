@@ -526,6 +526,39 @@
       }
     }
 
+    /* 券の顔になるロゴ。大きいままだと持ちきれないので、縮めて dataURL で持つ。
+       透かしのように敷くので、背景の抜けた画像（PNG）がきれいに出る */
+    var logo = v.logo || '';
+    var logoBox = el('div', { class: 'imgfield' });
+    var logoFile = el('input', { type: 'file', accept: 'image/*', style: { display: 'none' } });
+    logoFile.addEventListener('change', function () {
+      var f = logoFile.files[0];
+      logoFile.value = '';
+      if (!f) return;
+      U.readImage(f, 480, 'image/png').then(function (url) {
+        // 抜けの無い写真だと PNG では重くなるので、そのときだけ JPEG に落とす
+        if (url.length <= 380000) return url;
+        return U.readImage(f, 480, 'image/jpeg', 0.85);
+      }).then(function (url) {
+        if (url.length > 380000) throw new Error('画像が大きすぎます');
+        logo = url;
+        drawLogo();
+        ui.toast('読み込みました');
+      }).catch(function (e) { ui.toast(e.message, 'danger'); });
+    });
+    function drawLogo() {
+      U.clear(logoBox);
+      logoBox.appendChild(logo
+        ? el('img', { class: 'imgfield-prev', src: logo, alt: '' })
+        : el('div', { class: 'imgfield-empty' }, ui.icon('illust', 22)));
+      logoBox.appendChild(el('div', { class: 'row-wrap' }, [
+        ui.btn(logo ? '選び直す' : '画像を選ぶ', 'ghost tiny', function () { logoFile.click(); }, 'plus'),
+        logo ? ui.btn('削除', 'ghost tiny', function () { logo = ''; drawLogo(); }) : null
+      ]));
+      logoBox.appendChild(logoFile);
+    }
+    drawLogo();
+
     var body = el('div', { class: 'form' });
     if (isNew) {
       body.appendChild(ui.block('種別', ui.segmented(
@@ -535,6 +568,8 @@
     }
     body.appendChild(dynamic);
     drawDynamic();
+    body.appendChild(ui.field('ロゴ', logoBox,
+      '一覧の券の右下に、うっすら大きく敷きます（長辺480pxに縮小して保存）'));
 
     var close = ui.sheet({
       title: isNew ? '新しいチケット' : 'チケットを直す',
@@ -553,7 +588,7 @@
           }, 'trash'),
         ui.btn('保存', 'primary', function () {
           if (!name.value.trim()) { ui.toast('名前を入れてください', 'warn'); return; }
-          var data = { kind: kind, name: name.value.trim() };
+          var data = { kind: kind, name: name.value.trim(), logo: logo };
           if (kind === 'event') {
             data.date = date.value;
             data.venue = venue.value.trim();
@@ -598,6 +633,8 @@
       href: '#/ticket/' + t.id
     }, [
       el('div', { class: 'tk-card-main' }, [
+        // 登録してあれば、券の地紋のようにロゴを右下へ敷く（いちばん奥）
+        t.logo ? el('img', { class: 'tk-logo', src: t.logo, alt: '', 'aria-hidden': 'true' }) : null,
         el('div', { class: 'tk-card-head' }, [
           ui.icon(ui.KIND_ICON[t.kind], 15),
           el('span', { class: 'tk-card-name', text: t.name })

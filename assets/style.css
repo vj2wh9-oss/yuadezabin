@@ -3441,6 +3441,15 @@ body.lock-theme .appbar-title { letter-spacing: .16em; font-size: 14px; }
   flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px;
   padding: 11px 12px 11px 13px;
 }
+/* 登録したロゴ。半券の左側（券の本体）の右下に、大きくうっすら敷く。
+   isolation を付けて、z-index:-1 がカードの地より奥へ回らないようにする */
+.tk-card-main { position: relative; isolation: isolate; }
+.tk-logo {
+  position: absolute; right: 8px; bottom: 6px; z-index: -1; pointer-events: none;
+  height: calc(100% - 12px); width: auto; max-width: 58%;
+  object-fit: contain; object-position: right bottom;
+  opacity: .15;
+}
 .tk-card-head, .tk-name { display: flex; align-items: center; gap: 6px; }
 .tk-card-head .icon, .tk-name .icon { color: var(--event); flex: none; }
 /* 種別ごとに、券の顔になる色を変える（チップの色と揃える） */
