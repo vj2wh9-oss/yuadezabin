@@ -1236,6 +1236,29 @@ a.alert-main { text-decoration: none; }
   width: 70px; height: 44px; display: flex; align-items: center; justify-content: center;
   border: 1px dashed var(--line2); color: var(--muted);
 }
+/* ロゴの持ち物入れ。前に読み込んだ絵を並べて、そこから選ぶ */
+.logolib { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.logolib-cell { position: relative; }
+.logolib-item {
+  width: 100%; min-height: 70px; padding: 8px 6px 6px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  background: #fff; border: 1px solid var(--line2); border-radius: var(--radius-s);
+  cursor: pointer; color: inherit; font: inherit;
+}
+.logolib-item:active { border-color: var(--accent); }
+.logolib-item img { max-width: 100%; max-height: 46px; object-fit: contain; }
+.logolib-wait { color: var(--muted); }
+.logolib-name {
+  font-size: 10px; color: var(--muted); max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.logolib-del {
+  position: absolute; top: -6px; right: -6px; width: 22px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--card2); border: 1px solid var(--line2); border-radius: 50%;
+  color: var(--muted); cursor: pointer; padding: 0;
+}
+
 .items { display: flex; flex-direction: column; gap: 8px; }
 .item-row { display: flex; flex-direction: column; gap: 6px; background: var(--card2); border: 1px solid var(--line); border-radius: var(--radius-s); padding: 8px; }
 
@@ -3662,9 +3685,11 @@ body.skin-bar .alert {
   background-image:
     linear-gradient(var(--bar), var(--bar)), linear-gradient(var(--bar), var(--bar)),
     linear-gradient(var(--bar), var(--bar)), linear-gradient(var(--bar), var(--bar));
-  background-size: 15px 3px, 3px 15px, 15px 3px, 3px 15px;
+  background-size: 15px 3px, 3px 18px, 15px 3px, 3px 18px;
   background-position: left top, left top, right bottom, right bottom;
   background-repeat: no-repeat;
+  /* 枠の外側の角から描く。padding-box のままだと、線のぶん角が欠ける */
+  background-origin: border-box;
 }
 /* 知らせどうしの間は、ほんの少し空ける */
 body.skin-bar .alerts { gap: 8px; }
@@ -3689,7 +3714,10 @@ body.skin-bar .alert-icon .icon { width: 30px; height: 30px; transform: none; }
 /* 印は塗りつぶし。外の形（三角や四角）を塗り、中の印は白で抜く。
    どの印も「外の形 → 中の印」の順に描いてあるので、これで通る */
 body.skin-bar .alert-icon .icon > :first-child { fill: currentColor; }
-body.skin-bar .alert-icon .icon > :not(:first-child) { stroke: #fff; fill: #fff; }
+body.skin-bar .alert-icon .icon > :not(:first-child) { stroke: #fff; }
+/* 塗りで描いてある印（! の下の四角など）は、塗りだけ白にする。
+   線まで足すと、そのぶん太って上の棒と幅が合わなくなる */
+body.skin-bar .alert-icon .icon > [fill] { fill: #fff; stroke: none; }
 /* 中身だけ起こして、字はまっすぐ読めるようにする
    （.alert の直下に限る。板の中の入れ物は上で起こしてある） */
 body.skin-bar .alert > * { transform: skewX(calc(var(--skew) * -1)); }

@@ -187,6 +187,9 @@
        その即売会の原稿（新刊など）・頒布物・準備を、この下にまとめる。
        [{id, name, date, venue, space, memo, prep:[{id,name,done}]}] */
     tickets: [],
+    /* 券の顔に使うロゴの持ち物入れ。一度入れたものは、次に券を作るときも選べる。
+       [{id, ref:'img:…' か dataURL, name, at}] */
+    logos: [],
     cardInbox: [],
     /* 片づけた通知の id。経費に入れたぶんも、捨てたぶんもここに残す。
        サーバー側の消し込みに取りこぼしがあっても、二度と戻ってこないようにする */
@@ -308,11 +311,16 @@
     (target.settings && target.settings.items || []).forEach(function (x) {
       if (!x.cover && byItem[x.id]) x.cover = byItem[x.id].cover || '';
     });
-    // チケットのロゴも同じように戻す
+    // チケットのロゴと、持ち物入れのぶんも同じように戻す
     var byTicket = {};
     (source.settings && source.settings.tickets || []).forEach(function (x) { byTicket[x.id] = x; });
     (target.settings && target.settings.tickets || []).forEach(function (x) {
       if (!x.logo && byTicket[x.id]) x.logo = byTicket[x.id].logo || '';
+    });
+    var byLogo = {};
+    (source.settings && source.settings.logos || []).forEach(function (x) { byLogo[x.id] = x; });
+    (target.settings && target.settings.logos || []).forEach(function (x) {
+      if (!x.ref && byLogo[x.id]) x.ref = byLogo[x.id].ref || '';
     });
     delete target.compact;
     return target;
@@ -403,6 +411,8 @@
     s.settings.docSeq = migrateDocSeq(s.settings.docSeq);
     s.projects = (s.projects || []).map(normalizeProject);
     s.settings.tickets = (s.settings.tickets || []).map(normalizeTicket);
+    s.settings.logos = (s.settings.logos || []).map(normalizeLogo)
+      .filter(function (x) { return x.ref; }).slice(0, LOGO_MAX);
     buildTickets(s);
     return s;
   }
@@ -493,6 +503,19 @@
       stock: (t.stock || []).map(normalizeTicketStock)
         .filter(function (x) { return x.itemId; }).slice(0, TICKET_STOCK_MAX),
       createdAt: t.createdAt || new Date().toISOString()
+    };
+  }
+
+  var LOGO_MAX = 60;
+
+  /* 持ち物入れの1枚 */
+  function normalizeLogo(x) {
+    x = x || {};
+    return {
+      id: x.id || U.uid(),
+      ref: normalizeImageRef(x.ref),
+      name: String(x.name == null ? '' : x.name).trim().slice(0, 40),
+      at: x.at || new Date().toISOString()
     };
   }
 
@@ -888,6 +911,41 @@
     });
     save();
     return fixed;
+  }
+
+  /* ---------------- ロゴの持ち物入れ ----------------
+
+     一度入れた絵は、次に券を作るときもここから選べる。
+     同じ絵（同じ鍵）は1枚しか持たない。 */
+
+  function logos() { return state.settings.logos || []; }
+
+  /**
+   * 持ち物入れへ足す。すでにあるものは足さず、そのまま返す。
+   * @param {string} ref 'img:…' か dataURL
+   * @param {string} [name] 見分けるための名前
+   */
+  function addLogo(ref, name) {
+    var v = normalizeImageRef(ref);
+    if (!v) return null;
+    var list = state.settings.logos || (state.settings.logos = []);
+    var had = list.filter(function (x) { return x.ref === v; })[0];
+    if (had) {
+      if (name && !had.name) { had.name = String(name).trim().slice(0, 40); save(); }
+      return had;
+    }
+    var x = normalizeLogo({ ref: v, name: name });
+    list.unshift(x);                       // 新しいものを前に
+    state.settings.logos = list.slice(0, LOGO_MAX);
+    save();
+    return x;
+  }
+
+  /* 持ち物入れから外す。すでに券に貼ってあるものは、そのまま残る */
+  function removeLogo(id) {
+    state.settings.logos = (state.settings.logos || [])
+      .filter(function (x) { return x.id !== id; });
+    save();
   }
 
   /** チケットだけ捨てる。中の案件は残す（紐付けを外すだけ） */
@@ -3790,9 +3848,15 @@
   function compact(s) {
     var c = U.clone(s);
     (c.settings.issuers || []).forEach(function (x) { x.logo = ''; x.seal = ''; });
-    // 頒布物の表紙と、チケットのロゴも控えには残さない（本体は IndexedDB にある）
+    // 頒布物の表紙と、チケットのロゴも控えには残さない（本体は IndexedDB にある）。
+    // 鍵（img:…）だけのものは短いので、そのまま残す
     (c.settings.items || []).forEach(function (x) { x.cover = ''; });
-    (c.settings.tickets || []).forEach(function (x) { x.logo = ''; });
+    (c.settings.tickets || []).forEach(function (x) {
+      if (/^data:/.test(x.logo || '')) x.logo = '';
+    });
+    (c.settings.logos || []).forEach(function (x) {
+      if (/^data:/.test(x.ref || '')) x.ref = '';
+    });
     c.compact = true;
     return c;
   }
@@ -4510,6 +4574,7 @@
     updateIssuer: updateIssuer, removeIssuer: removeIssuer, issuerColor: issuerColor,
     scopeId: scopeId, scopeIssuer: scopeIssuer, setScope: setScope,
     inScope: inScope, scopedProjects: scopedProjects, unassignedCount: unassignedCount,
+    logos: logos, addLogo: addLogo, removeLogo: removeLogo,
     tickets: tickets, getTicket: getTicket, ticketProjects: ticketProjects,
     ticketDate: ticketDate, TICKET_KINDS: TICKET_KINDS,
     createTicket: createTicket, updateTicket: updateTicket, removeTicket: removeTicket,

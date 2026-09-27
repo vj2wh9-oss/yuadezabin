@@ -540,18 +540,21 @@
     /* 券の顔になるロゴ。
        LOGO_BOX の枠に収めてから預ける。比は変えず、余ったところは
        透かしのままにするので、横長でも縦長でも同じ大きさで並ぶ。
-       絵そのものは絵の置き場（imgbank）へ。state には鍵だけを入れる */
+       絵そのものは絵の置き場（imgbank）へ。state には鍵だけを入れる。
+       読み込んだ絵は持ち物入れにも入れて、次に券を作るときに選べるようにする */
     var logo = v.logo || '';
     var logoBox = el('div', { class: 'imgfield' });
     var logoFile = el('input', { type: 'file', accept: 'image/*', style: { display: 'none' } });
     logoFile.addEventListener('change', function () {
       var f = logoFile.files[0];
+      var fname = f ? String(f.name || '').replace(/\.[^.]+$/, '') : '';
       logoFile.value = '';
       if (!f) return;
       U.readImageBox(f, LOGO_BOX[0], LOGO_BOX[1]).then(function (url) {
         return DL.imgbank.put(url);
       }).then(function (ref) {
         logo = ref;
+        S.addLogo(ref, fname);
         drawLogo();
         ui.toast('読み込みました');
       }).catch(function (e) { ui.toast(e.message, 'danger'); });
@@ -563,8 +566,11 @@
         ? el('img', { class: 'imgfield-prev', src: url, alt: '' })
         : el('div', { class: 'imgfield-empty' }, ui.icon('illust', 22)));
       logoBox.appendChild(el('div', { class: 'row-wrap' }, [
+        S.logos().length ? ui.btn('持ち物入れから', 'ghost tiny', function () {
+          logoSheet(function (ref) { logo = ref; drawLogo(); });
+        }, 'illust') : null,
         ui.btn(logo ? '選び直す' : '画像を選ぶ', 'ghost tiny', function () { logoFile.click(); }, 'plus'),
-        logo ? ui.btn('削除', 'ghost tiny', function () { logo = ''; drawLogo(); }) : null
+        logo ? ui.btn('外す', 'ghost tiny', function () { logo = ''; drawLogo(); }) : null
       ]));
       logoBox.appendChild(logoFile);
     }
@@ -618,6 +624,56 @@
           }
         }, 'check')
       ]
+    });
+  }
+
+  /**
+   * ロゴの持ち物入れ。前に入れた絵から選ぶ。
+   * ここで外しても、すでに券に貼ってあるものは消えない。
+   * @param {function(string)} onPick 選んだときに、その指し先（'img:…'）を渡す
+   */
+  function logoSheet(onPick) {
+    var grid = el('div', { class: 'logolib' });
+    var close = null;
+
+    function draw() {
+      U.clear(grid);
+      var list = S.logos();
+      if (!list.length) {
+        grid.appendChild(ui.empty('まだ何も入っていません'));
+        return;
+      }
+      list.forEach(function (x) {
+        var url = DL.imgbank.src(x.ref);
+        var item = el('button', {
+          type: 'button', class: 'logolib-item',
+          'aria-label': (x.name || 'ロゴ') + ' を使う',
+          onclick: function () { onPick(x.ref); if (close) close(); }
+        }, [
+          url ? el('img', { src: url, alt: '' })
+            : el('span', { class: 'logolib-wait' }, ui.icon('illust', 20)),
+          x.name ? el('span', { class: 'logolib-name', text: x.name }) : null
+        ]);
+        var del = el('button', {
+          type: 'button', class: 'logolib-del', 'aria-label': '持ち物入れから外す',
+          onclick: function (e) {
+            e.stopPropagation();
+            S.removeLogo(x.id);
+            draw();
+          }
+        }, ui.icon('close', 13));
+        grid.appendChild(el('div', { class: 'logolib-cell' }, [item, del]));
+      });
+    }
+    draw();
+
+    close = ui.sheet({
+      title: 'ロゴの持ち物入れ',
+      body: el('div', { class: 'form' }, [
+        el('p', { class: 'muted small', text: '前に読み込んだ絵から選べます。外しても、すでに券に貼ってあるものは消えません。' }),
+        grid
+      ]),
+      actions: [ui.btn('閉じる', 'ghost', function () { close(); })]
     });
   }
 

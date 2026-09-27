@@ -162,18 +162,28 @@
    */
   function relink() {
     if (!ready() || !S.tickets) return Promise.resolve(0);
-    var todo = S.tickets().filter(function (t) { return /^data:image\//.test(t.logo || ''); });
+    var todo = [];
+    S.tickets().forEach(function (t) {
+      if (/^data:image\//.test(t.logo || '')) {
+        todo.push({ url: t.logo, put: function (ref) { S.updateTicket(t.id, { logo: ref }); } });
+      }
+    });
+    (S.logos ? S.logos() : []).forEach(function (x) {
+      if (/^data:image\//.test(x.ref || '')) {
+        todo.push({ url: x.ref, put: function (ref) { S.removeLogo(x.id); S.addLogo(ref, x.name); } });
+      }
+    });
     if (!todo.length) return Promise.resolve(0);
-    return todo.reduce(function (p, t) {
+    return todo.reduce(function (p, o) {
       return p.then(function (n) {
-        return hash(t.logo).then(function (k) {
+        return hash(o.url).then(function (k) {
           if (!mem[k]) {
-            mem[k] = t.logo;
-            DL.db.put('images', { k: k, url: t.logo, at: new Date().toISOString() });
+            mem[k] = o.url;
+            DL.db.put('images', { k: k, url: o.url, at: new Date().toISOString() });
           }
-          return upload(k, t.logo).then(function (ok) {
+          return upload(k, o.url).then(function (ok) {
             if (!ok) return n;
-            S.updateTicket(t.id, { logo: PREFIX + k });
+            o.put(PREFIX + k);
             return n + 1;
           });
         });

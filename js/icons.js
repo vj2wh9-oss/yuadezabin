@@ -102,8 +102,8 @@
     roomIn: '<path d="M13 3.5h7.5v17H13"/><path d="M17.4 12.4v0.8"/><path d="M3.5 12h7.6"/><path d="M8 8.5 11.5 12 8 15.5"/>',
 
     /* 状態 */
-    alert: '<path d="M12 3.5 22 20.5H2z"/><path d="M12 9.6v5"/><path d="M11.2 16.6h1.6v1.7h-1.6z" fill="currentColor" stroke="none"/>',
-    info: '<path d="M4 4h16v16H4z"/><path d="M12 11v6"/><path d="M11.2 7.2h1.6v1.7h-1.6z" fill="currentColor" stroke="none"/>',
+    alert: '<path d="M12 3.5 22 20.5H2z"/><path d="M12 9.6v5"/><path d="M11.15 16.6h1.7v1.7h-1.7z" fill="currentColor" stroke="none"/>',
+    info: '<path d="M4 4h16v16H4z"/><path d="M12 11v6"/><path d="M11.15 7.2h1.7v1.7h-1.7z" fill="currentColor" stroke="none"/>',
     clock: '<path d="M4 4h16v16H4z"/><path d="M12 7.5V12l3 2.2"/>',
     // 知らせ（ベル）。1日の時間の「始まり・終わり」の印に使う
     bell: '<path d="M6 17.5V11a6 6 0 0 1 12 0v6.5"/><path d="M4 17.5h16"/>'
