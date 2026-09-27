@@ -3480,8 +3480,10 @@ body.lock-theme .appbar-title { letter-spacing: .16em; font-size: 14px; }
    ロゴの上に来る配置番号などの四角は、地の色で塗って透けないようにする */
 .tk-card-main, .tk-body { position: relative; isolation: isolate; --chip-under: var(--card); }
 .tk-logo {
-  position: absolute; right: 8px; bottom: 6px; z-index: -1; pointer-events: none;
-  height: calc(100% - 12px); width: auto; max-width: 58%;
+  /* 券の下辺にぴたりと付ける（浮かせない）。絵は余白を切り詰めてあるので、
+     これで下端がそのまま券の下辺に並ぶ */
+  position: absolute; right: 8px; bottom: 0; z-index: -1; pointer-events: none;
+  height: calc(100% - 6px); width: auto; max-width: 58%;
   object-fit: contain; object-position: right bottom;
   opacity: .1;
 }

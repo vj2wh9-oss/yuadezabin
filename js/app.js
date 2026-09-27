@@ -1024,7 +1024,14 @@
       splashDone();
       DL.sync.start();
       // 送り損ねている絵があれば、ここで追いつかせる
-      DL.imgbank.pushAll().then(function () { return DL.imgbank.relink(); });
+      DL.imgbank.pushAll()
+        .then(function () { return DL.imgbank.relink(); })
+        // 余白が残っている絵は、1度だけ整え直す（小さく見える・下辺から浮くのを直す）
+        .then(function () {
+          var box = DL.views.ticket.LOGO_BOX;
+          return DL.imgbank.refit(box[0], box[1]);
+        })
+        .then(function (n) { if (n) render(); });
       /* 通知の宛先が切れていないか確かめ、切れていたら入れ直す。
          ブラウザの都合で宛先が作り直されたり、サーバーの鍵を入れ替えたりすると、
          設定を触っていないのに来なくなる。開いたときに黙って直しておく */
@@ -1068,7 +1075,7 @@
 
   /* この端末がいま動かしている版。sw.js の CACHE と揃えて上げる。
      2台で見比べて、片方だけ古いままになっていないか確かめるためのもの */
-  DL.VERSION = 'v199';
+  DL.VERSION = 'v200';
 
   DL.app = { render: render, init: init, get route() { return route; } };
   document.addEventListener('DOMContentLoaded', init);

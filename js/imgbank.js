@@ -16,7 +16,7 @@
    state に入れて運ぶ。どちらの形でも読めるようにしてある。 */
 (function (DL) {
   'use strict';
-  var S = DL.store;
+  var S = DL.store, U = DL.util;
 
   var PREFIX = 'img:';
   var mem = {};          // 鍵 → dataURL（描くときは同期的に引きたいので memory に載せる）
@@ -191,8 +191,58 @@
     }, Promise.resolve(0));
   }
 
+  /**
+   * 前に登録した絵で、まわりに余白が残っているものを整え直す。
+   * 余白があると、絵が小さく見えたり、券の下辺から浮いたりする。
+   * 1度きりの後始末なので、直すものが無ければ何もしない。
+   * @param {number} boxW 枠の幅
+   * @param {number} boxH 枠の高さ
+   */
+  var FIT_DONE = 1;        // 整え直しが済んだ印（済んだら二度とやらない）
+
+  function refit(boxW, boxH) {
+    if (!S.tickets || !S.settings) return Promise.resolve(0);
+    if (U.num(S.settings.logoFit, 0) >= FIT_DONE) return Promise.resolve(0);
+
+    var todo = [];
+    var missing = 0;
+    var attach = function (ref, put) {
+      if (!ref) return;
+      var had = todo.filter(function (o) { return o.ref === ref; })[0];
+      if (had) { had.puts.push(put); return; }
+      var url = src(ref);
+      if (!url) { missing++; return; }        // まだ手元に無い。次に開いたときに
+      todo.push({ ref: ref, url: url, puts: [put] });
+    };
+    S.tickets().forEach(function (t) {
+      attach(t.logo, function (nref) { S.updateTicket(t.id, { logo: nref }); });
+    });
+    (S.logos ? S.logos() : []).forEach(function (x) {
+      attach(x.ref, function (nref) { S.removeLogo(x.id); S.addLogo(nref, x.name); });
+    });
+
+    var finish = function (n) {
+      // 取りに行っている絵が残っているうちは、印を付けずに次の機会へ回す
+      if (!missing) S.updateSettings({ logoFit: FIT_DONE }, { quiet: true });
+      return n;
+    };
+    if (!todo.length) return Promise.resolve(finish(0));
+
+    return todo.reduce(function (p, o) {
+      return p.then(function (n) {
+        return DL.util.fitImageURL(o.url, boxW, boxH).then(function (url) {
+          if (url === o.url) return n;        // すでに整っている
+          return put(url).then(function (nref) {
+            o.puts.forEach(function (f) { f(nref); });
+            return n + 1;
+          });
+        }).catch(function () { return n; });
+      });
+    }, Promise.resolve(0)).then(finish);
+  }
+
   DL.imgbank = {
-    init: init, put: put, src: src, pushAll: pushAll, relink: relink,
+    init: init, put: put, src: src, pushAll: pushAll, relink: relink, refit: refit,
     isRef: isRef, key: keyOf, PREFIX: PREFIX
   };
 })(window.DL);

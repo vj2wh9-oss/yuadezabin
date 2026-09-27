@@ -566,9 +566,9 @@
         ? el('img', { class: 'imgfield-prev', src: url, alt: '' })
         : el('div', { class: 'imgfield-empty' }, ui.icon('illust', 22)));
       logoBox.appendChild(el('div', { class: 'row-wrap' }, [
-        S.logos().length ? ui.btn('持ち物入れから', 'ghost tiny', function () {
+        ui.btn('持ち物入れから', 'ghost tiny', function () {
           logoSheet(function (ref) { logo = ref; drawLogo(); });
-        }, 'illust') : null,
+        }, 'illust'),
         ui.btn(logo ? '選び直す' : '画像を選ぶ', 'ghost tiny', function () { logoFile.click(); }, 'plus'),
         logo ? ui.btn('外す', 'ghost tiny', function () { logo = ''; drawLogo(); }) : null
       ]));
@@ -719,5 +719,7 @@
   }
 
   DL.views = DL.views || {};
-  DL.views.ticket = { render: render, card: card, form: ticketForm, needLabel: needLabel };
+  DL.views.ticket = {
+    render: render, card: card, form: ticketForm, needLabel: needLabel, LOGO_BOX: LOGO_BOX
+  };
 })(window.DL);

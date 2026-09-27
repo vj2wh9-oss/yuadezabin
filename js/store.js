@@ -190,6 +190,8 @@
     /* 券の顔に使うロゴの持ち物入れ。一度入れたものは、次に券を作るときも選べる。
        [{id, ref:'img:…' か dataURL, name, at}] */
     logos: [],
+    /* ロゴの余白を切り詰め直したかどうかの印（1度きりの後始末） */
+    logoFit: 0,
     cardInbox: [],
     /* 片づけた通知の id。経費に入れたぶんも、捨てたぶんもここに残す。
        サーバー側の消し込みに取りこぼしがあっても、二度と戻ってこないようにする */
@@ -413,6 +415,14 @@
     s.settings.tickets = (s.settings.tickets || []).map(normalizeTicket);
     s.settings.logos = (s.settings.logos || []).map(normalizeLogo)
       .filter(function (x) { return x.ref; }).slice(0, LOGO_MAX);
+    /* すでに券に貼ってある絵は、持ち物入れにも入れておく。
+       持ち物入れを作る前に登録したぶんが、あとから選べるようにするため */
+    (s.settings.tickets || []).forEach(function (t) {
+      if (!t.logo) return;
+      var had = s.settings.logos.filter(function (x) { return x.ref === t.logo; }).length;
+      if (had || s.settings.logos.length >= LOGO_MAX) return;
+      s.settings.logos.push(normalizeLogo({ ref: t.logo, name: t.name }));
+    });
     buildTickets(s);
     return s;
   }

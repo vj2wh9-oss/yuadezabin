@@ -227,38 +227,88 @@ window.DL = window.DL || {};
   }
 
   /**
-   * 決まった大きさの枠に収めて読み込む。
-   * 枠は透かしのまま、絵は縦横の比を変えずに中へ入れて真ん中に置く。
-   * こうしておくと、横長でも縦長でも「だいたい同じ大きさ」で並ぶ。
-   * @param {File} file
+   * 決まった枠いっぱいに整える。
+   *   1) まわりの透かし（余白）を切り落とす
+   *   2) 縦横の比はそのままに、枠いっぱいまで拡げる／縮める
+   *   3) 余白は付けずに、絵のぶんだけの大きさで返す
+   * 余白を残すと、絵が小さく見えたり、下辺から浮いたりする。
+   * 切り詰めておけば、もとが大きくても小さくても同じくらいの大きさで並び、
+   * 置き場所（右下など）にもぴったり付く。
+   * @param {string} url dataURL
    * @param {number} boxW 枠の幅
    * @param {number} boxH 枠の高さ
    * @returns {Promise<string>} PNG の dataURL（抜けはそのまま残す）
    */
-  function readImageBox(file, boxW, boxH) {
+  function fitImageURL(url, boxW, boxH) {
     boxW = boxW || 360; boxH = boxH || 240;
+    return new Promise(function (resolve, reject) {
+      var img = new Image();
+      img.onerror = function () { reject(new Error('画像として読めませんでした')); };
+      img.onload = function () {
+        var w = img.naturalWidth, h = img.naturalHeight;
+        if (!w || !h) { reject(new Error('画像として読めませんでした')); return; }
+        // 元のまま読み取ると重いので、大きいものは一度縮めてから調べる
+        var pre = Math.min(1, 1200 / Math.max(w, h));
+        var pw = Math.max(1, Math.round(w * pre)), ph = Math.max(1, Math.round(h * pre));
+        var work = document.createElement('canvas');
+        work.width = pw; work.height = ph;
+        var wctx = work.getContext('2d');
+        wctx.drawImage(img, 0, 0, pw, ph);
+
+        var box = { x: 0, y: 0, w: pw, h: ph };
+        try {
+          box = inkBox(wctx.getImageData(0, 0, pw, ph), pw, ph) || box;
+        } catch (e) { /* 読み取れない環境では、切り落とさずそのまま */ }
+
+        var scale = Math.min(boxW / box.w, boxH / box.h);
+        var dw = Math.max(1, Math.round(box.w * scale)), dh = Math.max(1, Math.round(box.h * scale));
+        var cv = document.createElement('canvas');
+        cv.width = dw; cv.height = dh;
+        var ctx = cv.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(work, box.x, box.y, box.w, box.h, 0, 0, dw, dh);
+        try {
+          resolve(cv.toDataURL('image/png'));
+        } catch (e) { reject(new Error('変換できませんでした')); }
+      };
+      img.src = String(url);
+    });
+  }
+
+  /* 絵が実際に描かれている範囲（透かしでないところ）を探す */
+  function inkBox(data, w, h) {
+    var d = data.data;
+    var x0 = w, y0 = h, x1 = -1, y1 = -1, x, y, a;
+    for (y = 0; y < h; y++) {
+      for (x = 0; x < w; x++) {
+        a = d[(y * w + x) * 4 + 3];
+        if (a > 8) {
+          if (x < x0) x0 = x;
+          if (x > x1) x1 = x;
+          if (y < y0) y0 = y;
+          if (y > y1) y1 = y;
+        }
+      }
+    }
+    if (x1 < 0) return null;                       // 何も描かれていない
+    return { x: x0, y: y0, w: (x1 - x0 + 1), h: (y1 - y0 + 1) };
+  }
+
+  /**
+   * 選んだファイルを、枠いっぱいに整えて読み込む。
+   * @param {File} file
+   * @param {number} boxW
+   * @param {number} boxH
+   * @returns {Promise<string>} PNG の dataURL
+   */
+  function readImageBox(file, boxW, boxH) {
     return new Promise(function (resolve, reject) {
       if (!file || file.size > 12 * 1024 * 1024) { reject(new Error('画像が大きすぎます')); return; }
       var reader = new FileReader();
       reader.onerror = function () { reject(new Error('読み込めませんでした')); };
       reader.onload = function () {
-        var img = new Image();
-        img.onerror = function () { reject(new Error('画像として読めませんでした')); };
-        img.onload = function () {
-          var w = img.naturalWidth, h = img.naturalHeight;
-          if (!w || !h) { reject(new Error('画像として読めませんでした')); return; }
-          // 枠に収まる倍率。大きい絵は縮め、小さい絵は引き伸ばさない
-          var scale = Math.min(boxW / w, boxH / h, 1);
-          var dw = Math.max(1, Math.round(w * scale)), dh = Math.max(1, Math.round(h * scale));
-          var cv = document.createElement('canvas');
-          cv.width = boxW; cv.height = boxH;
-          var ctx = cv.getContext('2d');
-          ctx.drawImage(img, Math.round((boxW - dw) / 2), Math.round((boxH - dh) / 2), dw, dh);
-          try {
-            resolve(cv.toDataURL('image/png'));
-          } catch (e) { reject(new Error('変換できませんでした')); }
-        };
-        img.src = String(reader.result);
+        fitImageURL(String(reader.result), boxW, boxH).then(resolve, reject);
       };
       reader.readAsDataURL(file);
     });
@@ -295,6 +345,6 @@ window.DL = window.DL || {};
     wdName: wdName, untilLabel: untilLabel,
     el: el, append: append, clear: clear, $: $, $$: $$,
     uid: uid, clone: clone, num: num, sum: sum, groupBy: groupBy, readImage: readImage,
-    readImageBox: readImageBox, inkOn: inkOn
+    readImageBox: readImageBox, fitImageURL: fitImageURL, inkOn: inkOn
   };
 })(window.DL);
