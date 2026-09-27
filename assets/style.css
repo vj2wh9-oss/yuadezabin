@@ -3945,10 +3945,10 @@ body.skin-bar .logo-word::after {
   transform: skewX(var(--skew));
 }
 
-/* ---- いま→次 の矢印。太く、濃く ---- */
+/* ---- いま→次 の矢印。大きく、うんと太く ---- */
 body.skin-bar .tp-flow { gap: 1px; color: var(--accent); }
 body.skin-bar .tp-flow i {
-  width: 16px; height: 16px; border-width: 4px; opacity: .28;
+  width: 20px; height: 20px; border-width: 6px; opacity: .28;
 }
 body.skin-bar .tp-flow i { animation-name: tp-flow-bar; }
 @keyframes tp-flow-bar {
@@ -3979,13 +3979,36 @@ body.skin-bar .tp-mid-l {
   font-size: 7.5px; font-weight: 700; letter-spacing: .08em;
   font-variant-numeric: tabular-nums;
 }
-/* まわりに置く名前は、節の見出しと同じ倒した板に */
+/* まわりに置く名前は、節の見出しと同じ倒した板に。
+   色は帯ごとに変えず、どれも同じ濃い青＋白文字でそろえる
+   （どの帯かは、そこへ引く線の色で分かる） */
+body.skin-bar { --pie-tag: color-mix(in srgb, var(--accent) 82%, #000); }
+@media (prefers-color-scheme: light) {
+  body.skin-bar { --pie-tag: color-mix(in srgb, var(--accent) 76%, #000); }
+}
 body.skin-bar .tp-tag rect {
   rx: 0;
+  fill: var(--pie-tag);
   transform: skewX(var(--skew));
   transform-box: fill-box; transform-origin: center;
 }
-body.skin-bar .tp-tag-t { font-weight: 800; }
+body.skin-bar .tp-tag-t { font-weight: 800; fill: #fff; }
+
+/* ---- 円グラフの右下に、大きめの網点をひとつまみ ----
+   隅から内側へ向かって薄れさせ、円には掛からないようにする */
+body.skin-bar .tp-pie-wrap { position: relative; isolation: isolate; }
+body.skin-bar .tp-pie-wrap::after {
+  content: ''; position: absolute; right: 10px; bottom: 2px; z-index: -1;
+  width: 38%; height: 34%; pointer-events: none;
+  background-image: radial-gradient(circle, var(--accent) 3.4px, transparent 3.9px);
+  background-size: 15px 15px;
+  background-position: right bottom;
+  opacity: .2;
+  -webkit-mask-image: radial-gradient(115% 115% at 100% 100%,
+    #000 0%, rgba(0, 0, 0, .5) 46%, transparent 86%);
+  mask-image: radial-gradient(115% 115% at 100% 100%,
+    #000 0%, rgba(0, 0, 0, .5) 46%, transparent 86%);
+}
 /* 名前へ引く線も、細く硬く */
 body.skin-bar .tp-lead { stroke-width: 1; opacity: .95; stroke-linecap: butt; }
 /* ホームの帯グラフも、切れ目と目盛りをはっきりさせる */
