@@ -3495,15 +3495,15 @@ body.tk-picking .fab { opacity: 0; transition: opacity .36s ease; pointer-events
 .tk-card.soon { border-color: var(--accent); }
 .tk-card.past, .tk-hero.past { opacity: .62; }
 
-.tk-card-main, .tk-body {
+.tk-card-main {
   flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px;
   padding: 11px 12px 11px 13px;
 }
 /* 登録したロゴ。半券の左側（券の本体）の右下に、大きくうっすら敷く。
-   一覧の券（.tk-card-main）でも、チケットの画面の見出し（.tk-body）でも同じ。
+   一覧の券でも、チケットの画面の見出しでも同じ（どちらも同じ組み立て）。
    isolation を付けて、z-index:-1 がカードの地より奥へ回らないようにする。
    ロゴの上に来る配置番号などの四角は、地の色で塗って透けないようにする */
-.tk-card-main, .tk-body { position: relative; isolation: isolate; --chip-under: var(--card); }
+.tk-card-main { position: relative; isolation: isolate; --chip-under: var(--card); }
 .tk-logo {
   /* 券の下辺にぴたりと付ける（浮かせない）。絵は余白を切り詰めてあるので、
      これで下端がそのまま券の下辺に並ぶ */
@@ -3512,16 +3512,15 @@ body.tk-picking .fab { opacity: 0; transition: opacity .36s ease; pointer-events
   object-fit: contain; object-position: right bottom;
   opacity: .1;
 }
-.tk-card-head, .tk-name { display: flex; align-items: center; gap: 6px; }
-.tk-card-head .icon, .tk-name .icon { color: var(--event); flex: none; }
+.tk-card-head { display: flex; align-items: center; gap: 6px; }
+.tk-card-head .icon { color: var(--event); flex: none; }
 /* 種別ごとに、券の顔になる色を変える（チップの色と揃える） */
-.tk-work .tk-card-head .icon, .tk-work .tk-name .icon { color: var(--accent2); }
-.tk-support .tk-card-head .icon, .tk-support .tk-name .icon { color: var(--indigo); }
-.tk-card-name, .tk-name {
+.tk-work .tk-card-head .icon { color: var(--accent2); }
+.tk-support .tk-card-head .icon { color: var(--indigo); }
+.tk-card-name {
   font-size: 15px; font-weight: 700; letter-spacing: .01em; overflow-wrap: anywhere;
 }
-.tk-name { font-size: 17px; }
-.tk-card-sub, .tk-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.tk-card-sub { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
 /* 右のもぎり（半券）。ここに残り日数を大きく出す */
 .tk-card-stub, .tk-stub {
@@ -3544,11 +3543,11 @@ body.tk-picking .fab { opacity: 0; transition: opacity .36s ease; pointer-events
 .tk-card::before, .tk-hero::before { top: -7px; }
 .tk-card::after, .tk-hero::after { bottom: -7px; }
 
-/* チケットの画面の見出し。一覧のカードより少し大きく */
-.tk-hero { margin-bottom: 4px; }
-.tk-hero .tk-stub { width: 92px; }
-.tk-hero .tk-num { font-size: 26px; }
-.tk-edit { align-self: flex-start; margin-top: 2px; }
+/* チケットの画面の見出し。一覧の券がそのまま上がってくるので、
+   大きさも中身も一覧とまったく同じ。違うのは「直す」が付くことだけ */
+.tk-hero { margin-bottom: 0; }
+/* 「直す」は券の外、すぐ下の右側に小さく添える */
+.tk-hero-acts { display: flex; justify-content: flex-end; margin: 6px 0 2px; }
 
 /* 中に並べる頒布物 */
 .tk-item {
@@ -3890,7 +3889,6 @@ body.skin-bar .tk-card-stub::after, body.skin-bar .tk-stub::after {
     var(--muted) 9px 12px, transparent 12px 13px,
     var(--muted) 13px 14px, transparent 14px 17px);
 }
-body.skin-bar .tk-hero .tk-stub::after { width: 62px; height: 21px; }
 
 /* 左端の帯ぶんだけ空けていた余白は、ほかの行とそろえる */
 body.skin-bar .lk-entry,

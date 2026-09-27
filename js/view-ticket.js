@@ -37,7 +37,7 @@
     var today = U.today();
     var projects = S.ticketProjects(t.id);
 
-    wrap.appendChild(hero(t, projects, today));
+    hero(t, projects, today).forEach(function (n) { wrap.appendChild(n); });
 
     /* ---- 原稿など ---- */
     /* 必要入稿総数は上の券に出してあるので、ここでは足すボタンだけ */
@@ -93,28 +93,17 @@
     root.appendChild(wrap);
   }
 
-  /* 上のチケットそのもの。押すと中身を直せる */
+  /* 上のチケットそのもの。
+     一覧から上がってきた券がそのまま見出しになるので、組み立ては一覧の券と
+     まったく同じものを使う。「直す」は券の中ではなく、すぐ下に添える
+     （券の姿が変わってしまわないように） */
   function hero(t, projects, today) {
-    var date = S.ticketDate(t);
-    var left = date ? U.diffDays(today, date) : null;
-    return el('div', {
-      class: 'tk-hero tk-' + t.kind + (left !== null && left < 0 ? ' past' : '')
-    }, [
-      el('div', { class: 'tk-body' }, [
-        // 一覧の券と同じように、右下へうっすら敷く
-        logoImg(t),
-        el('div', { class: 'tk-name' }, [
-          ui.icon(ui.KIND_ICON[t.kind], 16),
-          el('span', { text: t.name })
-        ]),
-        el('div', { class: 'tk-meta' }, metaChips(t, projects, date, left !== null && left < 0)),
-        el('button', {
-          type: 'button', class: 'btn ghost tiny tk-edit',
-          onclick: function () { ticketForm(t); }
-        }, [ui.icon('edit', 14), el('span', { text: '直す' })])
-      ]),
-      stub(left)
-    ]);
+    return [
+      card(t, today, { hero: true }),
+      el('div', { class: 'tk-hero-acts' }, ui.btn('直す', 'ghost tiny', function () {
+        ticketForm(t);
+      }, 'edit'))
+    ];
   }
 
   /* 日付・会場・配置番号・必要入稿総数。一覧の札と同じ並びにする */
@@ -682,10 +671,14 @@
   /**
    * 一覧に並べる1枚。もぎり線の入った、チケットらしい見た目にする。
    * 日付・会場・配置番号・必要入稿総数を、そのまま札の上に出す。
+   * チケットの画面の見出しも、これと同じものを使う（opts.hero）。
+   * 上がってきた券がそのまま見出しになるので、姿が変わらない。
    * @param {object} t チケット
    * @param {string} today
+   * @param {object} [opts] {hero:true} なら押せない板にし、「直す」を添える
    */
-  function card(t, today) {
+  function card(t, today, opts) {
+    opts = opts || {};
     var projects = S.ticketProjects(t.id);
     var date = S.ticketDate(t);
     var left = date ? U.diffDays(today, date) : null;
@@ -695,9 +688,10 @@
     var prepLeft = t.prep.filter(function (x) { return !x.done; }).length;
     var sold = t.kind === 'event' ? K.ticketTally(t, projects).total : null;
 
-    var node = el('a', {
-      class: 'tk-card tk-' + t.kind + (soon ? ' soon' : '') + (past ? ' past' : ''),
-      href: '#/ticket/' + t.id
+    var node = el(opts.hero ? 'div' : 'a', {
+      class: 'tk-card tk-' + t.kind + (soon ? ' soon' : '') + (past ? ' past' : '')
+        + (opts.hero ? ' tk-hero' : ''),
+      href: opts.hero ? null : '#/ticket/' + t.id
     }, [
       el('div', { class: 'tk-card-main' }, [
         // 登録してあれば、券の地紋のようにロゴを右下へ敷く（いちばん奥）
@@ -716,6 +710,8 @@
       ]),
       stub(left, 'tk-card-stub')
     ]);
+
+    if (opts.hero) return node;
 
     /* 押したら、この券だけを残してまわりを消してから開く。
        ふつうの遷移も残しておきたいので、動かせたときだけ横取りする */
