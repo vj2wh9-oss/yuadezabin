@@ -213,10 +213,33 @@
 
     // 金額の数え上げや、グラフの描き出し。開いたときだけで、
     // 保存のたびの描き直しでは動かさない
-    if (entered) ui.introduce(view);
+    if (entered) { ui.introduce(view); riseIn(view, route.name); }
 
     // 上の帯と下のタブが浮いたままになっていないか、ついでに見ておく
     checkBars();
+  }
+
+  /* ---- 画面を開いたとき、中身が下から上がってくる ----
+
+     チケットの一覧と同じ見せ方を、ほかの画面にも通す。
+     ページの直下のかたまりを、上のものから順に少しずつ遅らせて浮かせる。
+     保存による描き直しでは動かさない（開いたときだけ）。
+     カレンダー・筋トレ・METEO LOCK は、それぞれの見せ方を持っているので触らない。 */
+
+  var NO_RISE = ['calendar', 'fit', 'lock'];
+  var RISE_STEP = 45;      // 1つぶんの遅れ
+  var RISE_MAX = 10;       // これより下は待たせない（長い画面で最後まで遅らせないため）
+
+  function riseIn(root, name) {
+    if (NO_RISE.indexOf(name) >= 0) return;
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    var page = root.querySelector('.page');
+    if (!page) return;
+    var kids = [].slice.call(page.children);
+    kids.forEach(function (n, i) {
+      if (i < RISE_MAX) n.style.animationDelay = (i * RISE_STEP) + 'ms';
+    });
+    root.classList.add('rise');
   }
 
   /* アプリの名前のところだけロゴの組みにする。ほかの画面は画面名の文字のまま。
@@ -1075,7 +1098,7 @@
 
   /* この端末がいま動かしている版。sw.js の CACHE と揃えて上げる。
      2台で見比べて、片方だけ古いままになっていないか確かめるためのもの */
-  DL.VERSION = 'v206';
+  DL.VERSION = 'v207';
 
   DL.app = { render: render, init: init, get route() { return route; } };
   document.addEventListener('DOMContentLoaded', init);

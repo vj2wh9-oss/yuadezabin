@@ -365,6 +365,22 @@ h1, h2, h3, p { margin: 0; }
 .gearbtn, .ideabtn, .searchbtn { color: var(--muted); }
 .gearbtn.on, .ideabtn.on, .searchbtn.on { color: var(--accent); }
 
+/* ---- 画面を開いたとき、中身が下から上がってくる ----
+   ページの直下のかたまりごとに、上のものから順に浮かせる。
+   遅らせる量は app.js の riseIn() が1つずつ入れる。
+   保存による描き直しでは付かない（開いたときだけ）。 */
+@keyframes page-rise {
+  from { transform: translateY(26px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.view.rise .page > * { animation: page-rise .38s cubic-bezier(.22, .9, .3, 1) both; }
+/* チケットの見出しは、一覧から上がってきた券がそのまま座る場所。
+   ここで浮かせると、入れ替わりが見えてしまう */
+.view.rise .page > .tk-hero { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .view.rise .page > * { animation: none; }
+}
+
 /* ---------------- 本体 ---------------- */
 .view {
   padding-top: calc(var(--bar-h) + env(safe-area-inset-top));
