@@ -11,9 +11,12 @@
 
   var TIMEOUT = 15000;
   var MIN_GAP = 8000;      // 画面を行き来しても、これより短い間隔では走らせない
+  var PUSH_WAIT = 2500;    // 手が止まってから送るまで
+  var WATCH_GAP = 10000;   // 開いているあいだ、相手の変更を見に行く間隔
   var busy = false;
   var lastRunAt = 0;
   var pushTimer = null;
+  var watchTimer = null;
   var listeners = [];
 
   function on(fn) { listeners.push(fn); }
@@ -273,7 +276,39 @@
       pushTimer = null;
       if (!active() || !S.changedSinceSync()) return;
       run({ silent: true });
-    }, 8000);
+    }, PUSH_WAIT);
+  }
+
+  /**
+   * 開いているあいだ、もう片方の端末の変更を見張る。
+   * まずは版番号だけ聞きに行き、変わっていたときだけ取りに行く
+   * （毎回まるごと同期すると、書き込みが増えて端末が疲れる）。
+   * 画面を見ていないあいだは何もしない。戻ってきたときは
+   * app.js の visibilitychange が一度走らせる。
+   */
+  function watch() {
+    if (watchTimer) clearInterval(watchTimer);
+    watchTimer = setInterval(tick, WATCH_GAP);
+  }
+
+  function tick() {
+    if (!active() || busy) return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    // こちらに未送信のぶんがあるときは、そのまま送る（送り損ねの拾い直しも兼ねる）
+    if (S.changedSinceSync()) { run({ silent: true }).then(afterAuto); return; }
+    meta().then(function (m) {
+      if (!m.exists) return null;
+      if (Number(m.rev) === U.num(conf().rev, 0)) return null;   // 相手は何もしていない
+      return run({ silent: true }).then(afterAuto);
+    }).catch(function () { /* つながらないときは、次の番で */ });
+  }
+
+  /* 自動で取り込んだときは、黙って画面を描き直す */
+  function afterAuto(r) {
+    if (!r) return r;
+    if (r.status === 'pulled' || r.status === 'merged') DL.app.render();
+    if (r.status === 'conflict') askConflict(r.remote);
+    return r;
   }
 
   /**
@@ -302,11 +337,10 @@
   function start() {
     if (!active()) return;
     // 起動時はまず取りに行く（もう片方の端末での変更を拾う）
-    run({ silent: true }).then(function (r) {
-      if (r.status === 'pulled' || r.status === 'merged') DL.app.render();
-      if (r.status === 'conflict') askConflict(r.remote);
-    });
+    run({ silent: true }).then(afterAuto);
     S.subscribe(schedulePush);
+    // 開いているあいだも見張って、相手の変更をそのまま画面に出す
+    watch();
   }
 
   /* 接続の確認（設定画面から） */
@@ -325,6 +359,7 @@
 
   DL.sync = {
     ready: ready, active: active, run: run, touch: touch, flush: flush, start: start,
+    watch: watch, tick: tick,
     test: test, makeToken: makeToken, deviceName: deviceName, on: on,
     fmtAt: fmtAt
   };

@@ -1652,6 +1652,8 @@
           if (r.status !== 'conflict') ui.toast('同期しました');
           DL.app.render();
         });
+        // ここから見張りも始める（起動時に切ってあった場合のため）
+        DL.sync.watch();
       }
     });
     card.appendChild(el('label', { class: 'row-check' }, [enable, el('span', { text: '自動で同期する' })]));

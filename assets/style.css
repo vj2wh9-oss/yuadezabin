@@ -47,6 +47,9 @@
   /* 画面下の余白（iPhone のホームバーぶん）。
      まとめて名前を付けておくと、下タブの高さの計算に使いやすい */
   --sab: env(safe-area-inset-bottom);
+  /* チップの色を敷くときの下地。ふだんは透かし。
+     後ろに絵があるところでは、そこだけ地の色に差し替えて透けないようにする */
+  --chip-under: transparent;
   color-scheme: dark;
 }
 
@@ -487,6 +490,8 @@ body.kb-open .tabbar, body.kb-open .fab { display: none; }
 .checkbtn.on { background: var(--ok); border-color: var(--ok); color: #04202a; }
 
 /* ---------------- チップ ---------------- */
+/* 色の下地は --chip-under（:root で定義）。後ろに絵があるところでは
+   呼び出し側でこれを地の色に差し替え、四角の中を塗りつぶす */
 .chip {
   display: inline-flex; align-items: center; gap: 4px;
   font-size: 11.5px; padding: 2px 6px; border-radius: 2px;
@@ -494,16 +499,16 @@ body.kb-open .tabbar, body.kb-open .fab { display: none; }
 }
 .chip .icon { width: 13px; height: 13px; }
 .chip.soft { background: var(--accent-soft); color: var(--accent); }
-.chip.ok { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
-.chip.warn { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
-.chip.danger { background: color-mix(in srgb, var(--danger) 18%, transparent); color: var(--danger); }
-.chip.ghosty { background: transparent; border-color: var(--line2); }
-.chip.kind-event { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
-.chip.kind-work { background: color-mix(in srgb, var(--accent2) 16%, transparent); color: var(--accent2); }
-.chip.kind-support { background: color-mix(in srgb, var(--indigo) 18%, transparent); color: var(--indigo); }
+.chip.ok { background: color-mix(in srgb, var(--ok) 18%, var(--chip-under)); color: var(--ok); }
+.chip.warn { background: color-mix(in srgb, var(--warn) 18%, var(--chip-under)); color: var(--warn); }
+.chip.danger { background: color-mix(in srgb, var(--danger) 18%, var(--chip-under)); color: var(--danger); }
+.chip.ghosty { background: var(--chip-under); border-color: var(--line2); }
+.chip.kind-event { background: color-mix(in srgb, var(--accent) 16%, var(--chip-under)); color: var(--accent); }
+.chip.kind-work { background: color-mix(in srgb, var(--accent2) 16%, var(--chip-under)); color: var(--accent2); }
+.chip.kind-support { background: color-mix(in srgb, var(--indigo) 18%, var(--chip-under)); color: var(--indigo); }
 /* 内容（漫画／イラスト）は種別と区別できるよう枠線だけの表現にする */
-.chip.cat-manga { background: transparent; border-color: color-mix(in srgb, var(--indigo) 55%, transparent); color: var(--indigo); }
-.chip.cat-illust { background: transparent; border-color: color-mix(in srgb, var(--ok) 55%, transparent); color: var(--ok); }
+.chip.cat-manga { background: var(--chip-under); border-color: color-mix(in srgb, var(--indigo) 55%, transparent); color: var(--indigo); }
+.chip.cat-illust { background: var(--chip-under); border-color: color-mix(in srgb, var(--ok) 55%, transparent); color: var(--ok); }
 .chip.removable { border-color: var(--line2); cursor: pointer; }
 
 /* ---------------- 進捗バー ---------------- */
@@ -3442,8 +3447,9 @@ body.lock-theme .appbar-title { letter-spacing: .16em; font-size: 14px; }
   padding: 11px 12px 11px 13px;
 }
 /* 登録したロゴ。半券の左側（券の本体）の右下に、大きくうっすら敷く。
-   isolation を付けて、z-index:-1 がカードの地より奥へ回らないようにする */
-.tk-card-main { position: relative; isolation: isolate; }
+   isolation を付けて、z-index:-1 がカードの地より奥へ回らないようにする。
+   ロゴの上に来る配置番号などの四角は、地の色で塗って透けないようにする */
+.tk-card-main { position: relative; isolation: isolate; --chip-under: var(--card); }
 .tk-logo {
   position: absolute; right: 8px; bottom: 6px; z-index: -1; pointer-events: none;
   height: calc(100% - 12px); width: auto; max-width: 58%;
