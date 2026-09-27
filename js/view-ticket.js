@@ -14,6 +14,15 @@
 
   var UNIT = { manga: 'P', illust: '枚', design: '点' };
 
+  /* ロゴを収める枠（横×縦）。どの絵もこの大きさに揃えて預ける */
+  var LOGO_BOX = [420, 280];
+
+  /* 券の地紋になるロゴ。登録されていなければ何も置かない */
+  function logoImg(t) {
+    var url = DL.imgbank.src(t && t.logo);
+    return url ? el('img', { class: 'tk-logo', src: url, alt: '', 'aria-hidden': 'true' }) : null;
+  }
+
   /* ---------------- チケット1枚 ---------------- */
 
   function render(root, params) {
@@ -92,6 +101,8 @@
       class: 'tk-hero tk-' + t.kind + (left !== null && left < 0 ? ' past' : '')
     }, [
       el('div', { class: 'tk-body' }, [
+        // 一覧の券と同じように、右下へうっすら敷く
+        logoImg(t),
         el('div', { class: 'tk-name' }, [
           ui.icon(ui.KIND_ICON[t.kind], 16),
           el('span', { text: t.name })
@@ -526,8 +537,10 @@
       }
     }
 
-    /* 券の顔になるロゴ。大きいままだと持ちきれないので、縮めて dataURL で持つ。
-       透かしのように敷くので、背景の抜けた画像（PNG）がきれいに出る */
+    /* 券の顔になるロゴ。
+       LOGO_BOX の枠に収めてから預ける。比は変えず、余ったところは
+       透かしのままにするので、横長でも縦長でも同じ大きさで並ぶ。
+       絵そのものは絵の置き場（imgbank）へ。state には鍵だけを入れる */
     var logo = v.logo || '';
     var logoBox = el('div', { class: 'imgfield' });
     var logoFile = el('input', { type: 'file', accept: 'image/*', style: { display: 'none' } });
@@ -535,21 +548,19 @@
       var f = logoFile.files[0];
       logoFile.value = '';
       if (!f) return;
-      U.readImage(f, 480, 'image/png').then(function (url) {
-        // 抜けの無い写真だと PNG では重くなるので、そのときだけ JPEG に落とす
-        if (url.length <= 380000) return url;
-        return U.readImage(f, 480, 'image/jpeg', 0.85);
-      }).then(function (url) {
-        if (url.length > 380000) throw new Error('画像が大きすぎます');
-        logo = url;
+      U.readImageBox(f, LOGO_BOX[0], LOGO_BOX[1]).then(function (url) {
+        return DL.imgbank.put(url);
+      }).then(function (ref) {
+        logo = ref;
         drawLogo();
         ui.toast('読み込みました');
       }).catch(function (e) { ui.toast(e.message, 'danger'); });
     });
     function drawLogo() {
+      var url = DL.imgbank.src(logo);
       U.clear(logoBox);
-      logoBox.appendChild(logo
-        ? el('img', { class: 'imgfield-prev', src: logo, alt: '' })
+      logoBox.appendChild(url
+        ? el('img', { class: 'imgfield-prev', src: url, alt: '' })
         : el('div', { class: 'imgfield-empty' }, ui.icon('illust', 22)));
       logoBox.appendChild(el('div', { class: 'row-wrap' }, [
         ui.btn(logo ? '選び直す' : '画像を選ぶ', 'ghost tiny', function () { logoFile.click(); }, 'plus'),
@@ -634,7 +645,7 @@
     }, [
       el('div', { class: 'tk-card-main' }, [
         // 登録してあれば、券の地紋のようにロゴを右下へ敷く（いちばん奥）
-        t.logo ? el('img', { class: 'tk-logo', src: t.logo, alt: '', 'aria-hidden': 'true' }) : null,
+        logoImg(t),
         el('div', { class: 'tk-card-head' }, [
           ui.icon(ui.KIND_ICON[t.kind], 15),
           el('span', { class: 'tk-card-name', text: t.name })

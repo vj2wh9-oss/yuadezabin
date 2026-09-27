@@ -156,6 +156,7 @@
         if (opts.resolve === 'merge') {
           S.mergeRemote(remote.data);
           S.updateSync({ rev: remote.rev });
+          relinkImages();
           return put(true).then(done('merged'));
         }
         return { status: 'conflict', remote: remote };
@@ -186,7 +187,14 @@
     return S.makeBackup('before-sync', 'サーバーの内容を取り込む前').then(function () {
       S.applyRemote(remote.data);
       S.updateSync({ rev: remote.rev, baseSavedAt: S.state.savedAt || '', lastAt: new Date().toISOString(), lastError: '' });
+      relinkImages();
     });
+  }
+
+  /* 相手の端末が絵そのものを持たせてきたとき（サーバーがまだ絵の受け口を
+     持っていなかったころのぶん）は、絵の置き場へ移して鍵に置き換える */
+  function relinkImages() {
+    if (DL.imgbank) DL.imgbank.relink();
   }
 
   /* ---------------- 衝突したとき ---------------- */

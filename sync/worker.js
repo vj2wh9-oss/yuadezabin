@@ -16,6 +16,13 @@
  *   GET    /v1/files/<id>     → ファイルそのもの
  *   DELETE /v1/files/<id>     → 削除
  *
+ * 絵だけの置き場（チケットのロゴなど。本体とは別の道で運ぶ）
+ *   PUT    /v1/img/<鍵>  → 本文 {url:'data:image/...'} を預かる（鍵は中身から作った16進）
+ *   GET    /v1/img/<鍵>  → { url }
+ *   DELETE /v1/img/<鍵>  → 消す
+ *   同じ絵は同じ鍵になるので、上書きが起きず端末どうしでぶつからない。
+ *   置き先は R2（FILES）。無ければ KV に置く。
+ *
  * 通知（Web Push）
  *   PUT    /v1/push/sub    → この端末の宛先を登録（本文は購読情報）
  *   DELETE /v1/push/sub    → 登録を外す（本文 {deviceId}）
@@ -75,6 +82,8 @@ const MAX_BYTES = 20 * 1024 * 1024;   // KV の上限は25MBなので余裕を�
 const MIN_TOKEN = 24;                 // 合鍵の最低長
 // Workers の受信上限（無料・Proは100MB）。これを超えるとそもそも届かない
 const MAX_FILE_BYTES = 100 * 1024 * 1024;
+// 絵1枚（dataURL の文字数）。ロゴくらいの大きさなら十分に収まる
+const MAX_IMG_BYTES = 2 * 1024 * 1024;
 // 外から預かる文字（FANBOX のページの文字）。表1枚ぶんに十分な大きさ
 const MAX_INBOX_BYTES = 256 * 1024;
 const INBOX_KEEP_DAYS = 14;
@@ -110,7 +119,7 @@ export default {
           fitbit: fitbitReady(env),
           menuWebhook: !!env.DISCORD_MENU_WEBHOOK
         },
-        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/inbox/weights', '/v1/inbox/weight/key', '/v1/inbox/card', '/v1/inbox/cards', '/v1/inbox/card/key', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/menu/dish', '/v1/menu/send', '/v1/reschedule', '/v1/bank/balance', '/v1/plot', '/v1/plot/send', '/v1/spend', '/v1/fit/plan', '/v1/fitbit'],
+        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/img', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/inbox/weights', '/v1/inbox/weight/key', '/v1/inbox/card', '/v1/inbox/cards', '/v1/inbox/card/key', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/menu/dish', '/v1/menu/send', '/v1/reschedule', '/v1/bank/balance', '/v1/plot', '/v1/plot/send', '/v1/spend', '/v1/fit/plan', '/v1/fitbit'],
         // どの食事に対応しているか。deploy を忘れると古いままなのが分かる
         menuSlots: MENU_SLOTS,
         note: '各 /v1/... は Authorization: Bearer <合鍵> が必要です'
@@ -159,6 +168,11 @@ export default {
     // 共有ファイル（R2）
     if (url.pathname === '/v1/files' || url.pathname.startsWith('/v1/files/')) {
       return files(request, env, cors, url, id);
+    }
+
+    // 絵だけの置き場（本体とは別の道で運ぶ）
+    if (url.pathname.startsWith('/v1/img/')) {
+      return images(request, env, cors, url, id);
     }
 
     if (!env.SYNC) return json({ error: 'kv_not_bound' }, 500, cors);
@@ -3587,6 +3601,62 @@ function cleanRows(list) {
     });
   }
   return out;
+}
+
+/* ---------------- 絵だけの置き場 ----------------
+
+   チケットのロゴのような小さな絵を、本体（state）とは別の道で運ぶ。
+   鍵はアプリ側が中身から作った16進（同じ絵なら同じ鍵）なので、
+     ・同じ絵を二度置かない
+     ・上書きが起きない＝端末どうしでぶつからない
+   置き先は R2（無ければ KV）。持ち主ごとに分ける。 */
+
+async function images(request, env, cors, url, id) {
+  const key = url.pathname.slice('/v1/img/'.length);
+  // 鍵に使えるのは16進だけ（パスを抜けられないように）
+  if (!/^[0-9a-f]{8,64}$/.test(key)) return json({ error: 'bad_id' }, 400, cors);
+  const r2key = 'img/' + id + '/' + key;
+  const kvkey = 'img:' + id + ':' + key;
+
+  try {
+    if (request.method === 'PUT') {
+      let body;
+      try { body = await request.json(); } catch (e) { return json({ error: 'bad_json' }, 400, cors); }
+      const data = String((body && body.url) || '');
+      if (!/^data:image\//.test(data)) return json({ error: 'bad_body' }, 400, cors);
+      if (data.length > MAX_IMG_BYTES) return json({ error: 'too_large', max: MAX_IMG_BYTES }, 413, cors);
+      if (env.FILES) {
+        await env.FILES.put(r2key, data, { httpMetadata: { contentType: 'text/plain; charset=utf-8' } });
+      } else if (env.SYNC) {
+        await env.SYNC.put(kvkey, data);
+      } else {
+        return json({ error: 'kv_not_bound' }, 500, cors);
+      }
+      return json({ ok: true, key: key, size: data.length }, 200, cors);
+    }
+
+    if (request.method === 'GET' || request.method === 'HEAD') {
+      let data = null;
+      if (env.FILES) {
+        const obj = await env.FILES.get(r2key);
+        if (obj) data = await obj.text();
+      }
+      if (data === null && env.SYNC) data = await env.SYNC.get(kvkey, 'text');
+      if (data === null) return json({ error: 'not_found' }, 404, cors);
+      if (request.method === 'HEAD') return new Response(null, { status: 200, headers: cors });
+      return json({ url: data }, 200, cors);
+    }
+
+    if (request.method === 'DELETE') {
+      if (env.FILES) await env.FILES.delete(r2key);
+      if (env.SYNC) await env.SYNC.delete(kvkey);
+      return json({ ok: true }, 200, cors);
+    }
+  } catch (e) {
+    return json({ error: 'server', message: String(e && e.message || e) }, 500, cors);
+  }
+
+  return json({ error: 'method_not_allowed' }, 405, cors);
 }
 
 /* ---------------- 共有ファイル（R2） ---------------- */

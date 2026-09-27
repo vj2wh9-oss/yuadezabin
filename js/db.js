@@ -6,11 +6,12 @@
   'use strict';
 
   var NAME = 'shimekiri';
-  var VERSION = 1;
+  var VERSION = 2;
 
   var STORES = {
     kv: { keyPath: 'k' },            // 本体データ（k:'state'）などの単票
-    backups: { keyPath: 'id' }       // バックアップ世代
+    backups: { keyPath: 'id' },      // バックアップ世代
+    images: { keyPath: 'k' }         // 絵だけの置き場（k は中身のハッシュ）
   };
 
   var dbp = null;      // Promise<IDBDatabase>

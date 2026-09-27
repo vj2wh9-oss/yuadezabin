@@ -1018,10 +1018,13 @@
       b.classList.toggle('busy', ev.phase === 'start');
     });
 
-    S.init().then(function () {
+    // 絵は state と別に持っているので、描く前に手元のぶんを読み込む
+    S.init().then(function () { return DL.imgbank.init(); }).then(function () {
       render();
       splashDone();
       DL.sync.start();
+      // 送り損ねている絵があれば、ここで追いつかせる
+      DL.imgbank.pushAll().then(function () { return DL.imgbank.relink(); });
       /* 通知の宛先が切れていないか確かめ、切れていたら入れ直す。
          ブラウザの都合で宛先が作り直されたり、サーバーの鍵を入れ替えたりすると、
          設定を触っていないのに来なくなる。開いたときに黙って直しておく */

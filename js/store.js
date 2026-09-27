@@ -476,8 +476,9 @@
       date: U.isISO(t.date) ? t.date : '',
       venue: str(t.venue, 80),
       space: str(t.space, 40),
-      /* 券の顔になるロゴ（縮めた dataURL）。一覧の券の右下にうっすら敷く */
-      logo: /^data:image\//.test(String(t.logo || '')) ? String(t.logo).slice(0, 400000) : '',
+      /* 券の顔になるロゴ。ふだんは絵の置き場の鍵（'img:…'）を持つ。
+         サーバーが絵の受け口を持っていないときだけ、dataURL をそのまま持つ */
+      logo: normalizeImageRef(t.logo),
       memo: String(t.memo || '').slice(0, 2000),
       prep: (t.prep || []).map(function (x) {
         return {
@@ -493,6 +494,14 @@
         .filter(function (x) { return x.itemId; }).slice(0, TICKET_STOCK_MAX),
       createdAt: t.createdAt || new Date().toISOString()
     };
+  }
+
+  /* 絵の指し先。鍵（img:16進）か、dataURL そのもの。それ以外は空にする */
+  function normalizeImageRef(v) {
+    var s = String(v == null ? '' : v);
+    if (/^img:[0-9a-f]{8,64}$/.test(s)) return s;
+    if (/^data:image\//.test(s)) return s.slice(0, 400000);
+    return '';
   }
 
   function normalizeTicketStock(x) {

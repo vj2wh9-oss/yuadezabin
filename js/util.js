@@ -227,6 +227,44 @@ window.DL = window.DL || {};
   }
 
   /**
+   * 決まった大きさの枠に収めて読み込む。
+   * 枠は透かしのまま、絵は縦横の比を変えずに中へ入れて真ん中に置く。
+   * こうしておくと、横長でも縦長でも「だいたい同じ大きさ」で並ぶ。
+   * @param {File} file
+   * @param {number} boxW 枠の幅
+   * @param {number} boxH 枠の高さ
+   * @returns {Promise<string>} PNG の dataURL（抜けはそのまま残す）
+   */
+  function readImageBox(file, boxW, boxH) {
+    boxW = boxW || 360; boxH = boxH || 240;
+    return new Promise(function (resolve, reject) {
+      if (!file || file.size > 12 * 1024 * 1024) { reject(new Error('画像が大きすぎます')); return; }
+      var reader = new FileReader();
+      reader.onerror = function () { reject(new Error('読み込めませんでした')); };
+      reader.onload = function () {
+        var img = new Image();
+        img.onerror = function () { reject(new Error('画像として読めませんでした')); };
+        img.onload = function () {
+          var w = img.naturalWidth, h = img.naturalHeight;
+          if (!w || !h) { reject(new Error('画像として読めませんでした')); return; }
+          // 枠に収まる倍率。大きい絵は縮め、小さい絵は引き伸ばさない
+          var scale = Math.min(boxW / w, boxH / h, 1);
+          var dw = Math.max(1, Math.round(w * scale)), dh = Math.max(1, Math.round(h * scale));
+          var cv = document.createElement('canvas');
+          cv.width = boxW; cv.height = boxH;
+          var ctx = cv.getContext('2d');
+          ctx.drawImage(img, Math.round((boxW - dw) / 2), Math.round((boxH - dh) / 2), dw, dh);
+          try {
+            resolve(cv.toDataURL('image/png'));
+          } catch (e) { reject(new Error('変換できませんでした')); }
+        };
+        img.src = String(reader.result);
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  /**
    * その色の上に置く字の色。暗い色なら明るい字、明るい色なら暗い字。
    * 明るさ（WCAG の相対輝度）で、白と黒のどちらがよく見えるかを選ぶ。
    * @param {string} bg '#2563eb' などの色
@@ -257,6 +295,6 @@ window.DL = window.DL || {};
     wdName: wdName, untilLabel: untilLabel,
     el: el, append: append, clear: clear, $: $, $$: $$,
     uid: uid, clone: clone, num: num, sum: sum, groupBy: groupBy, readImage: readImage,
-    inkOn: inkOn
+    readImageBox: readImageBox, inkOn: inkOn
   };
 })(window.DL);
