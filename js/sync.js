@@ -75,6 +75,12 @@
 
   function put(force) {
     var c = conf();
+    /* 絵を外した控えで動いているときは送らない。
+       送るともう片方の端末の絵まで消えてしまう。
+       アプリを開き直せば IndexedDB から読み直されて、また送れるようになる */
+    if (S.imagesLost && S.imagesLost()) {
+      throw new Error('画像が読み出せないので送信を止めました。アプリを開き直してください');
+    }
     var payload = S.syncPayload();
     return req('/v1/state', {
       method: 'PUT',

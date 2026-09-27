@@ -40,7 +40,12 @@
         resolve(db);
       };
       req.onerror = function () { broken = true; resolve(null); };
-      req.onblocked = function () { resolve(null); };
+      /* 別のタブが古い版を開いたままで、作り替えを待たされている。
+         あちら（onversionchange）が閉じればすぐ開けるので、
+         ここで諦めきらず、次に呼ばれたときにやり直せるようにしておく。
+         残したままだと、その間ずっと「使えない」ことになり、
+         控え（画像を外してある）で動き続けてしまう */
+      req.onblocked = function () { dbp = null; resolve(null); };
     });
     return dbp;
   }

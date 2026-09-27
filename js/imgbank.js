@@ -24,6 +24,7 @@
   var sent = {};         // 送り終えた鍵
   var loaded = false;
   var renderTimer = null;
+  var RETRY_GAP = 30000;  // 取れなかった絵を、もう一度試すまでの間
 
   function conf() { return S.syncSettings ? S.syncSettings() : {}; }
   function ready() {
@@ -107,21 +108,25 @@
     return '';
   }
 
-  /* 手元に無い絵を1枚だけ取りに行く */
+  /* 手元に無い絵を1枚だけ取りに行く。
+     取れなかったとき（サーバーがまだ絵の受け口を持っていない、通信できない）は、
+     しばらくしてからもう一度試せるようにしておく。
+     一度きりにすると、Worker を新しくしたあともアプリを開き直すまで出てこない */
   function fetchOne(k) {
     if (asked[k] || !ready() || !/^[0-9a-f]{8,64}$/.test(k)) return;
     asked[k] = true;
+    var retry = function () { setTimeout(function () { delete asked[k]; }, RETRY_GAP); };
     fetch(base() + '/v1/img/' + k, { headers: auth(), cache: 'no-store' })
       .then(function (res) { return res.ok ? res.json() : null; })
       .then(function (body) {
         var url = body && body.url;
-        if (!/^data:image\//.test(String(url || ''))) return;
+        if (!/^data:image\//.test(String(url || ''))) { retry(); return; }
         mem[k] = url;
         sent[k] = true;                  // サーバーにあるのは分かっている
         DL.db.put('images', { k: k, url: url, at: new Date().toISOString() });
         laterRender();
       })
-      .catch(function () { /* つながらないときは、次に開いたときに */ });
+      .catch(retry);
   }
 
   /* 何枚か続けて届くことがあるので、描き直しは一度にまとめる */

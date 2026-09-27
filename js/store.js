@@ -4353,6 +4353,15 @@
     return s;
   }
 
+  /**
+   * いま手元にあるのが「絵を外した控え」かどうか。
+   * localStorage の控えには画像を入れていないので、IndexedDB が読めないまま
+   * 立ち上がると、絵の無い姿で動くことになる。
+   * この姿のまま送ると、もう片方の端末の絵まで消してしまうので、
+   * 同期はこれを見て送信を止める。
+   */
+  function imagesLost() { return !!state.compact; }
+
   /* サーバーの内容で置き換える（端末ごとの設定は残す） */
   function applyRemote(remote) {
     var mine = state.settings;
@@ -4590,7 +4599,7 @@
     autoBackupIfDue: autoBackupIfDue,
     syncPayload: syncPayload, applyRemote: applyRemote, mergeRemote: mergeRemote,
     syncSettings: syncSettings, updateSync: updateSync,
-    changedSinceSync: changedSinceSync, isEmpty: isEmpty,
+    changedSinceSync: changedSinceSync, isEmpty: isEmpty, imagesLost: imagesLost,
     requestPersistence: requestPersistence,
     pickColor: pickColor
   };

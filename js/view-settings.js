@@ -265,8 +265,23 @@
 
     /* ---- 情報 ---- */
     at.appendChild(ui.section('このアプリについて'));
+    /* 版は2台で見比べるためのもの。片方だけ古いままだと、
+       新しくした側で入れたもの（ロゴなど）が出ないことがある */
+    var swVer = el('span', { text: '…' });
+    if (window.caches && caches.keys) {
+      caches.keys().then(function (ks) {
+        var hit = ks.filter(function (k) { return /^shimekiri-v\d+$/.test(k); })[0];
+        swVer.textContent = hit ? hit.replace('shimekiri-', '') : '（無し）';
+      }).catch(function () { swVer.textContent = '（不明）'; });
+    } else {
+      swVer.textContent = '（不明）';
+    }
     at.appendChild(el('div', { class: 'card info' }, [
-      el('p', { class: 'muted small', text: '案件数：' + S.projects().length + '　取引先：' + S.clients().length + '件　バージョン：0.2' })
+      el('p', { class: 'muted small', text: '案件数：' + S.projects().length + '　取引先：' + S.clients().length + '件' }),
+      el('p', { class: 'muted small' }, [
+        el('span', { text: 'この端末の版：' + (DL.VERSION || '不明') + '　控えの版：' }), swVer
+      ]),
+      el('p', { class: 'muted small', text: '2台で版が違うときは、古いほうを開き直してください（画面を下に引いて読み込み直す）' })
     ]));
 
     root.appendChild(wrap);
