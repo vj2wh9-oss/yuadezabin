@@ -149,7 +149,56 @@
                 '<path class="wx-cloud" d="M9.8 21h8.4a3.3 3.3 0 0 0 .4-6.6 4.6 4.6 0 0 0-8.8-.9 3.3 3.3 0 0 0-.4 7.5z"/>',
     // 地点が未設定・取得できなかったとき
     wUnknown: '<circle cx="12" cy="12" r="8.4"/><path d="M12 15.4v-1.2c0-1.6 2.2-1.9 2.2-3.6a2.2 2.2 0 0 0-4.3-.6"/>' +
-              '<path d="M11.2 17.2h1.6v1.7h-1.6z" fill="currentColor" stroke="none"/>'
+              '<path d="M11.2 17.2h1.6v1.7h-1.6z" fill="currentColor" stroke="none"/>',
+
+    /* ---------------- 下タブ専用 ----------------
+       22px まで縮むので、上の線画とは別に描く。
+       ・細い模様は入れない（潰れる）
+       ・角を丸め、ずんぐりさせる
+       ・一部を塗りにして重みを出す
+       ・class を振った部分は、選ばれたときに動く（style.css の ti-* ） */
+
+    // 屋根が跳ね、アーチのドアがぽんと出る
+    tabHome: '<path class="i-roof" d="M2.4 12.2 12 3.4l9.6 8.8"/>' +
+             '<path d="M5.4 10.6V20.6h13.2V10.6"/>' +
+             '<path class="i-door" d="M9.6 20.6v-3.4a2.4 2.4 0 0 1 4.8 0v3.4z" fill="currentColor" stroke="none"/>',
+
+    // 綴じ具が揺れ、3つの丸が左から順に出る
+    tabCalendar: '<rect x="3.2" y="5.8" width="17.6" height="15" rx="2.8"/>' +
+                 '<path d="M3.2 10.6h17.6"/>' +
+                 '<path class="i-ring" d="M8.2 3.2v4.4M15.8 3.2v4.4"/>' +
+                 '<circle class="i-dot d1" cx="8.2" cy="15.4" r="1.5" fill="currentColor" stroke="none"/>' +
+                 '<circle class="i-dot d2" cx="12" cy="15.4" r="1.5" fill="currentColor" stroke="none"/>' +
+                 '<circle class="i-dot d3" cx="15.8" cy="15.4" r="1.5" fill="currentColor" stroke="none"/>',
+
+    // 折り返した角がめくれ、2本の行が引かれる
+    tabProjects: '<path d="M5 5.4a2.4 2.4 0 0 1 2.4-2.4h5.8l5.8 5.8v10.8a2.4 2.4 0 0 1-2.4 2.4H7.4A2.4 2.4 0 0 1 5 19.6z"/>' +
+                 '<path class="i-fold" d="M13.2 3v3.4a2.4 2.4 0 0 0 2.4 2.4H19"/>' +
+                 '<path class="i-ln l1" d="M8.8 13.6h6.4"/>' +
+                 '<path class="i-ln l2" d="M8.8 17.2h4"/>',
+
+    // 棒が左から順に伸び上がる
+    tabSales: '<rect class="i-bar b1" x="3.6" y="13.2" width="4.4" height="7.6" rx="1.6" fill="currentColor" stroke="none"/>' +
+              '<rect class="i-bar b2" x="9.8" y="9.2" width="4.4" height="11.6" rx="1.6" fill="currentColor" stroke="none"/>' +
+              '<rect class="i-bar b3" x="16" y="4.6" width="4.4" height="16.2" rx="1.6" fill="currentColor" stroke="none"/>',
+
+    // 表示窓がひと光りし、キーが順に押される
+    tabBooks: '<rect x="4.2" y="2.8" width="15.6" height="18.4" rx="2.8"/>' +
+              '<rect class="i-disp" x="7.4" y="5.8" width="9.2" height="3.8" rx="1.3" fill="currentColor" stroke="none"/>' +
+              '<circle class="i-key k1" cx="8.8" cy="13.6" r="1.4" fill="currentColor" stroke="none"/>' +
+              '<circle class="i-key k2" cx="15.2" cy="13.6" r="1.4" fill="currentColor" stroke="none"/>' +
+              '<circle class="i-key k3" cx="8.8" cy="17.8" r="1.4" fill="currentColor" stroke="none"/>' +
+              '<circle class="i-key k4" cx="15.2" cy="17.8" r="1.4" fill="currentColor" stroke="none"/>',
+
+    // 挙げるように、ぐいっと傾いて戻る（絵ぜんたいが動く）
+    tabFit: '<path d="M2.6 9.8v4.4M21.4 9.8v4.4"/>' +
+            '<rect x="4.2" y="6.6" width="5" height="10.8" rx="2" fill="currentColor" stroke="none"/>' +
+            '<rect x="14.8" y="6.6" width="5" height="10.8" rx="2" fill="currentColor" stroke="none"/>' +
+            '<path d="M9.2 12h5.6"/>',
+
+    // 前の袋が下から満ちる
+    tabFiles: '<path d="M2.8 7.4a2.4 2.4 0 0 1 2.4-2.4h4.2l2.4 3h7.4a2.4 2.4 0 0 1 2.4 2.4v8.8a2.4 2.4 0 0 1-2.4 2.4H5.2a2.4 2.4 0 0 1-2.4-2.4z"/>' +
+              '<path class="i-front" d="M2.8 12.8h18.8v6.4a2.4 2.4 0 0 1-2.4 2.4H5.2a2.4 2.4 0 0 1-2.4-2.4z" fill="currentColor" stroke="none"/>'
   };
 
   /**

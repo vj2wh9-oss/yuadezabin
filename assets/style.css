@@ -415,8 +415,12 @@ h1, h2, h3, p { margin: 0; }
 @media (max-width: 379px) {
   .tab { font-size: 9px; letter-spacing: -.04em; }
 }
-/* アイコンも1つぶん小さくして、7つでも高さが変わらないようにする */
-.tab .tabicon svg { width: 20px; height: 20px; }
+/* アイコンも1つぶん小さくして、7つでも高さが変わらないようにする。
+   下タブの絵は専用に描いてあるので、どのテーマでも角と先を丸めて太く出す */
+.tab .tabicon svg {
+  width: 20px; height: 20px;
+  stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;
+}
 /* キーボードが出ているあいだは、下タブと＋ボタンをしまう。
    iPhone では画面の途中まで押し上げられて浮いてしまうため */
 body.kb-open .tabbar, body.kb-open .fab { display: none; }
@@ -4032,6 +4036,127 @@ body.skin-bar .tab.on .tabicon { animation: tab-pop .3s cubic-bezier(.3, 1.4, .5
 @media (prefers-reduced-motion: reduce) {
   body.skin-bar .tab.on .tabicon { animation: none; }
 }
+
+/* ---------------- 選んだタブの絵が、一度だけ動く ----------------
+
+   絵ぜんたいがひと跳ねする（tab-pop）のに重ねて、絵の中の部品が
+   それぞれの持ち味で動く。たとえば屋根は跳ね、棒グラフは伸び上がる。
+
+   どれも1回で終わる（回数は既定の1）ので、動きが残り続けることはない。
+   選び直したときだけ on が付き直して、また動く。 */
+
+/* 部品を動かすには、その部品の大きさを基準にしないと中心がずれる */
+.tab.on .tabicon .i-door, .tab.on .tabicon .i-dot, .tab.on .tabicon .i-fold,
+.tab.on .tabicon .i-bar, .tab.on .tabicon .i-key, .tab.on .tabicon .i-front {
+  transform-box: fill-box;
+}
+
+/* ぽんと出る（丸・ドア・キー） */
+@keyframes ti-pop {
+  0% { transform: scale(.2); }
+  60% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+/* 下から伸び上がる（棒グラフ・フォルダの前の袋） */
+@keyframes ti-grow {
+  0% { transform: scaleY(.12); }
+  70% { transform: scaleY(1.08); }
+  100% { transform: scaleY(1); }
+}
+/* 上へ跳ねて落ち着く（屋根・綴じ具） */
+@keyframes ti-hop {
+  0% { transform: translateY(0); }
+  32% { transform: translateY(-2.4px); }
+  66% { transform: translateY(.6px); }
+  100% { transform: translateY(0); }
+}
+/* 線が引かれる（案件の行） */
+@keyframes ti-draw {
+  0% { stroke-dashoffset: 8; }
+  100% { stroke-dashoffset: 0; }
+}
+
+/* ホーム：屋根が跳ね、ドアがぽんと出る */
+.tab.on .tabicon .i-roof { animation: ti-hop .42s ease-out both; }
+.tab.on .tabicon .i-door {
+  transform-origin: 50% 100%;
+  animation: ti-pop .34s cubic-bezier(.3, 1.5, .5, 1) .12s both;
+}
+
+/* カレンダー：綴じ具が揺れ、丸が左から順に出る */
+.tab.on .tabicon .i-ring { animation: ti-hop .4s ease-out both; }
+.tab.on .tabicon .i-dot {
+  transform-origin: 50% 50%;
+  animation: ti-pop .3s cubic-bezier(.3, 1.5, .5, 1) both;
+}
+.tab.on .tabicon .i-dot.d1 { animation-delay: .07s; }
+.tab.on .tabicon .i-dot.d2 { animation-delay: .13s; }
+.tab.on .tabicon .i-dot.d3 { animation-delay: .19s; }
+
+/* 案件：折り返した角がめくれ、行が引かれる */
+@keyframes ti-fold {
+  0% { transform: rotate(0); }
+  42% { transform: rotate(-17deg); }
+  100% { transform: rotate(0); }
+}
+.tab.on .tabicon .i-fold {
+  transform-origin: 0% 100%;
+  animation: ti-fold .44s ease-out both;
+}
+.tab.on .tabicon .i-ln { stroke-dasharray: 8; animation: ti-draw .3s ease-out both; }
+.tab.on .tabicon .i-ln.l1 { animation-delay: .1s; }
+.tab.on .tabicon .i-ln.l2 { animation-delay: .18s; }
+
+/* 売上：棒が左から順に伸び上がる */
+.tab.on .tabicon .i-bar {
+  transform-origin: 50% 100%;
+  animation: ti-grow .4s cubic-bezier(.3, 1.4, .5, 1) both;
+}
+.tab.on .tabicon .i-bar.b1 { animation-delay: .04s; }
+.tab.on .tabicon .i-bar.b2 { animation-delay: .1s; }
+.tab.on .tabicon .i-bar.b3 { animation-delay: .16s; }
+
+/* 経理：表示窓がひと光りし、キーが順に押される */
+@keyframes ti-flash {
+  0% { opacity: 1; }
+  30% { opacity: .22; }
+  60% { opacity: 1; }
+  100% { opacity: 1; }
+}
+.tab.on .tabicon .i-disp { animation: ti-flash .46s ease-in-out both; }
+.tab.on .tabicon .i-key {
+  transform-origin: 50% 50%;
+  animation: ti-pop .3s cubic-bezier(.3, 1.5, .5, 1) both;
+}
+.tab.on .tabicon .i-key.k1 { animation-delay: .06s; }
+.tab.on .tabicon .i-key.k2 { animation-delay: .11s; }
+.tab.on .tabicon .i-key.k3 { animation-delay: .16s; }
+.tab.on .tabicon .i-key.k4 { animation-delay: .21s; }
+
+/* 筋トレ：挙げるように、ぐいっと傾いて戻る（絵ぜんたい） */
+@keyframes ti-lift {
+  0% { transform: rotate(0); }
+  30% { transform: rotate(-14deg); }
+  64% { transform: rotate(7deg); }
+  100% { transform: rotate(0); }
+}
+.tab.on .tabicon[data-icon="tabFit"] svg { animation: ti-lift .5s ease-out both; }
+
+/* ファイル：前の袋が下から満ちる */
+.tab.on .tabicon .i-front {
+  transform-origin: 50% 100%;
+  animation: ti-grow .4s cubic-bezier(.3, 1.4, .5, 1) .04s both;
+}
+
+/* 動きを控える設定と、端末の「動きを減らす」では、いっさい動かさない */
+@media (prefers-reduced-motion: reduce) {
+  .tab.on .tabicon .i-roof, .tab.on .tabicon .i-door, .tab.on .tabicon .i-ring,
+  .tab.on .tabicon .i-dot, .tab.on .tabicon .i-fold, .tab.on .tabicon .i-ln,
+  .tab.on .tabicon .i-bar, .tab.on .tabicon .i-disp, .tab.on .tabicon .i-key,
+  .tab.on .tabicon .i-front, .tab.on .tabicon[data-icon="tabFit"] svg {
+    animation: none;
+  }
+}
 /* いま開いているところ。塗って、白の縁で浮かせ、1段せり上げる */
 body.skin-bar .tab.on {
   background: var(--accent); border-color: var(--accent);
@@ -4194,7 +4319,10 @@ body.calm .tp-now, body.calm .tp-nowarc, body.calm .tp-row.now, body.calm .tp-fl
 body.calm .appbar::after,
 body.calm .tk-deck .tk-card, body.calm .tk-hero,
 body.calm .view.rise .page > *, body.calm .tab.on .tabicon,
-body.calm .cal-grid.from-right, body.calm .cal-grid.from-left {
+body.calm .cal-grid.from-right, body.calm .cal-grid.from-left,
+/* 選んだタブの絵の中で動く部品も、すべて止める */
+body.calm .tab.on .tabicon [class*="i-"],
+body.calm .tab.on .tabicon svg {
   animation: none;
 }
 /* 動かさないぶん、色だけは残して分かるようにする */
