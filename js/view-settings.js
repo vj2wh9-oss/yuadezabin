@@ -12,7 +12,7 @@
     var at = wrap;
     function genre(title, sub) { return openGroup(wrap, title, sub); }
 
-    at = genre('作業と表示', '締切の見かた・天気・タスクのひな型');
+    at = genre('作業と表示', '締切の見かた・天気・タスクのひな型・準備のプリセット');
 
     /* ---- 稼働設定 ---- */
     at.appendChild(ui.section('作業の設定'));
@@ -63,6 +63,12 @@
       tplSummary('illust', 'イラスト', 'illust'),
       tplSummary('design', 'デザイン', 'design')
     ]));
+
+    /* ---- 準備のプリセット ---- */
+    /* チケットの「準備」から、まとめて呼び出すもの。中身はここで直す */
+    at.appendChild(ui.section('準備のプリセット',
+      el('span', { class: 'muted small', text: S.prepSets().length + '件' })));
+    at.appendChild(prepSetCard());
 
     at = genre('名義とお金まわり', '書類の発行元・取引先・買ったものの分類');
 
@@ -654,6 +660,136 @@
       ).then(function (ok) {
         if (!ok) return;
         S.removeTag(t.id);
+        close();
+        ui.toast('削除しました');
+      });
+    }
+  }
+
+  /* ---------------- 準備のプリセット ----------------
+
+     即売会のたびに同じものを並べ直さずに済むよう、名前を付けてしまっておく。
+     呼び出すのはチケットの「準備」から。ここでは中身を作って直す。 */
+
+  function prepSetCard() {
+    var box = el('div', { class: 'card' });
+    var list = S.prepSets();
+    if (!list.length) {
+      box.appendChild(el('p', { class: 'muted small',
+        text: 'まだありません。チケットの「準備」からまとめて呼び出せます。' }));
+    }
+    list.forEach(function (set) {
+      box.appendChild(el('button', {
+        type: 'button', class: 'tpl-summary', onclick: function () { prepSetSheet(set); }
+      }, [
+        el('div', {}, [
+          el('strong', { text: set.name }),
+          el('div', {
+            class: 'muted small',
+            text: set.items.length
+              ? set.items.length + '件　' + set.items.slice(0, 4).join('・') + (set.items.length > 4 ? ' ほか' : '')
+              : 'まだ中身がありません'
+          })
+        ]),
+        el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+      ]));
+    });
+    if (list.length < S.PREP_SET_MAX) {
+      box.appendChild(ui.btn('プリセットを追加', 'ghost full', function () { prepSetSheet(null); }, 'plus'));
+    }
+    return box;
+  }
+
+  function prepSetSheet(set) {
+    var isNew = !set;
+    var nameIn = ui.input({ value: set ? set.name : '', maxlength: 40, placeholder: '例）即売会' });
+    var items = set ? set.items.slice() : [];   // 保存を押すまでは、控えのほうを動かす
+    var close;
+
+    // チケットの準備と同じ組み（見た目をそろえるため、同じクラスを借りている）
+    var listBox = el('div', { class: 'tk-prep-list' });
+
+    function drawItems() {
+      U.clear(listBox);
+      if (!items.length) {
+        listBox.appendChild(el('p', { class: 'muted small', text: 'まだありません。' }));
+        return;
+      }
+      items.forEach(function (name, i) {
+        listBox.appendChild(el('div', { class: 'tk-prep-row' }, [
+          el('span', { class: 'tk-prep-name', text: name }),
+          el('button', {
+            type: 'button', class: 'iconbtn small', 'aria-label': name + ' を上へ', disabled: i === 0,
+            onclick: function () { items.splice(i - 1, 0, items.splice(i, 1)[0]); drawItems(); }
+          }, ui.icon('arrowUp', 16)),
+          el('button', {
+            type: 'button', class: 'iconbtn small', 'aria-label': name + ' を下へ',
+            disabled: i === items.length - 1,
+            onclick: function () { items.splice(i + 1, 0, items.splice(i, 1)[0]); drawItems(); }
+          }, ui.icon('arrowDown', 16)),
+          el('button', {
+            type: 'button', class: 'iconbtn small', 'aria-label': name + ' を消す',
+            onclick: function () { items.splice(i, 1); drawItems(); }
+          }, ui.icon('close', 15))
+        ]));
+      });
+    }
+
+    var itemIn = ui.input({ placeholder: '例）おつり両替', maxlength: 60, enterkeyhint: 'done' });
+    function pushItem() {
+      var v = itemIn.value.trim();
+      if (!v) return;
+      if (items.length >= S.PREP_SET_ITEM_MAX) {
+        ui.toast('これ以上は入りません', 'warn');
+        return;
+      }
+      if (items.indexOf(v) >= 0) {
+        ui.toast('もう入っています', 'warn');
+        itemIn.value = '';
+        return;
+      }
+      items.push(v);
+      itemIn.value = '';
+      drawItems();
+    }
+    itemIn.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); pushItem(); }
+    });
+
+    drawItems();
+
+    close = ui.sheet({
+      title: isNew ? 'プリセットを追加' : 'プリセットを直す',
+      body: el('div', { class: 'form' }, [
+        ui.field('名前', nameIn),
+        ui.block('中身', el('div', { class: 'tk-prep' }, [
+          listBox,
+          el('div', { class: 'tk-prep-add' }, [itemIn, ui.btn('足す', 'ghost', pushItem, 'plus')])
+        ])),
+        !isNew ? ui.btn('このプリセットを削除', 'danger full mt', function () { removeThis(); }, 'trash') : null
+      ]),
+      actions: [
+        ui.btn('キャンセル', 'ghost', function () { close(); }),
+        ui.btn('保存', 'primary', function () {
+          var name = nameIn.value.trim();
+          if (!name) { ui.toast('名前を入れてください', 'warn'); nameIn.focus(); return; }
+          // 打ちかけで「足す」を押していないぶんも拾う
+          if (itemIn.value.trim()) pushItem();
+          var saved = S.putPrepSet({ id: set ? set.id : '', name: name, items: items });
+          if (!saved) { ui.toast('プリセットはこれ以上作れません', 'warn'); return; }
+          close();
+          ui.toast(isNew ? '追加しました' : '保存しました');
+        })
+      ]
+    });
+
+    /* 消しても、すでにチケットへ足した準備は残る。プリセットだけ無くなる */
+    function removeThis() {
+      ui.confirm('「' + set.name + '」を削除します。すでにチケットへ足した準備は、そのまま残ります。',
+        { danger: true, okText: '削除' }
+      ).then(function (ok) {
+        if (!ok) return;
+        S.removePrepSet(set.id);
         close();
         ui.toast('削除しました');
       });

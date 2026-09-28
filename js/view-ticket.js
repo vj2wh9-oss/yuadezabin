@@ -41,7 +41,7 @@
 
     /* ---- 原稿など ---- */
     /* 必要入稿総数は上の券に出してあるので、ここでは足すボタンだけ */
-    wrap.appendChild(ui.section('原稿',
+    wrap.appendChild(ui.section('制作物',
       ui.btn('足す', 'ghost tiny', function () { addProject(t); }, 'plus')));
     if (!projects.length) {
       wrap.appendChild(ui.empty('まだありません。'));
@@ -70,7 +70,11 @@
     }
 
     /* ---- 準備 ---- */
-    wrap.appendChild(ui.section('準備', prepCount(t)));
+    /* 毎回おなじものを並べ直さずに済むよう、設定にしまったプリセットから呼び出せる */
+    wrap.appendChild(ui.section('準備', el('div', { class: 'row-wrap' }, [
+      prepCount(t),
+      ui.btn('プリセットから', 'ghost tiny', function () { prepSetSheet(t); }, 'task')
+    ])));
     wrap.appendChild(prepCard(t));
 
     /* ---- 当日モード（即売会だけ） ---- */
@@ -455,6 +459,54 @@
     return box;
   }
 
+  /* 設定にしまってあるプリセットから、準備をまとめて足す。
+     すでに並んでいるものは足さないので、何度押しても二重にならない */
+  function prepSetSheet(t) {
+    var sets = S.prepSets();
+    var close;
+    var body;
+
+    if (!sets.length) {
+      body = ui.empty('プリセットがまだありません。',
+        ui.btn('設定でつくる', 'primary', function () {
+          close();
+          location.hash = '#/settings';
+        }, 'settings'));
+    } else {
+      body = el('div', { class: 'list' }, sets.map(function (set) {
+        var left = S.prepSetLeft(t.id, set.id);
+        return el('button', {
+          type: 'button', class: 'row',
+          onclick: function () {
+            var n = S.applyPrepSet(t.id, set.id);
+            close();
+            ui.toast(n ? n + '件 足しました' : 'すべて入っています');
+          }
+        }, [
+          el('div', { class: 'row-main' }, [
+            el('div', { class: 'row-title', text: set.name }),
+            el('div', {
+              class: 'muted small',
+              text: set.items.length
+                ? set.items.slice(0, 5).join('・') + (set.items.length > 5 ? ' ほか' : '')
+                : 'まだ中身がありません'
+            })
+          ]),
+          left ? ui.chip('＋' + left, 'soft') : ui.chip('入っています', 'ghosty')
+        ]);
+      }));
+    }
+
+    close = ui.sheet({
+      title: '準備のプリセット',
+      body: body,
+      actions: [
+        ui.btn('設定で直す', 'ghost', function () { close(); location.hash = '#/settings'; }, 'settings'),
+        ui.btn('閉じる', 'primary', function () { close(); })
+      ]
+    });
+  }
+
   /* メモ。打っているそばから残す（手が離れないよう、描き直しはしない） */
   function memoBox(t) {
     var area = ui.textarea({ value: t.memo, rows: 3, maxlength: 2000,
@@ -583,7 +635,7 @@
       actions: [
         isNew ? ui.btn('やめる', 'ghost', function () { close(); })
           : ui.btn('捨てる', 'ghost danger', function () {
-            ui.confirm('チケットを捨てます。中の原稿と頒布物は残ります。',
+            ui.confirm('チケットを捨てます。中の制作物と頒布物は残ります。',
               { okText: '捨てる', danger: true }).then(function (ok) {
               if (!ok) return;
               S.removeTicket(t.id);
@@ -702,7 +754,7 @@
         ]),
         el('div', { class: 'tk-card-sub' }, metaChips(t, projects, date, past)),
         el('div', { class: 'tk-card-sub' }, [
-          ui.chip('原稿 ' + done + ' / ' + projects.length,
+          ui.chip('制作物 ' + done + ' / ' + projects.length,
             projects.length && done === projects.length ? 'ok' : 'ghosty'),
           prepLeft ? ui.chip('準備 のこり ' + prepLeft, 'warn') : null,
           sold && sold.sold ? ui.chip('販売 ' + sold.sold + '部', 'ok') : null

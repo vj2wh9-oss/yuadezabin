@@ -195,6 +195,11 @@
     logos: [],
     /* ロゴの余白を切り詰め直したかどうかの印（1度きりの後始末） */
     logoFit: 0,
+    /* 準備のプリセット。券の「準備」からまとめて呼び出す。中身は設定で直す。
+       [{id, name, items:['おつり両替', …], at}] */
+    prepSets: [],
+    /* 最初のプリセットを入れたかどうかの印。消したものが戻ってこないようにする */
+    prepSetsInit: false,
     cardInbox: [],
     /* 片づけた通知の id。経費に入れたぶんも、捨てたぶんもここに残す。
        サーバー側の消し込みに取りこぼしがあっても、二度と戻ってこないようにする */
@@ -253,7 +258,7 @@
   }
 
   function defaultState() {
-    return { schema: SCHEMA, settings: U.clone(DEFAULT_SETTINGS), projects: [] };
+    return seedPrepSets({ schema: SCHEMA, settings: U.clone(DEFAULT_SETTINGS), projects: [] });
   }
 
   /* localStorage の控えを読む（壊れていれば null） */
@@ -427,6 +432,8 @@
       if (had || s.settings.logos.length >= LOGO_MAX) return;
       s.settings.logos.push(normalizeLogo({ ref: t.logo, name: t.name }));
     });
+    s.settings.prepSets = (s.settings.prepSets || []).map(normalizePrepSet).slice(0, PREP_SET_MAX);
+    seedPrepSets(s);
     buildTickets(s);
     return s;
   }
@@ -529,6 +536,50 @@
       id: x.id || U.uid(),
       ref: normalizeImageRef(x.ref),
       name: String(x.name == null ? '' : x.name).trim().slice(0, 40),
+      at: x.at || new Date().toISOString()
+    };
+  }
+
+  /* ---------------- 準備のプリセット ----------------
+
+     即売会のたびに同じものを並べ直すのは手間なので、
+     名前を付けてしまっておき、券の「準備」からまとめて呼び出す。
+     中身は設定（作業と表示 →「準備のプリセット」）で直す。 */
+
+  var PREP_SET_MAX = 20;        // プリセットそのものの数
+  var PREP_SET_ITEM_MAX = 60;   // 1つのプリセットに入れられる数
+
+  /* はじめの一度だけ入れておくプリセット。すぐ呼び出して試せるように。
+     いらなければ設定から消せる */
+  var STARTER_PREP = ['おつり両替', '敷き布', 'お品書き', '値札', '見本誌', 'ブックスタンド',
+    '名刺・フライヤー', 'カッター／テープ', 'ペン・メモ', '現金入れ',
+    'モバイルバッテリー', 'ゴミ袋', '搬入伝票の控え'];
+
+  /* 消したプリセットが次に開いたとき戻ってこないよう、入れたという印を残す。
+     初めて入れる人（defaultState）にも、すでに使っている人（migrate）にも通す */
+  function seedPrepSets(s) {
+    if (s.settings.prepSetsInit) return s;
+    s.settings.prepSetsInit = true;
+    if (!(s.settings.prepSets || []).length) {
+      s.settings.prepSets = [normalizePrepSet({ name: '即売会', items: STARTER_PREP })];
+    }
+    return s;
+  }
+
+  function normalizePrepSet(x) {
+    x = x || {};
+    var seen = {};
+    return {
+      id: x.id || U.uid(),
+      name: String(x.name == null ? '' : x.name).trim().slice(0, 40) || 'プリセット',
+      // 空と、同じ名前の重なりは落とす（呼び出したときに二重にならないように）
+      items: (x.items || []).map(function (v) {
+        return String(v == null ? '' : v).trim().slice(0, 60);
+      }).filter(function (v) {
+        if (!v || seen[v]) return false;
+        seen[v] = 1;
+        return true;
+      }).slice(0, PREP_SET_ITEM_MAX),
       at: x.at || new Date().toISOString()
     };
   }
@@ -997,6 +1048,72 @@
     if (!t) return;
     t.prep = t.prep.filter(function (o) { return o.id !== prepId; });
     save();
+  }
+
+  /* ---------------- 準備のプリセット ----------------
+     設定でしまい、券の「準備」から呼び出す。 */
+
+  function prepSets() { return state.settings.prepSets || []; }
+
+  function getPrepSet(id) {
+    return prepSets().filter(function (x) { return x.id === id; })[0] || null;
+  }
+
+  /**
+   * プリセットを足す・書き換える。id があれば書き換え、なければ足す。
+   * いっぱいのときは足さずに null を返す。
+   */
+  function putPrepSet(v) {
+    var list = state.settings.prepSets || (state.settings.prepSets = []);
+    var x = normalizePrepSet(v);
+    var i = list.map(function (o) { return o.id; }).indexOf(x.id);
+    if (i >= 0) {
+      x.at = list[i].at;               // 作った日はそのまま
+      list[i] = x;
+    } else {
+      if (list.length >= PREP_SET_MAX) return null;
+      list.push(x);
+    }
+    save();
+    return x;
+  }
+
+  function removePrepSet(id) {
+    state.settings.prepSets = (state.settings.prepSets || [])
+      .filter(function (x) { return x.id !== id; });
+    save();
+  }
+
+  /**
+   * プリセットの中身を、その券の準備へまとめて足す。
+   * すでに同じ名前が並んでいるものは足さない（二重にならないように）。
+   * @returns {number} 足した数
+   */
+  function applyPrepSet(ticketId, setId) {
+    var t = getTicket(ticketId);
+    var set = getPrepSet(setId);
+    if (!t || !set) return 0;
+    var had = {};
+    t.prep.forEach(function (x) { had[x.name] = 1; });
+    var n = 0;
+    set.items.forEach(function (name) {
+      if (had[name] || t.prep.length >= 200) return;
+      had[name] = 1;
+      t.prep.push({ id: U.uid(), name: name, done: false });
+      n++;
+    });
+    if (n) save();
+    return n;
+  }
+
+  /** そのプリセットのうち、まだその券に並んでいないものの数 */
+  function prepSetLeft(ticketId, setId) {
+    var t = getTicket(ticketId);
+    var set = getPrepSet(setId);
+    if (!t || !set) return 0;
+    var had = {};
+    t.prep.forEach(function (x) { had[x.name] = 1; });
+    return set.items.filter(function (name) { return !had[name]; }).length;
   }
 
   /* 持っていく頒布物の1つ。
@@ -4594,6 +4711,9 @@
     createTicket: createTicket, updateTicket: updateTicket, removeTicket: removeTicket,
     putTicketPrep: putTicketPrep, toggleTicketPrep: toggleTicketPrep,
     removeTicketPrep: removeTicketPrep,
+    prepSets: prepSets, getPrepSet: getPrepSet, putPrepSet: putPrepSet,
+    removePrepSet: removePrepSet, applyPrepSet: applyPrepSet, prepSetLeft: prepSetLeft,
+    PREP_SET_MAX: PREP_SET_MAX, PREP_SET_ITEM_MAX: PREP_SET_ITEM_MAX,
     putTicketStock: putTicketStock, removeTicketStock: removeTicketStock,
     clients: clients, getClient: getClient, addClient: addClient,
     updateClient: updateClient, removeClient: removeClient,
