@@ -70,10 +70,14 @@
     }
 
     /* ---- 準備 ---- */
-    /* 毎回おなじものを並べ直さずに済むよう、設定にしまったプリセットから呼び出せる */
+    /* 毎回おなじものを並べ直さずに済むよう、設定にしまったプリセットから呼び出せる。
+       逆に、ここで組んだ並びをそのままプリセットにもできる */
     wrap.appendChild(ui.section('準備', el('div', { class: 'row-wrap' }, [
       prepCount(t),
-      ui.btn('プリセットから', 'ghost tiny', function () { prepSetSheet(t); }, 'task')
+      ui.btn('プリセットから', 'ghost tiny', function () { prepSetSheet(t); }, 'task'),
+      t.prep.length
+        ? ui.btn('プリセット保存', 'ghost tiny', function () { prepSaveSheet(t); }, 'backup')
+        : null
     ])));
     wrap.appendChild(prepCard(t));
 
@@ -505,6 +509,56 @@
         ui.btn('閉じる', 'primary', function () { close(); })
       ]
     });
+  }
+
+  /* いま並んでいる準備を、そのままプリセットにしてしまっておく。
+     実際に使ってみて並びが固まってから登録できるように。
+     消し込み（済み）の印は持っていかない。名前が同じものがあれば、聞いてから差し替える */
+  function prepSaveSheet(t) {
+    var now = S.getTicket(t.id) || t;
+    var items = now.prep.map(function (x) { return x.name; });
+    if (!items.length) { ui.toast('準備がまだありません', 'warn'); return; }
+
+    var nameIn = ui.input({ value: now.name || '', maxlength: 40, placeholder: '例）即売会' });
+    var close;
+
+    close = ui.sheet({
+      title: 'プリセット保存',
+      body: el('div', { class: 'form' }, [
+        ui.field('名前', nameIn),
+        ui.block('しまう中身（' + items.length + '件）',
+          el('div', { class: 'tk-prep-list' }, items.map(function (name) {
+            return el('div', { class: 'tk-prep-row' }, el('span', { class: 'tk-prep-name', text: name }));
+          }))),
+        el('p', { class: 'muted small', text: '済みの印は持っていきません。あとから設定で直せます。' })
+      ]),
+      actions: [
+        ui.btn('キャンセル', 'ghost', function () { close(); }),
+        ui.btn('保存', 'primary', function () { save(); })
+      ]
+    });
+
+    function save() {
+      var name = nameIn.value.trim();
+      if (!name) { ui.toast('名前を入れてください', 'warn'); nameIn.focus(); return; }
+      var same = S.prepSets().filter(function (x) { return x.name === name; })[0];
+      if (same) {
+        ui.confirm('「' + name + '」はもうあります。中身を差し替えますか。',
+          { okText: '差し替える' }).then(function (ok) {
+          if (!ok) return;
+          S.putPrepSet({ id: same.id, name: name, items: items });
+          close();
+          ui.toast('差し替えました');
+        });
+        return;
+      }
+      if (!S.putPrepSet({ name: name, items: items })) {
+        ui.toast('プリセットはこれ以上作れません', 'warn');
+        return;
+      }
+      close();
+      ui.toast('プリセットにしまいました');
+    }
   }
 
   /* メモ。打っているそばから残す（手が離れないよう、描き直しはしない） */

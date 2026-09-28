@@ -122,11 +122,18 @@ h1, h2, h3, p { margin: 0; }
    index.html に直に書いてあるので、読み込みを待たずに出る。
    弾むのは CSS のアニメーションなので、絵が出たその場から動き始める。 */
 .splash {
-  position: fixed; inset: 0; z-index: 100;
+  position: fixed; inset: 0; z-index: 100; overflow: hidden;
   display: flex; align-items: center; justify-content: center;
+  /* 藍を基調にする。線と枠は、この2つから作る */
+  --hud: color-mix(in srgb, var(--indigo) 58%, transparent);
+  --hud-soft: color-mix(in srgb, var(--indigo) 13%, transparent);
   background: var(--bg);
-  /* まん中にうっすら光を置いて、ロゴを浮かせる */
-  background-image: radial-gradient(60% 40% at 50% 46%, color-mix(in srgb, var(--indigo) 16%, transparent), transparent 70%);
+  /* まん中にうっすら光を置いて、ロゴを浮かせる。
+     上下からも藍を差して、画面ぜんぶを藍に寄せる */
+  background-image:
+    radial-gradient(64% 42% at 50% 45%, color-mix(in srgb, var(--indigo) 26%, transparent), transparent 72%),
+    linear-gradient(180deg, color-mix(in srgb, var(--indigo) 12%, transparent), transparent 38% 66%,
+      color-mix(in srgb, var(--indigo) 15%, transparent));
   transition: opacity .3s ease, transform .3s ease;
   /* 何かあって JS が消しそこねても、ここで必ず開く */
   animation: splash-bye .4s ease 3.2s forwards;
@@ -134,9 +141,53 @@ h1, h2, h3, p { margin: 0; }
 .splash.out { opacity: 0; transform: scale(1.04); pointer-events: none; }
 @keyframes splash-bye { to { opacity: 0; visibility: hidden; } }
 
+/* 四隅のかぎ括弧。警告カードと同じ組みで、計器の枠に見せる */
+.splash::after {
+  content: ''; position: absolute; inset: 16px; pointer-events: none;
+  background-image:
+    linear-gradient(var(--hud), var(--hud)), linear-gradient(var(--hud), var(--hud)),
+    linear-gradient(var(--hud), var(--hud)), linear-gradient(var(--hud), var(--hud)),
+    linear-gradient(var(--hud), var(--hud)), linear-gradient(var(--hud), var(--hud)),
+    linear-gradient(var(--hud), var(--hud)), linear-gradient(var(--hud), var(--hud));
+  background-size: 30px 2px, 2px 30px, 30px 2px, 2px 30px, 30px 2px, 2px 30px, 30px 2px, 2px 30px;
+  background-position:
+    left top, left top, right top, right top,
+    left bottom, left bottom, right bottom, right bottom;
+  background-repeat: no-repeat;
+}
+
+/* 方眼と走査線。まん中だけ見せて、端はぼかして消す */
+.sp-grid {
+  position: absolute; inset: 0; pointer-events: none;
+  background-image:
+    repeating-linear-gradient(90deg, var(--hud-soft) 0 1px, transparent 1px 28px),
+    repeating-linear-gradient(0deg, var(--hud-soft) 0 1px, transparent 1px 28px),
+    repeating-linear-gradient(0deg,
+      color-mix(in srgb, var(--indigo) 7%, transparent) 0 1px, transparent 1px 3px);
+  -webkit-mask-image: radial-gradient(72% 56% at 50% 45%, #000 18%, transparent 80%);
+  mask-image: radial-gradient(72% 56% at 50% 45%, #000 18%, transparent 80%);
+}
+
+/* 起動のときだけ、上から下へ一度だけ降りる光 */
+.sp-scan {
+  position: absolute; left: 0; right: 0; top: -3px; height: 2px; pointer-events: none;
+  background: linear-gradient(90deg, transparent,
+    color-mix(in srgb, var(--accent2) 75%, transparent) 30% 70%, transparent);
+  box-shadow: 0 0 20px color-mix(in srgb, var(--accent2) 45%, transparent);
+  opacity: 0;
+  animation: sp-scan 1.5s cubic-bezier(.4, 0, .5, 1) both;
+}
+@keyframes sp-scan {
+  0% { transform: translateY(0); opacity: 0; }
+  10% { opacity: .9; }
+  84% { opacity: .9; }
+  100% { transform: translateY(100vh); opacity: 0; }
+}
+
 /* ロゴと目盛りを縦に積む */
 .splash-body {
-  display: flex; flex-direction: column; align-items: center; gap: 26px;
+  position: relative; z-index: 1;
+  display: flex; flex-direction: column; align-items: center; gap: 22px;
 }
 
 .splash-logo {
@@ -147,27 +198,77 @@ h1, h2, h3, p { margin: 0; }
   line-height: 1; font-variant-numeric: tabular-nums;
 }
 
-/* 読み込みの目盛り。0 から 100 まで溜まったら、幕が開く */
-.splash-meter { display: flex; align-items: center; gap: 12px; width: min(232px, 62vw); }
+/* 読み込みの目盛り。0 から 100 まで溜まったら、幕が開く。
+   目盛りは細かく刻んで、なめらかな棒ではなく計器の目盛りに見せる */
+.splash-meter { display: flex; align-items: center; gap: 12px; width: min(250px, 66vw); }
 .sp-bar {
-  flex: 1; height: 8px; display: block; border-radius: 2px; overflow: hidden;
-  background: color-mix(in srgb, var(--indigo) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--indigo) 34%, transparent);
+  position: relative; flex: 1; height: 11px; display: block; overflow: hidden;
+  background: color-mix(in srgb, var(--indigo) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--indigo) 40%, transparent);
 }
-.sp-bar-in { display: block; height: 100%; width: 0; background: var(--indigo); }
+.sp-bar-in {
+  display: block; height: 100%; width: 0; background: var(--indigo);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--indigo) 60%, transparent);
+}
+/* 溜まったぶんを地の色で刻んで、目盛りに割る */
+.sp-bar::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(90deg, transparent 0 5px, var(--bg) 5px 7px);
+}
 .sp-read {
   display: flex; align-items: baseline; gap: 1px; color: var(--indigo);
-  font-variant-numeric: tabular-nums; min-width: 52px; justify-content: flex-end;
+  font-variant-numeric: tabular-nums; min-width: 54px; justify-content: flex-end;
 }
-.sp-num { font-size: 22px; font-weight: 800; line-height: 1; letter-spacing: -.02em; }
+.sp-num {
+  font-size: 23px; font-weight: 800; line-height: 1; letter-spacing: -.02em;
+  text-shadow: 0 0 14px color-mix(in srgb, var(--indigo) 45%, transparent);
+}
 .sp-pct { font-size: 11px; font-weight: 700; }
 /* 溜まりきった合図。ひと呼吸だけ強く光らせる */
 .splash.full .sp-bar-in { background: var(--accent2); }
 .splash.full .sp-read { color: var(--accent2); }
-.splash-word { font-weight: 800; }
+
+/* いまどこまで進んだか。BOOT → LOAD → READY と変わる */
+.splash-stat {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 10px; font-weight: 800; letter-spacing: .3em; text-indent: .3em;
+  color: color-mix(in srgb, var(--indigo) 72%, var(--muted));
+  font-variant-numeric: tabular-nums;
+}
+.sp-dot {
+  width: 6px; height: 6px; flex: none; background: var(--accent2);
+  box-shadow: 0 0 9px color-mix(in srgb, var(--accent2) 80%, transparent);
+  animation: sp-dot 1s steps(1, end) 3 both;
+}
+@keyframes sp-dot { 0%, 55% { opacity: 1; } 56%, 100% { opacity: .25; } }
+.splash.full .splash-stat { color: var(--accent2); }
+.splash.full .sp-dot { animation: none; opacity: 1; }
+
+/* 起動のときだけ、色をずらした写しを重ねて、にじみを収めていく */
+.splash-word { position: relative; font-weight: 800; }
+.splash-word::before, .splash-word::after {
+  content: attr(data-word); position: absolute; left: 0; top: 0;
+  pointer-events: none; white-space: nowrap;
+}
+.splash-word::before { color: var(--accent2); animation: sp-ghost-a .72s ease-out both; }
+.splash-word::after { color: var(--indigo); animation: sp-ghost-b .72s ease-out both; }
+@keyframes sp-ghost-a {
+  0% { transform: translate(-4px, 1px); opacity: .7; }
+  40% { transform: translate(2px, -1px); opacity: .42; }
+  72% { transform: translate(-1px, 0); opacity: .2; }
+  100% { transform: translate(0, 0); opacity: 0; }
+}
+@keyframes sp-ghost-b {
+  0% { transform: translate(4px, -1px); opacity: .7; }
+  40% { transform: translate(-2px, 1px); opacity: .42; }
+  72% { transform: translate(1px, 0); opacity: .2; }
+  100% { transform: translate(0, 0); opacity: 0; }
+}
+
 .splash-num {
   display: flex; color: var(--indigo); font-variant-numeric: tabular-nums;
   font-size: .56em; letter-spacing: .12em; margin-left: .3em; padding-top: .1em;
+  text-shadow: 0 0 18px color-mix(in srgb, var(--indigo) 55%, transparent);
 }
 
 /* 1桁ずつ、上から落ちてきて弾む。左から順に、少しずつ遅らせる */
@@ -184,9 +285,12 @@ h1, h2, h3, p { margin: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  /* 弾ませずに、はじめから 365 を出す */
+  /* 弾ませずに、はじめから 365 を出す。降りる光とにじみも出さない */
   .splash-num i { animation: none; }
   .splash { animation-delay: 1.4s; }
+  .sp-scan { display: none; }
+  .splash-word::before, .splash-word::after { content: none; }
+  .sp-dot { animation: none; }
 }
 
 /* ---------------- ヘッダー ---------------- */

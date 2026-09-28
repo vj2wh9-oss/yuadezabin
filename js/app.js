@@ -924,6 +924,7 @@
      元の節を消す前に、そっくり写しておく */
   var splashCopy = null;
   var splashBusy = false;
+  var READY_HOLD = 260;   // 溜まりきってから幕を開けるまで（合図を見せる間）
 
   function softly() {
     return !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -939,8 +940,9 @@
   function fillGauge(box, ms, onFull) {
     var num = box.querySelector('.sp-num');
     var bar = box.querySelector('.sp-bar-in');
+    var stat = box.querySelector('.sp-stat-t');
     if (!num || !bar) { onFull(); return function () {}; }
-    var t0 = 0, raf = 0, done = false;
+    var t0 = 0, raf = 0, done = false, said = '';
     var step = function (now) {
       if (!t0) t0 = now;
       var t = Math.min(1, (now - t0) / ms);
@@ -948,6 +950,11 @@
       var v = Math.round(100 * (1 - Math.pow(1 - t, 2.2)));
       num.textContent = String(v);
       bar.style.width = v + '%';
+      // 目盛りの下の文字も、進み具合に合わせて変える
+      if (stat) {
+        var word = v < 45 ? 'BOOT' : (v < 92 ? 'LOAD' : 'READY');
+        if (word !== said) { said = word; stat.textContent = word; }
+      }
       if (t < 1) { raf = requestAnimationFrame(step); return; }
       if (done) return;
       done = true;
@@ -989,8 +996,10 @@
       if (stop) stop();
       dropSplash(box, true);
     };
-    // 目盛りが溜まりきって、読み込みも終わっていたら開ける
-    var maybe = function () { if (full && ready) leave(); };
+    /* 目盛りが溜まりきって、読み込みも終わっていたら開ける。
+       溜まりきった合図（READY と、水色に変わる目盛り）が一瞬で消えて
+       しまわないよう、ひと呼吸だけ置いてから幕を開ける */
+    var maybe = function () { if (full && ready) setTimeout(leave, soft ? READY_HOLD : 0); };
     var stop = fillGauge(box, least, function () { full = true; maybe(); });
 
     box.addEventListener('click', leave);          // 押せば飛ばせる
@@ -1020,7 +1029,9 @@
       // 中身は描いたままでよいので、出し直しはしない
       dropSplash(box, false);
     };
-    var stop = fillGauge(box, soft ? 900 : 350, leave);
+    var stop = fillGauge(box, soft ? 900 : 350, function () {
+      setTimeout(leave, soft ? READY_HOLD : 0);   // 合図をひと呼吸見せてから
+    });
     box.addEventListener('click', leave);
     setTimeout(leave, soft ? 2400 : 1000);
   }
@@ -1106,7 +1117,7 @@
 
   /* この端末がいま動かしている版。sw.js の CACHE と揃えて上げる。
      2台で見比べて、片方だけ古いままになっていないか確かめるためのもの */
-  DL.VERSION = 'v210';
+  DL.VERSION = 'v211';
 
   DL.app = { render: render, init: init, get route() { return route; } };
   document.addEventListener('DOMContentLoaded', init);

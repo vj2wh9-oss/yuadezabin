@@ -22,18 +22,25 @@
 
 <!-- 起動のいちばん最初に出る一枚。365 が1桁ずつ弾み、
      下の目盛りが 0 から 100 まで溜まったら、ホームに入る。
-     ここに直に書いてあるので、読み込みを待たずにすぐ出る -->
+     ここに直に書いてあるので、読み込みを待たずにすぐ出る。
+     藍色の方眼・四隅のかぎ括弧・一度だけ降りる光で、計器らしく見せる -->
 <div id="splash" class="splash" role="img" aria-label="METEO365">
+  <i class="sp-grid" aria-hidden="true"></i>
+  <i class="sp-scan" aria-hidden="true"></i>
   <div class="splash-body">
     <div class="splash-logo" aria-hidden="true">
-      <b class="splash-word">METEO</b>
+      <!-- data-word は、起動のときだけ色をずらして重ねる写しに使う -->
+      <b class="splash-word" data-word="METEO">METEO</b>
       <!-- 1桁ずつ、左から順に落ちてきて弾む（--i が順番） -->
       <span class="splash-num"><i style="--i:0">3</i><i style="--i:1">6</i><i style="--i:2">5</i></span>
     </div>
-    <!-- 読み込みの目盛り。数は app.js が動かす -->
+    <!-- 読み込みの目盛り。数と、下の文字は app.js が動かす -->
     <div class="splash-meter" aria-hidden="true">
       <span class="sp-bar"><i class="sp-bar-in"></i></span>
       <span class="sp-read"><b class="sp-num">0</b><span class="sp-pct">%</span></span>
+    </div>
+    <div class="splash-stat" aria-hidden="true">
+      <i class="sp-dot"></i><span class="sp-stat-t">BOOT</span>
     </div>
   </div>
 </div>
