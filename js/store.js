@@ -116,6 +116,9 @@
        'bar'＝上辺に1本バーを通す組み（左端の色帯はやめる）
        'classic'＝左端に色の帯を立てる、これまでの組み */
     cardSkin: 'bar',
+    /* 動きを控える（この端末だけ）。飾りの動きをはじめから出さず、
+       地の網点も敷かない。電池を長く持たせたいときに入れる */
+    calm: false,
     dailyLimit: 0,         // 1日の作業量の上限（0で無効）
     icsAlarm: 'P1D',       // .ics に入れる通知のタイミング
     lastBackupAt: '',      // 最後にファイルへ書き出した日
@@ -227,6 +230,7 @@
 
   /* 端末ごとの設定。同期・読み込み・復元で持ち込まず、この端末のものを守る */
   var LOCAL_SETTING_KEYS = ['sync', 'scopeIssuerId', 'calMode', 'notifyDevice', 'lastBackupAt', 'lastAutoBackupAt',
+    'calm',            // 動きを控えるかどうかは、端末ごとに決める
     'weatherCache',    // 取ってきた予報は端末ごと。地点（weather）のほうは同期する
     'crmFace',         // 顔での解錠は、その端末に入っている鍵なので持ち出さない
     /* METEO LOCK。金庫そのもの（settings.lock）は暗号のまま同期するが、

@@ -38,7 +38,15 @@
         [{ value: 'bar', label: 'バー' }, { value: 'classic', label: '前のまま' }],
         s.cardSkin === 'classic' ? 'classic' : 'bar',
         function (v) { S.updateSettings({ cardSkin: v }); DL.app.render(); }
-      ))
+      )),
+      /* 飾りの動きは、開いてしばらくで自分から止まるようにしてある。
+         それでも電池が気になるときは、ここではじめから出さないようにできる。
+         この端末だけの設定（同期には持ち出さない） */
+      ui.field('動き', ui.segmented(
+        [{ value: 'on', label: 'ふつう' }, { value: 'calm', label: '控える（電池優先）' }],
+        s.calm ? 'calm' : 'on',
+        function (v) { S.updateSettings({ calm: v === 'calm' }); DL.app.render(); }
+      ), 'この端末だけ。飾りの動きと、背景の網点を出さなくなります')
     ]));
 
     /* 休業日はカレンダーの日別画面から指定する（ここには置かない） */

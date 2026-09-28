@@ -91,6 +91,8 @@
     /* カードの見た目。既定はバーの組み。
        設定で「前のまま」を選ぶと、左端に色の帯が立つ元の組みに戻る */
     document.body.classList.toggle('skin-bar', S.settings.cardSkin !== 'classic');
+    /* 動きを控える。飾りの動きを出さず、地の網点も敷かない（電池のため） */
+    document.body.classList.toggle('calm', !!S.settings.calm);
     // 設定は下のタブから外し、題名の右の歯車から開く。
     // 歯車を出すのはホームだけにして、ほかのタブでは邪魔をしない
     // （設定の画面でも出しておかないと、開いた先で行き場が分からなくなる）
@@ -213,7 +215,10 @@
 
     // 金額の数え上げや、グラフの描き出し。開いたときだけで、
     // 保存のたびの描き直しでは動かさない
-    if (entered) { ui.introduce(view); riseIn(view, route.name); }
+    if (entered) {
+      if (!S.settings.calm) ui.introduce(view);
+      riseIn(view, route.name);
+    }
 
     // 上の帯と下のタブが浮いたままになっていないか、ついでに見ておく
     checkBars();
@@ -232,6 +237,7 @@
 
   function riseIn(root, name) {
     if (NO_RISE.indexOf(name) >= 0) return;
+    if (S.settings.calm) return;
     if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     var page = root.querySelector('.page');
     if (!page) return;
@@ -460,6 +466,7 @@
   function queueTick() {
     clearTimeout(tickTimer);
     if (tickList.length < 2) return;
+    if (S.settings.calm) return;      // 動きを控えるときは、送らずに1件だけ出しておく
     tickTimer = setTimeout(function () {
       var face = dueTick.firstElementChild;
       if (!face) return;
@@ -1080,6 +1087,7 @@
     document.addEventListener('visibilitychange', function () {
       if (document.visibilityState === 'visible') {
         S.autoBackupIfDue();
+        DL.sync.quicken();      // 戻ってきたら、しばらくは細かく見に行く
         DL.sync.run({ silent: true }).then(function (r) {
           if (r.status === 'pulled' || r.status === 'merged') render();
         });
@@ -1098,7 +1106,7 @@
 
   /* この端末がいま動かしている版。sw.js の CACHE と揃えて上げる。
      2台で見比べて、片方だけ古いままになっていないか確かめるためのもの */
-  DL.VERSION = 'v207';
+  DL.VERSION = 'v208';
 
   DL.app = { render: render, init: init, get route() { return route; } };
   document.addEventListener('DOMContentLoaded', init);

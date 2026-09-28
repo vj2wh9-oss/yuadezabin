@@ -4145,3 +4145,60 @@ body.skin-bar .tp-lead { stroke-width: 1; opacity: .95; stroke-linecap: butt; }
 /* ホームの帯グラフも、切れ目と目盛りをはっきりさせる */
 body.skin-bar .tp-bar { border-color: var(--line2); }
 body.skin-bar .tp-tick { opacity: 1; }
+
+/* ================== 電池のために ==================
+
+   飾りの動きは、ずっと回し続けない。開いてから30秒ほどで止める。
+   画面を移れば組み直されるので、見るたびにはちゃんと動く。
+   （動き続けるぶんだけ、絵を描き直し続けることになり、電池を使う）
+
+   止めないのは「待っている最中」を伝えるものだけ：
+   引き下げの輪・同期の輪・筋トレの読み込み中。 */
+
+.logo-word.spin .logo-num i { animation-iteration-count: 4; }
+
+/* 天気の絵（ホームに何日ぶんも並ぶので、ここがいちばん効く） */
+.wx-rays { animation-iteration-count: 1; }
+.wx-core { animation-iteration-count: 6; }
+.wx-moon { animation-iteration-count: 3; }
+.wx-cloud { animation-iteration-count: 4; }
+.wx-drop { animation-iteration-count: 13; }
+.wx-flake { animation-iteration-count: 8; }
+.wx-fog { animation-iteration-count: 5; }
+.wx-bolt { animation-iteration-count: 10; }
+
+/* 知らせ・カレンダーの明滅 */
+.alert.overdue, .alert.behind { animation-iteration-count: 9; }
+body.skin-bar .alert.overdue .alert-icon,
+body.skin-bar .alert.behind .alert-icon { animation-iteration-count: 20; }
+.cal-cell.has-due, .cal-cell.has-event { animation-iteration-count: 12; }
+
+/* 今日の予定まわり */
+.tp-now, .tp-nowarc, .tp-row.now { animation-iteration-count: 12; }
+.tp-flow i { animation-iteration-count: 20; }
+
+/* 筋トレの帯 */
+body.fit-theme .appbar::after { animation-iteration-count: 12; }
+
+/* ---- 「動きを控える」を入れているとき ----
+   飾りは動かさず、地の網点も敷かない。いちばん電池にやさしい。 */
+body.calm .logo-word.spin .logo-num i,
+body.calm .wx-rays, body.calm .wx-core, body.calm .wx-moon, body.calm .wx-cloud,
+body.calm .wx-drop, body.calm .wx-flake, body.calm .wx-fog, body.calm .wx-bolt,
+body.calm .alert.overdue, body.calm .alert.behind,
+body.calm.skin-bar .alert.overdue .alert-icon,
+body.calm.skin-bar .alert.behind .alert-icon,
+body.calm .due-face.in, body.calm .due-face.out, body.calm .due-line.pan,
+body.calm .cal-cell.has-due, body.calm .cal-cell.has-event,
+body.calm .tp-now, body.calm .tp-nowarc, body.calm .tp-row.now, body.calm .tp-flow i,
+body.calm .appbar::after,
+body.calm .tk-deck .tk-card, body.calm .tk-hero,
+body.calm .view.rise .page > *, body.calm .tab.on .tabicon,
+body.calm .cal-grid.from-right, body.calm .cal-grid.from-left {
+  animation: none;
+}
+/* 動かさないぶん、色だけは残して分かるようにする */
+body.calm .alert.overdue, body.calm .alert.behind { background-color: var(--overdue-a); }
+body.calm .tp-now, body.calm .tp-nowarc { opacity: 1; }
+/* 地の網点は、画面いっぱいの重ね絵なので、ここでは外す */
+body.calm.skin-bar::before { content: none; }

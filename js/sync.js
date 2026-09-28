@@ -12,7 +12,9 @@
   var TIMEOUT = 15000;
   var MIN_GAP = 8000;      // 画面を行き来しても、これより短い間隔では走らせない
   var PUSH_WAIT = 2500;    // 手が止まってから送るまで
-  var WATCH_GAP = 10000;   // 開いているあいだ、相手の変更を見に行く間隔
+  var WATCH_GAP = 10000;   // 開いているあいだ、相手の変更を見に行く間隔（いちばん細かいとき）
+  var WATCH_MAX = 60000;   // 何も起きない時間が続いたら、ここまで空ける
+  var gap = WATCH_GAP;
   var busy = false;
   var lastRunAt = 0;
   var pushTimer = null;
@@ -290,6 +292,7 @@
       pushTimer = null;
       if (!active() || !S.changedSinceSync()) return;
       run({ silent: true });
+      quicken();       // 動きがあったので、しばらくは細かく見に行く
     }, PUSH_WAIT);
   }
 
@@ -297,24 +300,55 @@
    * 開いているあいだ、もう片方の端末の変更を見張る。
    * まずは版番号だけ聞きに行き、変わっていたときだけ取りに行く
    * （毎回まるごと同期すると、書き込みが増えて端末が疲れる）。
-   * 画面を見ていないあいだは何もしない。戻ってきたときは
-   * app.js の visibilitychange が一度走らせる。
+   *
+   * 電池のため、何も起きない時間が続いたら、聞きに行く間隔をだんだん
+   * 空けていく（10秒 → 20 → 40 → 60秒）。動きがあれば10秒へ戻す。
+   * 画面を見ていないあいだ・電波が無いあいだは、そもそも聞きに行かない。
+   * 戻ってきたときは app.js の visibilitychange が一度走らせる。
    */
   function watch() {
-    if (watchTimer) clearInterval(watchTimer);
-    watchTimer = setInterval(tick, WATCH_GAP);
+    if (watchTimer) clearTimeout(watchTimer);
+    gap = WATCH_GAP;
+    watchTimer = setTimeout(beat, gap);
+  }
+
+  function beat() {
+    var done = function () {
+      watchTimer = setTimeout(beat, gap);
+    };
+    // 画面を見ていない・つながっていないときは、間隔を空けて待つだけ
+    if ((typeof document !== 'undefined' && document.visibilityState === 'hidden')
+      || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+      gap = WATCH_MAX;
+      done();
+      return;
+    }
+    tick().then(function (moved) {
+      // 何か動いたら細かく、何も無ければだんだん空ける
+      gap = moved ? WATCH_GAP : Math.min(WATCH_MAX, Math.round(gap * 2));
+      done();
+    });
   }
 
   function tick() {
-    if (!active() || busy) return;
-    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    if (!active() || busy) return Promise.resolve(false);
     // こちらに未送信のぶんがあるときは、そのまま送る（送り損ねの拾い直しも兼ねる）
-    if (S.changedSinceSync()) { run({ silent: true }).then(afterAuto); return; }
-    meta().then(function (m) {
-      if (!m.exists) return null;
-      if (Number(m.rev) === U.num(conf().rev, 0)) return null;   // 相手は何もしていない
-      return run({ silent: true }).then(afterAuto);
-    }).catch(function () { /* つながらないときは、次の番で */ });
+    if (S.changedSinceSync()) {
+      return run({ silent: true }).then(afterAuto).then(function () { return true; });
+    }
+    return meta().then(function (m) {
+      if (!m.exists) return false;
+      if (Number(m.rev) === U.num(conf().rev, 0)) return false;   // 相手は何もしていない
+      return run({ silent: true }).then(afterAuto).then(function () { return true; });
+    }).catch(function () { return false; });   // つながらないときは、次の番で
+  }
+
+  /* 何かしたら、また細かく見に行く（送ったあと、相手もすぐ動くことが多い） */
+  function quicken() {
+    if (!watchTimer) return;
+    gap = WATCH_GAP;
+    clearTimeout(watchTimer);
+    watchTimer = setTimeout(beat, gap);
   }
 
   /* 自動で取り込んだときは、黙って画面を描き直す */
@@ -373,7 +407,7 @@
 
   DL.sync = {
     ready: ready, active: active, run: run, touch: touch, flush: flush, start: start,
-    watch: watch, tick: tick,
+    watch: watch, tick: tick, quicken: quicken,
     test: test, makeToken: makeToken, deviceName: deviceName, on: on,
     fmtAt: fmtAt
   };
