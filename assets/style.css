@@ -190,12 +190,52 @@ h1, h2, h3, p { margin: 0; }
   display: flex; flex-direction: column; align-items: center; gap: 22px;
 }
 
+/* 自作のロゴ（SVG）を縦に積む。
+   METEO と 365 は同じ高さで描いてあるので、幅の比だけで組める。
+   CORESYSTEM は細身の一行で、上下いっぱいに渡す。
+
+   --logo-w がロゴぜんたいの幅。METEO と CORESYSTEM はこの幅いっぱい、
+   365 はその 58.3%（224.71 ÷ 385.2）で、METEO と同じ高さになる。 */
 .splash-logo {
-  /* 365 は METEO の右肩に小さく乗せる（上の帯のロゴと同じ組み）。
-     幅が縮んだぶん、文字そのものは少し大きくできる */
-  display: flex; align-items: flex-start; gap: 0;
-  font-size: clamp(38px, 15.5vw, 70px); font-weight: 800; letter-spacing: .04em;
-  line-height: 1; font-variant-numeric: tabular-nums;
+  --logo-w: min(440px, 88vw);
+  /* CORESYSTEM の一行ぶんの高さ（221.21 : 21.5 なので幅の 9.72%）と、その上下の余白 */
+  --core-gap: .052;
+  /* 開くときに片側が動く量。ちょうど半分ずつ動いて、
+     はじめは METEO と 365 がぴたりと合わさって見える */
+  --logo-open: calc(var(--logo-w) * (.0486 + var(--core-gap)));
+  display: flex; flex-direction: column; align-items: center;
+  width: var(--logo-w);
+}
+.sp-mark { display: block; width: 100%; height: auto; }
+.sp-meteo { color: var(--text); }
+.sp-365 {
+  width: 58.3%; color: var(--indigo);
+  filter: drop-shadow(0 0 16px color-mix(in srgb, var(--indigo) 45%, transparent));
+}
+/* 上下の隙間に入る一行。METEO と 365 の間を渡す */
+.sp-core {
+  margin: calc(var(--logo-w) * var(--core-gap)) 0;
+  color: color-mix(in srgb, var(--indigo) 86%, var(--muted));
+}
+
+/* 出ぎわ。METEO と 365 がくっついたところから開き、
+   空いた隙間を左から右へ CORESYSTEM が埋めていく */
+.sp-meteo { animation: sp-open-up .62s cubic-bezier(.22, .9, .28, 1) both; }
+.sp-365 { animation: sp-open-down .62s cubic-bezier(.22, .9, .28, 1) both; }
+.sp-core { animation: sp-wipe .58s cubic-bezier(.3, .8, .35, 1) .34s both; }
+
+@keyframes sp-open-up {
+  0% { transform: translateY(var(--logo-open)); opacity: .35; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+@keyframes sp-open-down {
+  0% { transform: translateY(calc(var(--logo-open) * -1)); opacity: .35; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+@keyframes sp-wipe {
+  0% { clip-path: inset(0 100% 0 0); opacity: 0; }
+  18% { opacity: 1; }
+  100% { clip-path: inset(0 0 0 0); opacity: 1; }
 }
 
 /* 読み込みの目盛り。0 から 100 まで溜まったら、幕が開く。
@@ -244,53 +284,11 @@ h1, h2, h3, p { margin: 0; }
 .splash.full .splash-stat { color: var(--accent2); }
 .splash.full .sp-dot { animation: none; opacity: 1; }
 
-/* 起動のときだけ、色をずらした写しを重ねて、にじみを収めていく */
-.splash-word { position: relative; font-weight: 800; }
-.splash-word::before, .splash-word::after {
-  content: attr(data-word); position: absolute; left: 0; top: 0;
-  pointer-events: none; white-space: nowrap;
-}
-.splash-word::before { color: var(--accent2); animation: sp-ghost-a .72s ease-out both; }
-.splash-word::after { color: var(--indigo); animation: sp-ghost-b .72s ease-out both; }
-@keyframes sp-ghost-a {
-  0% { transform: translate(-4px, 1px); opacity: .7; }
-  40% { transform: translate(2px, -1px); opacity: .42; }
-  72% { transform: translate(-1px, 0); opacity: .2; }
-  100% { transform: translate(0, 0); opacity: 0; }
-}
-@keyframes sp-ghost-b {
-  0% { transform: translate(4px, -1px); opacity: .7; }
-  40% { transform: translate(-2px, 1px); opacity: .42; }
-  72% { transform: translate(1px, 0); opacity: .2; }
-  100% { transform: translate(0, 0); opacity: 0; }
-}
-
-.splash-num {
-  display: flex; color: var(--indigo); font-variant-numeric: tabular-nums;
-  font-size: .56em; letter-spacing: .12em; margin-left: .3em; padding-top: .1em;
-  text-shadow: 0 0 18px color-mix(in srgb, var(--indigo) 55%, transparent);
-}
-
-/* 1桁ずつ、上から落ちてきて弾む。左から順に、少しずつ遅らせる */
-.splash-num i {
-  display: inline-block; font-style: normal; transform-origin: 50% 100%;
-  animation: splashBop .74s cubic-bezier(.3, .8, .4, 1) calc(var(--i, 0) * .12s) both;
-}
-@keyframes splashBop {
-  0%   { transform: translateY(-.62em) scaleY(1.14) scaleX(.92); opacity: 0; }
-  42%  { transform: translateY(0) scaleY(.82) scaleX(1.12); opacity: 1; }   /* 着地でつぶれる */
-  66%  { transform: translateY(-.24em) scaleY(1.06) scaleX(.97); }          /* 小さく跳ね返る */
-  86%  { transform: translateY(0) scaleY(.94) scaleX(1.05); }
-  100% { transform: translateY(0) scaleY(1) scaleX(1); }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  /* 弾ませずに、はじめから 365 を出す。降りる光とにじみも出さない */
-  .splash-num i { animation: none; }
+  /* 開かせずに、はじめから3つとも出す。降りる光も出さない */
   .splash { animation-delay: 1.4s; }
   .sp-scan { display: none; }
-  .splash-word::before, .splash-word::after { content: none; }
-  .sp-dot { animation: none; }
+  .sp-meteo, .sp-365, .sp-core, .sp-dot { animation: none; }
 }
 
 /* ---------------- ヘッダー ---------------- */
