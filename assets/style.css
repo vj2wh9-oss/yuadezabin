@@ -136,7 +136,7 @@ h1, h2, h3, p { margin: 0; }
       color-mix(in srgb, var(--indigo) 15%, transparent));
   transition: opacity .3s ease, transform .3s ease;
   /* 何かあって JS が消しそこねても、ここで必ず開く */
-  animation: splash-bye .4s ease 3.2s forwards;
+  animation: splash-bye .4s ease 4.6s forwards;
 }
 .splash.out { opacity: 0; transform: scale(1.04); pointer-events: none; }
 @keyframes splash-bye { to { opacity: 0; visibility: hidden; } }
@@ -166,22 +166,6 @@ h1, h2, h3, p { margin: 0; }
       color-mix(in srgb, var(--indigo) 7%, transparent) 0 1px, transparent 1px 3px);
   -webkit-mask-image: radial-gradient(72% 56% at 50% 45%, #000 18%, transparent 80%);
   mask-image: radial-gradient(72% 56% at 50% 45%, #000 18%, transparent 80%);
-}
-
-/* 起動のときだけ、上から下へ一度だけ降りる光 */
-.sp-scan {
-  position: absolute; left: 0; right: 0; top: -3px; height: 2px; pointer-events: none;
-  background: linear-gradient(90deg, transparent,
-    color-mix(in srgb, var(--accent2) 75%, transparent) 30% 70%, transparent);
-  box-shadow: 0 0 20px color-mix(in srgb, var(--accent2) 45%, transparent);
-  opacity: 0;
-  animation: sp-scan 1.5s cubic-bezier(.4, 0, .5, 1) both;
-}
-@keyframes sp-scan {
-  0% { transform: translateY(0); opacity: 0; }
-  10% { opacity: .9; }
-  84% { opacity: .9; }
-  100% { transform: translateY(100vh); opacity: 0; }
 }
 
 /* ロゴと目盛りを縦に積む */
@@ -218,18 +202,24 @@ h1, h2, h3, p { margin: 0; }
   color: color-mix(in srgb, var(--indigo) 86%, var(--muted));
 }
 
-/* 出ぎわ。METEO と 365 がくっついたところから開き、
-   空いた隙間を左から右へ CORESYSTEM が埋めていく */
-.sp-meteo { animation: sp-open-up .62s cubic-bezier(.22, .9, .28, 1) both; }
-.sp-365 { animation: sp-open-down .62s cubic-bezier(.22, .9, .28, 1) both; }
-.sp-core { animation: sp-wipe .58s cubic-bezier(.3, .8, .35, 1) .34s both; }
+/* 出ぎわ。まず METEO と 365 が合わさったまま浮かび上がり、
+   ひと呼吸おいてから上下に開く。
+   空いた隙間を、左から右へ CORESYSTEM が埋めていく */
+.sp-meteo { animation: sp-open-up 1.16s cubic-bezier(.22, .9, .28, 1) both; }
+.sp-365 { animation: sp-open-down 1.16s cubic-bezier(.22, .9, .28, 1) both; }
+.sp-core { animation: sp-wipe .6s cubic-bezier(.3, .8, .35, 1) .74s both; }
 
+/* 0〜18% で浮かび上がり、42% まで合わさったまま留まり、そこから開く */
 @keyframes sp-open-up {
-  0% { transform: translateY(var(--logo-open)); opacity: .35; }
+  0% { transform: translateY(var(--logo-open)); opacity: 0; }
+  18% { transform: translateY(var(--logo-open)); opacity: 1; }
+  42% { transform: translateY(var(--logo-open)); opacity: 1; }
   100% { transform: translateY(0); opacity: 1; }
 }
 @keyframes sp-open-down {
-  0% { transform: translateY(calc(var(--logo-open) * -1)); opacity: .35; }
+  0% { transform: translateY(calc(var(--logo-open) * -1)); opacity: 0; }
+  18% { transform: translateY(calc(var(--logo-open) * -1)); opacity: 1; }
+  42% { transform: translateY(calc(var(--logo-open) * -1)); opacity: 1; }
   100% { transform: translateY(0); opacity: 1; }
 }
 @keyframes sp-wipe {
@@ -268,27 +258,10 @@ h1, h2, h3, p { margin: 0; }
 .splash.full .sp-bar-in { background: var(--accent2); }
 .splash.full .sp-read { color: var(--accent2); }
 
-/* いまどこまで進んだか。BOOT → LOAD → READY と変わる */
-.splash-stat {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 10px; font-weight: 800; letter-spacing: .3em; text-indent: .3em;
-  color: color-mix(in srgb, var(--indigo) 72%, var(--muted));
-  font-variant-numeric: tabular-nums;
-}
-.sp-dot {
-  width: 6px; height: 6px; flex: none; background: var(--accent2);
-  box-shadow: 0 0 9px color-mix(in srgb, var(--accent2) 80%, transparent);
-  animation: sp-dot 1s steps(1, end) 3 both;
-}
-@keyframes sp-dot { 0%, 55% { opacity: 1; } 56%, 100% { opacity: .25; } }
-.splash.full .splash-stat { color: var(--accent2); }
-.splash.full .sp-dot { animation: none; opacity: 1; }
-
 @media (prefers-reduced-motion: reduce) {
-  /* 開かせずに、はじめから3つとも出す。降りる光も出さない */
+  /* 開かせずに、はじめから3つとも出す */
   .splash { animation-delay: 1.4s; }
-  .sp-scan { display: none; }
-  .sp-meteo, .sp-365, .sp-core, .sp-dot { animation: none; }
+  .sp-meteo, .sp-365, .sp-core { animation: none; }
 }
 
 /* ---------------- ヘッダー ---------------- */

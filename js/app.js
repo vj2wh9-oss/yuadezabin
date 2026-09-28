@@ -940,21 +940,16 @@
   function fillGauge(box, ms, onFull) {
     var num = box.querySelector('.sp-num');
     var bar = box.querySelector('.sp-bar-in');
-    var stat = box.querySelector('.sp-stat-t');
     if (!num || !bar) { onFull(); return function () {}; }
-    var t0 = 0, raf = 0, done = false, said = '';
+    var t0 = 0, raf = 0, done = false;
     var step = function (now) {
       if (!t0) t0 = now;
       var t = Math.min(1, (now - t0) / ms);
-      // 終わりぎわをゆるめて、溜まりきる手前で「ぐっ」とくるようにする
-      var v = Math.round(100 * (1 - Math.pow(1 - t, 2.2)));
+      /* 終わりぎわを少しだけゆるめる。ここを強くしすぎると、
+         早々に 100 に達して、幕が開くまで止まって見えてしまう */
+      var v = Math.round(100 * (1 - Math.pow(1 - t, 1.5)));
       num.textContent = String(v);
       bar.style.width = v + '%';
-      // 目盛りの下の文字も、進み具合に合わせて変える
-      if (stat) {
-        var word = v < 45 ? 'BOOT' : (v < 92 ? 'LOAD' : 'READY');
-        if (word !== said) { said = word; stat.textContent = word; }
-      }
       if (t < 1) { raf = requestAnimationFrame(step); return; }
       if (done) return;
       done = true;
@@ -987,7 +982,9 @@
     if (!box) return function () {};
     splashCopy = box.cloneNode(true);       // 背面から戻ったとき用の控え
     var soft = softly();
-    var least = soft ? 1250 : 450;      // 数字が止まって、目盛りが溜まりきるまで
+    /* 目盛りが溜まりきるまで。ロゴが開ききる（1.34秒）より後になるよう、
+       ゆっくり溜める。ここを縮めると、開く前に幕が上がってしまう */
+    var least = soft ? 2100 : 450;
     var gone = false, full = false, ready = false;
 
     var leave = function () {
@@ -1003,7 +1000,7 @@
     var stop = fillGauge(box, least, function () { full = true; maybe(); });
 
     box.addEventListener('click', leave);          // 押せば飛ばせる
-    setTimeout(leave, soft ? 3200 : 1400);         // 何があっても開く
+    setTimeout(leave, soft ? 4600 : 1400);         // 何があっても開く
 
     return function () { ready = true; maybe(); };
   }
@@ -1029,11 +1026,11 @@
       // 中身は描いたままでよいので、出し直しはしない
       dropSplash(box, false);
     };
-    var stop = fillGauge(box, soft ? 900 : 350, function () {
+    var stop = fillGauge(box, soft ? 1600 : 350, function () {
       setTimeout(leave, soft ? READY_HOLD : 0);   // 合図をひと呼吸見せてから
     });
     box.addEventListener('click', leave);
-    setTimeout(leave, soft ? 2400 : 1000);
+    setTimeout(leave, soft ? 3400 : 1000);
   }
 
   /* 背面から戻るたびに、起動の一枚を出す。
@@ -1117,7 +1114,7 @@
 
   /* この端末がいま動かしている版。sw.js の CACHE と揃えて上げる。
      2台で見比べて、片方だけ古いままになっていないか確かめるためのもの */
-  DL.VERSION = 'v212';
+  DL.VERSION = 'v213';
 
   DL.app = { render: render, init: init, get route() { return route; } };
   document.addEventListener('DOMContentLoaded', init);
