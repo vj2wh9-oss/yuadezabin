@@ -124,16 +124,14 @@ h1, h2, h3, p { margin: 0; }
 .splash {
   position: fixed; inset: 0; z-index: 100; overflow: hidden;
   display: flex; align-items: center; justify-content: center;
-  /* 藍を基調にする。線と枠は、この2つから作る */
-  --hud: color-mix(in srgb, var(--indigo) 58%, transparent);
-  --hud-soft: color-mix(in srgb, var(--indigo) 13%, transparent);
+  /* 色は足さない。地の色と文字の色だけで、線と枠を作る。
+     藍や光り物を混ぜると柔らかくなるので、石造りのように硬いまま置く */
+  --hud: color-mix(in srgb, var(--text) 40%, transparent);
+  --hud-soft: color-mix(in srgb, var(--text) 9%, transparent);
   background: var(--bg);
-  /* まん中にうっすら光を置いて、ロゴを浮かせる。
-     上下からも藍を差して、画面ぜんぶを藍に寄せる */
-  background-image:
-    radial-gradient(64% 42% at 50% 45%, color-mix(in srgb, var(--indigo) 26%, transparent), transparent 72%),
-    linear-gradient(180deg, color-mix(in srgb, var(--indigo) 12%, transparent), transparent 38% 66%,
-      color-mix(in srgb, var(--indigo) 15%, transparent));
+  /* 下へ向かって、ほんの少しだけ沈ませる。まん中に光は置かない。
+     濃くすると、明るい画面で下半分がくすんで見える */
+  background-image: linear-gradient(180deg, transparent 0 58%, rgba(0, 0, 0, .12) 100%);
   transition: opacity .3s ease, transform .3s ease;
   /* 何かあって JS が消しそこねても、ここで必ず開く */
   animation: splash-bye .4s ease 4.6s forwards;
@@ -141,31 +139,30 @@ h1, h2, h3, p { margin: 0; }
 .splash.out { opacity: 0; transform: scale(1.04); pointer-events: none; }
 @keyframes splash-bye { to { opacity: 0; visibility: hidden; } }
 
-/* 四隅のかぎ括弧。警告カードと同じ組みで、計器の枠に見せる */
+/* 四隅のかぎ括弧。警告カードと同じ組みで、画を切り取る枠に見せる */
 .splash::after {
-  content: ''; position: absolute; inset: 16px; pointer-events: none;
+  content: ''; position: absolute; inset: 18px; pointer-events: none;
   background-image:
     linear-gradient(var(--hud), var(--hud)), linear-gradient(var(--hud), var(--hud)),
     linear-gradient(var(--hud), var(--hud)), linear-gradient(var(--hud), var(--hud)),
     linear-gradient(var(--hud), var(--hud)), linear-gradient(var(--hud), var(--hud)),
     linear-gradient(var(--hud), var(--hud)), linear-gradient(var(--hud), var(--hud));
-  background-size: 30px 2px, 2px 30px, 30px 2px, 2px 30px, 30px 2px, 2px 30px, 30px 2px, 2px 30px;
+  background-size: 38px 2px, 2px 38px, 38px 2px, 2px 38px, 38px 2px, 2px 38px, 38px 2px, 2px 38px;
   background-position:
     left top, left top, right top, right top,
     left bottom, left bottom, right bottom, right bottom;
   background-repeat: no-repeat;
 }
 
-/* 方眼と走査線。まん中だけ見せて、端はぼかして消す */
+/* 方眼。画面に格子を渡す。端はぼかして消す。
+   走査線（細かい横縞）はやめた。画面らしさが出て、硬さが逃げるため */
 .sp-grid {
   position: absolute; inset: 0; pointer-events: none;
   background-image:
-    repeating-linear-gradient(90deg, var(--hud-soft) 0 1px, transparent 1px 28px),
-    repeating-linear-gradient(0deg, var(--hud-soft) 0 1px, transparent 1px 28px),
-    repeating-linear-gradient(0deg,
-      color-mix(in srgb, var(--indigo) 7%, transparent) 0 1px, transparent 1px 3px);
-  -webkit-mask-image: radial-gradient(72% 56% at 50% 45%, #000 18%, transparent 80%);
-  mask-image: radial-gradient(72% 56% at 50% 45%, #000 18%, transparent 80%);
+    repeating-linear-gradient(90deg, var(--hud-soft) 0 1px, transparent 1px 30px),
+    repeating-linear-gradient(0deg, var(--hud-soft) 0 1px, transparent 1px 30px);
+  -webkit-mask-image: radial-gradient(86% 66% at 50% 45%, #000 26%, transparent 86%);
+  mask-image: radial-gradient(86% 66% at 50% 45%, #000 26%, transparent 86%);
 }
 
 /* ロゴと目盛りを縦に積む */
@@ -190,16 +187,14 @@ h1, h2, h3, p { margin: 0; }
   display: flex; flex-direction: column; align-items: center;
   width: var(--logo-w);
 }
+/* 色は付けず、濃さの段だけで組む。光も回さない */
 .sp-mark { display: block; width: 100%; height: auto; }
 .sp-meteo { color: var(--text); }
-.sp-365 {
-  width: 58.3%; color: var(--indigo);
-  filter: drop-shadow(0 0 16px color-mix(in srgb, var(--indigo) 45%, transparent));
-}
+.sp-365 { width: 58.3%; color: color-mix(in srgb, var(--text) 72%, transparent); }
 /* 上下の隙間に入る一行。METEO と 365 の間を渡す */
 .sp-core {
   margin: calc(var(--logo-w) * var(--core-gap)) 0;
-  color: color-mix(in srgb, var(--indigo) 86%, var(--muted));
+  color: color-mix(in srgb, var(--text) 46%, transparent);
 }
 
 /* 出ぎわ。まず METEO と 365 が合わさったまま浮かび上がり、
@@ -233,12 +228,12 @@ h1, h2, h3, p { margin: 0; }
 .splash-meter { display: flex; align-items: center; gap: 12px; width: min(250px, 66vw); }
 .sp-bar {
   position: relative; flex: 1; height: 11px; display: block; overflow: hidden;
-  background: color-mix(in srgb, var(--indigo) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--indigo) 40%, transparent);
+  background: transparent;
+  border: 1px solid var(--hud);
 }
 .sp-bar-in {
-  display: block; height: 100%; width: 0; background: var(--indigo);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--indigo) 60%, transparent);
+  display: block; height: 100%; width: 0;
+  background: color-mix(in srgb, var(--text) 66%, transparent);
 }
 /* 溜まったぶんを地の色で刻んで、目盛りに割る */
 .sp-bar::after {
@@ -246,17 +241,15 @@ h1, h2, h3, p { margin: 0; }
   background: repeating-linear-gradient(90deg, transparent 0 5px, var(--bg) 5px 7px);
 }
 .sp-read {
-  display: flex; align-items: baseline; gap: 1px; color: var(--indigo);
+  display: flex; align-items: baseline; gap: 1px;
+  color: color-mix(in srgb, var(--text) 66%, transparent);
   font-variant-numeric: tabular-nums; min-width: 54px; justify-content: flex-end;
 }
-.sp-num {
-  font-size: 23px; font-weight: 800; line-height: 1; letter-spacing: -.02em;
-  text-shadow: 0 0 14px color-mix(in srgb, var(--indigo) 45%, transparent);
-}
+.sp-num { font-size: 23px; font-weight: 800; line-height: 1; letter-spacing: -.02em; }
 .sp-pct { font-size: 11px; font-weight: 700; }
-/* 溜まりきった合図。ひと呼吸だけ強く光らせる */
-.splash.full .sp-bar-in { background: var(--accent2); }
-.splash.full .sp-read { color: var(--accent2); }
+/* 溜まりきった合図。光らせず、濃さだけ上げる */
+.splash.full .sp-bar-in { background: var(--text); }
+.splash.full .sp-read { color: var(--text); }
 
 @media (prefers-reduced-motion: reduce) {
   /* 開かせずに、はじめから3つとも出す */

@@ -984,7 +984,7 @@
     var soft = softly();
     /* 目盛りが溜まりきるまで。ロゴが開ききる（1.34秒）より後になるよう、
        ゆっくり溜める。ここを縮めると、開く前に幕が上がってしまう */
-    var least = soft ? 2100 : 450;
+    var least = soft ? 1800 : 450;
     var gone = false, full = false, ready = false;
 
     var leave = function () {
@@ -1026,7 +1026,7 @@
       // 中身は描いたままでよいので、出し直しはしない
       dropSplash(box, false);
     };
-    var stop = fillGauge(box, soft ? 1600 : 350, function () {
+    var stop = fillGauge(box, soft ? 1450 : 350, function () {
       setTimeout(leave, soft ? READY_HOLD : 0);   // 合図をひと呼吸見せてから
     });
     box.addEventListener('click', leave);
@@ -1114,7 +1114,7 @@
 
   /* この端末がいま動かしている版。sw.js の CACHE と揃えて上げる。
      2台で見比べて、片方だけ古いままになっていないか確かめるためのもの */
-  DL.VERSION = 'v213';
+  DL.VERSION = 'v214';
 
   DL.app = { render: render, init: init, get route() { return route; } };
   document.addEventListener('DOMContentLoaded', init);
