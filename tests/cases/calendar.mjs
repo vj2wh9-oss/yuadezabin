@@ -65,6 +65,33 @@ export default {
       await page.evaluate(() => { window.DL.store.updateSettings({ calm: false }); window.DL.app.render(); });
       await page.waitForTimeout(200);
 
+      /* 下地に色が付いている日（締切など）は、その上に青を重ねない。
+         重ねると濁って、赤とも青ともつかない色になる */
+      await page.evaluate(() => {
+        const S = window.DL.store, U = window.DL.util, T = U.today();
+        const pr = S.createProject({ name: '入稿するもの', category: 'manga', qty: 4,
+          deadline: T, status: 'active' });
+        const t = S.addTask(pr.id, { name: '入稿', unit: 'page', qty: 4 });
+        S.updateTask(pr.id, t.id, { start: U.addDays(T, -2), end: T });
+      });
+      await open(page, base, '#/calendar');
+      await page.waitForSelector('.cal-cell.today');
+      const due = await page.evaluate(() => {
+        const c = document.querySelector('.cal-cell.today');
+        const bf = getComputedStyle(c, '::before');
+        return {
+          締切あり: c.classList.contains('has-due'),
+          かぶせの塗り: bf.backgroundColor,
+          かぶせの動き: bf.animationName,
+          帯の太さ: bf.borderTopWidth
+        };
+      });
+      s.note('今日＋締切: ' + JSON.stringify(due));
+      s.yes('今日に締切が重なっている', due.締切あり);
+      s.ok('青の塗りを重ねない', due.かぶせの塗り, 'rgba(0, 0, 0, 0)');
+      s.ok('息づかいも止める（点滅と重なって濁るため）', due.かぶせの動き, 'none');
+      s.ok('そのぶん上辺の帯を太くする', due.帯の太さ, '4px');
+
       /* ここが肝心。「前のまま」で、元の見た目に戻ること */
       await page.evaluate(() => { window.DL.store.updateSettings({ calSkin: 'classic' }); window.DL.app.render(); });
       await page.waitForTimeout(300);

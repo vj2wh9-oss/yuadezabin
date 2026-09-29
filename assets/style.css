@@ -4447,6 +4447,19 @@ body.cal-new .cal-cell.today::before {
   0%, 100% { background: color-mix(in srgb, var(--accent) 11%, transparent); }
   50% { background: color-mix(in srgb, var(--accent) 26%, transparent); }
 }
+/* 下地にもう色が付いている日（締切・入稿・イベント・休み・勤務）は、
+   その上に青を重ねると濁る。塗りはやめて、上辺の帯と日付の札だけで示す。
+   帯はそのぶん太くして、ひと目で今日と分かるようにする */
+body.cal-new .cal-cell.today.has-due::before,
+body.cal-new .cal-cell.today.has-event::before,
+body.cal-new .cal-cell.today.off::before,
+body.cal-new .cal-cell.today.duty-office::before,
+body.cal-new .cal-cell.today.duty-remote::before,
+body.cal-new .cal-cell.today.duty-stay::before {
+  background: none;
+  animation: none;
+  border-top-width: 4px;
+}
 /* 日付を、傾いた札に白抜きで乗せる（節の見出しと同じ組み）。
    数字そのものは傾けない */
 body.cal-new .cal-cell.today .cal-n {
