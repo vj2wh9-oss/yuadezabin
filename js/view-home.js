@@ -180,6 +180,20 @@
     var p = e.project, t = e.task;
     var unit = sc.unit(t);
     var pace = sc.taskPace(p, t, date);
+    /* この工程を、原稿のページ管理表で記録するか（forms.js と同じ見方） */
+    function onPageTable(pr, tk) {
+      return (tk.unit === 'page' || tk.unit === 'cut') && S.pageTotal(pr) > 0;
+    }
+    /* その日のぶん（例：5〜8P）に、まとめて印を付ける・外す */
+    function markToday(pr, tk, ent) {
+      if (!ent.from || !ent.to) { location.hash = '#/pages/' + pr.id; return; }
+      var list = [];
+      for (var n = ent.from; n <= ent.to; n++) list.push(n);
+      var allMarked = list.every(function (n) { return S.isPageMarked(pr, tk.id, n); });
+      var moved = S.markPages(pr.id, tk.id, list, !allMarked, date);
+      ui.toast(allMarked ? moved + sc.pageWord(pr) + 'の印を外しました'
+        : moved + sc.pageWord(pr) + 'に印を付けました');
+    }
     var doneAll = sc.taskIsComplete(t);
     var pct = e.qty ? Math.min(100, Math.round(e.done / e.qty * 100)) : (e.done ? 100 : 0);
 
@@ -206,6 +220,10 @@
         class: 'checkbtn' + ((e.qty ? e.done >= e.qty : e.done > 0 || t.done) ? ' on' : ''), 'aria-label': '完了',
         onclick: function () {
           if (t.unit === 'none') { S.updateTask(p.id, t.id, { done: !t.done }); return; }
+          /* ページ管理表で記録する工程は、実績を直に書かずに
+             表へ印を付ける。記録の入口を表ひとつに絞って、
+             表と実績が食い違わないようにするため */
+          if (onPageTable(p, t)) { markToday(p, t, e); return; }
           // ノルマ0の日は「1つ進めた」記録として扱う
           var target = e.qty || 1;
           S.setProgress(p.id, t.id, date, e.done >= target ? 0 : target);

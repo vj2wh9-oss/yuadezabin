@@ -578,9 +578,14 @@
       detail.appendChild(el('p', { class: 'muted small', text: '期間が未設定です。' }));
     }
 
+    /* ページ管理表で記録する工程は、手で実績を入れる道を出さない
+       （表と二重になり、必ず食い違うため） */
+    var onTable = (t.unit === 'page' || t.unit === 'cut') && S.pageTotal(p) > 0;
+
     detail.appendChild(el('div', { class: 'row-wrap' }, [
       ui.btn('今日の進捗', 'ghost tiny', function () { DL.forms.progressSheet(p.id, t.id, today); }),
-      ui.btn('実績を追加', 'ghost tiny', function () { DL.forms.addProgressSheet(p.id, t.id); }),
+      onTable ? null
+        : ui.btn('実績を追加', 'ghost tiny', function () { DL.forms.addProgressSheet(p.id, t.id); }),
       ui.btn('編集', 'ghost tiny', function () { DL.forms.taskForm(p.id, t.id); }),
       (U.isISO(t.start) && U.isISO(t.end))
         ? ui.btn('日を動かす', 'ghost tiny', function () { DL.forms.shiftTaskSheet(p.id, t.id); })

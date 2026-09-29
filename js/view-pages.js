@@ -140,8 +140,11 @@
         ]),
         ui.progress(total ? Math.round(c.count / total * 100) : 0, p.color),
         // 表の数と実績がずれていたら、そっと知らせる（手で実績を直したときなど）
+        /* 記録の入口は表ひとつに絞ってあるので、ふだんは出ない。
+           昔の手入力が残っているときだけ出る。押すと直せる */
         c.pace.done !== c.count
-          ? el('span', { class: 'muted small', text: '実績は ' + c.pace.done + word + '（表と違います）' })
+          ? el('span', { class: 'muted small',
+              text: '実績が表と違います（実績 ' + c.pace.done + word + '）。押すと合わせられます' })
           : (c.range.from ? el('span', { class: 'muted small',
               text: '今日のぶん ' + sc.rangeText(c.t, c.range.from, c.range.to) }) : null)
       ]));

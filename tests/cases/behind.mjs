@@ -115,6 +115,43 @@ export default {
       s.note('絞り込み: ' + late);
       s.yes('「遅れ」の数も0になっている', /遅れ 0/.test(late));
 
+      /* 記録の入口は、ページ管理表ひとつに絞ってある。
+         手で実績を入れる道が残っていると、表と必ず食い違う */
+      await open(page, base, '#/project/' + at.pid);
+      await page.click('.row.task .row-main');            // 工程をひらく
+      await page.waitForSelector('.task-detail');
+      s.ok('案件詳細に「実績を追加」が出ていない',
+        await page.locator('.task-detail button:has-text("実績を追加")').count(), 0);
+      await page.click('.task-detail button:has-text("今日の進捗")');
+      await page.waitForSelector('.sheet');
+      const sheetText = await page.$eval('.sheet-body', (n) => n.innerText.replace(/\n+/g, ' | '));
+      s.note('進捗のシート: ' + sheetText);
+      s.ok('手で入れる数えボタンが無い',
+        await page.locator('.sheet-body .stepper').count(), 0);
+      s.yes('表へ行く道が出ている', /管理表をひらく/.test(sheetText));
+      await page.click('.sheet-body button:has-text("管理表をひらく")');
+      await page.waitForTimeout(400);
+      s.yes('押すとページ管理表へ移る', (await page.url()).indexOf('#/pages/' + at.pid) >= 0);
+
+      /* ホームのチェックも、実績ではなく表の印を動かす */
+      await page.evaluate((x) => window.DL.store.markPages(x.pid, x.tid,
+        [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], false), at);
+      await open(page, base, '#/home');
+      const box = page.locator('.row.quota .checkbtn').first();
+      if (await box.count()) {
+        await box.click();
+        await page.waitForTimeout(400);
+        const after = await page.evaluate((x) => ({
+          印: window.DL.store.markedPages(window.DL.store.getProject(x.pid), x.tid).length,
+          実績: window.DL.schedule.taskPace(window.DL.store.getProject(x.pid),
+            window.DL.store.getTask(x.pid, x.tid), x.today).done
+        }), at);
+        s.note('ホームのチェックのあと: ' + JSON.stringify(after));
+        s.ok('印と実績が食い違わない', after.印, after.実績);
+      } else {
+        s.note('今日のぶんが無いので、ホームのチェックは見送り');
+      }
+
       s.ok('画面のエラー', errors, []);
     });
     return s;

@@ -528,9 +528,73 @@
 
   /* =============== 進捗の入力 =============== */
 
+  /**
+   * その工程を、原稿のページ管理表で記録するか。
+   * ページ（枚）で数える工程で、総ページ数が入っているとき。
+   *
+   * このときは、手で実績を入れる道を出さない。表の印と手入力の2つが
+   * あると、片方だけ動かしたときに必ず食い違い、遅れの出方まで変わって
+   * しまうため。記録の入口は表ひとつに絞る。
+   */
+  function byPageTable(p, t) {
+    return !!p && !!t && (t.unit === 'page' || t.unit === 'cut') && S.pageTotal(p) > 0;
+  }
+
+  /* 表で記録する工程のときに出す案内。数は出すが、ここでは変えられない */
+  function pageTableSheet(p, t, date) {
+    var word = sc.pageWord(p);
+    var total = S.pageTotal(p);
+    var count = S.markedPages(p, t.id).length;
+    var plan = sc.taskPlan(p, t);
+    var range = plan.rangeByDate[date] || {};
+    var pace = sc.taskPace(p, t);
+    var close;
+
+    var body = el('div', { class: 'form' }, [
+      el('div', { class: 'prog-head' }, [
+        el('div', { class: 'dot', style: { background: p.color } }),
+        el('div', {}, [
+          el('strong', { text: p.title }),
+          el('div', { class: 'muted small', text: t.name + '　' + U.fmtMDW(date) })
+        ])
+      ]),
+      el('div', { class: 'quota-row' }, [
+        el('div', { class: 'quota-box' }, [
+          el('span', { text: 'この日のぶん' }),
+          el('b', { text: sc.rangeText(t, range.from, range.to) || '—' })
+        ]),
+        el('div', { class: 'quota-box' }, [
+          el('span', { text: '進み' }), el('b', { text: count + '/' + total + word })
+        ]),
+        el('div', { class: 'quota-box' }, [
+          el('span', { text: '必要ペース' }), el('b', { text: pace.perDay + 'P/日' })
+        ])
+      ]),
+      el('p', { class: 'muted small',
+        text: 'この工程は' + word + '管理表で記録します。'
+          + '表のマスを押すと、その日にやったぶんとして残ります。' }),
+      ui.btn(word + '管理表をひらく', 'primary full', function () {
+        close();
+        location.hash = '#/pages/' + p.id;
+      }, 'manga'),
+      ui.btn(t.done ? '未完了に戻す' : 'タスク完了にする', 'ghost full mt', function () {
+        S.updateTask(p.id, t.id, { done: !t.done });
+        close();
+        ui.toast(t.done ? '未完了に戻しました' : 'タスクを完了にしました');
+      })
+    ]);
+
+    close = ui.sheet({
+      title: '進捗',
+      body: body,
+      actions: [ui.btn('閉じる', 'ghost', function () { close(); })]
+    });
+  }
+
   function progressSheet(pid, tid, date) {
     var p = S.getProject(pid), t = S.getTask(pid, tid);
     if (!p || !t) return;
+    if (byPageTable(p, t)) { pageTableSheet(p, t, date); return; }
     var plan = sc.taskPlan(p, t);
     var quota = plan.byDate[date] || 0;
     var range = plan.rangeByDate[date] || {};
@@ -593,6 +657,8 @@
   function addProgressSheet(pid, tid) {
     var p = S.getProject(pid), t = S.getTask(pid, tid);
     if (!p || !t) return;
+    // 表で記録する工程は、ここからも入れられないようにする
+    if (byPageTable(p, t)) { pageTableSheet(p, t, U.today()); return; }
     var unit = S.UNIT_LABEL[t.unit] || '';
     var dateI = ui.input({ type: 'date', value: U.today() });
     var step = ui.stepper({ value: 0 });
