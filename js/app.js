@@ -93,6 +93,8 @@
     document.body.classList.toggle('skin-bar', S.settings.cardSkin !== 'classic');
     /* 動きを控える。飾りの動きを出さず、地の網点も敷かない（電池のため） */
     document.body.classList.toggle('calm', !!S.settings.calm);
+    /* カレンダーの見た目。外すと、これまでの見た目に戻る */
+    document.body.classList.toggle('cal-new', S.settings.calSkin !== 'classic');
     // 設定は下のタブから外し、題名の右の歯車から開く。
     // 歯車を出すのはホームだけにして、ほかのタブでは邪魔をしない
     // （設定の画面でも出しておかないと、開いた先で行き場が分からなくなる）
@@ -1114,7 +1116,7 @@
 
   /* この端末がいま動かしている版。sw.js の CACHE と揃えて上げる。
      2台で見比べて、片方だけ古いままになっていないか確かめるためのもの */
-  DL.VERSION = 'v217';
+  DL.VERSION = 'v218';
 
   DL.app = { render: render, init: init, get route() { return route; } };
   document.addEventListener('DOMContentLoaded', init);

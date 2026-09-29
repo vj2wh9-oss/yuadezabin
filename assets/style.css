@@ -4400,3 +4400,80 @@ body.calm .alert.overdue, body.calm .alert.behind { background-color: var(--over
 body.calm .tp-now, body.calm .tp-nowarc { opacity: 1; }
 /* 地の網点は、画面いっぱいの重ね絵なので、ここでは外す */
 body.calm.skin-bar::before { content: none; }
+
+/* ---------------- カレンダーの見た目（試し） ----------------
+
+   設定 →「作業と表示」→「カレンダーの見た目」で切り替える。
+   ここに書いたものは body.cal-new が付いているあいだだけ効く。
+   「前のまま」を選ぶとクラスが外れ、下の決まりは丸ごと効かなくなる。
+   元の決まりには触っていないので、戻すのに書き直しは要らない。 */
+
+/* ---- 曜日の見出し。箱をやめて、文字と下の線だけにする ---- */
+body.cal-new .cal-head { gap: 1px; margin-bottom: 5px; }
+body.cal-new .cal-hd {
+  background: transparent; padding: 2px 0 5px;
+  font-size: 10px; font-weight: 800; letter-spacing: .14em; text-indent: .14em;
+  border-bottom: 2px solid var(--line2);
+}
+/* 今日の曜日。列がひと目で追えるように */
+body.cal-new .cal-hd.is-today {
+  color: var(--accent); border-bottom-color: var(--accent);
+}
+
+/* ---- マス。1つずつ囲うのをやめ、地の色で罫を引く ---- */
+body.cal-new .cal-grid {
+  gap: 1px; background: var(--line);
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
+body.cal-new .cal-cell { border: 0; padding: 3px 3px 2px; }
+/* 今月でない日は、地に沈めて数字だけ薄く見せる */
+body.cal-new .cal-cell.out { opacity: 1; background: var(--bg); }
+body.cal-new .cal-cell.out .cal-n,
+body.cal-new .cal-cell.out .cal-sum,
+body.cal-new .cal-cell.out .cal-lines { opacity: .4; }
+body.cal-new .cal-cell.out .cal-big { opacity: 0; }
+
+/* ---- 今日 ---- */
+/* 囲い線はやめて、上辺に太い帯とうっすらした塗り。
+   ゆっくり息をして、しばらくすると落ち着く（11秒で止まる） */
+body.cal-new .cal-cell.today { border: 0; box-shadow: none; }
+body.cal-new .cal-cell.today::before {
+  content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  border-top: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 11%, transparent);
+  animation: cal-today-breathe 2.2s ease-in-out 5 both;
+}
+@keyframes cal-today-breathe {
+  0%, 100% { background: color-mix(in srgb, var(--accent) 11%, transparent); }
+  50% { background: color-mix(in srgb, var(--accent) 26%, transparent); }
+}
+/* 日付を、傾いた札に白抜きで乗せる（節の見出しと同じ組み）。
+   数字そのものは傾けない */
+body.cal-new .cal-cell.today .cal-n {
+  position: relative; z-index: 1;
+  color: var(--accent-ink); font-weight: 900;
+  padding: 1px 7px; transform-origin: left center;
+  animation: cal-today-pop .48s cubic-bezier(.3, 1.5, .5, 1) both;
+}
+body.cal-new .cal-cell.today .cal-n::before {
+  content: ''; position: absolute; inset: 0; z-index: -1;
+  background: var(--accent); transform: skewX(var(--skew, -12deg));
+}
+@keyframes cal-today-pop {
+  0% { transform: scale(.4); }
+  60% { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+/* 日曜・土曜でも、今日は札の色を優先する */
+body.cal-new .cal-cell.today.sun .cal-n,
+body.cal-new .cal-cell.today.sat .cal-n { color: var(--accent-ink); }
+/* 右下のうっすら大きな日付も、今日だけ少し濃くする */
+body.cal-new .cal-cell.today .cal-big { opacity: .1; }
+
+/* 端末の「動きを減らす」と、設定の「動き：控える」では動かさない */
+@media (prefers-reduced-motion: reduce) {
+  body.cal-new .cal-cell.today::before,
+  body.cal-new .cal-cell.today .cal-n { animation: none; }
+}
+body.calm.cal-new .cal-cell.today::before,
+body.calm.cal-new .cal-cell.today .cal-n { animation: none; }

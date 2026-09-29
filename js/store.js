@@ -195,6 +195,9 @@
     logos: [],
     /* ロゴの余白を切り詰め直したかどうかの印（1度きりの後始末） */
     logoFit: 0,
+    /* カレンダーの見た目。'new'（試している新しいほう）か 'classic'（前のまま）。
+       この端末だけの設定 */
+    calSkin: 'new',
     /* 準備のプリセット。券の「準備」からまとめて呼び出す。中身は設定で直す。
        [{id, name, items:['おつり両替', …], at}] */
     prepSets: [],
@@ -236,6 +239,7 @@
   /* 端末ごとの設定。同期・読み込み・復元で持ち込まず、この端末のものを守る */
   var LOCAL_SETTING_KEYS = ['sync', 'scopeIssuerId', 'calMode', 'notifyDevice', 'lastBackupAt', 'lastAutoBackupAt',
     'calm',            // 動きを控えるかどうかは、端末ごとに決める
+    'calSkin',         // カレンダーの見た目も、端末ごとに決める
     'weatherCache',    // 取ってきた予報は端末ごと。地点（weather）のほうは同期する
     'crmFace',         // 顔での解錠は、その端末に入っている鍵なので持ち出さない
     /* METEO LOCK。金庫そのもの（settings.lock）は暗号のまま同期するが、

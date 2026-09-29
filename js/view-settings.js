@@ -39,6 +39,13 @@
         s.cardSkin === 'classic' ? 'classic' : 'bar',
         function (v) { S.updateSettings({ cardSkin: v }); DL.app.render(); }
       )),
+      /* カレンダーの見た目。試しに入れ替えたので、合わなければ戻せるようにしておく。
+         この端末だけの設定（同期には持ち出さない） */
+      ui.field('カレンダーの見た目', ui.segmented(
+        [{ value: 'new', label: '新しい' }, { value: 'classic', label: '前のまま' }],
+        s.calSkin === 'classic' ? 'classic' : 'new',
+        function (v) { S.updateSettings({ calSkin: v }); DL.app.render(); }
+      ), 'この端末だけ。今日のマスを目立たせ、マスの囲いを細い罫にします'),
       /* 飾りの動きは、開いてしばらくで自分から止まるようにしてある。
          それでも電池が気になるときは、ここではじめから出さないようにできる。
          この端末だけの設定（同期には持ち出さない） */

@@ -45,12 +45,19 @@
       ui.btn('今日', 'tiny ghost', function () { cursor = U.monthStart(today); slideDir = null; DL.app.render(); })
     ]));
 
-    /* 曜日見出し */
+    /* 曜日見出し。いま見ている月に今日が入っているときは、
+       その曜日の見出しにも印を付ける（今日の列が目で追えるように） */
     var ws = U.num(S.settings.weekStart, 0);
+    var showsToday = U.cmp(today, first) >= 0 && U.cmp(today, last) <= 0;
+    var todayDow = U.dow(today);
     var head = el('div', { class: 'cal-head' });
     for (var i = 0; i < 7; i++) {
       var d = (ws + i) % 7;
-      head.appendChild(el('div', { class: 'cal-hd' + (d === 0 ? ' sun' : d === 6 ? ' sat' : ''), text: U.wdName(d) }));
+      head.appendChild(el('div', {
+        class: 'cal-hd' + (d === 0 ? ' sun' : d === 6 ? ' sat' : '')
+          + (showsToday && d === todayDow ? ' is-today' : ''),
+        text: U.wdName(d)
+      }));
     }
     wrap.appendChild(head);
 
