@@ -103,6 +103,15 @@
     return tot > 0 && taskDone(task) >= tot;
   }
 
+  /* 昨日までに積んだぶん。今日ぶんも、先の日付に入れたぶんも数えない。
+     遅れを見るときに使う */
+  function taskDoneBefore(task, today) {
+    var pr = (task && task.progress) || {};
+    return U.sum(Object.keys(pr), function (k) {
+      return (U.isISO(k) && U.cmp(k, today) < 0) ? U.num(pr[k], 0) : 0;
+    });
+  }
+
   /**
    * 進み具合の評価（今日基準）
    * behind: 昨日までに終えているべき量に対する不足
@@ -113,16 +122,21 @@
     var plan = taskPlan(project, task);
     var total = taskTotal(task);
     var done = taskDone(task);
+    var doneBefore = taskDoneBefore(task, today);
     var remaining = Math.max(0, total - done);
 
     var shouldBeDone = U.sum(plan.days.filter(function (d) { return U.cmp(d.date, today) < 0; }), function (d) { return d.qty; });
-    var behind = Math.max(0, shouldBeDone - done);
+    /* 「昨日までに終えているべき量」と比べるのは「昨日までに積んだ量」。
+       ここに今日やったぶんを入れてしまうと、今日の手が過去の遅れを
+       消してしまい、今日のノルマを丸ごと取りこぼす。
+       残っている量より大きな遅れにはならないよう、そこで頭を打つ */
+    var behind = Math.max(0, Math.min(shouldBeDone - doneBefore, remaining));
 
     var left = plan.days.filter(function (d) { return U.cmp(d.date, today) >= 0; });
     var perDay = left.length ? Math.ceil(remaining / left.length) : remaining;
 
     return {
-      plan: plan, total: total, done: done, remaining: remaining,
+      plan: plan, total: total, done: done, doneBefore: doneBefore, remaining: remaining,
       shouldBeDone: shouldBeDone,
       behind: behind, remainingDays: left.length, perDay: perDay,
       overdue: U.isISO(task.end) && U.cmp(task.end, today) < 0 && remaining > 0 && !task.done,

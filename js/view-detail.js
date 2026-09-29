@@ -310,7 +310,10 @@
 
     var chips = total ? tasks.slice(0, 4).map(function (t) {
       var n = S.markedPages(p, t.id).length;
-      var behind = Math.max(0, Math.min(total, Math.round(sc.taskPace(p, t, today).shouldBeDone)) - n);
+      /* 遅れは「昨日までに付けた印」と比べる。今日付けたぶんを入れると、
+         今日の手で過去の遅れが消えてしまう（ページ管理表の側と同じ見方） */
+      var due = Math.min(total, Math.round(sc.taskPace(p, t, today).shouldBeDone));
+      var behind = Math.max(0, Math.min(due - S.markedCountBefore(p, t.id, today), total - n));
       return ui.chip(t.name + ' ' + n + '/' + total, n >= total ? 'ok' : behind ? 'danger' : 'ghosty');
     }) : [ui.chip('総' + word + '数を入れると使えます', 'warn')];
     if (total && tasks.length > 4) chips.push(ui.chip('ほか' + (tasks.length - 4), 'ghosty'));

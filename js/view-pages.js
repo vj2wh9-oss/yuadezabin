@@ -73,6 +73,9 @@
         t: t, pace: pace, set: set, count: marked.length,
         // 昨日までに終えているはずの数（ここまでの未印が「遅れ」）
         due: Math.min(total, Math.round(pace.shouldBeDone)),
+        /* 遅れは「昨日までに付けた印」と比べる。今日付けたぶんは
+           今日のノルマに入るので、過去の遅れを消してはいけない */
+        countBefore: S.markedCountBefore(p, t.id, today),
         range: pace.plan.rangeByDate[today] || {}
       };
     });
@@ -109,8 +112,9 @@
   function summary(p, cols, total, word, today) {
     var box = el('div', { class: 'card pg-sum' });
     cols.forEach(function (c) {
-      var behind = Math.max(0, c.due - c.count);
       var left = Math.max(0, total - c.count);
+      // 残っている数より大きな遅れにはならないよう、そこで頭を打つ
+      var behind = Math.max(0, Math.min(c.due - c.countBefore, left));
       box.appendChild(el('button', {
         class: 'pg-sum-row' + (left ? '' : ' done'),
         onclick: function () { colSheet(p, c, total, word, today); }
@@ -267,7 +271,7 @@
   function colSheet(p, c, total, word, today) {
     var t = c.t;
     var box = el('div', { class: 'form' });
-    var behind = Math.max(0, c.due - c.count);
+    var behind = Math.max(0, Math.min(c.due - c.countBefore, Math.max(0, total - c.count)));
 
     box.appendChild(el('div', { class: 'row-sub' }, [
       ui.chip(c.count + '/' + total + word, c.count >= total ? 'ok' : 'ghosty'),

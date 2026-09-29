@@ -4177,6 +4177,18 @@
       .sort(function (a, b) { return a - b; });
   }
 
+  /* 昨日までに印を付けた数。遅れを見るときに使う。
+     今日付けたぶんは、今日のノルマに入るものなので数えない。
+     日付の入っていない古い印は、今日付けたものとみなす
+     （syncProgressFromPages と同じ扱い） */
+  function markedCountBefore(p, tid, today) {
+    var m = (p && p.pages ? p.pages.marks[tid] : null) || {};
+    var day = U.isISO(today) ? today : U.today();
+    return Object.keys(m).filter(function (k) {
+      return U.isISO(m[k]) && U.cmp(m[k], day) < 0;
+    }).length;
+  }
+
   function isPageMarked(p, tid, page) {
     var m = (p && p.pages ? p.pages.marks[tid] : null) || {};
     return m[Math.round(U.num(page, 0))] !== undefined;
@@ -4690,7 +4702,8 @@
     addTask: addTask, getTask: getTask, updateTask: updateTask, removeTask: removeTask,
     moveTask: moveTask, setProgress: setProgress, bumpProgress: bumpProgress,
     MAX_PAGES: MAX_PAGES, pageTotal: pageTotal, setPageTotal: setPageTotal,
-    markedPages: markedPages, isPageMarked: isPageMarked, markPages: markPages,
+    markedPages: markedPages, markedCountBefore: markedCountBefore,
+    isPageMarked: isPageMarked, markPages: markPages,
     setPageMark: setPageMark, togglePageMark: togglePageMark,
     setPageNote: setPageNote, pageNote: pageNote,
     FIT_GOALS: FIT_GOALS, FIT_LEVELS: FIT_LEVELS,
