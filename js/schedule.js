@@ -126,21 +126,31 @@
     var remaining = Math.max(0, total - done);
 
     var shouldBeDone = U.sum(plan.days.filter(function (d) { return U.cmp(d.date, today) < 0; }), function (d) { return d.qty; });
-    /* 「昨日までに終えているべき量」と比べるのは「昨日までに積んだ量」。
-       ここに今日やったぶんを入れてしまうと、今日の手が過去の遅れを
-       消してしまい、今日のノルマを丸ごと取りこぼす。
-       残っている量より大きな遅れにはならないよう、そこで頭を打つ */
-    var behind = Math.max(0, Math.min(shouldBeDone - doneBefore, remaining));
+    var todayQty = plan.byDate[today] || 0;
+    var doneToday = U.num(((task && task.progress) || {})[today], 0);
+
+    /* 遅れの出し方。
+       「昨日までに終えているべき量」と比べるのは「昨日までに積んだ量」。
+       今日やったぶんをそのまま足してしまうと、今日の手で過去の遅れが
+       消え、今日のノルマを丸ごと取りこぼす。
+
+       ただし、今日ノルマを超えて進めたぶんは、取り返したものとして
+       過去の遅れから引く。まず今日のぶんに充て、あふれたぶんが
+       過去を埋める、という順で見る。
+
+       残っている量より大きな遅れにはならないよう、そこで頭を打つ。 */
+    var caughtUp = Math.max(0, doneToday - todayQty);
+    var behind = Math.max(0, Math.min(shouldBeDone - doneBefore - caughtUp, remaining));
 
     var left = plan.days.filter(function (d) { return U.cmp(d.date, today) >= 0; });
     var perDay = left.length ? Math.ceil(remaining / left.length) : remaining;
 
     return {
       plan: plan, total: total, done: done, doneBefore: doneBefore, remaining: remaining,
-      shouldBeDone: shouldBeDone,
+      shouldBeDone: shouldBeDone, doneToday: doneToday, caughtUp: caughtUp,
       behind: behind, remainingDays: left.length, perDay: perDay,
       overdue: U.isISO(task.end) && U.cmp(task.end, today) < 0 && remaining > 0 && !task.done,
-      todayQty: plan.byDate[today] || 0
+      todayQty: todayQty
     };
   }
 

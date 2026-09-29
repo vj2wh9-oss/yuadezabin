@@ -311,9 +311,13 @@
     var chips = total ? tasks.slice(0, 4).map(function (t) {
       var n = S.markedPages(p, t.id).length;
       /* 遅れは「昨日までに付けた印」と比べる。今日付けたぶんを入れると、
-         今日の手で過去の遅れが消えてしまう（ページ管理表の側と同じ見方） */
-      var due = Math.min(total, Math.round(sc.taskPace(p, t, today).shouldBeDone));
-      var behind = Math.max(0, Math.min(due - S.markedCountBefore(p, t.id, today), total - n));
+         今日の手で過去の遅れが消えてしまう。ただし今日のノルマを超えて
+         付けたぶんは、取り返したものとして引く（ページ管理表と同じ見方） */
+      var pace = sc.taskPace(p, t, today);
+      var before = S.markedCountBefore(p, t.id, today);
+      var due = Math.min(total, Math.round(pace.shouldBeDone));
+      var caughtUp = Math.max(0, (n - before) - Math.round(pace.todayQty || 0));
+      var behind = Math.max(0, Math.min(due - before - caughtUp, total - n));
       return ui.chip(t.name + ' ' + n + '/' + total, n >= total ? 'ok' : behind ? 'danger' : 'ghosty');
     }) : [ui.chip('総' + word + '数を入れると使えます', 'warn')];
     if (total && tasks.length > 4) chips.push(ui.chip('ほか' + (tasks.length - 4), 'ghosty'));

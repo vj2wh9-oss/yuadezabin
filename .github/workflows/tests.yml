@@ -1,0 +1,61 @@
+name: テスト
+
+# 押すたびに、実際のブラウザでアプリを開いて確かめる（tests/README.md）。
+#
+# 落ちたら、そのぶんの変更は公開しないでほしいところだが、Pages への公開は
+# 別のワークフロー（pages.yml）で走る。まずは「落ちたら知らせる」までにして、
+# 様子を見てから止めるかどうか決める。
+on:
+  push:
+    branches:
+      - main
+      - 'claude/**'
+  pull_request:
+  workflow_dispatch:
+
+# 同じブランチを続けて押したときは、古いほうをやめる（待ち時間と枠の節約）
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: リポジトリを取得
+        uses: actions/checkout@v4
+
+      - name: Node を用意
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          # tests/package-lock.json があれば、取ってきたものを使い回す
+          cache: npm
+          cache-dependency-path: tests/package-lock.json
+
+      - name: Playwright を入れる
+        working-directory: tests
+        run: npm install --no-audit --no-fund
+
+      # ブラウザ本体は大きいので、同じ版のあいだは取ってきたものを使い回す
+      - name: ブラウザの控えを探す
+        id: pw
+        working-directory: tests
+        run: echo "ver=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: ブラウザの控え
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.ver }}
+
+      - name: Chromium を入れる（控えがあれば足りないぶんだけ）
+        working-directory: tests
+        run: npx playwright install --with-deps chromium
+
+      - name: 走らせる
+        run: node tests/run.mjs

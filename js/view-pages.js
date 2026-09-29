@@ -74,8 +74,10 @@
         // 昨日までに終えているはずの数（ここまでの未印が「遅れ」）
         due: Math.min(total, Math.round(pace.shouldBeDone)),
         /* 遅れは「昨日までに付けた印」と比べる。今日付けたぶんは
-           今日のノルマに入るので、過去の遅れを消してはいけない */
+           今日のノルマに入るので、過去の遅れを消してはいけない。
+           ただし今日のノルマを超えて付けたぶんは、取り返したものとして引く */
         countBefore: S.markedCountBefore(p, t.id, today),
+        todayQty: Math.round(pace.todayQty || 0),
         range: pace.plan.rangeByDate[today] || {}
       };
     });
@@ -107,14 +109,25 @@
     root.appendChild(wrap);
   }
 
+  /**
+   * その工程の遅れ。schedule.js の taskPace と同じ見方をする。
+   * 昨日までに終えているはずの数から、昨日までに付けた印を引く。
+   * 今日ノルマを超えて付けたぶんは、取り返したものとしてさらに引く。
+   * 残っている数より大きくはしない。
+   */
+  function colBehind(c, total) {
+    var caughtUp = Math.max(0, (c.count - c.countBefore) - c.todayQty);
+    var left = Math.max(0, total - c.count);
+    return Math.max(0, Math.min(c.due - c.countBefore - caughtUp, left));
+  }
+
   /* ---------------- まとめ（工程ごとの進み） ---------------- */
 
   function summary(p, cols, total, word, today) {
     var box = el('div', { class: 'card pg-sum' });
     cols.forEach(function (c) {
       var left = Math.max(0, total - c.count);
-      // 残っている数より大きな遅れにはならないよう、そこで頭を打つ
-      var behind = Math.max(0, Math.min(c.due - c.countBefore, left));
+      var behind = colBehind(c, total);
       box.appendChild(el('button', {
         class: 'pg-sum-row' + (left ? '' : ' done'),
         onclick: function () { colSheet(p, c, total, word, today); }
@@ -144,7 +157,11 @@
     var out = [];
     for (var n = 1; n <= total; n++) {
       if (which === 'left' && cols.every(function (c) { return c.set[n]; })) continue;
-      if (which === 'late' && !cols.some(function (c) { return !c.set[n] && n <= c.due; })) continue;
+      /* 遅れている◯ページ。取り返したぶんだけ、見る範囲を手前に縮める
+         （まとめの「遅れ◯」と食い違わないように） */
+      if (which === 'late' && !cols.some(function (c) {
+        return !c.set[n] && n <= c.due - Math.max(0, (c.count - c.countBefore) - c.todayQty);
+      })) continue;
       if (which === 'note' && !S.pageNote(p, n)) continue;
       out.push(n);
     }
@@ -271,7 +288,7 @@
   function colSheet(p, c, total, word, today) {
     var t = c.t;
     var box = el('div', { class: 'form' });
-    var behind = Math.max(0, Math.min(c.due - c.countBefore, Math.max(0, total - c.count)));
+    var behind = colBehind(c, total);
 
     box.appendChild(el('div', { class: 'row-sub' }, [
       ui.chip(c.count + '/' + total + word, c.count >= total ? 'ok' : 'ghosty'),

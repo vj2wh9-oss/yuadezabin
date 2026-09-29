@@ -21,10 +21,14 @@ node tests/run.mjs behind preset   # いくつでも
 Playwright が要る。どれかで入れる。
 
 ```sh
-cd tests && npm install && npx playwright install chromium   # ここに入れる
-npm i -g playwright && npx playwright install chromium       # 端末ぜんぶで使う
-PLAYWRIGHT_PATH=/path/to/playwright node tests/run.mjs       # 場所を教える
+cd tests && npm run setup                               # ここに入れる（おすすめ）
+npm i -g playwright && npx playwright install chromium  # 端末ぜんぶで使う
+PLAYWRIGHT_PATH=/path/to/playwright node tests/run.mjs  # 場所を教える
 ```
+
+`npm install` だけだとブラウザ本体が落ちてこないので、
+`npx playwright install chromium` まで要る（`npm run setup` は両方やる）。
+`tests/node_modules` があると、そちらが先に使われる。
 
 ## いま見ているもの
 
@@ -72,3 +76,9 @@ export default {
   どうしても要るところだけ `waitForTimeout` を使っている（動きが終わるのを待つなど）
 - **画面の中で測る**。外からスクリーンショットを撮ると、その時間ぶんずれる
 - **この一式は `sw.js` の配り物に入れない**。アプリと一緒に配らないため
+
+## 自動で走らせる
+
+`.github/workflows/tests.yml` で、`main` と `claude/**` への push、
+プルリクエスト、手動（Actions のページの「Run workflow」）のときに走る。
+落ちても公開は止めない（いまは知らせるだけ）。

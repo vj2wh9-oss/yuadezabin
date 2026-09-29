@@ -74,25 +74,46 @@ export default {
       s.ok('昨日2Pを入れると、遅れは0', (await pace(page, at)).遅れ, 0);
       s.ok('昨日2Pを入れると、ホームの警告も消える', await behindAlerts(page, at), []);
 
-      /* 残っている量より大きな遅れにはしない */
+      /* 今日のノルマ（4P）を超えて進めたぶんは、取り返したものとして引く。
+         昨日までの不足2P に対し、今日は 4+2＝6P 進めれば追いつく */
       await page.evaluate((x) => {
         window.DL.store.setProgress(x.pid, x.tid, x.y, 0);
-        window.DL.store.setProgress(x.pid, x.tid, x.today, 9);
+        window.DL.store.setProgress(x.pid, x.tid, x.today, 5);
       }, at);
+      s.ok('今日5P（ノルマ4P＋1P）なら、遅れは1に減る', (await pace(page, at)).遅れ, 1);
+      await page.evaluate((x) => window.DL.store.setProgress(x.pid, x.tid, x.today, 6), at);
+      s.ok('今日6P（ノルマ4P＋2P）で、遅れは消える', (await pace(page, at)).遅れ, 0);
+
+      /* 残っている量より大きな遅れにはしない */
+      await page.evaluate((x) => window.DL.store.setProgress(x.pid, x.tid, x.today, 9), at);
       const p2 = await pace(page, at);
       s.ok('総10Pのうち9Pやったら、残りは1', p2.残り, 1);
-      s.ok('遅れは残りで頭打ちになる', p2.遅れ, 1);
+      s.ok('たくさん進めたので、遅れは0', p2.遅れ, 0);
 
       /* 原稿管理ページも、印の数で同じ見方をしている */
       await page.evaluate((x) => {
         window.DL.store.setProgress(x.pid, x.tid, x.today, 0);
-        window.DL.store.markPages(x.pid, x.tid, [1, 2], true);   // 今日ぶんの印
+        window.DL.store.markPages(x.pid, x.tid, [1, 2], true);   // 今日ぶんの印を2つ
       }, at);
       await open(page, base, '#/pages/' + at.pid);
       await page.waitForSelector('.pg-sum-row');
-      const row = await page.$eval('.pg-sum-row', (n) => n.innerText.replace(/\n+/g, ' | '));
-      s.note('まとめ行: ' + row);
-      s.yes('今日の印だけでは、原稿管理ページの遅れも消えない', /遅れ2/.test(row));
+      const row2 = await page.$eval('.pg-sum-row', (n) => n.innerText.replace(/\n+/g, ' | '));
+      s.note('印2つのとき: ' + row2);
+      s.yes('今日の印がノルマに届かないうちは、遅れが残る', /遅れ2/.test(row2));
+
+      /* 今日のノルマ（4P）を超えて印を付ければ、ホームもページ管理表も消える。
+         ここが食い違っていたところ（ホームだけ遅れが残っていた） */
+      await page.evaluate((x) =>
+        window.DL.store.markPages(x.pid, x.tid, [1, 2, 3, 4, 5, 6], true), at);
+      await open(page, base, '#/pages/' + at.pid);
+      await page.waitForSelector('.pg-sum-row');
+      const row6 = await page.$eval('.pg-sum-row', (n) => n.innerText.replace(/\n+/g, ' | '));
+      s.note('印6つのとき: ' + row6);
+      s.yes('ノルマを超えて付けたら、ページ管理表の遅れは消える', !/遅れ/.test(row6));
+      s.ok('ホームの警告も、あわせて消える', await behindAlerts(page, at), []);
+      const late = await page.$eval('.pg-filter', (n) => n.innerText.replace(/\s+/g, ' '));
+      s.note('絞り込み: ' + late);
+      s.yes('「遅れ」の数も0になっている', /遅れ 0/.test(late));
 
       s.ok('画面のエラー', errors, []);
     });
