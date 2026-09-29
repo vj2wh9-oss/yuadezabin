@@ -5,8 +5,22 @@
  * ・はじめは METEO と 365 が合わさっていて、あとから開くこと
  * ・動きがすべて「1回で終わる」こと（v208 の電池の決まり）
  * ・幕がちゃんと片づくこと
+ *
+ * 「合わさってから開く」は、時計で待って測ると遅いマシンで取りこぼす。
+ * 動きを止めて、こちらで時刻を指して測る。
  */
 import { sheet, withPage, openRaw, IPHONE } from '../lib/harness.mjs';
+
+/** 開く動きを止めて、その時刻での隙間を測る */
+const gapAt = (page, ms) => page.evaluate((t) => {
+  const open = window.document.getAnimations()
+    .filter((a) => a.animationName === 'sp-open-up' || a.animationName === 'sp-open-down');
+  if (open.length !== 2) return null;
+  open.forEach((a) => { a.pause(); a.currentTime = t; });
+  const m = document.querySelector('#splash .sp-meteo').getBoundingClientRect();
+  const n = document.querySelector('#splash .sp-365').getBoundingClientRect();
+  return Math.round(n.top - m.bottom);
+}, ms);
 
 export default {
   name: '起動の一枚',
@@ -28,28 +42,21 @@ export default {
       s.note('動き: ' + anims.map((a) => a.name + '×' + a.count).join(' / '));
       s.ok('終わらない動きが無い', anims.filter((a) => a.count === Infinity).map((a) => a.name), []);
 
-      /* はじめは合わさっていて、あとから開く */
-      const gap = () => page.evaluate(() => {
-        const m = document.querySelector('#splash .sp-meteo');
-        const n = document.querySelector('#splash .sp-365');
-        if (!m || !n) return null;
-        return Math.round(n.getBoundingClientRect().top - m.getBoundingClientRect().bottom);
-      });
-      const early = await page.evaluate(() => new Promise((r) => {
-        // 出てすぐの隙間を、画面の中で測る（外から撮ると、その時間ぶんずれる）
-        setTimeout(() => {
-          const m = document.querySelector('#splash .sp-meteo');
-          const n = document.querySelector('#splash .sp-365');
-          r(m && n ? Math.round(n.getBoundingClientRect().top - m.getBoundingClientRect().bottom) : null);
-        }, 200);
-      }));
-      s.ok('出たては METEO と 365 が合わさっている', early, 0);
-      await page.waitForTimeout(1000);
-      const late = await gap();
-      s.yes('しばらくすると開く（いまの隙間 ' + late + 'px）', late > 20);
+      /* 合わさったまま留まり、そのあと開く。
+         留まるのは 42%（1.16秒 の 0.49秒）まで */
+      s.ok('出たては合わさっている（0.20秒）', await gapAt(page, 200), 0);
+      s.ok('まだ合わさっている（0.45秒）', await gapAt(page, 450), 0);
+      const open = await gapAt(page, 1160);
+      s.yes('開ききると隙間ができる（' + open + 'px）', open > 20);
+      s.yes('隙間は CORE SYSTEM の一行ぶんに合っている',
+        Math.abs(open - (await page.evaluate(() =>
+          Math.round(document.querySelector('#splash .sp-core').getBoundingClientRect().height
+            + parseFloat(getComputedStyle(document.querySelector('#splash .sp-core')).marginTop) * 2)))) <= 2);
 
-      /* 何があっても幕は開く */
-      await page.waitForTimeout(4200);
+      /* 何があっても幕は開く。止めた動きを戻してから見る */
+      await page.reload({ waitUntil: 'commit' });
+      await page.waitForSelector('#splash');
+      await page.waitForTimeout(4800);
       s.ok('幕が片づいている', await page.locator('#splash').count(), 0);
       s.ok('画面のエラー', errors, []);
     });
