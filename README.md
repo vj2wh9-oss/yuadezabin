@@ -598,6 +598,7 @@ js/files.js              共有ファイルの送受信（R2）
 js/zip.js                まとめて保存用の無圧縮ZIP組み立て（外部ライブラリなし）
 sync/worker.js           同期サーバー本体（Cloudflare Workers）
 sync/dev-server.mjs      worker.js を手元で動かすための開発用サーバー
+tests/                   動きを確かめる一式（tests/README.md）
 js/schedule.js           稼働日・ノルマ配分・進捗・自動スケジュール・ICS 生成
 js/events.js             日常の予定の展開（繰り返し・またがる予定）と表示文言
 js/notify.js             通知の予定表づくり（種別ごとの決まりごと）と端末の登録
@@ -610,6 +611,18 @@ js/forms.js              案件／タスク／進捗の入力フォーム
 js/view-*.js             各画面（ホーム・カレンダー・日常の予定・案件一覧・詳細・書類・売上・経理・ファイル・設定）
 js/app.js                ルーティングと全体制御
 ```
+
+## 直したあとに確かめる
+
+実際のブラウザでアプリを開いて、壊れていないかを見る一式が `tests/` にあります。
+
+```sh
+node tests/run.mjs                 # ぜんぶ
+node tests/run.mjs behind          # 名前で絞る
+```
+
+遅れの計算・準備のプリセット・PC と iPhone の同期・起動の一枚・下タブ・
+全画面の一周を見ます。詳しくは [tests/README.md](tests/README.md)。
 
 ## アプリのアイコンを差し替える
 

@@ -1,0 +1,13 @@
+{
+  "name": "meteo365-tests",
+  "private": true,
+  "description": "METEO365 の動きを確かめる。アプリ本体はビルドを持たないので、ここだけ node_modules を使う",
+  "type": "module",
+  "scripts": {
+    "test": "node run.mjs",
+    "setup": "npm install && npx playwright install chromium"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}
