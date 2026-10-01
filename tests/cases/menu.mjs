@@ -141,6 +141,33 @@ export default {
       s.ok('主菜が入れ替わり、2つに増えない',
         now.一品, ['主菜:豚の生姜焼き', '副菜:キャベツの千切り']);
 
+      s.ok('主菜を入れ替えたら、前の主菜のぶんは買い物から下りる',
+        now.買うもの.indexOf('鮭') < 0, true);
+
+      /* 買い物リストに出るのは、献立に要るものと手で足したものだけ */
+      const T = await page.evaluate(() => window.DL.util.today());
+      await open(page, base, '#/home');
+      await page.waitForSelector('.mn-card .mn-buy');
+      const shown = await page.$$eval('.mn-card .mn-buy .mn-item-n', (ns) => ns.map((n) => n.textContent));
+      s.note('買い物リスト: ' + shown.join(' / '));
+      s.yes('献立に居ない一品のぶんは出ていない', shown.indexOf('鮭') < 0);
+
+      /* 手で足したぶんは、ちゃんと出る */
+      await page.evaluate(() => window.DL.store.addShopItem({ name: 'ラップ', price: 200 }));
+      await open(page, base, '#/home');
+      await page.waitForSelector('.mn-card .mn-buy');
+      s.yes('手で足したものは出る',
+        (await page.$$eval('.mn-card .mn-buy .mn-item-n', (ns) => ns.map((n) => n.textContent)))
+          .indexOf('ラップ') >= 0);
+
+      /* 要らないものは、1行だけ手で外せる */
+      await page.click('[aria-label="豚ロースを買い物から外す"]');
+      await page.waitForTimeout(400);
+      s.yes('1行だけ外せる', !(await page.evaluate((d) =>
+        (window.DL.store.getMenu(d).shopping || []).some((x) => x.name === '豚ロース'), T)));
+      s.yes('外しても、献立の一品は残る', (await page.evaluate((d) =>
+        (window.DL.store.getMenu(d).meals || []).reduce((a, x) => a + (x.dishes || []).length, 0), T)) === 2);
+
       s.ok('画面のエラー', errors, []);
     });
     return s;

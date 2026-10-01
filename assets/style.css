@@ -4490,3 +4490,8 @@ body.cal-new .cal-cell.today .cal-big { opacity: .1; }
 }
 body.calm.cal-new .cal-cell.today::before,
 body.calm.cal-new .cal-cell.today .cal-n { animation: none; }
+
+/* 買い物の1行から、要らないものを外すボタン。
+   ふだんは目立たせず、押せることだけ分かる程度に置く */
+.mn-buy .mn-drop { flex: none; margin-left: 2px; opacity: .5; }
+.mn-buy .mn-drop:active { opacity: 1; }

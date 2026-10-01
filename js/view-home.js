@@ -1006,7 +1006,17 @@
         }),
         el('span', { class: 'mn-item-n', text: x.name }),
         el('span', { class: 'muted small', text: qtyText(x) }),
-        el('b', { class: 'mn-plan-p', text: yen(x.price) })
+        el('b', { class: 'mn-plan-p', text: yen(x.price) }),
+        /* 要らないものを手で外す。献立の中身はそのまま残る */
+        el('button', {
+          type: 'button', class: 'iconbtn small mn-drop',
+          'aria-label': x.name + 'を買い物から外す',
+          onclick: function (e) {
+            e.preventDefault();
+            x.at.forEach(function (a) { S.removeShopLine(a.date, a.name); });
+            ui.toast(x.name + 'を買い物から外しました');
+          }
+        }, ui.icon('close', 14))
       ]);
       return box;
     }
@@ -1866,13 +1876,15 @@
       });
     }
 
+    /* 買うものは、この一品のために入れたと分かるよう名札を付ける。
+       入れ替えで居なくなった一品のぶんは、normalizeMenu が下ろす */
     var shopping = (m.shopping || []).slice();
     var have = {};
     shopping.forEach(function (x) { have[x.name] = true; });
     add.forEach(function (x) {
       if (have[x.name]) return;
       have[x.name] = true;
-      shopping.push({ name: x.name, qty: x.qty, price: x.price, got: false });
+      shopping.push({ name: x.name, qty: x.qty, price: x.price, got: false, for: r.name });
     });
 
     return S.normalizeMenu(Object.assign({}, m, {

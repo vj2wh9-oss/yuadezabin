@@ -2266,9 +2266,24 @@
         qty: String(x.qty || '').trim().slice(0, 24),
         price: Math.max(0, Math.round(U.num(x.price, 0))),
         // 買い物のときに付ける印。買い終わったものを消し込む
-        got: !!x.got
+        got: !!x.got,
+        /* どの一品のために買うか。一品ずつ入れたときだけ入る。
+           その一品が入れ替わったら、この行も一緒に下ろす。
+           空のときは献立ぜんぶのぶん（まとめて作ってもらったとき）で、
+           持ち主が分からないので下ろさない */
+        for: String(x.for || '').trim().slice(0, 60)
       };
     }).filter(function (x) { return x.name; });
+
+    /* 献立に居ない一品のために買うものは、下ろす。
+       一品を入れ替えたのに、前の一品の食材が買い物に残ってしまうため */
+    var names = {};
+    meals.forEach(function (x) {
+      (x.dishes || []).forEach(function (d) { if (d.name) names[priceKey(d.name)] = true; });
+    });
+    shopping = shopping.filter(function (x) {
+      return !x.for || names[priceKey(x.for)];
+    });
 
     // 献立を作ったときに突き合わせた呼び方 {使う名前: 家にある名前}。
     // 「しょうが(チューブ)＝おろししょうが」のような言い換えを、この献立に残す
@@ -2612,6 +2627,22 @@
    * @param {string} name 品の名前
    * @param {boolean} on
    */
+  /**
+   * その日の献立の買い物から、1行だけ下ろす。
+   * 献立の中身（一品と作り方）はそのまま。
+   * 要らないものが混ざったときに、手で外せるようにするため。
+   */
+  function removeShopLine(date, name) {
+    var m = getMenu(date);
+    if (!m) return null;
+    var before = (m.shopping || []).length;
+    m.shopping = (m.shopping || []).filter(function (x) { return x.name !== name; });
+    if (m.shopping.length === before) return null;
+    m.total = m.shopping.reduce(function (a, x) { return a + U.num(x.price, 0); }, 0);
+    save();
+    return m;
+  }
+
   function setShopGot(date, name, on) {
     var m = getMenu(date);
     if (!m) return null;
@@ -4817,7 +4848,8 @@
     cardMaps: cardMaps, putCardMap: putCardMap, removeCardMap: removeCardMap,
     shopItems: shopItems, addShopItem: addShopItem, updateShopItem: updateShopItem,
     removeShopItem: removeShopItem, clearGotShopItems: clearGotShopItems,
-    setShopGot: setShopGot, clearShopGot: clearShopGot, removeGotShop: removeGotShop,
+    setShopGot: setShopGot, removeShopLine: removeShopLine,
+    clearShopGot: clearShopGot, removeGotShop: removeGotShop,
     dishNotes: dishNotes, dishNote: dishNote, setDishNote: setDishNote,
     dislikedDishes: dislikedDishes, dishHints: dishHints,
     prices: prices, priceOf: priceOf, setPrice: setPrice,
