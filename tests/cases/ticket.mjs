@@ -72,6 +72,44 @@ export default {
 
       s.ok('画面のエラー', errors, []);
     });
+
+    /* 右上のサイネージ。出すのは券そのものの期限で、
+       中の制作物の締切や入稿日は見ない */
+    await withPage(base, IPHONE, async (page, errors) => {
+      await open(page, base);
+      await page.evaluate(() => {
+        const S = window.DL.store, U = window.DL.util, T = U.today();
+        /* 即売会は30日後。中の制作物の締切は5日後、入稿は3日後。
+           これまでは「入稿 3日」が出ていた。これからは「即売会 30日」 */
+        const pr = S.createProject({
+          kind: 'event', category: 'manga', title: '新刊',
+          eventName: '秋の即売会', eventDate: U.addDays(T, 30),
+          deadline: U.addDays(T, 5), startDate: T, qty: 8, status: 'active'
+        });
+        S.updateProject(pr.id, { printings: [
+          { label: '入稿', due: U.addDays(T, 3), primary: true }
+        ] });
+      });
+      await open(page, base, '#/home');
+      await page.waitForSelector('#dueTick .due-face');
+      const face = await page.$eval('#dueTick', (n) => n.innerText.replace(/\s+/g, ' ').trim());
+      const href = await page.$eval('#dueTick', (n) => n.getAttribute('href'));
+      s.note('サイネージ: ' + face + '  → ' + href);
+      s.yes('券の名前が出ている', /秋の即売会/.test(face));
+      s.yes('券の期限（30日）が出ている', /30日/.test(face));
+      s.yes('中の入稿日（3日）は出ていない', !/ 3日/.test(face));
+      s.yes('押すとその券へ行く', (href || '').indexOf('#/ticket/') === 0);
+
+      /* 券の半券に出ている残り日数と、同じ数であること */
+      const same = await page.evaluate(() => {
+        const S = window.DL.store, U = window.DL.util;
+        const t = S.tickets()[0];
+        return U.diffDays(U.today(), S.ticketDate(t));
+      });
+      s.yes('半券の残り日数と同じ数になる（' + same + '日）', new RegExp(same + '日').test(face));
+
+      s.ok('画面のエラー（サイネージ）', errors, []);
+    });
     return s;
   }
 };

@@ -355,12 +355,12 @@
     return b;
   }
 
-  /* ---------------- 次の締切まであと何日 ----------------
+  /* ---------------- 次のチケットまであと何日 ----------------
 
-     入稿・締切・イベント当日のうち、いちばん近い日を出す。
-     どれを拾うかは、案件のカレンダーに出ている印とそろえてある
-     （schedule.upcomingMarks）。カレンダーのどこにも無い締切が
-     ここにだけ出てくる、ということが起きないようにするため。
+     いちばん近いチケットの期限を出す。見るのは券そのものの期限だけで、
+     中の制作物それぞれの締切や入稿日は見ない。
+     即売会なら当日、仕事と支援サイトなら中のいちばん近い締切。
+     券の一覧や半券に出ている残り日数と同じ数になるようにそろえてある。
 
      見た目は駅の発車標のような細長い一本。同じ日にいくつも重なっていれば、
      右から左へ流して順に見せる。名前が長くて入りきらないときは、
@@ -376,14 +376,34 @@
   var tickAt = 0;
   var tickKey = '';          // いま出している顔ぶれ。変わらなければ流しを続ける
 
+  /* 出すのは、チケットそのものの期限。
+     中の制作物それぞれの締切や入稿日は見ない。
+     券の一覧や半券の残り日数と同じ見方（store.ticketDate）にそろえる。
+     即売会は当日、仕事と支援サイトは中のいちばん近い締切。 */
   function dueItems(today) {
-    // カレンダーに出るのと同じ印だけ（印刷所のプランはメインのみ）
-    var all = DL.schedule.upcomingMarks(today, 400);
-    if (!all.length) return [];
-    // いちばん近い日ぶん。同じ日に重なっているものは、まとめて流す
-    var first = all[0].date;
-    return all.filter(function (it) { return it.date === first; }).slice(0, 6);
+    var list = S.tickets().filter(function (t) {
+      var ps = S.ticketProjects(t.id);
+      // 名義で絞っているときは、その名義のものが入っている券だけ
+      if (ps.length && !ps.some(S.inScope)) return false;
+      var d = S.ticketDate(t);
+      return U.isISO(d) && U.cmp(d, today) >= 0;
+    });
+    if (!list.length) return [];
+    // いちばん近い日。同じ日に重なっている券は、まとめて流す
+    var first = '';
+    list.forEach(function (t) {
+      var d = S.ticketDate(t);
+      if (!first || U.cmp(d, first) < 0) first = d;
+    });
+    return list.filter(function (t) { return S.ticketDate(t) === first; })
+      .slice(0, 6)
+      .map(function (t) {
+        return { date: first, ticket: t, project: S.ticketProjects(t.id)[0] || null };
+      });
   }
+
+  // 細長い一本なので、種別は短く（支援サイト → 支援）
+  var TICK_KIND = { event: '即売会', work: '仕事', support: '支援' };
 
   /**
    * その1件の出しかた。発車標のように1行にまとめる。
@@ -393,15 +413,14 @@
    */
   function tickFace(it, today) {
     var left = U.diffDays(today, it.date);
-    var name = it.type === 'event' ? 'イベント'
-      : it.type === 'printing' ? (it.label || '入稿')
-        : DL.schedule.deadlineShort(it.project);
+    var t = it.ticket;
     return el('span', { class: 'due-face' }, [
       el('span', { class: 'due-scroll' },
         el('span', { class: 'due-line' }, [
-          el('i', { class: 'due-dot', style: { background: it.project.color } }),
-          el('span', { class: 'due-what', text: name }),
-          el('span', { class: 'due-name', text: it.project.title })
+          el('i', { class: 'due-dot',
+            style: { background: (it.project && it.project.color) || 'var(--accent)' } }),
+          el('span', { class: 'due-what', text: TICK_KIND[t.kind] || '' }),
+          el('span', { class: 'due-name', text: t.name })
         ])),
       el('b', { class: 'due-left' + (left <= 0 ? ' now' : left <= 3 ? ' near' : ''),
         text: left <= 0 ? 'TODAY' : left + '日' })
@@ -436,7 +455,7 @@
     if (!list.length) { off(); return; }
 
     var key = today + '|' + list.map(function (it) {
-      return it.type + ':' + it.date + ':' + it.project.id;
+      return it.date + ':' + it.ticket.id;
     }).join(',');
     // 顔ぶれが同じなら、いま流れているところを止めずに続ける
     if (key === tickKey && dueTick.firstChild) { queueTick(); return; }
@@ -445,8 +464,8 @@
     tickAt = 0;
     dueTick.hidden = false;
     appbar.classList.add('has-tick');
-    dueTick.setAttribute('href', '#/day/' + list[0].date);
-    dueTick.setAttribute('aria-label', '次の締切を見る');
+    dueTick.setAttribute('href', '#/ticket/' + list[0].ticket.id);
+    dueTick.setAttribute('aria-label', '次のチケットを見る');
     showTick(false);
   }
 
@@ -458,7 +477,7 @@
     var face = tickFace(it, U.today());
     if (slide) face.classList.add('in');
     dueTick.appendChild(face);
-    dueTick.setAttribute('href', '#/day/' + it.date);
+    dueTick.setAttribute('href', '#/ticket/' + it.ticket.id);
     // 幅は置いてからでないと測れない
     panTick(face);
     queueTick();
@@ -1116,7 +1135,7 @@
 
   /* この端末がいま動かしている版。sw.js の CACHE と揃えて上げる。
      2台で見比べて、片方だけ古いままになっていないか確かめるためのもの */
-  DL.VERSION = 'v221';
+  DL.VERSION = 'v222';
 
   DL.app = { render: render, init: init, get route() { return route; } };
   document.addEventListener('DOMContentLoaded', init);
