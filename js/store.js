@@ -2480,6 +2480,43 @@
     return o.max ? out.slice(0, Math.max(0, o.max)) : out;
   }
 
+  /**
+   * 前に作った一品を、新しい順に。同じ品名は1つだけ（新しいほうを残す）。
+   *
+   * 献立をまるごと出し直すと、主菜と副菜が必ずセットで付いてくる。
+   * 「主菜はこの日の、副菜は別の日の」と組みたいので、ばらして返す。
+   * もとの献立（買うもの）も添える。一品ぶんの食材は分けて持っていないので、
+   * 選ぶ側でその日の買い物から拾えるようにするため。
+   *
+   * @param {{before?:string, role?:string, max?:number}} [o]
+   */
+  function pastDishes(o) {
+    o = o || {};
+    var map = state.settings.menus || {};
+    var seen = {};
+    var out = [];
+    Object.keys(map).filter(U.isISO).sort().reverse().forEach(function (d) {
+      if (o.before && U.cmp(d, o.before) >= 0) return;
+      var m = map[d];
+      (m.meals || []).forEach(function (x) {
+        (x.dishes || []).forEach(function (dish) {
+          if (!dish.name) return;
+          if (o.role && dish.role !== o.role) return;
+          var key = priceKey(dish.name);
+          if (seen[key]) return;
+          seen[key] = true;
+          var note = dishNote(dish.name) || {};
+          out.push({
+            date: d, menu: m, slot: x.slot, mealName: x.name || '',
+            dish: dish, role: dish.role || '', name: dish.name,
+            stars: U.num(note.stars, 0), memo: note.memo || ''
+          });
+        });
+      });
+    });
+    return o.max ? out.slice(0, Math.max(0, o.max)) : out;
+  }
+
   function getMenu(date) { return (state.settings.menus || {})[date] || null; }
 
   function setMenu(date, m) {
@@ -4772,7 +4809,8 @@
     putTimeblock: putTimeblock, removeTimeblock: removeTimeblock,
     getLog: getLog, setLog: setLog, logDates: logDates, MOODS: MOODS,
     getMenu: getMenu, setMenu: setMenu, removeMenu: removeMenu,
-    menusIn: menusIn, pastMenus: pastMenus, menuPlan: menuPlan, setMenuPlan: setMenuPlan,
+    menusIn: menusIn, pastMenus: pastMenus, pastDishes: pastDishes,
+    menuPlan: menuPlan, setMenuPlan: setMenuPlan,
     cardInbox: cardInbox, addCardItem: addCardItem, updateCardItem: updateCardItem,
     removeCardItem: removeCardItem, clearCardInbox: clearCardInbox,
     isCardDone: isCardDone,

@@ -1116,7 +1116,7 @@
 
   /* この端末がいま動かしている版。sw.js の CACHE と揃えて上げる。
      2台で見比べて、片方だけ古いままになっていないか確かめるためのもの */
-  DL.VERSION = 'v219';
+  DL.VERSION = 'v220';
 
   DL.app = { render: render, init: init, get route() { return route; } };
   document.addEventListener('DOMContentLoaded', init);

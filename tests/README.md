@@ -40,6 +40,8 @@ PLAYWRIGHT_PATH=/path/to/playwright node tests/run.mjs  # 場所を教える
 | `cases/splash.mjs` | 起動の一枚。ロゴが3つ出る・合わさってから開く・動きが必ず終わる |
 | `cases/tabs.mjs` | 下タブ。7つとも絵が入る・選んだ動きが必ず終わる・「動きを控える」で止まる |
 | `cases/calendar.mjs` | カレンダーの見た目。今日のマスの示し方と、設定で元に戻せること |
+| `cases/ticket.mjs` | チケットの出し入れ。即売会は当日まで消えないこと |
+| `cases/menu.mjs` | 前に作った料理を、主菜・副菜ばらばらに選べること |
 | `cases/smoke.mjs` | 全画面を一周。3種類の画面幅で、開いてエラーが出ないこと |
 
 「動きが必ず終わる」を何度も見ているのは、**終わらない動きが1つでもあると

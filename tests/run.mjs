@@ -18,8 +18,6 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');
-const APP_PORT = 8778;
-const SYNC_PORT = 8790;
 
 const TYPE = {
   '.html': 'text/html; charset=utf-8',
@@ -35,7 +33,7 @@ const TYPE = {
 
 /* ---------------- アプリを配るサーバー ---------------- */
 
-function serveApp(port) {
+function serveApp() {
   const server = createServer(async (req, res) => {
     let path = decodeURIComponent((req.url || '/').split('?')[0]);
     if (path.endsWith('/')) path += 'index.html';
@@ -55,9 +53,23 @@ function serveApp(port) {
       res.end('ありません: ' + path);
     }
   });
+  /* ポートは空いているものを借りる。決め打ちにすると、
+     別の確認用サーバーを立てたままのときに取り合いになる */
   return new Promise((ok, ng) => {
     server.on('error', ng);
-    server.listen(port, '127.0.0.1', () => ok(server));
+    server.listen(0, '127.0.0.1', () => ok(server));
+  });
+}
+
+/** いま空いているポートを1つ借りて、すぐ返す */
+function freePort() {
+  return new Promise((ok, ng) => {
+    const s = createServer();
+    s.on('error', ng);
+    s.listen(0, '127.0.0.1', () => {
+      const n = s.address().port;
+      s.close(() => ok(n));
+    });
   });
 }
 
@@ -110,10 +122,14 @@ if (!cases.length) {
   process.exit(2);
 }
 
-const app = await serveApp(APP_PORT);
-const base = 'http://127.0.0.1:' + APP_PORT;
+const app = await serveApp();
+const base = 'http://127.0.0.1:' + app.address().port;
 let sync = null;
-if (cases.some((c) => c.needsSync)) sync = await serveSync(SYNC_PORT);
+let syncPort = 0;
+if (cases.some((c) => c.needsSync)) {
+  syncPort = await freePort();
+  sync = await serveSync(syncPort);
+}
 
 const t0 = Date.now();
 let bad = 0;
@@ -123,7 +139,7 @@ for (const c of cases) {
   const started = Date.now();
   let s;
   try {
-    s = await c.run({ base, syncBase: 'http://127.0.0.1:' + SYNC_PORT });
+    s = await c.run({ base, syncBase: 'http://127.0.0.1:' + syncPort });
   } catch (e) {
     console.log('\n■ ' + c.name);
     console.log('  途中で止まりました: ' + (e && e.message ? e.message : e));

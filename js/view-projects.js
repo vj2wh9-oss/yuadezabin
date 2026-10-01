@@ -112,9 +112,8 @@
         return t.kind === filter && !ticketDone(t, ps, today);
       }
       if (filter === 'done') return ticketDone(t, ps, today);
-      // 進行中。終わった即売会は出さない（当日まで出す）
-      if (ticketDone(t, ps, today)) return false;
-      return t.kind !== 'event' || !t.date || U.cmp(t.date, today) >= 0;
+      // 進行中。終わった即売会は出さない（当日までは出す。ticketDone が見ている）
+      return !ticketDone(t, ps, today);
     });
     var k = keyword.trim().toLowerCase();
     if (k) {
@@ -126,8 +125,18 @@
     return list;
   }
 
-  /* 中の原稿がぜんぶ終わっていれば、そのチケットも終わり */
+  /* そのチケットが終わったかどうか。
+
+     即売会は、中の制作物が仕上がっても当日までは終わらない。
+     頒布物・準備・当日モード・集計が、その日まで要るため。
+     1つしか入っていない制作物を完了にした途端に券が消えてしまうと、
+     当日そこへ行く手がかりごと見えなくなる。
+
+     日付が入っていない即売会は、いつ終わるか決められないので、
+     自分からは終わりにしない（捨てるか、日付を入れて決める）。
+     仕事と支援サイトは、これまでどおり中身の進み具合で見る。 */
   function ticketDone(t, ps, today) {
+    if (t.kind === 'event') return U.isISO(t.date) && U.cmp(t.date, today) < 0;
     if (!ps.length) return false;
     return ps.every(function (p) {
       return p.status === 'done' || sc.projectStatus(p, today) === 'done';

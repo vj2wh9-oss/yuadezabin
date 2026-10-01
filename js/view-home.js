@@ -1548,6 +1548,7 @@
      そのうえで、1日の予算と貯金予算に収まるかを見る。 */
 
   var PAST_MAX = 60;         // さかのぼって見る献立の数
+  var pastMode = 'menu';     // 前に作ったものの選び方。'menu'＝献立ごと、'dish'＝一品ずつ
 
   /** 星の平均を、並べるときの段に落とす（4.5 は ★5 の段） */
   function starStep(n) { return Math.min(5, Math.max(0, Math.round(U.num(n, 0)))); }
@@ -1591,31 +1592,95 @@
    * @param {string} date その献立にしたい日
    */
   function pastMenuSheet(date) {
-    var list = S.pastMenus({ before: date, max: PAST_MAX });
     var body = el('div', { class: 'form' });
     var closeList = function () { close(); };
+    var list = el('div');
 
-    if (!list.length) {
-      body.appendChild(ui.empty('前に作った献立が、まだありません。'));
-    } else {
-      body.appendChild(el('p', { class: 'muted small',
+    /* 献立まるごとか、一品ずつか。
+       まるごとだと主菜と副菜が必ずセットで付いてくるので、
+       「主菜はこの日の、副菜は別の日の」と組めるようにする */
+    body.appendChild(ui.segmented(
+      [{ value: 'menu', label: '献立ごと' }, { value: 'dish', label: '一品ずつ' }],
+      pastMode,
+      function (v) { pastMode = v; draw(); }
+    ));
+    body.appendChild(list);
+
+    function draw() {
+      U.clear(list);
+      if (pastMode === 'dish') drawDishes();
+      else drawMenus();
+    }
+
+    function drawMenus() {
+      var rows = S.pastMenus({ before: date, max: PAST_MAX });
+      if (!rows.length) {
+        list.appendChild(ui.empty('前に作った献立が、まだありません。'));
+        return;
+      }
+      list.appendChild(el('p', { class: 'muted small',
         text: U.fmtMD(date) + ' の献立にします。星は、その献立の一品に付けた評価の平均です。' }));
       [5, 4, 3, 2, 1, 0].forEach(function (n) {
-        var rows = list.filter(function (r) { return starStep(r.stars) === n; });
-        if (!rows.length) return;
-        body.appendChild(ui.section(n ? starText(n) : 'まだ評価していない',
-          el('span', { class: 'muted small', text: rows.length + '件' })));
-        body.appendChild(el('div', { class: 'list' }, rows.map(function (r) {
+        var g = rows.filter(function (r) { return starStep(r.stars) === n; });
+        if (!g.length) return;
+        list.appendChild(ui.section(n ? starText(n) : 'まだ評価していない',
+          el('span', { class: 'muted small', text: g.length + '件' })));
+        list.appendChild(el('div', { class: 'list' }, g.map(function (r) {
           return pastRow(r, date, closeList);
         })));
       });
     }
 
+    /* 一品ずつ。役どころ（主菜・副菜・汁物・主食）ごとに並べる */
+    function drawDishes() {
+      var rows = S.pastDishes({ before: date, max: PAST_MAX * 4 });
+      if (!rows.length) {
+        list.appendChild(ui.empty('前に作った料理が、まだありません。'));
+        return;
+      }
+      list.appendChild(el('p', { class: 'muted small',
+        text: U.fmtMD(date) + ' の献立へ、この一品だけを入れます。'
+          + '同じ役どころのものが入っていれば、それと入れ替えます。' }));
+      var roles = S.DISH_ROLES.concat(['']);
+      roles.forEach(function (role) {
+        var g = rows.filter(function (r) { return r.role === role; });
+        if (!g.length) return;
+        list.appendChild(ui.section(role || '役どころなし',
+          el('span', { class: 'muted small', text: g.length + '品' })));
+        list.appendChild(el('div', { class: 'list' }, g.map(function (r) {
+          return pastDishRow(r, date, closeList);
+        })));
+      });
+    }
+
+    draw();
+
     var close = ui.sheet({
-      title: '前に作った献立から選ぶ',
+      title: '前に作ったものから選ぶ',
       body: body,
       actions: [ui.btn('閉じる', 'ghost', function () { close(); })]
     });
+  }
+
+  /* 一品ぶんの行 */
+  function pastDishRow(r, date, closeList) {
+    var n = starStep(r.stars);
+    return el('button', {
+      type: 'button', class: 'row pm-row',
+      onclick: function () { pastDishSheet(r, date, closeList); }
+    }, [
+      el('div', { class: 'row-main' }, [
+        el('div', { class: 'row-title' }, [el('span', { text: r.name })]),
+        el('div', { class: 'row-sub' }, [
+          ui.chip(U.fmtMD(r.date), 'soft'),
+          n ? ui.chip('★' + n, 'ghosty') : null,
+          (r.dish.seasonings || []).length
+            ? ui.chip('調味料' + r.dish.seasonings.length, 'ghosty') : null,
+          r.memo ? ui.chip('メモあり', 'ghosty') : null
+        ])
+      ]),
+      el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+    ]);
   }
 
   /* 一覧の1行。押すと中身と買い物リストを開く */
@@ -1653,6 +1718,172 @@
    * @param {string} date その献立にしたい日
    * @param {function} closeList 一覧を畳む
    */
+  /**
+   * 前に作った一品を、その日の献立へ入れる。
+   *
+   * 一品ぶんの食材は分けて持っていない（買うものは献立ごとに1つ）。
+   * そこで、もとの日の買い物を並べて、要るものだけ選んでもらう。
+   *
+   * @param {object} r S.pastDishes() の1件
+   * @param {string} date 入れたい日
+   * @param {function} closeList 一覧のシートを畳む
+   */
+  function pastDishSheet(r, date, closeList) {
+    var yen = DL.docs.yen;
+    var cur = S.getMenu(date);
+    var body = el('div', { class: 'form' });
+
+    /* どの食事に入れるか。もう献立があればその食事から選ぶ。
+       無ければ新しく作るので、朝・昼・晩から選ぶ */
+    var slots = cur && (cur.meals || []).length
+      ? cur.meals.map(function (x) {
+        return { value: x.slot, label: (DL.menu.SLOT_LABEL[x.slot] || x.slot) + (x.name ? '（' + x.name + '）' : '') };
+      })
+      : DL.menu.SLOTS.slice();      // すでに {value, label} の形
+    var slot = slots.filter(function (o) { return o.value === 'dinner'; }).length ? 'dinner' : slots[0].value;
+
+    body.appendChild(el('p', { class: 'muted small',
+      text: U.fmtMD(r.date) + ' に作ったもの'
+        + (r.role ? '　' + r.role : '')
+        + (r.mealName ? '　（' + r.mealName + ' の一品）' : '') }));
+
+    if (slots.length > 1) {
+      body.appendChild(ui.field('どの食事に入れるか', ui.segmented(slots, slot, function (v) { slot = v; })));
+    }
+
+    /* 入れ替えになるのか、足されるのかを先に伝える */
+    var willSwap = null;
+    if (cur) {
+      (cur.meals || []).forEach(function (x) {
+        if (x.slot !== slot) return;
+        (x.dishes || []).forEach(function (d) {
+          if (r.role && d.role === r.role && d.name !== r.name) willSwap = d.name;
+        });
+      });
+    }
+    body.appendChild(el('p', { class: 'muted small',
+      text: !cur ? 'この日はまだ献立がありません。この一品だけで作ります。'
+        : willSwap ? '「' + willSwap + '」と入れ替わります。'
+        : 'いまの献立に足します。' }));
+
+    if ((r.dish.seasonings || []).length) {
+      body.appendChild(ui.section('使う調味料'));
+      body.appendChild(el('div', { class: 'mn-list' }, r.dish.seasonings.map(function (sz) {
+        return el('div', { class: 'mn-item' }, [
+          el('span', { class: 'mn-item-n', text: sz.name }),
+          sz.qty ? el('span', { class: 'muted small', text: sz.qty }) : null
+        ]);
+      })));
+    }
+    if ((r.dish.steps || []).length) {
+      body.appendChild(ui.section('作り方'));
+      body.appendChild(el('ol', { class: 'mn-steps' }, r.dish.steps.map(function (st) {
+        return el('li', { text: st });
+      })));
+    }
+    if (r.memo) {
+      body.appendChild(ui.section('前のメモ'));
+      body.appendChild(el('p', { class: 'muted small', text: r.memo }));
+    }
+
+    /* 買うもの。一品ぶんに分けて持っていないので、もとの日のぶんを並べて選ぶ。
+       いまの献立にもう入っているものは、はじめから外しておく */
+    var have = {};
+    ((cur && cur.shopping) || []).forEach(function (x) { have[x.name] = true; });
+    var picks = (r.menu.shopping || []).map(function (x) {
+      return { name: x.name, qty: x.qty, price: S.priceOf(x.name) || Math.max(0, Math.round(U.num(x.price, 0))),
+        on: !have[x.name], had: !!have[x.name] };
+    });
+    var sumLine = el('b', { class: 'mn-plan-p' });
+    function retotal() {
+      sumLine.textContent = yen(picks.reduce(function (a, x) { return a + (x.on ? x.price : 0); }, 0));
+    }
+
+    body.appendChild(ui.section('買うもの',
+      el('span', { class: 'muted small',
+        text: picks.length ? U.fmtMD(r.date) + ' のぶんから選ぶ' : '控えなし' })));
+    if (!picks.length) {
+      body.appendChild(ui.empty('その日の買い物は控えていません。'));
+    } else {
+      body.appendChild(el('p', { class: 'muted small',
+        text: '一品ぶんの食材は分けて控えていないので、その日に買ったものを並べています。'
+          + 'この一品に要るものだけ残してください。' }));
+      body.appendChild(el('div', { class: 'mn-list' }, picks.map(function (x) {
+        var box = el('input', { class: 'mn-chk', type: 'checkbox', checked: x.on ? 'checked' : null });
+        box.addEventListener('change', function () { x.on = box.checked; retotal(); });
+        return el('label', { class: 'mn-item mn-buy' }, [
+          box,
+          el('span', { class: 'mn-item-n', text: x.name }),
+          x.qty ? el('span', { class: 'muted small', text: x.qty }) : null,
+          x.had ? ui.chip('もうある', 'ghosty') : null,
+          el('b', { class: 'mn-plan-p', text: yen(x.price) })
+        ]);
+      })));
+      body.appendChild(el('div', { class: 'mn-item pm-sum' }, [
+        el('span', { class: 'mn-item-n', text: '足すぶん' }), sumLine
+      ]));
+      retotal();
+    }
+
+    var close = ui.sheet({
+      title: r.name,
+      body: body,
+      actions: [
+        ui.btn('やめる', 'ghost', function () { close(); }),
+        ui.btn('この一品を入れる', 'primary', function () {
+          S.setMenu(date, withDish(cur, slot, r, picks.filter(function (x) { return x.on; })));
+          close();
+          closeList();
+          DL.app.render();
+          ui.toast(U.fmtMD(date) + ' に「' + r.name + '」を入れました');
+        })
+      ]
+    });
+  }
+
+  /**
+   * いまの献立に、一品を入れた形を作る。
+   * 同じ役どころの一品があれば入れ替え、無ければ足す。
+   * 買うものは、選んだぶんだけ足す（同じ品名は足さない）。
+   */
+  function withDish(cur, slot, r, add) {
+    var m = cur ? U.clone(cur) : { meals: [], shopping: [], servings: 1 };
+    var meals = (m.meals || []).slice();
+    var i = -1;
+    meals.forEach(function (x, k) { if (x.slot === slot && i < 0) i = k; });
+    if (i < 0) {
+      meals.push({ slot: slot, name: r.name, dishes: [r.dish], steps: [], minutes: 0 });
+    } else {
+      var meal = meals[i];
+      var dishes = (meal.dishes || []).slice();
+      var at = -1;
+      dishes.forEach(function (d, k) { if (r.role && d.role === r.role && at < 0) at = k; });
+      if (at >= 0) dishes[at] = r.dish; else dishes.push(r.dish);
+      meals[i] = Object.assign({}, meal, {
+        dishes: dishes,
+        // 主菜が変わったら、その食事の呼び名もその一品に合わせる
+        name: (r.role === '主菜' || !meal.name) ? r.name : meal.name
+      });
+    }
+
+    var shopping = (m.shopping || []).slice();
+    var have = {};
+    shopping.forEach(function (x) { have[x.name] = true; });
+    add.forEach(function (x) {
+      if (have[x.name]) return;
+      have[x.name] = true;
+      shopping.push({ name: x.name, qty: x.qty, price: x.price, got: false });
+    });
+
+    return S.normalizeMenu(Object.assign({}, m, {
+      meals: meals, shopping: shopping,
+      // もとの献立の言い換え（調味料の呼び方）も引き継ぐ
+      match: Object.assign({}, m.match, r.menu.match),
+      total: 0,                       // 買い物から数え直す
+      at: m.at
+    }));
+  }
+
   function pastPickSheet(r, date, closeList) {
     var yen = DL.docs.yen;
     var rp = repriced(r.menu);
