@@ -30,21 +30,21 @@ const look = (page) => page.evaluate(() => {
     if (cs.animationName === 'none') return;
     out[名] = cs.animationIterationCount;
   };
-  // 今日の枠・帯は点滅をやめたので、ここでは見ない（動かないのが正解）
+  /* 今日の枠・帯と、日常の予定名は動かさないことにしたので、ここでは見ない */
   put('締切のマス', '.cal-cell.has-due');
-  put('予定の流れ', '.cal-page.cal-life .cal-line .nmi.pan');
+  put('イベントのマス', '.cal-cell.has-event');
+  // 板の組み（既定）では、点滅するのは △! の印だけ
+  put('遅れの知らせ', '.alert.overdue .alert-icon');
   return out;
 });
 
-/* 飾りは画面ごとに散らばっているので、案件と日常の両方を見てまとめる */
+/* 飾りは画面ごとに散らばっているので、ホームとカレンダーの両方を見てまとめる */
 async function lookBoth(page, base) {
-  await page.evaluate(() => { window.DL.store.setCalMode('work'); });
+  await open(page, base, '#/home');
+  await page.waitForSelector('.page');
+  const a = await look(page);
   await open(page, base, '#/calendar');
   await page.waitForSelector('.cal-grid');
-  const a = await look(page);
-  await page.evaluate(() => { window.DL.store.setCalMode('life'); });
-  await open(page, base, '#/calendar');
-  await page.waitForSelector('.cal-page.cal-life .cal-grid');
   return Object.assign(a, await look(page));
 }
 
@@ -63,11 +63,19 @@ export default {
       await page.evaluate(() => {
         const S = window.DL.store, U = window.DL.util, T = U.today();
         S.addEvent({ date: T, title: '合同誌の打ち合わせと原稿の受け渡し（渋谷）' });
+        // 今日が締切のもの（マスが明滅する）
         const pr = S.createProject({ name: '入稿するもの', category: 'manga', qty: 4,
           deadline: T, status: 'active' });
         const t = S.addTask(pr.id, { name: '入稿', unit: 'page', qty: 4 });
         S.updateTask(pr.id, t.id, { start: U.addDays(T, -2), end: T });
-        S.setCalMode('life');
+        // 当日のイベント（マスが別の色で明滅する）
+        S.createProject({ kind: 'event', category: 'manga', title: '新刊',
+          eventName: '秋の即売会', eventDate: T, deadline: T, qty: 4, status: 'active' });
+        // 締切を過ぎたもの（ホームに「遅れ」の知らせが出る）
+        const od = S.createProject({ name: '過ぎたもの', category: 'manga', qty: 6,
+          deadline: U.addDays(T, -3), startDate: U.addDays(T, -9), status: 'active' });
+        S.addTask(od.id, { name: '下書き', unit: 'page', qty: 6 });
+        S.setCalMode('work');
       });
 
       /* はじめは「ふつう」 */
@@ -79,7 +87,7 @@ export default {
 
       const 普通 = await lookBoth(page, base);
       s.note('ふつう: ' + JSON.stringify(普通));
-      s.yes('見るものが揃っている', Object.keys(普通).length >= 2);
+      s.yes('見るものが揃っている', Object.keys(普通).length >= 3);
       s.ok('ふつうは、どれも何周かで止まる',
         Object.keys(普通).filter((k) => 普通[k] === 'infinite'), []);
       s.ok('画面ぜんたいでも、終わらない動きは無い',

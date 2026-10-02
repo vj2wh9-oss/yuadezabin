@@ -280,8 +280,8 @@ export default {
       s.ok('画面のエラー（絞り込み）', errors, []);
     });
 
-    /* 日常のカレンダー。予定はひとつずつ四角で囲んで、その色で塗る。
-       入りきらない名前は左へ流し、抜けきったら右端から入り直す */
+    /* 日常のカレンダー。予定はひとつずつ細い四角で囲み、色は左端の縦線で示す。
+       入りきらない名前は、切れる端をぼかすだけ（流さない） */
     await withPage(base, IPHONE, async (page, errors) => {
       await open(page, base);
       await page.evaluate(() => {
@@ -324,71 +324,16 @@ export default {
         boxes.some((x) => x.縦線 === 'rgb(17, 24, 39)')
         && boxes.some((x) => x.縦線 === 'rgb(253, 224, 71)'));
 
-      /* 長い名前だけが流れる。短い名前は動かさない */
-      const pans = await page.evaluate(() => {
-        const out = [];
-        document.querySelectorAll('.cal-page.cal-life .cal-cell.today .cal-line:not(.hol) .nmi')
-          .forEach((n) => out.push({
-            名: n.textContent,
-            流す: n.classList.contains('pan'),
-            抜け: n.style.getPropertyValue('--pan-out'),
-            入り: n.style.getPropertyValue('--pan-in'),
-            幅: n.scrollWidth,
-            動き: getComputedStyle(n).animationName,
-            回数: getComputedStyle(n).animationIterationCount
-          }));
-        return out;
-      });
-      s.note('流しかた: ' + JSON.stringify(pans));
-      s.yes('入りきらない名前は流す',
-        pans.some((x) => /合同誌/.test(x.名) && x.流す && x.動き === 'calPan'));
-      /* 左へ少し送るのではなく、字の幅ぶんそっくり送って抜けきらせる。
-         そのあと右端の外（＋のほう）から入り直す */
-      const 長 = pans.filter((x) => /合同誌/.test(x.名))[0];
-      s.yes('左へ抜けきるまで送る（字の幅ぶん）',
-        長 && parseFloat(長.抜け) <= -長.幅);
-      s.yes('入り直すのは右端の外から（右へ戻るのではない）',
-        長 && parseFloat(長.入り) > 0);
-
-      /* 実際の動きも追う。左へ抜けきったあと、右（＋）へ回り込んで
-         頭に戻ること。左へ行って左から右へ戻るのでは駄目 */
-      const path = await page.evaluate(() => {
-        const n = document.querySelector('.cal-line .nmi.pan');
-        const a = document.getAnimations().filter((x) => x.animationName === 'calPan')[0];
-        if (!n || !a) return null;
-        const t = a.effect.getComputedTiming();
-        a.pause();
-        const xs = [];
-        for (let p = 0; p <= 100; p += 2) {
-          a.currentTime = (t.delay || 0) + t.duration * (p / 100);
-          const m = getComputedStyle(n).transform;
-          xs.push(m === 'none' ? 0 : Math.round(Number(m.match(/matrix\(([^)]*)\)/)[1].split(',')[4])));
-        }
-        a.currentTime = 0;
-        a.play();
-        const lo = Math.min.apply(null, xs);
-        const at = xs.indexOf(lo);
-        return { 幅: n.scrollWidth, いちばん左: lo, その後: xs.slice(at + 1) };
-      });
-      s.note('流れの道すじ: ' + JSON.stringify(path && {
-        幅: path.幅, いちばん左: path.いちばん左, その後: path.その後.slice(0, 6)
-      }));
-      s.yes('いちど左へ抜けきる（字の幅ぶん送る）',
-        path && path.いちばん左 <= -path.幅);
-      s.yes('抜けきったら、右の外から入り直す',
-        path && path.その後.some((x) => x > 0));
-      s.yes('最後は頭（0）に戻って次の周へ',
-        path && path.その後.length && path.その後[path.その後.length - 1] === 0);
-      s.yes('収まっている名前は流さない',
-        pans.some((x) => x.名 === '歯医者' && !x.流す));
-      /* 端のぼかしも、はみ出している行だけ。収まっている名前までぼかすと
-         囲いの中で切れたように見える */
+      /* 入りきらない名前は、切れる端をぼかして「まだ続く」と見せるだけ。
+         字を流して全文を出すのは、1画面でいくつも動いてうるさかったのでやめた。
+         全文はその日の画面で読む */
       const blur = await page.evaluate(() => {
         const out = [];
         document.querySelectorAll('.cal-page.cal-life .cal-cell.today .cal-line:not(.hol) .nm')
           .forEach((n) => out.push({
             名: n.textContent,
-            ぼかし: getComputedStyle(n).maskImage !== 'none'
+            ぼかし: getComputedStyle(n).maskImage !== 'none',
+            動き: getComputedStyle(n).animationName
           }));
         return out;
       });
@@ -396,15 +341,15 @@ export default {
       s.yes('はみ出す行だけ端をぼかす',
         blur.some((x) => /合同誌/.test(x.名) && x.ぼかし)
         && blur.some((x) => x.名 === '歯医者' && !x.ぼかし));
-      s.ok('終わらない流しは無い（電池のため）',
-        pans.filter((x) => x.流す && x.回数 === 'infinite').map((x) => x.名), []);
-
-      /* 「動き：控える」では流さない */
-      await page.evaluate(() => { window.DL.store.updateSettings({ calm: true }); window.DL.app.render(); });
-      await page.waitForTimeout(300);
-      s.ok('「動き：控える」では流さない',
+      s.ok('名前は動かさない', blur.map((x) => x.動き), ['none', 'none']);
+      s.ok('流すための入れ子は、もう作らない',
+        await page.locator('.cal-page.cal-life .cal-line .nmi').count(), 0);
+      s.ok('予定の行で動いているものは無い',
         await page.evaluate(() => window.document.getAnimations()
-          .filter((a) => a.playState === 'running' && a.animationName === 'calPan').length), 0);
+          .filter((a) => a.effect && a.effect.target && a.effect.target.closest
+            && a.effect.target.closest('.cal-line'))
+          .map((a) => a.animationName)), []);
+
       await page.evaluate(() => {
         window.DL.store.updateSettings({ calm: false });
         window.DL.store.setCalMode('work');

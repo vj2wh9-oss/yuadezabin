@@ -995,31 +995,14 @@ a.alert-main { text-decoration: none; }
 /* 祝日の名前は予定ではないので、囲わない */
 .cal-page.cal-life .cal-line.hol { border: 0; border-radius: 0; }
 
-/* 入りきらない名前は、右上のサイネージと同じように左へ流して全文を出す。
-   左へ抜けきったら、いちど消えて右端から入り直す（流れ直すのであって、
-   右へ戻るのではない）。動かすのは中の字だけで、囲いは動かさない。
-   2周で止まる（終わらない動きは置かない） */
-.cal-page.cal-life .cal-line .nmi { display: inline-block; white-space: nowrap; }
 /* 端のぼかしは、はみ出している行だけ。収まっている名前までぼかすと、
-   囲いの中で切れたように見える */
+   囲いの中で切れたように見える。
+   （字を流して全文を出すこともしてみたが、1画面でいくつも動いて
+   うるさかったのでやめた。全文はその日の画面で見る） */
 .cal-page.cal-life .cal-line .nm { -webkit-mask-image: none; mask-image: none; }
 .cal-page.cal-life .cal-line .nm.cut {
   -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 6px), transparent);
   mask-image: linear-gradient(to right, #000 calc(100% - 6px), transparent);
-}
-.cal-page.cal-life .cal-line .nmi.pan {
-  animation: calPan var(--pan-ms, 5s) linear .8s 2 both;
-}
-/* --pan-out … 左へ抜けきるところ（字の幅ぶん）
-   --pan-in  … 右端の外。ここから入り直す */
-@keyframes calPan {
-  0%, 10% { transform: translateX(0); }
-  70% { transform: translateX(var(--pan-out, 0px)); }
-  70.01% { transform: translateX(var(--pan-in, 0px)); }
-  80%, 100% { transform: translateX(0); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .cal-page.cal-life .cal-line .nmi.pan { animation: none; }
 }
 .cal-page.cal-life .cal-cell.today { border-color: var(--life); box-shadow: inset 0 0 0 1px var(--life); }
 .cal-page.cal-life .cal-line b { color: var(--muted); font-weight: 600; }
@@ -4433,12 +4416,9 @@ body.loopfx.skin-bar .alert.overdue .alert-icon,
 body.loopfx.skin-bar .alert.behind .alert-icon,
 body.loopfx .cal-cell.has-due, body.loopfx .cal-cell.has-event,
 body.loopfx .tp-now, body.loopfx .tp-nowarc, body.loopfx .tp-row.now, body.loopfx .tp-flow i,
-body.loopfx.fit-theme .appbar::after,
-body.loopfx .cal-page.cal-life .cal-line .nmi.pan {
+body.loopfx.fit-theme .appbar::after {
   animation-iteration-count: infinite;
 }
-/* 止めないときは、最後の形で固まらせない（また頭から流すため） */
-body.loopfx .cal-page.cal-life .cal-line .nmi.pan { animation-fill-mode: backwards; }
 
 /* ---- 「動きを控える」を入れているとき ----
    飾りは動かさず、地の網点も敷かない。いちばん電池にやさしい。 */
@@ -4449,7 +4429,6 @@ body.calm .alert.overdue, body.calm .alert.behind,
 body.calm.skin-bar .alert.overdue .alert-icon,
 body.calm.skin-bar .alert.behind .alert-icon,
 body.calm .due-face.in, body.calm .due-face.out, body.calm .due-line.pan,
-body.calm .cal-page.cal-life .cal-line .nmi.pan,
 body.calm .cal-cell.has-due, body.calm .cal-cell.has-event,
 body.calm .tp-now, body.calm .tp-nowarc, body.calm .tp-row.now, body.calm .tp-flow i,
 body.calm .appbar::after,

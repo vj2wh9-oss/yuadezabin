@@ -120,41 +120,24 @@
     attachWheel(wrap);
     root.appendChild(wrap);
     sizeRows(wrap, grid, rows);
-    if (life) panLines(grid);
+    if (life) markCut(grid);
   }
 
   /**
-   * 入りきらない予定の名前を、右上のサイネージと同じように左へ流す。
+   * 入りきらない名前の、切れる端をぼかす。
    *
-   * 左へ抜けきったら、いちど消えて右端から入り直す。
-   * 行ったり来たりさせると、どちらが頭なのか分からなくなるため。
+   * 字を流して全文を出すこともしてみたが、1画面でいくつも動いて
+   * うるさかったのでやめた。全文はその日の画面で見る。
+   * 収まっている名前までぼかすと囲いの中で切れたように見えるので、
+   * はみ出している行にだけ掛ける。
    *
    * 幅を測るので、グリッドを置いたあとに呼ぶ。
-   * 動かす行は上から何本かまでに絞る（1画面に40本も動くと電池に障る）。
    */
-  var PAN_MAX = 12;
-
-  function panLines(grid) {
-    var calm = !!S.settings.calm;
-    // 「止めない」を選んでいる人は、本数の上限も外す
-    var left = (!calm && S.settings.loopFx) ? 999 : PAN_MAX;
-    U.$$('.cal-line .nmi', grid).forEach(function (inner) {
-      var box = inner.parentNode;
-      var wide = inner.scrollWidth;              // 字ぜんたいの幅
-      var room = box.clientWidth;                // 見えている枠の幅
-      // 幅は整数に丸められるので、ちょうど収まっている名前も1〜2px はみ出て
-      // 見える。そのぶんは動かさない（数文字の予定が揺れると落ち着かない）
-      if (wide - room <= 3) return;
-      // はみ出している行だけ、切れる端をぼかす。
-      // 収まっている名前までぼかすと、囲いの中で切れたように見えてしまう
-      box.classList.add('cut');
-      if (calm || left <= 0) return;
-      left--;
-      inner.style.setProperty('--pan-out', '-' + (wide + 4) + 'px');   // 左へ抜けきる
-      inner.style.setProperty('--pan-in', (room + 4) + 'px');          // 右端の外から
-      // 速さは一定にする。長い名前ほど、そのぶん時間をかけて流す
-      inner.style.setProperty('--pan-ms', Math.round(900 + wide * 24) + 'ms');
-      inner.classList.add('pan');
+  function markCut(grid) {
+    U.$$('.cal-line .nm', grid).forEach(function (box) {
+      // 幅は整数に丸められるので、ちょうど収まっている名前も1〜2px
+      // はみ出て見える。そのぶんはぼかさない
+      if (box.scrollWidth - box.clientWidth > 3) box.classList.add('cut');
     });
   }
 
@@ -433,12 +416,10 @@
       shown++;
       var note = DL.events.cellNote(o);
       /* 色は左端の縦線で示す。囲いごと塗ってみたが、
-         7色が並ぶとかえって読みにくかったので細い囲いに戻した。
-         名前はもうひと枚かぶせておく。入りきらないものを流すとき、
-         枠（.nm）は動かさず、中の字（.nmi）だけを動かすため */
+         7色が並ぶとかえって読みにくかったので細い囲いに戻した */
       lines.appendChild(el('span', { class: 'cal-line' }, [
         el('i', { style: { background: o.ev.color } }),
-        el('span', { class: 'nm' }, el('span', { class: 'nmi', text: o.ev.title })),
+        el('span', { class: 'nm', text: o.ev.title }),
         note ? el('b', { text: note }) : null
       ]));
     });
