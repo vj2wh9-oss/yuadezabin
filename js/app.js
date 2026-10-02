@@ -357,10 +357,12 @@
 
   /* ---------------- 次のチケットまであと何日 ----------------
 
-     いちばん近いチケットの期限を出す。見るのは券そのものの期限だけで、
-     中の制作物それぞれの締切や入稿日は見ない。
-     即売会なら当日、仕事と支援サイトなら中のいちばん近い締切。
-     券の一覧や半券に出ている残り日数と同じ数になるようにそろえてある。
+     主に出すのは、いちばん近いチケットの期限。即売会なら当日、
+     仕事と支援サイトなら中のいちばん近い締切（store.ticketDate）。
+     券の一覧や半券に出ている残り日数と、必ず同じ数になる。
+
+     中の制作物それぞれの締切は見ない。ただし入稿日だけは、
+     落とすと取り返しがつかないので、近いときだけ割り込ませる。
 
      見た目は駅の発車標のような細長い一本。同じ日にいくつも重なっていれば、
      右から左へ流して順に見せる。名前が長くて入りきらないときは、
@@ -376,11 +378,18 @@
   var tickAt = 0;
   var tickKey = '';          // いま出している顔ぶれ。変わらなければ流しを続ける
 
-  /* 出すのは、チケットそのものの期限。
-     中の制作物それぞれの締切や入稿日は見ない。
+  var PRINT_SOON = 7;        // 入稿がこれだけ近ければ、割り込ませる（日）
+
+  /* 主に出すのは、チケットそのものの期限。
      券の一覧や半券の残り日数と同じ見方（store.ticketDate）にそろえる。
-     即売会は当日、仕事と支援サイトは中のいちばん近い締切。 */
+     即売会は当日、仕事と支援サイトは中のいちばん近い締切。
+
+     それに加えて、入稿日が近いものだけ割り込ませる。
+     入稿は落とすと刷れないので、券の期限より先に知りたいため。
+     並びは日の近い順。入稿のほうが近ければ、そちらが先に出る。 */
   function dueItems(today) {
+    var out = [];
+
     var list = S.tickets().filter(function (t) {
       var ps = S.ticketProjects(t.id);
       // 名義で絞っているときは、その名義のものが入っている券だけ
@@ -388,22 +397,37 @@
       var d = S.ticketDate(t);
       return U.isISO(d) && U.cmp(d, today) >= 0;
     });
-    if (!list.length) return [];
-    // いちばん近い日。同じ日に重なっている券は、まとめて流す
-    var first = '';
-    list.forEach(function (t) {
-      var d = S.ticketDate(t);
-      if (!first || U.cmp(d, first) < 0) first = d;
-    });
-    return list.filter(function (t) { return S.ticketDate(t) === first; })
-      .slice(0, 6)
-      .map(function (t) {
-        return { date: first, ticket: t, project: S.ticketProjects(t.id)[0] || null };
+    if (list.length) {
+      // いちばん近い日。同じ日に重なっている券は、まとめて流す
+      var first = '';
+      list.forEach(function (t) {
+        var d = S.ticketDate(t);
+        if (!first || U.cmp(d, first) < 0) first = d;
       });
+      list.forEach(function (t) {
+        if (S.ticketDate(t) !== first) return;
+        out.push({ date: first, ticket: t, project: S.ticketProjects(t.id)[0] || null });
+      });
+    }
+
+    /* 入稿だけ割り込ませる。拾い方はカレンダーの印と同じ（名義の絞りも効く） */
+    DL.schedule.upcomingMarks(today, PRINT_SOON).forEach(function (m) {
+      if (m.type !== 'printing') return;
+      out.push({ date: m.date, project: m.project, label: m.label || '入稿' });
+    });
+
+    out.sort(function (a, b) { return U.cmp(a.date, b.date); });
+    return out.slice(0, 6);
   }
 
   // 細長い一本なので、種別は短く（支援サイト → 支援）
   var TICK_KIND = { event: '即売会', work: '仕事', support: '支援' };
+
+  /* 押したときの行き先。券ならその券、入稿ならその案件 */
+  function tickHref(it) {
+    if (it.ticket) return '#/ticket/' + it.ticket.id;
+    return it.project ? '#/project/' + it.project.id : '#/projects';
+  }
 
   /**
    * その1件の出しかた。発車標のように1行にまとめる。
@@ -413,14 +437,16 @@
    */
   function tickFace(it, today) {
     var left = U.diffDays(today, it.date);
-    var t = it.ticket;
+    // 券のぶんか、割り込んできた入稿か
+    var what = it.ticket ? (TICK_KIND[it.ticket.kind] || '') : it.label;
+    var name = it.ticket ? it.ticket.name : (it.project ? it.project.title : '');
     return el('span', { class: 'due-face' }, [
       el('span', { class: 'due-scroll' },
         el('span', { class: 'due-line' }, [
           el('i', { class: 'due-dot',
             style: { background: (it.project && it.project.color) || 'var(--accent)' } }),
-          el('span', { class: 'due-what', text: TICK_KIND[t.kind] || '' }),
-          el('span', { class: 'due-name', text: t.name })
+          el('span', { class: 'due-what' + (it.ticket ? '' : ' cut'), text: what }),
+          el('span', { class: 'due-name', text: name })
         ])),
       el('b', { class: 'due-left' + (left <= 0 ? ' now' : left <= 3 ? ' near' : ''),
         text: left <= 0 ? 'TODAY' : left + '日' })
@@ -455,7 +481,7 @@
     if (!list.length) { off(); return; }
 
     var key = today + '|' + list.map(function (it) {
-      return it.date + ':' + it.ticket.id;
+      return it.date + ':' + (it.ticket ? 't' + it.ticket.id : 'p' + it.project.id);
     }).join(',');
     // 顔ぶれが同じなら、いま流れているところを止めずに続ける
     if (key === tickKey && dueTick.firstChild) { queueTick(); return; }
@@ -464,8 +490,8 @@
     tickAt = 0;
     dueTick.hidden = false;
     appbar.classList.add('has-tick');
-    dueTick.setAttribute('href', '#/ticket/' + list[0].ticket.id);
-    dueTick.setAttribute('aria-label', '次のチケットを見る');
+    dueTick.setAttribute('href', tickHref(list[0]));
+    dueTick.setAttribute('aria-label', '次の期限を見る');
     showTick(false);
   }
 
@@ -477,7 +503,7 @@
     var face = tickFace(it, U.today());
     if (slide) face.classList.add('in');
     dueTick.appendChild(face);
-    dueTick.setAttribute('href', '#/ticket/' + it.ticket.id);
+    dueTick.setAttribute('href', tickHref(it));
     // 幅は置いてからでないと測れない
     panTick(face);
     queueTick();
@@ -1135,7 +1161,7 @@
 
   /* この端末がいま動かしている版。sw.js の CACHE と揃えて上げる。
      2台で見比べて、片方だけ古いままになっていないか確かめるためのもの */
-  DL.VERSION = 'v222';
+  DL.VERSION = 'v223';
 
   DL.app = { render: render, init: init, get route() { return route; } };
   document.addEventListener('DOMContentLoaded', init);

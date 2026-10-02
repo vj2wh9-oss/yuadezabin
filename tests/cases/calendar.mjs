@@ -16,7 +16,10 @@ const todayLook = (page) => page.evaluate(() => {
   const ns = getComputedStyle(n);
   const chip = getComputedStyle(n, '::before');
   const band = getComputedStyle(cell, '::before');   // 上辺の帯は疑似要素に付く
+  const cr = cell.getBoundingClientRect();
+  const nr = n.getBoundingClientRect();
   return {
+    札の左: Math.round(nr.left - cr.left),
     マスの囲い: cs.borderTopWidth,
     上辺の帯: band.content === 'none' ? '0px' : band.borderTopWidth,
     日付の色: ns.color,
@@ -40,7 +43,8 @@ export default {
 
       const now = await todayLook(page);
       s.note('今日のマス: ' + JSON.stringify(now));
-      s.yes('日付が傾いた札に乗っている', now && now.札の傾き !== 'none');
+      s.ok('札は長方形（傾けない）', now && now.札の傾き, 'none');
+      s.yes('札がマスの左端に付いている', now && now.札の左 <= 1);
       s.yes('札に色が付いている', now && now.札の背景 !== 'rgba(0, 0, 0, 0)');
       s.yes('マスの上辺に太い帯が乗る（3px）', now && parseFloat(now.上辺の帯) >= 3);
 
@@ -99,7 +103,7 @@ export default {
         !(await page.evaluate(() => document.body.classList.contains('cal-new'))));
       const old = await todayLook(page);
       s.note('戻したあと: ' + JSON.stringify(old));
-      s.ok('札の傾きが無くなる', old && old.札の傾き, 'none');
+      s.yes('札の塗りが無くなる', old && old.札の背景 === 'rgba(0, 0, 0, 0)');
       s.yes('元どおり、今日は囲い線で示される', old && parseFloat(old.マスの囲い) <= 1.5);
       s.ok('上辺の帯も消える', old && old.上辺の帯, '0px');
       s.ok('曜日の見出しの印も消える（元の組みには無い飾り）',

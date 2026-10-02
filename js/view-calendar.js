@@ -240,14 +240,11 @@
     var rest = marks.length + load.entries.length - shown;
     if (rest > 0) lines.appendChild(el('span', { class: 'cal-more', text: '＋' + rest }));
 
+    /* 日付の右に出していたノルマの合計は、出さない。
+       下の行にその日の工程が並ぶので、数だけ別に置いても読み取りにくかった */
     return el('a', { class: cls, href: '#/day/' + date }, [
-      el('span', { class: 'cal-top' }, [
-        el('span', { class: 'cal-n', text: String(+date.slice(8)) }),
-        load.qty > 0 ? el('span', {
-        class: 'cal-sum' + (load.done >= load.qty ? ' done' : sc.isOverloaded(date) ? ' over' : ''),
-        text: String(load.qty)
-      }) : null
-      ]),
+      el('span', { class: 'cal-top' },
+        el('span', { class: 'cal-n', text: String(+date.slice(8)) })),
       lines,
       // 右下にうっすら大きく。マスのどこを見ていても日が分かるように
       el('span', { class: 'cal-big', 'aria-hidden': 'true', text: String(+date.slice(8)) })

@@ -356,6 +356,8 @@ h1, h2, h3, p { margin: 0; }
   flex: none; font-size: 9.5px; font-weight: 700; letter-spacing: .08em;
   color: #0b0d11; background: #d8dee8; padding: 2px 4px; border-radius: 1px;
 }
+/* 券のぶんに割り込んできた入稿。落とすと刷れないので、札で見分ける */
+.due-what.cut { color: #2a1400; background: #ffb340; }
 .due-name { flex: none; color: #cfd8e6; }
 /* あと何日か。いちばん知りたいところなので、右に固定して必ず見えるようにする。
    ここだけ大きく、琥珀色に光らせる */
@@ -912,12 +914,6 @@ a.alert-main { text-decoration: none; }
 .cal-n { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
 .cal-cell.sun .cal-n { color: var(--danger); }
 .cal-cell.sat .cal-n { color: var(--accent2); }
-.cal-sum {
-  font-size: 9.5px; font-weight: 700; padding: 0 3px; color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 20%, transparent); font-variant-numeric: tabular-nums;
-}
-.cal-sum.done { color: var(--ok); background: color-mix(in srgb, var(--ok) 20%, transparent); }
-.cal-sum.over { color: var(--warn); background: color-mix(in srgb, var(--warn) 26%, transparent); }
 /* マスの右下に、うっすら大きな日付。予定で埋まっていても
    どの日を見ているか分かるようにする（左上の小さな日付はそのまま） */
 .cal-big {
@@ -4429,7 +4425,6 @@ body.cal-new .cal-cell { border: 0; padding: 3px 3px 2px; }
 /* 今月でない日は、地に沈めて数字だけ薄く見せる */
 body.cal-new .cal-cell.out { opacity: 1; background: var(--bg); }
 body.cal-new .cal-cell.out .cal-n,
-body.cal-new .cal-cell.out .cal-sum,
 body.cal-new .cal-cell.out .cal-lines { opacity: .4; }
 body.cal-new .cal-cell.out .cal-big { opacity: 0; }
 
@@ -4460,17 +4455,19 @@ body.cal-new .cal-cell.today.duty-stay::before {
   animation: none;
   border-top-width: 4px;
 }
-/* 日付を、傾いた札に白抜きで乗せる（節の見出しと同じ組み）。
-   数字そのものは傾けない */
+/* 日付を、白抜きの札に乗せる。
+   札はマスの左端にぴたりと付ける（左の余白ぶんだけ外へ出す） */
 body.cal-new .cal-cell.today .cal-n {
   position: relative; z-index: 1;
   color: var(--accent-ink); font-weight: 900;
-  padding: 1px 7px; transform-origin: left center;
+  margin-left: -3px;                /* .cal-cell の左の余白ぶん */
+  padding: 1px 6px 1px 4px;
+  transform-origin: left center;
   animation: cal-today-pop .48s cubic-bezier(.3, 1.5, .5, 1) both;
 }
 body.cal-new .cal-cell.today .cal-n::before {
   content: ''; position: absolute; inset: 0; z-index: -1;
-  background: var(--accent); transform: skewX(var(--skew, -12deg));
+  background: var(--accent);
 }
 @keyframes cal-today-pop {
   0% { transform: scale(.4); }

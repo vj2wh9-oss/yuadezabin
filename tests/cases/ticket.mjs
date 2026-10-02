@@ -92,13 +92,47 @@ export default {
       });
       await open(page, base, '#/home');
       await page.waitForSelector('#dueTick .due-face');
-      const face = await page.$eval('#dueTick', (n) => n.innerText.replace(/\s+/g, ' ').trim());
+      /* 入稿が近いときだけ割り込む。並びは日の近い順なので、
+         3日後の入稿が先、30日後の券があと */
+      const all = await page.evaluate(() => {
+        const o = [];
+        const t = document.getElementById('dueTick');
+        return new Promise((res) => {
+          // 流れているものを、ひと回りぶん拾う
+          const seen = {};
+          const tick = () => {
+            const s = t.innerText.replace(/\s+/g, ' ').trim();
+            if (s && !seen[s]) { seen[s] = 1; o.push(s); }
+            if (o.length >= 2) return res(o);
+            setTimeout(tick, 300);
+          };
+          tick();
+          setTimeout(() => res(o), 12000);
+        });
+      });
+      s.note('ひと回り: ' + JSON.stringify(all));
+      s.yes('入稿が近いときは割り込んでくる', all.some((x) => /入稿/.test(x) && /3日/.test(x)));
+      s.yes('券の名前と期限（30日）も出る',
+        all.some((x) => /秋の即売会/.test(x) && /30日/.test(x)));
+      s.yes('中の締切（5日）は出ない', !all.some((x) => / 5日/.test(x)));
+      s.yes('近いほう（入稿）が先に出る', /入稿/.test(all[0]));
+
+      /* 入稿が遠ければ、割り込まない */
+      await page.evaluate(() => {
+        const S = window.DL.store, U = window.DL.util;
+        const p = S.projects()[0];
+        S.updateProject(p.id, { printings: [
+          { label: '入稿', due: U.addDays(U.today(), 20), primary: true }
+        ] });
+      });
+      await open(page, base, '#/home');
+      await page.waitForSelector('#dueTick .due-face');
+      await page.waitForTimeout(600);
+      const only = await page.$eval('#dueTick', (n) => n.innerText.replace(/\s+/g, ' ').trim());
       const href = await page.$eval('#dueTick', (n) => n.getAttribute('href'));
-      s.note('サイネージ: ' + face + '  → ' + href);
-      s.yes('券の名前が出ている', /秋の即売会/.test(face));
-      s.yes('券の期限（30日）が出ている', /30日/.test(face));
-      s.yes('中の入稿日（3日）は出ていない', !/ 3日/.test(face));
-      s.yes('押すとその券へ行く', (href || '').indexOf('#/ticket/') === 0);
+      s.note('入稿が遠いとき: ' + only + '  → ' + href);
+      s.yes('20日先の入稿は割り込まない', !/入稿/.test(only));
+      s.yes('券だけになり、押すとその券へ行く', (href || '').indexOf('#/ticket/') === 0);
 
       /* 券の半券に出ている残り日数と、同じ数であること */
       const same = await page.evaluate(() => {
@@ -106,7 +140,7 @@ export default {
         const t = S.tickets()[0];
         return U.diffDays(U.today(), S.ticketDate(t));
       });
-      s.yes('半券の残り日数と同じ数になる（' + same + '日）', new RegExp(same + '日').test(face));
+      s.yes('半券の残り日数と同じ数になる（' + same + '日）', new RegExp(same + '日').test(only));
 
       s.ok('画面のエラー（サイネージ）', errors, []);
     });
