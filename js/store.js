@@ -2817,6 +2817,10 @@
 
   /**
    * 取り込んだぶんを足す。同じものは足さない。
+   *
+   * 「同じもの」は、日付・時刻・支払先・金額 の4つが揃うこと（cardFinger）。
+   * 先に受け取ったほうを残し、あとから来た同じものは入れずに捨てる。
+   *
    * @returns {boolean} 足したか
    */
   function addCardItem(x) {
@@ -2825,11 +2829,10 @@
     // もう片づけたぶんは、戻さない（サーバー側の消し込みが届かなかったとき用）
     if (isCardDone(item)) return false;
     var list = state.settings.cardInbox || (state.settings.cardInbox = []);
-    // 同じ id は入れ直さない。id が違っても、同じ時刻・店・額なら同じもの
+    // 同じ id は入れ直さない。id が違っても、4つが揃えば同じ決済
+    var fp = cardFinger(item);
     var same = list.some(function (o) {
-      return o.id === item.id
-        || (o.store === item.store && o.amount === item.amount
-          && Math.abs(Date.parse(o.at) - Date.parse(item.at)) < 60000);
+      return o.id === item.id || cardFinger(o) === fp;
     });
     if (same) return false;
     list.unshift(item);
@@ -2868,6 +2871,16 @@
       if (k && done.indexOf(k) < 0) done.unshift(k);
     });
     state.settings.cardDone = done.slice(0, CARD_DONE_MAX);
+  }
+
+  /** 捨てた印を外す。AMEX_OLD から戻すときに使う（印が残っていると弾かれる） */
+  function unmarkCardDone(x) {
+    if (!x) return;
+    var keys = typeof x === 'string' ? [String(x)] : [String(x.id || ''), cardFinger(x)];
+    state.settings.cardDone = (state.settings.cardDone || []).filter(function (k) {
+      return keys.indexOf(String(k)) < 0;
+    });
+    save();
   }
 
   /* 2つの控えを合わせる（同期で片方が古くても、印を失わないように） */
@@ -3693,9 +3706,15 @@
   function normalizeRoomReserve(r) {
     r = (r && typeof r === 'object') ? r : {};
     var seen = {};
-    // 控えは向こうの id だけ。増えすぎないよう上限を置く
+    /* 控えは「向こうの id → こちらで作った予定の id」。
+       手で入れてあったぶんに当てただけのものは true のままにする。
+       結び付けておくと、向こうで時刻が変わっても同じ予定だと分かり、
+       向こうから消えたときにどれを下ろせばよいかも分かる。
+       増えすぎないよう上限を置く */
     Object.keys(r.seen || {}).slice(0, 2000).forEach(function (k) {
-      if (/^[A-Za-z0-9_-]{6,64}$/.test(k) && r.seen[k]) seen[k] = true;
+      if (!/^[A-Za-z0-9_-]{6,64}$/.test(k) || !r.seen[k]) return;
+      var v = r.seen[k];
+      seen[k] = (typeof v === 'string' && v) ? v.slice(0, 40) : true;
     });
     return {
       url: String(r.url || '').trim().slice(0, 300),
@@ -3712,11 +3731,18 @@
   /**
    * 取り込みの設定を変える。seen は入れ替えではなく足していく
    * （前に入れたぶんを忘れると、同じ予定をまた入れてしまう）。
+   *
+   * @param {object} patch
+   * @param {object} [opts] opts.replaceSeen を立てると、渡したぶんで置き換える。
+   *   取り込みの終わりに使う——足していくだけだと、向こうから消えた予定の
+   *   控えがいつまでも残り、消されたことに気づけない
    */
-  function updateRoomReserve(patch) {
+  function updateRoomReserve(patch, opts) {
     var cur = roomReserve();
     var next = Object.assign({}, cur, patch || {});
-    if (patch && patch.seen) next.seen = Object.assign({}, cur.seen, patch.seen);
+    if (patch && patch.seen && !(opts && opts.replaceSeen)) {
+      next.seen = Object.assign({}, cur.seen, patch.seen);
+    }
     state.settings.roomReserve = normalizeRoomReserve(next);
     save();
     return state.settings.roomReserve;
@@ -4881,6 +4907,7 @@
     menusIn: menusIn, pastMenus: pastMenus, pastDishes: pastDishes,
     menuPlan: menuPlan, setMenuPlan: setMenuPlan,
     cardInbox: cardInbox, addCardItem: addCardItem, updateCardItem: updateCardItem,
+    unmarkCardDone: unmarkCardDone, cardFinger: cardFinger,
     removeCardItem: removeCardItem, clearCardInbox: clearCardInbox,
     isCardDone: isCardDone,
     cardMaps: cardMaps, putCardMap: putCardMap, removeCardMap: removeCardMap,

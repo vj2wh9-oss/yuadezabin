@@ -59,11 +59,8 @@
         ui.icon('chevronDown', 15)
       ]),
       el('button', { class: 'iconbtn', 'aria-label': '次の月', onclick: function () { goMonth(1); } }, ui.icon('chevronRight', 20)),
-      // 日常はカレンダーの上に＋を出す（下の丸ボタンはマスに重なるので置かない）
-      life ? el('button', {
-        class: 'iconbtn', 'aria-label': '予定を追加',
-        onclick: function () { DL.views.events.form(null, { date: addDate(cursor, today) }); }
-      }, ui.icon('plus', 20)) : null,
+      /* 予定の追加は、日付を押してその日の画面から入れる。
+         月ナビに＋を置くと、どの日に入るのか分からないまま押せてしまう */
       ui.btn('今日', 'tiny ghost', function () { cursor = U.monthStart(today); slideDir = null; DL.app.render(); })
     ]));
 
@@ -240,11 +237,6 @@
     }, true);
   }
 
-  /* 予定を足すときの初期日付。その月を見ていれば今日、別の月なら月初 */
-  function addDate(month, today) {
-    return today.slice(0, 7) === month.slice(0, 7) ? today : month;
-  }
-
   /* 月名タップで開く、チケットの一覧。
      押すと、その券に紐づく予定だけをカレンダーに出す。
      全部に戻すのは、上の「すべての案件」か、下のカレンダーのタブ。
@@ -388,13 +380,34 @@
     if (rest > 0) lines.appendChild(el('span', { class: 'cal-more', text: '＋' + rest }));
 
     /* 日付の右に出していたノルマの合計は、出さない。
-       下の行にその日の工程が並ぶので、数だけ別に置いても読み取りにくかった */
+       下の行にその日の工程が並ぶので、数だけ別に置いても読み取りにくかった。
+       代わりに、その日の働きかたを小さく添える */
     return el('a', { class: cls, href: '#/day/' + date }, [
-      el('span', { class: 'cal-top' },
-        el('span', { class: 'cal-n', text: String(+date.slice(8)) })),
+      calTop(date),
       lines,
       // 右下にうっすら大きく。マスのどこを見ていても日が分かるように
       el('span', { class: 'cal-big', 'aria-hidden': 'true', text: String(+date.slice(8)) })
+    ]);
+  }
+
+  /* マスの日付の右に出す、その日の働きかた。
+     ぱっと見で分かればいいものなので、短い言葉にして小さく添える。
+     決めていない日は、働かない日という意味で「休日」とする */
+  var DUTY_SHORT = { stay: '宿直', remote: 'リモート', office: '出社' };
+  function dutyShort(date) { return DUTY_SHORT[S.duty(date)] || ''; }
+
+  /* マスの頭。左に日付、右にその日の働きかた。
+     今日はここぜんたいが色の帯になる（css が面倒を見る） */
+  function calTop(date) {
+    var d = dutyShort(date);
+    return el('span', { class: 'cal-top' }, [
+      el('span', { class: 'cal-n', text: String(+date.slice(8)) }),
+      el('span', {
+        // 決めていない日は、働かない日という意味で「休日」。
+        // 字数の多い「リモート」だけは、さらに詰めないとマスに入らない
+        class: 'cal-duty' + (d ? '' : ' free') + (d.length > 2 ? ' long' : ''),
+        text: d || '休日'
+      })
     ]);
   }
 
@@ -419,14 +432,12 @@
       if (shown >= MAX) return;
       shown++;
       var note = DL.events.cellNote(o);
-      /* 囲いそのものを、その予定に決めた色で塗る（左端の縦線はやめた）。
-         字の色は、塗った色の明るさで白と黒を選び分ける。
+      /* 色は左端の縦線で示す。囲いごと塗ってみたが、
+         7色が並ぶとかえって読みにくかったので細い囲いに戻した。
          名前はもうひと枚かぶせておく。入りきらないものを流すとき、
          枠（.nm）は動かさず、中の字（.nmi）だけを動かすため */
-      lines.appendChild(el('span', {
-        class: 'cal-line',
-        style: { background: o.ev.color, borderColor: o.ev.color, color: U.inkOn(o.ev.color) }
-      }, [
+      lines.appendChild(el('span', { class: 'cal-line' }, [
+        el('i', { style: { background: o.ev.color } }),
         el('span', { class: 'nm' }, el('span', { class: 'nmi', text: o.ev.title })),
         note ? el('b', { text: note }) : null
       ]));
@@ -436,7 +447,7 @@
 
     // 予定はそのまま行として並ぶので、件数の数字は付けない（ノルマと違って数える意味がない）
     return el('a', { class: cls, href: '#/day/' + date }, [
-      el('span', { class: 'cal-top' }, el('span', { class: 'cal-n', text: String(+date.slice(8)) })),
+      calTop(date),
       lines,
       el('span', { class: 'cal-big', 'aria-hidden': 'true', text: String(+date.slice(8)) })
     ]);

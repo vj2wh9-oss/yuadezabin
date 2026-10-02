@@ -12,21 +12,24 @@ const todayLook = (page) => page.evaluate(() => {
   const cell = document.querySelector('.cal-cell.today');
   if (!cell) return null;
   const n = cell.querySelector('.cal-n');
+  const top = cell.querySelector('.cal-top');
   const cs = getComputedStyle(cell);
   const ns = getComputedStyle(n);
-  const chip = getComputedStyle(n, '::before');
-  const band = getComputedStyle(cell, '::before');   // 今日の枠は疑似要素に付く
+  // 日付の帯は .cal-top の疑似要素、マスの枠は .cal-cell の疑似要素
+  const chip = getComputedStyle(top, '::before');
+  const band = getComputedStyle(cell, '::before');
   const cr = cell.getBoundingClientRect();
-  const nr = n.getBoundingClientRect();
+  const tr = top.getBoundingClientRect();
   return {
-    札の左: Math.round(nr.left - cr.left),
+    帯の左: Math.round(tr.left - cr.left),
+    帯の右: Math.round(cr.right - tr.right),
     マスの囲い: cs.borderTopWidth,
     今日の枠: band.content === 'none' ? '0px' : band.borderTopWidth,
     枠の四面: band.content === 'none' ? '0px' : [band.borderTopWidth, band.borderRightWidth,
       band.borderBottomWidth, band.borderLeftWidth].join('/'),
     日付の色: ns.color,
-    札の傾き: chip.transform,
-    札の背景: chip.backgroundColor
+    帯の傾き: chip.transform,
+    帯の背景: chip.content === 'none' ? 'rgba(0, 0, 0, 0)' : chip.backgroundColor
   };
 });
 
@@ -43,13 +46,60 @@ export default {
       s.yes('はじめは新しい見た目', await page.evaluate(() => document.body.classList.contains('cal-new')));
       s.ok('今日のマスがある', await page.locator('.cal-cell.today').count(), 1);
 
+      // 出てくるときのひと跳ね（cal-today-pop）が終わってから測る
+      await page.waitForTimeout(600);
       const now = await todayLook(page);
       s.note('今日のマス: ' + JSON.stringify(now));
-      s.ok('札は長方形（傾けない）', now && now.札の傾き, 'none');
-      s.yes('札がマスの左端に付いている', now && now.札の左 <= 1);
-      s.yes('札に色が付いている', now && now.札の背景 !== 'rgba(0, 0, 0, 0)');
+      s.ok('帯は長方形（傾けない）', now && now.帯の傾き, 'none');
+      s.yes('帯がマスの左端に付いている', now && now.帯の左 <= 1);
+      s.yes('帯がマスの右端まで伸びている', now && now.帯の右 <= 1);
+      s.yes('帯に色が付いている', now && now.帯の背景 !== 'rgba(0, 0, 0, 0)');
       s.yes('マスを太い枠で囲う（3px）', now && parseFloat(now.今日の枠) >= 3);
       s.ok('枠は四方すべてに付く', now && now.枠の四面, '3px/3px/3px/3px');
+
+      /* 日付の右に、その日の働きかたを小さく添える。
+         決めていない日は「休日」。今日の帯の中にも入る */
+      await page.evaluate(() => {
+        const S = window.DL.store, U = window.DL.util, T = U.today();
+        S.setDuty(U.addDays(T, 1), 'office');
+        S.setDuty(U.addDays(T, 2), 'remote');
+        S.setDuty(U.addDays(T, 3), 'stay');
+      });
+      await open(page, base, '#/calendar');
+      await page.waitForSelector('.cal-grid');
+      const duties = await page.evaluate(() => {
+        const out = {};
+        document.querySelectorAll('.cal-cell').forEach((c) => {
+          const n = c.querySelector('.cal-n'), d = c.querySelector('.cal-duty');
+          if (n && d) out[c.getAttribute('href')] = d.textContent;
+        });
+        const T = window.DL.util.today(), A = window.DL.util.addDays;
+        return {
+          出社: out['#/day/' + A(T, 1)], リモート: out['#/day/' + A(T, 2)],
+          宿直: out['#/day/' + A(T, 3)], 指定なし: out['#/day/' + A(T, 4)],
+          数: Object.keys(out).length,
+          マスの数: document.querySelectorAll('.cal-cell').length
+        };
+      });
+      s.note('働きかた: ' + JSON.stringify(duties));
+      s.ok('出社は「出社」', duties.出社, '出社');
+      s.ok('リモートワークは「リモート」', duties.リモート, 'リモート');
+      s.ok('泊まり勤務は「宿直」', duties.宿直, '宿直');
+      s.ok('指定なしは「休日」', duties.指定なし, '休日');
+      s.ok('どのマスにも出る', duties.数, duties.マスの数);
+      s.yes('決めていない日は、そのぶん薄くする（目立たせない）',
+        await page.evaluate(() => {
+          const f = document.querySelector('.cal-duty.free');
+          const o = document.querySelector('.cal-duty:not(.free)');
+          return !!f && !!o
+            && parseFloat(getComputedStyle(f).opacity) < parseFloat(getComputedStyle(o).opacity);
+        }));
+      s.yes('今日の帯の中にも入っている',
+        await page.evaluate(() => !!document.querySelector('.cal-cell.today .cal-top .cal-duty')));
+
+      /* 上の「案件 / 日常」の切り替えボタンは置かない（下のタブで入れ替わる） */
+      s.ok('上に切り替えのボタンは無い', await page.locator('.modebtn').count(), 0);
+      s.ok('月ナビに＋は置かない', await page.locator('.monthnav .iconbtn[aria-label="予定を追加"]').count(), 0);
 
       /* 今日の曜日の見出しにも印が付く */
       s.ok('今日の曜日の見出しが1つだけ光る',
@@ -145,7 +195,7 @@ export default {
         !(await page.evaluate(() => document.body.classList.contains('cal-new'))));
       const old = await todayLook(page);
       s.note('戻したあと: ' + JSON.stringify(old));
-      s.yes('札の塗りが無くなる', old && old.札の背景 === 'rgba(0, 0, 0, 0)');
+      s.yes('帯の塗りが無くなる', old && old.帯の背景 === 'rgba(0, 0, 0, 0)');
       s.yes('元どおり、今日は囲い線で示される', old && parseFloat(old.マスの囲い) <= 1.5);
       s.ok('今日の枠も消える', old && old.今日の枠, '0px');
       s.ok('曜日の見出しの印も消える（元の組みには無い飾り）',
@@ -261,31 +311,29 @@ export default {
         document.querySelectorAll('.cal-page.cal-life .cal-cell.today .cal-line:not(.hol)')
           .forEach((n) => {
             const cs = getComputedStyle(n);
+            const bar = n.querySelector(':scope > i');
             out.push({
               名: n.textContent,
-              縦線: n.querySelectorAll(':scope > i').length,
+              囲い: [cs.borderTopWidth, cs.borderRightWidth,
+                cs.borderBottomWidth, cs.borderLeftWidth].join('/'),
               角: cs.borderTopLeftRadius,
               塗り: cs.backgroundColor,
-              字の色: cs.color,
-              囲いの色: cs.borderTopColor
+              縦線: bar ? getComputedStyle(bar).backgroundColor : ''
             });
           });
         return out;
       });
       s.note('予定の行: ' + JSON.stringify(boxes));
-      s.ok('左端の縦線は無くした', boxes.map((x) => x.縦線), [0, 0]);
+      s.yes('四面すべてに細い囲い線がある',
+        boxes.length === 2
+        && boxes.every((x) => x.囲い.split('/').every((w) => parseFloat(w) >= 1)));
       s.yes('角は少し落ちている（四角の囲いに見える）',
-        boxes.length === 2 && boxes.every((x) => parseFloat(x.角) > 0));
-      s.yes('決めた色で塗る（暗い色のほう）',
-        boxes.some((x) => x.名 === '歯医者' && x.塗り === 'rgb(17, 24, 39)'));
-      s.yes('決めた色で塗る（明るい色のほう）',
-        boxes.some((x) => /合同誌/.test(x.名) && x.塗り === 'rgb(253, 224, 71)'));
-      s.yes('囲いの色も、塗りと同じ色にする',
-        boxes.every((x) => x.塗り === x.囲いの色));
-      s.yes('暗い色の上は白い字',
-        boxes.some((x) => x.名 === '歯医者' && x.字の色 === 'rgb(255, 255, 255)'));
-      s.yes('明るい色の上は黒い字',
-        boxes.some((x) => /合同誌/.test(x.名) && x.字の色 === 'rgb(16, 20, 24)'));
+        boxes.every((x) => parseFloat(x.角) > 0));
+      s.ok('中は塗らない（勤務の色をそのまま透かすため）',
+        boxes.map((x) => x.塗り), ['rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0)']);
+      s.yes('色は左端の縦線が受け持つ',
+        boxes.some((x) => x.縦線 === 'rgb(17, 24, 39)')
+        && boxes.some((x) => x.縦線 === 'rgb(253, 224, 71)'));
 
       /* 長い名前だけが流れる。短い名前は動かさない */
       const pans = await page.evaluate(() => {

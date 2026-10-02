@@ -6,8 +6,10 @@
    取り込むのは「時間の登録」だけ。向こうで kind が
    deadline（締切）や event（イベント）になっているものは入れない。
 
-   一度入れたものは、向こうの予定の id を控えておいて二度は入れない。
-   手で同じ日時の予定を作ってあるときも、重ねて入れない。 */
+   一度入れたものは、向こうの予定の id と、こちらで作った予定の id を
+   組にして控えておく。二度入れないためと、向こうで変わったとき・
+   取り消されたときに、こちらのどれが相手なのか分かるようにするため。
+   手で同じ日時の予定を作ってあるときは、重ねて入れず、中身にも触らない。 */
 (function (DL) {
   'use strict';
   var U = DL.util, S = DL.store;
@@ -304,9 +306,11 @@
    * すでにこちらにある1件を返す（無ければ null）。
    * 同じ日・同じ時刻の予定があれば「ある」とみなす
    * （手で入れていたぶんと重ならないように）。
+   * @param {object} [used] もう別の予定に当てたものは飛ばす
    */
-  function existing(plan, list) {
+  function existing(plan, list, used) {
     return list.filter(function (ev) {
+      if (used && used[ev.id]) return false;
       return ev.date === plan.date && ev.start === plan.start
         && (!plan.end || !ev.end || ev.end === plan.end);
     })[0] || null;
@@ -335,9 +339,40 @@
     });
   }
 
+  function byId(list, id) {
+    if (!id) return null;
+    return list.filter(function (ev) { return ev.id === id; })[0] || null;
+  }
+
   /**
-   * 向こうの予定を、こちらに無いものだけ足す。
-   * @returns {Promise<{added:Array, skipped:number, total:number, plans:number}>}
+   * いまの予定と、向こうのいまの姿の違い。同じなら null。
+   * 色は変えない（取り込みの色をあとから変えても、前のぶんはそのまま）。
+   */
+  function diff(ev, p) {
+    var patch = {};
+    if (ev.title !== TITLE) patch.title = TITLE;
+    if (ev.date !== p.date) patch.date = p.date;
+    if (String(ev.start || '') !== p.start) patch.start = p.start;
+    if (String(ev.end || '') !== String(p.end || '')) patch.end = p.end;
+    if (String(ev.memo || '') !== p.memo) patch.memo = p.memo;
+    return Object.keys(patch).length ? patch : null;
+  }
+
+  /**
+   * 向こうの予定を、こちらへ合わせる。
+   *
+   *   ・こちらに無いものは足す
+   *   ・すでにあるものは、時刻・在宅の可否が変わっていれば直す
+   *   ・向こうから消えたものは、こちらからも下ろす
+   *
+   * 直す・下ろすのは、こちらが取り込んで作った予定だけ。
+   * 手で入れた予定には触らない。
+   *
+   * 下ろすのは今日からあとのぶんだけにしてある。過ぎた日は記録として残す
+   * （向こうが古いぶんを捨てているだけ、ということもあるため）。
+   *
+   * @returns {Promise<{added:Array, changed:Array, removed:Array,
+   *   skipped:number, total:number, plans:number}>}
    */
   function pull() {
     return fetchAll().then(function (got) {
@@ -349,25 +384,47 @@
       });
 
       var list = S.events();
-      var added = [], skipped = 0, mark = {}, fixed = {};
+      var link = seen();                  // 向こうの id → こちらの予定の id
+      var added = [], changed = [], removed = [], skipped = 0;
+      var mark = {}, fixed = {}, used = {};
       var color = conf().color;
       // 前の名前（部屋の予約）で入っているぶんを、先に付け替えておく
       renameOld(list, fixed);
 
       plans.forEach(function (p) {
-        if (p.srcId) mark[p.srcId] = true;
-        var was = existing(p, list);
+        /* まず控えから引く。これなら、向こうで時刻が変わっていても
+           同じ予定だと分かる（日と時刻で探すだけでは別物に見えてしまう） */
+        var was = null;
+        if (p.srcId && typeof link[p.srcId] === 'string') was = byId(list, link[p.srcId]);
+        if (was && used[was.id]) was = null;
+        // 控えの無いぶん（前からあるもの・手で入れたぶん）は、日と時刻で探す
+        if (!was) {
+          was = existing(p, list, used);
+        }
+
         if (was) {
-          /* すでに入っている。名前とメモだけ、いまの向こうに合わせ直す。
-             在宅の可否は向こうであとから付くので、取り込み済みのぶんにも届くように
-             （手で入れた予定は書き替えない） */
-          if (mine(was) && String(was.memo || '') !== p.memo) {
-            S.updateEvent(was.id, { title: TITLE, memo: p.memo });
-            fixed[was.id] = true;
+          used[was.id] = true;
+          if (mine(was)) {
+            /* こちらが作ったもの。いまの向こうに合わせ直す。
+               時刻の変更も、在宅の可否が付いたのも、ここで届く */
+            var patch = diff(was, p);
+            if (patch) {
+              S.updateEvent(was.id, patch);
+              Object.assign(was, patch);
+              changed.push({ ev: was, patch: patch });
+              fixed[was.id] = true;
+            } else {
+              skipped++;
+            }
+            if (p.srcId) mark[p.srcId] = was.id;     // こちらのものだけ結び付ける
+          } else {
+            // 手で入れてあったぶん。重ねて入れないだけで、中身は触らない
+            skipped++;
+            if (p.srcId) mark[p.srcId] = true;
           }
-          skipped++;
           return;
         }
+
         var ev = S.addEvent({
           date: p.date,
           days: 1,
@@ -378,17 +435,37 @@
           memo: p.memo
         });
         list.push(ev);
+        used[ev.id] = true;
         added.push(ev);
+        if (p.srcId) mark[p.srcId] = ev.id;
+      });
+
+      /* 向こうで消された予定を、こちらからも下ろす。
+         結び付けてあるもの（＝こちらが作ったもの）だけが相手。
+         過ぎた日は残し、控えもそのままにしておく */
+      var today = U.today();
+      Object.keys(link).forEach(function (src) {
+        if (mark[src]) return;                        // まだ向こうにある
+        var id = link[src];
+        if (typeof id !== 'string') return;           // 結び付いていないものは触らない
+        var ev = byId(list, id);
+        if (!ev || !mine(ev)) return;
+        if (U.cmp(ev.date, today) < 0) { mark[src] = id; return; }   // 過ぎた日は残す
+        S.removeEvent(ev.id);
+        removed.push(ev);
       });
 
       // 勤務種別は、こちらに登録の無い日だけ写す
       var duty = applyDuties(dutiesFrom(got));
 
-      // 次からは同じものを見ないよう、向こうの id を控える
-      S.updateRoomReserve({ lastAt: new Date().toISOString(), seen: mark });
+      /* 控えは入れ替える。足していくだけだと、向こうから消えた予定の控えが
+         いつまでも残り、次からは消されたことに気づけなくなる */
+      S.updateRoomReserve({ lastAt: new Date().toISOString(), seen: mark },
+        { replaceSeen: true });
 
       return {
-        added: added, skipped: skipped, fixed: Object.keys(fixed).length,
+        added: added, changed: changed, removed: removed,
+        skipped: skipped, fixed: Object.keys(fixed).length,
         total: raw.length, plans: plans.length,
         duties: duty.added, dutiesKept: duty.kept
       };
@@ -399,9 +476,11 @@
   function pullText(r) {
     var parts = [];
     if (r.added.length) parts.push('予定 ' + r.added.length + '件（' + r.plans + '件のうち）');
+    if ((r.changed || []).length) parts.push('変更 ' + r.changed.length + '件');
+    if ((r.removed || []).length) parts.push('取り消し ' + r.removed.length + '件');
     if (r.duties.length) parts.push('勤務 ' + r.duties.length + '日');
     if (parts.length) return parts.join('・') + 'を取り込みました';
-    // 新しい予定は無くても、在宅の可否が付いたぶんは書き替えている
+    // 新しい予定は無くても、名前の付け替えだけしていることがある
     if (r.fixed) return '予定 ' + r.fixed + '件を今の内容に合わせました';
     if (r.plans) return '新しい予定はありませんでした';
     return '時間の登録がありませんでした';

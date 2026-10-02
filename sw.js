@@ -1,5 +1,5 @@
 /* オフライン用のシンプルなキャッシュ（アプリ本体のみ。データは localStorage） */
-var CACHE = 'shimekiri-v227';
+var CACHE = 'shimekiri-v228';
 var ASSETS = [
   './', './index.html', './assets/style.css', './manifest.webmanifest',
   './assets/icon-180.png', './assets/icon-192.png', './assets/icon-512.png',
@@ -33,7 +33,12 @@ self.addEventListener('activate', function (e) {
 // ネットワーク優先・失敗時はキャッシュ（更新を取りこぼさないため）
 self.addEventListener('fetch', function (e) {
   if (e.request.method !== 'GET') return;
-  if (new URL(e.request.url).origin !== self.location.origin) return;
+  var at = new URL(e.request.url);
+  if (at.origin !== self.location.origin) return;
+  /* 同期サーバーへの問い合わせは、キャッシュに入れない。
+     ふだんは別の置き場所なのでここへは来ないが、同じところに
+     置いた場合に、古い返事をいつまでも返してしまう */
+  if (at.pathname.indexOf('/v1/') === 0) return;
 
   // GitHub Pages は max-age=600 を返すため、そのまま fetch すると
   // 10分間ブラウザのHTTPキャッシュが返り、更新しても古い画面のままになる。

@@ -1361,6 +1361,8 @@
           });
         }, 'refresh'),
         ui.btn('名前の変換', 'ghost', function () { cardMapSheet(draw); }, 'swap'),
+        // 捨てたぶんは AMEX_OLD に残してある。あとから戻せる
+        C.oldReady() ? ui.btn('捨てたぶん', 'ghost', function () { cardOldSheet(draw); }, 'folder') : null,
         ui.btn('iPhone の設定', 'ghost', function () { cardSetupSheet(); }, 'settings')
       ]));
 
@@ -1382,9 +1384,13 @@
 
       box.appendChild(ui.btn('ぜんぶ捨てる', 'danger full', function () {
         ui.confirm('預かっている ' + list.length + '件を、ぜんぶ捨てます。\n'
-          + '経費には入りません。', { danger: true, okText: '捨てる' }).then(function (ok) {
+          + '経費には入りません。'
+          + (C.oldReady() ? '\n「捨てたぶん」から、あとで戻せます。' : ''),
+        { danger: true, okText: '捨てる' }).then(function (ok) {
           if (!ok) return;
           var ids = list.map(function (o) { return o.id; });
+          // 1件ずつ控えを残してから片づける
+          list.forEach(function (o) { C.oldSave(o); });
           S.clearCardInbox();
           C.forget(ids);
           draw();
@@ -1420,8 +1426,9 @@
           el('button', {
             type: 'button', class: 'btn tiny only ghost', 'aria-label': m.name + 'を捨てる',
             onclick: function () {
-              drop(x);
-              ui.toast('捨てました');
+              // 捨てたぶんは AMEX_OLD に控えを残す。あとから戻せる
+              drop(x, true);
+              ui.toast(C.oldReady() ? '捨てました（あとから戻せます）' : '捨てました');
             }
           }, ui.icon('trash', 14))
         ])
@@ -1429,8 +1436,10 @@
     }
 
     /* 預かりから外す。向こうにも「もう要らない」と伝えておく
-       （伝わらなくても、こちら側で二度と足さないようにしてある） */
-    function drop(x) {
+       （伝わらなくても、こちら側で二度と足さないようにしてある）。
+       @param {boolean} keep 控えを AMEX_OLD に残すか（捨てたときだけ残す） */
+    function drop(x, keep) {
+      if (keep) C.oldSave(x);
       S.removeCardItem(x.id);
       C.forget([x.id]);
       draw();
@@ -1494,6 +1503,103 @@
       body: host,
       actions: [ui.btn('閉じる', 'ghost', function () { closeAll(); })]
     });
+  }
+
+  /* ---------------- 捨てたぶん（AMEX_OLD） ----------------
+
+     捨てた決済は、共有ファイルの「AMEX_OLD」フォルダに
+     1件1枚のテキストとして置いてある。ここから預かりへ戻せる。
+     戻すと紙のほうは片づくので、同じ決済が2か所に残ることはない。 */
+
+  function cardOldSheet(after) {
+    var C = DL.card;
+    var host = el('div');
+    var rows = null;        // null のあいだは読み込み中
+    var err = '';
+
+    function load() {
+      rows = null;
+      err = '';
+      draw();
+      C.oldList().then(function (list) { rows = list; draw(); },
+        function (e) { rows = []; err = (e && e.message) || '読めませんでした'; draw(); });
+    }
+
+    function draw() {
+      U.clear(host);
+      var box = el('div', { class: 'form' });
+      box.appendChild(el('p', { class: 'muted small',
+        text: '捨てた決済の控えです（' + C.OLD_FOLDER + '）。'
+          + '戻すと、取り込みの預かりに入り直します。' }));
+
+      if (rows === null) {
+        box.appendChild(ui.empty('読んでいます…'));
+        host.appendChild(box);
+        return;
+      }
+      if (err) box.appendChild(el('p', { class: 'muted small', text: err }));
+      if (!rows.length) {
+        box.appendChild(ui.empty('捨てたぶんはありません。'));
+        host.appendChild(box);
+        return;
+      }
+
+      box.appendChild(el('div', { class: 'list' }, rows.map(oldRow)));
+      box.appendChild(ui.btn('読み直す', 'ghost full', load, 'refresh'));
+      host.appendChild(box);
+    }
+
+    /* 1枚ぶん。紙の名前から日付・支払先・金額が読めるので、そのまま見せる */
+    function oldRow(f) {
+      var busy = false;
+      var btn = ui.btn('戻す', 'primary tiny', function () {
+        if (busy) return;
+        busy = true;
+        btn.disabled = true;
+        C.oldRestore(f).then(function (x) {
+          ui.toast((x.store || '1件') + ' を預かりに戻しました');
+          load();
+          if (after) after();
+        }, function (e) {
+          busy = false;
+          btn.disabled = false;
+          ui.toast((e && e.message) || '戻せませんでした', 'danger');
+        });
+      });
+      var part = String(f.name || '').replace(/\.txt$/, '').split('_');
+      var date = /^\d{8}$/.test(part[0])
+        ? part[0].slice(0, 4) + '-' + part[0].slice(4, 6) + '-' + part[0].slice(6) : '';
+      var time = /^\d{4}$/.test(part[1]) && part[1] !== '0000'
+        ? part[1].slice(0, 2) + ':' + part[1].slice(2) : '';
+      return el('div', { class: 'row ci-row' }, [
+        el('div', { class: 'row-main' }, [
+          el('div', { class: 'row-title' }, [
+            el('span', { text: part[2] || f.name }),
+            part[3] ? el('b', { class: 'ci-amount', text: part[3] }) : null
+          ]),
+          el('div', { class: 'row-sub' }, [
+            ui.chip((date ? U.fmtMD(date) : '日付不明') + (time ? ' ' + time : ''), 'soft'),
+            el('span', { class: 'muted small', text: '捨てた日 ' + String(f.uploadedAt || '').slice(0, 10) })
+          ])
+        ]),
+        el('div', { class: 'ci-acts' }, [
+          btn,
+          el('button', {
+            type: 'button', class: 'btn tiny only ghost', 'aria-label': '控えも消す',
+            onclick: function () {
+              ui.confirm('この控えを消します。もう戻せません。',
+                { danger: true, okText: '消す' }).then(function (ok) {
+                if (!ok) return;
+                DL.files.remove(f.id).then(load, function () { ui.toast('消せませんでした', 'danger'); });
+              });
+            }
+          }, ui.icon('trash', 14))
+        ])
+      ]);
+    }
+
+    load();
+    ui.sheet({ title: '捨てたぶん', body: host });
   }
 
   /* ---------------- 決済通知の名前の言い換え ----------------

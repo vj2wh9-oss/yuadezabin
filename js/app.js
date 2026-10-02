@@ -10,7 +10,6 @@
   var gearBtn = U.$('#gearBtn');
   var searchBtn = U.$('#searchBtn');
   var ideaBtn = U.$('#ideaBtn');
-  var modeBtn = U.$('#modeBtn');
   var fab = U.$('#fab');
   var fabOrders = U.$('#fabOrders');
   var fabCrm = U.$('#fabCrm');
@@ -135,11 +134,10 @@
     searchBtn.hidden = SEARCH_VIEWS.indexOf(route.name) < 0;
     searchBtn.classList.toggle('on', route.name === 'search');
 
-    // カレンダーの切替（案件 / 日常）。効くのはカレンダーの画面だけなので、そこにだけ出す
+    /* いまカレンダーを見ているか、どちら側を見ているか。
+       上の帯に何を出すかの判断で使う（切り替えのボタンはもう置かない） */
     var onCal = CAL_VIEWS.indexOf(route.name) >= 0;
     var life = S.calMode() === 'life';
-    modeBtn.hidden = !onCal;
-    if (onCal) drawModeBtn(life);
 
     // 売上は下のタブから直接開くので、戻るボタンは要らない
     var showBack = ['project', 'pages', 'day', 'docs', 'doc', 'search', 'stock', 'onsite', 'log', 'logs', 'ideas', 'time', 'orders', 'crm', 'lock', 'ticket'].indexOf(route.name) >= 0
@@ -331,8 +329,9 @@
   /* ---------------- 同期ボタン ---------------- */
 
   /**
-   * ROOM RESERVE の取り込み。押したときだけ取りに行き、
-   * いまの日常カレンダーに無いものだけを足す。
+   * ROOM RESERVE の取り込み。押したときだけ取りに行く。
+   * 無いものを足すだけでなく、時刻や在宅の可否が変わっていれば直し、
+   * 向こうで取り消された予定はこちらからも下ろす。
    */
   function roomBtn() {
     var b = el('button', {
@@ -557,22 +556,12 @@
 
   var CAL_VIEWS = ['calendar', 'day'];
 
-  /* いま見ている側を出す。押すともう一方に移る */
-  function drawModeBtn(life) {
-    U.clear(modeBtn);
-    modeBtn.classList.toggle('life', life);
-    modeBtn.setAttribute('aria-label', 'カレンダーを切り替える（いまは' + (life ? '日常' : '案件') + '）');
-    modeBtn.appendChild(DL.icons.icon('swap', 14));
-    modeBtn.appendChild(el('span', { text: life ? '日常' : '案件' }));
-  }
-
-  /* 案件 ⇔ 日常。切り替えたことは画面の中身と上のボタンで分かるので、
-     わざわざ知らせない */
+  /* 上に切り替えのボタンは置かない。下のカレンダーのタブを
+     もう一度押すと入れ替わるので、同じものが二つあることになる。
+     切り替わったことは画面の中身で分かるので、知らせもしない */
   function flipCalMode() {
     S.setCalMode(S.calMode() === 'life' ? 'work' : 'life');   // 保存すると購読側で描き直される
   }
-
-  modeBtn.addEventListener('click', flipCalMode);
 
   /* ---------------- 名義の切り替え ---------------- */
 
@@ -1193,7 +1182,7 @@
 
   /* この端末がいま動かしている版。sw.js の CACHE と揃えて上げる。
      2台で見比べて、片方だけ古いままになっていないか確かめるためのもの */
-  DL.VERSION = 'v227';
+  DL.VERSION = 'v228';
 
   DL.app = { render: render, init: init, get route() { return route; } };
   document.addEventListener('DOMContentLoaded', init);

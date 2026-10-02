@@ -409,17 +409,6 @@ h1, h2, h3, p { margin: 0; }
 /* 横断検索（虫めがね）。歯車の右に並べる */
 .searchbtn { flex: none; }
 .searchbtn[hidden] { display: none; }
-/* 案件と日常のカレンダーを行き来するボタン（歯車の右） */
-.modebtn {
-  flex: none; display: inline-flex; align-items: center; gap: 4px;
-  background: var(--card2); border: 1px solid var(--line); border-radius: var(--radius-s);
-  color: var(--text); font-size: 12px; font-weight: 700; padding: 4px 7px; cursor: pointer;
-  white-space: nowrap;
-}
-.modebtn .icon { color: var(--muted); }
-.modebtn.life { border-color: var(--life); color: var(--life); }
-.modebtn.life .icon { color: var(--life); }
-.modebtn[hidden] { display: none; }
 .appbar-actions { min-width: 32px; display: flex; justify-content: flex-end; }
 #backBtn[hidden] { display: none; }
 
@@ -914,6 +903,23 @@ a.alert-main { text-decoration: none; }
 .cal-n { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
 .cal-cell.sun .cal-n { color: var(--danger); }
 .cal-cell.sat .cal-n { color: var(--accent2); }
+/* その日の働きかた。ぱっと見で分かればいいので、小さく控えめに。
+   決めていない日（休日）は数が多いので、さらに薄くして地に沈める */
+.cal-duty {
+  font-size: 8px; font-weight: 700; letter-spacing: -.05em; line-height: 1.2;
+  color: var(--muted); opacity: .85; white-space: nowrap;
+  /* 入らないときは、マスの外へ押し出さずに、ここで切る */
+  flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: clip;
+}
+.cal-duty.free { font-weight: 600; opacity: .42; }
+/* 「リモート」は4字あって、二桁の日付と並ぶとマスに入らない */
+.cal-duty.long { font-size: 7px; letter-spacing: -.09em; }
+/* 320px の端末ではマスが 43px しかないので、もう一段詰める */
+@media (max-width: 379px) {
+  .cal-top { gap: 1px; }
+  .cal-duty { font-size: 7.4px; }
+  .cal-duty.long { font-size: 6.4px; letter-spacing: -.11em; }
+}
 /* マスの右下に、うっすら大きな日付。予定で埋まっていても
    どの日を見ているか分かるようにする（左上の小さな日付はそのまま） */
 .cal-big {
@@ -974,20 +980,20 @@ a.alert-main { text-decoration: none; }
 .cal-cell.duty-office { background: var(--duty-office-bg); }
 .cal-cell.duty-remote { background: var(--duty-remote-bg); }
 .cal-cell.duty-stay { background: var(--duty-stay-bg); }
-/* 予定は1つずつ四角で囲い、その予定に決めた色で塗る。
-   色は左端の縦線ではなく、囲いそのものが受け持つ。
-   塗りと字の色は view-calendar.js がその場で入れる
+/* 予定は1つずつ細い四角で囲む。色は左端の縦線が受け持つ。
+   囲いごと色で塗ってみたが、7色が並ぶとかえって読みにくかった。
+   中を塗らないので、敷いた色（勤務の3色）もそのまま透ける
    （案件側は card2 の帯のままにして、見分けが付くようにしておく） */
 .cal-page.cal-life .cal-lines { gap: 2px; }
 .cal-page.cal-life .cal-line {
-  border: 1px solid transparent; border-radius: 3px;
-  padding: 0 2px; overflow: hidden;
+  background: transparent;
+  border: 1px solid var(--line2); border-radius: 3px;
+  padding: 0 2px 0 0; overflow: hidden;
 }
+/* 色の帯は、囲いの内側の左端にぴったり付ける */
+.cal-page.cal-life .cal-line > i { min-height: 12px; border-radius: 2px 0 0 2px; }
 /* 祝日の名前は予定ではないので、囲わない */
-.cal-page.cal-life .cal-line.hol {
-  border: 0; border-radius: 0; padding-left: 2px;
-  background: color-mix(in srgb, var(--danger) 12%, transparent);
-}
+.cal-page.cal-life .cal-line.hol { border: 0; border-radius: 0; }
 
 /* 入りきらない名前は、右上のサイネージと同じように左へ流して全文を出す。
    左へ抜けきったら、いちど消えて右端から入り直す（流れ直すのであって、
@@ -1016,8 +1022,7 @@ a.alert-main { text-decoration: none; }
   .cal-page.cal-life .cal-line .nmi.pan { animation: none; }
 }
 .cal-page.cal-life .cal-cell.today { border-color: var(--life); box-shadow: inset 0 0 0 1px var(--life); }
-/* 時刻は塗った色の上に乗るので、字の色をそのまま受け継ぐ */
-.cal-page.cal-life .cal-line b { color: inherit; opacity: .78; font-weight: 600; }
+.cal-page.cal-life .cal-line b { color: var(--muted); font-weight: 600; }
 /* iPhone の1マスは50px ほどしかなく、「10:30」を出すと予定名が2文字で切れてしまう。
    狭いうちは名前を優先し、時刻は日別の画面で見せる */
 @media (max-width: 520px) {
@@ -4430,6 +4435,9 @@ body.loopfx .cal-cell.has-due, body.loopfx .cal-cell.has-event,
 body.loopfx .tp-now, body.loopfx .tp-nowarc, body.loopfx .tp-row.now, body.loopfx .tp-flow i,
 body.loopfx.fit-theme .appbar::after,
 body.loopfx.cal-new .cal-cell.today::before,
+body.loopfx.cal-new .cal-cell.today .cal-top::before,
+body.loopfx.cal-new .cal-cell.today .cal-n,
+body.loopfx.cal-new .cal-cell.today .cal-duty,
 body.loopfx .cal-page.cal-life .cal-line .nmi.pan {
   animation-iteration-count: infinite;
 }
@@ -4491,6 +4499,7 @@ body.cal-new .cal-cell { border: 0; padding: 3px 3px 2px; }
 /* 今月でない日は、地に沈めて数字だけ薄く見せる */
 body.cal-new .cal-cell.out { opacity: 1; background: var(--bg); }
 body.cal-new .cal-cell.out .cal-n,
+body.cal-new .cal-cell.out .cal-duty,
 body.cal-new .cal-cell.out .cal-lines { opacity: .4; }
 body.cal-new .cal-cell.out .cal-big { opacity: 0; }
 
@@ -4524,26 +4533,43 @@ body.cal-new .cal-cell.today.duty-stay::before {
   background: none;
   border-width: 4px;
 }
-/* 日付を、白抜きの札に乗せる。
-   札はマスの左端にぴたりと付ける（左の余白ぶんだけ外へ出す） */
-body.cal-new .cal-cell.today .cal-n {
+/* 日付の行ぜんたいを、色の帯にする。
+   帯はマスの左端から右端までいっぱいに伸ばす（左右の余白ぶんだけ外へ出す）。
+   点滅は枠と同じ打ちかた・同じ長さなので、ふたつが揃って明滅する */
+body.cal-new .cal-cell.today .cal-top {
   position: relative; z-index: 1;
-  color: var(--accent-ink); font-weight: 900;
-  margin-left: -3px;                /* .cal-cell の左の余白ぶん */
-  padding: 1px 6px 1px 4px;
+  margin: -3px -3px 1px;            /* .cal-cell の余白ぶん */
+  padding: 1px 4px;
   transform-origin: left center;
   animation: cal-today-pop .48s cubic-bezier(.3, 1.5, .5, 1) both;
 }
-body.cal-new .cal-cell.today .cal-n::before {
+body.cal-new .cal-cell.today .cal-top::before {
   content: ''; position: absolute; inset: 0; z-index: -1;
   background: var(--accent);
+  animation: cal-today-band 2.8s ease-in-out 5 both;
+}
+/* 帯が薄まったところでも読めるよう、字の色もいっしょに動かす
+   （濃いときは白抜き、薄いときは青字） */
+body.cal-new .cal-cell.today .cal-n,
+body.cal-new .cal-cell.today .cal-duty {
+  color: var(--accent-ink); font-weight: 900;
+  animation: cal-today-ink 2.8s ease-in-out 5 both;
+}
+body.cal-new .cal-cell.today .cal-duty { opacity: .9; font-weight: 700; }
+@keyframes cal-today-band {
+  0%, 100% { background: var(--accent); }
+  50% { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+}
+@keyframes cal-today-ink {
+  0%, 100% { color: var(--accent-ink); }
+  50% { color: var(--accent); }
 }
 @keyframes cal-today-pop {
   0% { transform: scale(.4); }
   60% { transform: scale(1.14); }
   100% { transform: scale(1); }
 }
-/* 日曜・土曜でも、今日は札の色を優先する */
+/* 日曜・土曜でも、今日は帯の色を優先する */
 body.cal-new .cal-cell.today.sun .cal-n,
 body.cal-new .cal-cell.today.sat .cal-n { color: var(--accent-ink); }
 /* 右下のうっすら大きな日付も、今日だけ少し濃くする */
@@ -4552,10 +4578,16 @@ body.cal-new .cal-cell.today .cal-big { opacity: .1; }
 /* 端末の「動きを減らす」と、設定の「動き：控える」では動かさない */
 @media (prefers-reduced-motion: reduce) {
   body.cal-new .cal-cell.today::before,
-  body.cal-new .cal-cell.today .cal-n { animation: none; }
+  body.cal-new .cal-cell.today .cal-top,
+  body.cal-new .cal-cell.today .cal-top::before,
+  body.cal-new .cal-cell.today .cal-n,
+  body.cal-new .cal-cell.today .cal-duty { animation: none; }
 }
 body.calm.cal-new .cal-cell.today::before,
-body.calm.cal-new .cal-cell.today .cal-n { animation: none; }
+body.calm.cal-new .cal-cell.today .cal-top,
+body.calm.cal-new .cal-cell.today .cal-top::before,
+body.calm.cal-new .cal-cell.today .cal-n,
+body.calm.cal-new .cal-cell.today .cal-duty { animation: none; }
 
 /* 買い物の1行から、要らないものを外すボタン。
    ふだんは目立たせず、押せることだけ分かる程度に置く */

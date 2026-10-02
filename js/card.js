@@ -210,10 +210,125 @@
   /** 預かっている件数。経理の入口に出す */
   function pending() { return S.cardInbox().length; }
 
+  /* ---------------- 捨てたぶんの控え（AMEX_OLD） ----------------
+
+     捨てた決済も、あとから「やっぱり経費だった」と気づくことがある。
+     端末の中に貯めるとデータが膨らむので、共有ファイルの
+     「AMEX_OLD」フォルダへ、1件1枚のテキストとして預ける。
+
+     戻すときは、その紙を読んで預かりに入れ直し、紙のほうは片づける
+     （同じ決済が2か所にあると、どちらが本物か分からなくなるため）。 */
+
+  var OLD_FOLDER = 'AMEX_OLD';
+
+  function oldReady() { return !!(DL.files && DL.files.ready()); }
+
+  /* 1件を紙にする。読んで分かる形にしておく（あとで人が見ることもある） */
+  function oldText(x) {
+    return [
+      'METEO365 カード決済の控え',
+      '日付: ' + (x.date || ''),
+      '時刻: ' + (x.time || ''),
+      '支払先: ' + (x.store || ''),
+      '金額: ' + U.num(x.amount, 0),
+      '受取: ' + (x.at || ''),
+      'もとのID: ' + (x.id || ''),
+      '捨てた日: ' + new Date().toISOString(),
+      // 改行を含むことがあるので、いちばん最後に置く
+      '文面: ' + String(x.raw || '').replace(/\r?\n/g, ' ')
+    ].join('\n') + '\n';
+  }
+
+  /* 紙を読み戻す。行の頭の見出しで引く */
+  function oldParse(text) {
+    var out = { date: '', time: '', store: '', amount: 0, at: '', raw: '' };
+    var lines = String(text || '').split(/\r?\n/);
+    var keys = { '日付': 'date', '時刻': 'time', '支払先': 'store', '金額': 'amount', '受取': 'at' };
+    for (var i = 0; i < lines.length; i++) {
+      var m = /^([^:]+):\s?([\s\S]*)$/.exec(lines[i]);
+      if (!m) continue;
+      var k = keys[m[1].trim()];
+      if (k) out[k] = k === 'amount' ? U.num(m[2], 0) : m[2].trim();
+      // 文面から先は、残りぜんぶ
+      if (m[1].trim() === '文面') {
+        out.raw = lines.slice(i).join('\n').replace(/^文面:\s?/, '').replace(/\s+$/, '');
+        break;
+      }
+    }
+    return out;
+  }
+
+  /* 紙の名前。並べたときに日付順になるようにする。
+     「_」は区切りに使うので、支払先の中のものは「-」に替えておく
+     （名前だけ見れば中身が分かるようにしてある） */
+  function oldName(x) {
+    var safe = String(x.store || 'ななし')
+      .replace(/[\\/:*?"<>|\n\r\t_]/g, '-').trim().slice(0, 24) || 'ななし';
+    return [(x.date || '').replace(/-/g, ''), (x.time || '').replace(':', '') || '0000',
+      safe, U.num(x.amount, 0) + '円'].join('_') + '.txt';
+  }
+
+  /**
+   * 捨てた1件を AMEX_OLD へ預ける。
+   * 置けなくても捨てる操作は止めない（控えが取れないだけ）。
+   * @returns {Promise<boolean>} 置けたか
+   */
+  function oldSave(x) {
+    if (!oldReady() || !x) return Promise.resolve(false);
+    var file;
+    try {
+      file = new File([oldText(x)], oldName(x), { type: 'text/plain;charset=utf-8' });
+    } catch (e) {
+      return Promise.resolve(false);           // File が作れない古い端末
+    }
+    return DL.files.upload(file, { folder: OLD_FOLDER }).then(function (r) {
+      /* ファイルの画面でも、すぐ AMEX_OLD の中に出るようにしておく。
+         R2 の記録からも組み直せるが、それは次に一覧を取りに行ったとき */
+      try {
+        if (r && r.id) S.setFileFolder(r.id, S.ensureFolderPath(OLD_FOLDER, true));
+      } catch (e) { /* 置けてはいるので、ここで転ばせない */ }
+      return true;
+    }, function () { return false; });
+  }
+
+  /** AMEX_OLD に預けてあるぶん。新しい順 */
+  function oldList() {
+    if (!oldReady()) return Promise.resolve([]);
+    return DL.files.list().then(function (r) {
+      return (r.files || []).filter(function (f) { return f.folder === OLD_FOLDER; })
+        .sort(function (a, b) { return U.cmp(String(b.uploadedAt), String(a.uploadedAt)); });
+    }, function () { return []; });
+  }
+
+  /** 1枚ぶんの中身を読む */
+  function oldRead(f) {
+    return DL.files.fetchBytes(f.id).then(function (bytes) {
+      return oldParse(new TextDecoder('utf-8').decode(bytes));
+    });
+  }
+
+  /**
+   * 1枚を預かりへ戻す。戻したら、紙のほうは片づける。
+   * @returns {Promise<object>} 戻した中身
+   */
+  function oldRestore(f) {
+    return oldRead(f).then(function (x) {
+      // 捨てた印を外さないと、足しても弾かれてしまう
+      S.unmarkCardDone(x);
+      S.addCardItem(x);
+      return DL.files.remove(f.id).catch(function () { /* 消せなくても戻りはした */ })
+        .then(function () { return x; });
+    });
+  }
+
   DL.card = {
     ready: ready, key: key, postUrl: postUrl,
     pull: pull, autoPull: autoPull, tryText: tryText, forget: forget,
     look: look, nameOf: nameOf,
-    toExpense: toExpense, pending: pending
+    toExpense: toExpense, pending: pending,
+    OLD_FOLDER: OLD_FOLDER,
+    oldReady: oldReady, oldSave: oldSave, oldList: oldList,
+    oldRead: oldRead, oldRestore: oldRestore,
+    oldText: oldText, oldParse: oldParse, oldName: oldName
   };
 })(window.DL);

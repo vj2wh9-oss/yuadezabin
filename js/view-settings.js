@@ -974,6 +974,11 @@
     ]));
 
     if (R.ready()) {
+      card.appendChild(el('p', { class: 'muted small',
+        text: '取り込むと、新しい予定を足すだけでなく、取り込み済みの予定も'
+          + '向こうのいまの姿に合わせ直します（時刻・在宅の可否）。'
+          + '向こうで取り消された予定は、今日からあとのぶんをこちらからも下ろします。'
+          + '手で入れた予定には触れません。' }));
       card.appendChild(ui.btn('いま取り込む', 'ghost full', function () {
         ui.toast('取りに行っています…');
         R.pull().then(function (r) {
