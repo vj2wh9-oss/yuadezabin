@@ -113,42 +113,33 @@ export default {
       s.ok('終わらない動きが無い', anims.filter((a) => a.c === Infinity).map((a) => a.n), []);
       s.yes('動きが付いている', anims.length > 0);
 
-      /* 点滅するのは塗りではなく「枠」。細かく明滅させると泊まり勤務の
-         色と紛れたので、太い枠がゆっくり濃くなったり薄くなったりする形にした。
-         1周ぶんを刻んで、枠と塗りの濃さを見る */
-      const beat = await page.evaluate(() => {
+      /* 点滅はうるさかったのでやめた。
+         枠も帯も、ずっと濃いまま出しっぱなしにする */
+      const still = await page.evaluate(() => {
         const cell = document.querySelector('.cal-cell.today');
-        const a = document.getAnimations()
-          .filter((x) => /^cal-today-blink/.test(x.animationName || ''))[0];
-        if (!a) return null;
+        const top = cell.querySelector('.cal-top');
         const alpha = (col) => {
           const m = String(col).match(/[\d.]+/g) || [];
           return Number(m[3] === undefined ? 1 : m[3]);
         };
-        a.pause();
-        const dur = a.effect.getComputedTiming().duration;
-        const N = 40, frame = [], fill = [];
-        for (let i = 0; i <= N; i++) {
-          a.currentTime = (dur * i) / N;
-          const cs = getComputedStyle(cell, '::before');
-          frame.push(alpha(cs.borderTopColor));
-          fill.push(alpha(cs.backgroundColor));
-        }
-        a.currentTime = 0;
-        a.play();
         return {
-          dur: Math.round(dur),
-          枠の濃淡: [Math.min.apply(null, frame), Math.max.apply(null, frame)],
-          塗りの振れ: Math.max.apply(null, fill) - Math.min.apply(null, fill)
+          点滅: document.getAnimations()
+            .filter((x) => /^cal-today-(blink|band|ink)/.test(x.animationName || ''))
+            .map((x) => x.animationName),
+          枠の動き: getComputedStyle(cell, '::before').animationName,
+          帯の動き: getComputedStyle(top, '::before').animationName,
+          字の動き: getComputedStyle(cell.querySelector('.cal-n')).animationName,
+          枠の濃さ: alpha(getComputedStyle(cell, '::before').borderTopColor),
+          帯の濃さ: alpha(getComputedStyle(top, '::before').backgroundColor)
         };
       });
-      s.note('点滅の打ちかた: ' + JSON.stringify(beat));
-      s.yes('点滅するのは枠（濃いところと薄いところの差が大きい）',
-        beat && (beat.枠の濃淡[1] - beat.枠の濃淡[0]) > 0.5);
-      s.yes('いちばん濃いところでは、枠がはっきり出ている', beat && beat.枠の濃淡[1] > 0.9);
-      s.yes('塗りのほうは動かさない（泊まり勤務の色と濁るため）',
-        beat && beat.塗りの振れ < 0.02);
-      s.yes('1周はゆっくり（2秒以上）', beat && beat.dur >= 2000);
+      s.note('今日の見せかた: ' + JSON.stringify(still));
+      s.ok('点滅する動きは、もう無い', still.点滅, []);
+      s.ok('枠は動かさない', still.枠の動き, 'none');
+      s.ok('帯も動かさない', still.帯の動き, 'none');
+      s.ok('字の色も動かさない', still.字の動き, 'none');
+      s.yes('枠はずっと濃いまま', still.枠の濃さ > 0.9);
+      s.yes('帯もずっと濃いまま', still.帯の濃さ > 0.9);
 
       /* 「動き：控える」では動かない */
       await page.evaluate(() => { window.DL.store.updateSettings({ calm: true }); window.DL.app.render(); });
@@ -160,8 +151,7 @@ export default {
       await page.waitForTimeout(200);
 
       /* 下地に色が付いている日（締切など）は、その上に青の塗りを重ねない。
-         重ねると濁って、赤とも青ともつかない色になる。
-         枠の点滅は色を重ねないので、そのまま続ける */
+         重ねると濁って、赤とも青ともつかない色になる */
       await page.evaluate(() => {
         const S = window.DL.store, U = window.DL.util, T = U.today();
         const pr = S.createProject({ name: '入稿するもの', category: 'manga', qty: 4,
@@ -184,8 +174,7 @@ export default {
       s.note('今日＋締切: ' + JSON.stringify(due));
       s.yes('今日に締切が重なっている', due.締切あり);
       s.ok('青の塗りを重ねない', due.かぶせの塗り, 'rgba(0, 0, 0, 0)');
-      s.ok('枠の点滅はそのまま続く（色を重ねないので濁らない）',
-        due.かぶせの動き, 'cal-today-blink');
+      s.ok('ここでも動かさない', due.かぶせの動き, 'none');
       s.ok('そのぶん枠を太くする', due.枠の太さ, '4px');
 
       /* ここが肝心。「前のまま」で、元の見た目に戻ること */

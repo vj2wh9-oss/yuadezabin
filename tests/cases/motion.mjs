@@ -30,7 +30,7 @@ const look = (page) => page.evaluate(() => {
     if (cs.animationName === 'none') return;
     out[名] = cs.animationIterationCount;
   };
-  put('今日の枠', '.cal-cell.today', '::before');
+  // 今日の枠・帯は点滅をやめたので、ここでは見ない（動かないのが正解）
   put('締切のマス', '.cal-cell.has-due');
   put('予定の流れ', '.cal-page.cal-life .cal-line .nmi.pan');
   return out;
@@ -79,7 +79,7 @@ export default {
 
       const 普通 = await lookBoth(page, base);
       s.note('ふつう: ' + JSON.stringify(普通));
-      s.yes('見るものが揃っている', Object.keys(普通).length >= 3);
+      s.yes('見るものが揃っている', Object.keys(普通).length >= 2);
       s.ok('ふつうは、どれも何周かで止まる',
         Object.keys(普通).filter((k) => 普通[k] === 'infinite'), []);
       s.ok('画面ぜんたいでも、終わらない動きは無い',

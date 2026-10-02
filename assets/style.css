@@ -4434,10 +4434,6 @@ body.loopfx.skin-bar .alert.behind .alert-icon,
 body.loopfx .cal-cell.has-due, body.loopfx .cal-cell.has-event,
 body.loopfx .tp-now, body.loopfx .tp-nowarc, body.loopfx .tp-row.now, body.loopfx .tp-flow i,
 body.loopfx.fit-theme .appbar::after,
-body.loopfx.cal-new .cal-cell.today::before,
-body.loopfx.cal-new .cal-cell.today .cal-top::before,
-body.loopfx.cal-new .cal-cell.today .cal-n,
-body.loopfx.cal-new .cal-cell.today .cal-duty,
 body.loopfx .cal-page.cal-life .cal-line .nmi.pan {
   animation-iteration-count: infinite;
 }
@@ -4504,26 +4500,17 @@ body.cal-new .cal-cell.out .cal-lines { opacity: .4; }
 body.cal-new .cal-cell.out .cal-big { opacity: 0; }
 
 /* ---- 今日 ---- */
-/* 四方を太い枠で囲い、その枠をゆっくり点滅させる。
-   細かく明滅させると、泊まり勤務の色と紛れて読み取りにくかった。
-   枠そのものが太く入り切りするほうが、離れて見ても分かる。
-   5周してから落ち着く（約14秒で止まる） */
+/* 四方を太い枠で囲い、日付の行は色の帯にする。
+   点滅はうるさかったのでやめた。太い枠と帯だけで、十分ひと目で分かる。 */
 body.cal-new .cal-cell.today { border: 0; box-shadow: none; }
 body.cal-new .cal-cell.today::before {
   content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none;
   border: 3px solid var(--accent);
   background: color-mix(in srgb, var(--accent) 11%, transparent);
-  animation: cal-today-blink 2.8s ease-in-out 5 both;
-}
-/* 1周 2.8 秒。枠が濃く出て、すっと薄れて、また濃くなる。
-   薄いほうでも少し残しておく（消えきると、どの日か見失うため） */
-@keyframes cal-today-blink {
-  0%, 100% { border-color: var(--accent); }
-  50% { border-color: color-mix(in srgb, var(--accent) 18%, transparent); }
 }
 /* 下地にもう色が付いている日（締切・入稿・イベント・休み・勤務）は、
-   その上に青を重ねると濁る。塗りはやめて、枠と日付の札だけで示す。
-   枠はそのぶん太くする（点滅は枠の色だけなので、濁らない） */
+   その上に青を重ねると濁る。塗りはやめて、枠と日付の帯だけで示す。
+   枠はそのぶん太くする */
 body.cal-new .cal-cell.today.has-due::before,
 body.cal-new .cal-cell.today.has-event::before,
 body.cal-new .cal-cell.today.off::before,
@@ -4535,7 +4522,7 @@ body.cal-new .cal-cell.today.duty-stay::before {
 }
 /* 日付の行ぜんたいを、色の帯にする。
    帯はマスの左端から右端までいっぱいに伸ばす（左右の余白ぶんだけ外へ出す）。
-   点滅は枠と同じ打ちかた・同じ長さなので、ふたつが揃って明滅する */
+   出てくるときのひと跳ねだけは残す（画面を開いた合図になるので） */
 body.cal-new .cal-cell.today .cal-top {
   position: relative; z-index: 1;
   margin: -3px -3px 1px;            /* .cal-cell の余白ぶん */
@@ -4546,24 +4533,10 @@ body.cal-new .cal-cell.today .cal-top {
 body.cal-new .cal-cell.today .cal-top::before {
   content: ''; position: absolute; inset: 0; z-index: -1;
   background: var(--accent);
-  animation: cal-today-band 2.8s ease-in-out 5 both;
 }
-/* 帯が薄まったところでも読めるよう、字の色もいっしょに動かす
-   （濃いときは白抜き、薄いときは青字） */
 body.cal-new .cal-cell.today .cal-n,
-body.cal-new .cal-cell.today .cal-duty {
-  color: var(--accent-ink); font-weight: 900;
-  animation: cal-today-ink 2.8s ease-in-out 5 both;
-}
+body.cal-new .cal-cell.today .cal-duty { color: var(--accent-ink); font-weight: 900; }
 body.cal-new .cal-cell.today .cal-duty { opacity: .9; font-weight: 700; }
-@keyframes cal-today-band {
-  0%, 100% { background: var(--accent); }
-  50% { background: color-mix(in srgb, var(--accent) 18%, transparent); }
-}
-@keyframes cal-today-ink {
-  0%, 100% { color: var(--accent-ink); }
-  50% { color: var(--accent); }
-}
 @keyframes cal-today-pop {
   0% { transform: scale(.4); }
   60% { transform: scale(1.14); }
@@ -4577,17 +4550,9 @@ body.cal-new .cal-cell.today .cal-big { opacity: .1; }
 
 /* 端末の「動きを減らす」と、設定の「動き：控える」では動かさない */
 @media (prefers-reduced-motion: reduce) {
-  body.cal-new .cal-cell.today::before,
-  body.cal-new .cal-cell.today .cal-top,
-  body.cal-new .cal-cell.today .cal-top::before,
-  body.cal-new .cal-cell.today .cal-n,
-  body.cal-new .cal-cell.today .cal-duty { animation: none; }
+  body.cal-new .cal-cell.today .cal-top { animation: none; }
 }
-body.calm.cal-new .cal-cell.today::before,
-body.calm.cal-new .cal-cell.today .cal-top,
-body.calm.cal-new .cal-cell.today .cal-top::before,
-body.calm.cal-new .cal-cell.today .cal-n,
-body.calm.cal-new .cal-cell.today .cal-duty { animation: none; }
+body.calm.cal-new .cal-cell.today .cal-top { animation: none; }
 
 /* 買い物の1行から、要らないものを外すボタン。
    ふだんは目立たせず、押せることだけ分かる程度に置く */
