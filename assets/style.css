@@ -4492,3 +4492,15 @@ body.calm.cal-new .cal-cell.today .cal-n { animation: none; }
    ふだんは目立たせず、押せることだけ分かる程度に置く */
 .mn-buy .mn-drop { flex: none; margin-left: 2px; opacity: .5; }
 .mn-buy .mn-drop:active { opacity: 1; }
+
+/* カレンダーを1つの券だけに絞っているときの帯。押すと外れる */
+.cal-focus {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  margin: 0 0 4px; padding: 5px 8px; font: inherit; text-align: left;
+  color: var(--accent); cursor: pointer;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.cal-focus-n { flex: 1; min-width: 0; font-weight: 800; font-size: 12.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-focus .icon { flex: none; }

@@ -117,6 +117,87 @@ export default {
 
       s.ok('画面のエラー', errors, []);
     });
+
+    /* 月名を押して、1つの券だけに絞る。
+       カレンダーのタブを押すと、全部に戻る */
+    await withPage(base, IPHONE, async (page, errors) => {
+      await open(page, base);
+      await page.evaluate(() => {
+        const S = window.DL.store, U = window.DL.util, T = U.today();
+        // 券が2つ。どちらも今月に締切がある
+        S.createProject({
+          kind: 'event', category: 'manga', title: '新刊',
+          eventName: '冬の即売会', eventDate: U.addDays(T, 12),
+          deadline: U.addDays(T, 4), startDate: T, qty: 8, status: 'active'
+        });
+        S.createProject({
+          kind: 'work', category: 'illust', title: '表紙', client: 'B社',
+          deadline: U.addDays(T, 6), startDate: T, qty: 4, status: 'active'
+        });
+      });
+      await open(page, base, '#/calendar');
+      await page.waitForSelector('.cal-grid');
+
+      /* マスに出るのは印の文字（入稿・納品・イベント名）。
+         冬の即売会の券は「入稿」と「冬の即売会」、B社の券は「納品」 */
+      const names = () => page.$$eval('.cal-grid .cal-line .nm', (ns) => ns.map((n) => n.textContent));
+      const before = await names();
+      s.note('絞る前: ' + Array.from(new Set(before)).join(' / '));
+      s.yes('両方の券の予定が出ている',
+        before.some((x) => /冬の即売会/.test(x)) && before.some((x) => /納品/.test(x)));
+
+      /* 月名を押すと、券の一覧が出る */
+      await page.click('.monthlabel');
+      await page.waitForSelector('.sheet-title:has-text("カレンダーに出すもの")');
+      s.yes('「すべての案件」が選ばれている',
+        (await page.locator('.sheet-body .row.on:has-text("すべての案件")').count()) === 1);
+      s.yes('券が2つ並ぶ', (await page.locator('.sheet-body .row').count()) === 3);
+
+      await page.click('.sheet-body .row:has-text("冬の即売会")');
+      await page.waitForTimeout(500);
+      const after = await names();
+      s.note('絞ったあと: ' + Array.from(new Set(after)).join(' / '));
+      s.yes('選んだ券の予定だけになる',
+        after.some((x) => /冬の即売会/.test(x)) && !after.some((x) => /納品/.test(x)));
+      s.ok('絞っていることが画面に出る',
+        await page.locator('.cal-focus').count(), 1);
+
+      /* カレンダーのタブを押すと、全部に戻る */
+      await page.click('.tab[data-tab="calendar"]');
+      await page.waitForTimeout(500);
+      const back = await names();
+      s.note('タブを押したあと: ' + Array.from(new Set(back)).join(' / '));
+      s.yes('全部の案件に戻る',
+        back.some((x) => /冬の即売会/.test(x)) && back.some((x) => /納品/.test(x)));
+      s.ok('絞りの帯も消える', await page.locator('.cal-focus').count(), 0);
+
+      /* 絞りが無ければ、タブはこれまでどおり案件と日常を切り替える */
+      await page.click('.tab[data-tab="calendar"]');
+      await page.waitForTimeout(400);
+      s.yes('絞りが無いときは、日常のカレンダーに切り替わる',
+        await page.evaluate(() => window.DL.store.calMode() === 'life'));
+      await page.click('.tab[data-tab="calendar"]');
+      await page.waitForTimeout(400);
+      s.yes('もう一度で案件に戻る',
+        await page.evaluate(() => window.DL.store.calMode() !== 'life'));
+
+      /* 絞ったまま券を消しても、画面が壊れない */
+      await page.click('.monthlabel');
+      await page.waitForSelector('.sheet-body .row:has-text("B社")');
+      await page.click('.sheet-body .row:has-text("B社")');
+      await page.waitForTimeout(400);
+      await page.evaluate(() => {
+        const S = window.DL.store;
+        const t = S.tickets().filter((x) => x.name === 'B社')[0];
+        if (t) S.removeTicket(t.id);
+      });
+      await open(page, base, '#/calendar');
+      await page.waitForSelector('.cal-grid');
+      s.ok('消された券を指していたら、絞りは外れる',
+        await page.locator('.cal-focus').count(), 0);
+
+      s.ok('画面のエラー（絞り込み）', errors, []);
+    });
     return s;
   }
 };

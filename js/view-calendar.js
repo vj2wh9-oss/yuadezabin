@@ -7,6 +7,28 @@
 
   var slideDir = null;   // 月移動の向き（アニメーション用）
 
+  /* 1つの券だけを見ているときの、その券の id。
+     月名を押して選ぶ。カレンダーのタブを押すと外れて、全部に戻る。
+     絞っているあいだは、その券に紐づく案件の締切・入稿・ノルマだけを出す */
+  var focusTicket = '';
+
+  /** いま絞っている券。無ければ null（消された券を指していたときも null） */
+  function focused() {
+    return focusTicket ? S.getTicket(focusTicket) : null;
+  }
+
+  /** 絞りを外す。外すものがあったときだけ true */
+  function clearFocus() {
+    if (!focusTicket) return false;
+    focusTicket = '';
+    return true;
+  }
+
+  /* その案件が、いま見ている券のものか。絞っていなければ全部通す */
+  function inFocus(p) {
+    return !focusTicket || (p && p.ticketId === focusTicket);
+  }
+
   function goMonth(delta) {
     cursor = U.addMonths(cursor, delta);
     slideDir = delta > 0 ? 'from-right' : 'from-left';
@@ -44,6 +66,26 @@
       }, ui.icon('plus', 20)) : null,
       ui.btn('今日', 'tiny ghost', function () { cursor = U.monthStart(today); slideDir = null; DL.app.render(); })
     ]));
+
+    /* 1つの券だけを見ているときは、そのことを出す。
+       押せば外れる（下のカレンダーのタブを押しても外れる） */
+    if (!life) {
+      // 消された券を指したままにならないよう、ここで確かめる
+      var fc = focused();
+      if (focusTicket && !fc) focusTicket = '';
+      if (fc) {
+        wrap.appendChild(el('button', {
+          type: 'button', class: 'cal-focus',
+          'aria-label': fc.name + 'の絞り込みを外す',
+          onclick: function () { clearFocus(); DL.app.render(); }
+        }, [
+          ui.icon(ui.KIND_ICON[fc.kind], 14),
+          el('span', { class: 'cal-focus-n', text: fc.name }),
+          el('span', { class: 'muted small', text: 'だけ' }),
+          ui.icon('close', 14)
+        ]));
+      }
+    }
 
     /* 曜日見出し。いま見ている月に今日が入っているときは、
        その曜日の見出しにも印を付ける（今日の列が目で追えるように） */
@@ -167,29 +209,94 @@
     return today.slice(0, 7) === month.slice(0, 7) ? today : month;
   }
 
-  /* 月名タップで開く、その月の一覧 */
+  /* 月名タップで開く、チケットの一覧。
+     押すと、その券に紐づく予定だけをカレンダーに出す。
+     全部に戻すのは、上の「すべての案件」か、下のカレンダーのタブ。
+     日常のカレンダーでは、これまでどおりその月の予定一覧を出す */
   function monthSheet(first, last, title, today, life) {
     if (life) {
       ui.sheet({ title: title + 'の予定', body: DL.views.events.monthBody(first, last) });
       return;
     }
-    var items = sc.timeline(first, U.diffDays(first, last));
-    var body;
-    if (!items.length) {
-      body = ui.empty('この月に締切・イベントはありません。');
+    var close;
+    var pick = function (id) {
+      focusTicket = id;
+      close();
+      DL.app.render();
+      var t = id ? S.getTicket(id) : null;
+      ui.toast(t ? '「' + t.name + '」だけ出します' : 'すべての案件に戻しました');
+    };
+
+    var body = el('div', { class: 'form' });
+    body.appendChild(el('p', { class: 'muted small',
+      text: 'チケットを選ぶと、その券に紐づく締切・入稿・ノルマだけをカレンダーに出します。' }));
+
+    var all = el('button', {
+      type: 'button', class: 'row' + (focusTicket ? '' : ' on'),
+      onclick: function () { pick(''); }
+    }, [
+      el('div', { class: 'row-main' }, el('div', { class: 'row-title', text: 'すべての案件' })),
+      focusTicket ? null : ui.chip('いま表示中', 'ok')
+    ]);
+    body.appendChild(el('div', { class: 'list' }, all));
+
+    var list = S.tickets().filter(function (t) {
+      var ps = S.ticketProjects(t.id);
+      // 名義で絞っているときは、その名義のものが入っている券だけ
+      return !ps.length || ps.some(S.inScope);
+    });
+    if (!list.length) {
+      body.appendChild(ui.empty('チケットがまだありません。'));
     } else {
-      body = el('div', { class: 'list' }, items.map(function (it) {
-        return DL.views.home.deadlineRow(it, today);
-      }));
-      body.addEventListener('click', function () { close(); });
+      body.appendChild(ui.section('チケット',
+        el('span', { class: 'muted small', text: list.length + '件' })));
+      body.appendChild(el('div', { class: 'list' }, list.map(function (t) {
+        return ticketRow(t, today, pick);
+      })));
     }
-    var close = ui.sheet({ title: title + 'の締切・イベント', body: body });
+
+    close = ui.sheet({
+      title: 'カレンダーに出すもの',
+      body: body,
+      actions: [ui.btn('閉じる', 'ghost', function () { close(); })]
+    });
+  }
+
+  /* 券の1行。期限と中の数を添える */
+  function ticketRow(t, today, pick) {
+    var ps = S.ticketProjects(t.id);
+    var date = S.ticketDate(t);
+    var left = U.isISO(date) ? U.diffDays(today, date) : null;
+    var on = t.id === focusTicket;
+    return el('button', {
+      type: 'button', class: 'row' + (on ? ' on' : ''),
+      onclick: function () { pick(t.id); }
+    }, [
+      el('div', { class: 'row-main' }, [
+        el('div', { class: 'row-title' }, [
+          ui.icon(ui.KIND_ICON[t.kind], 15),
+          el('span', { text: t.name })
+        ]),
+        el('div', { class: 'row-sub' }, [
+          U.isISO(date) ? ui.chip(U.fmtMD(date), left !== null && left < 0 ? 'ghosty' : 'soft') : null,
+          left !== null && left >= 0 ? ui.chip('あと' + left + '日', left <= 3 ? 'warn' : 'ghosty') : null,
+          ui.chip('制作物 ' + ps.length, 'ghosty')
+        ])
+      ]),
+      on ? ui.chip('いま表示中', 'ok') : el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+    ]);
   }
 
   function cell(date, cursorMonth, today) {
     var inMonth = date.slice(0, 7) === cursorMonth.slice(0, 7);
-    var marks = sc.dayMarks(date);
+    // 券で絞っているときは、その券に紐づく案件のぶんだけ出す
+    var marks = sc.dayMarks(date).filter(function (m) { return inFocus(m.project); });
     var load = sc.loadOfDay(date);
+    if (focusTicket) {
+      var keep = load.entries.filter(function (e) { return inFocus(e.project); });
+      load = { entries: keep, qty: U.sum(keep, function (e) { return e.qty; }),
+        done: U.sum(keep, function (e) { return e.done; }) };
+    }
     var d = U.dow(date);
     var isOff = !sc.isWorkday(null, date);
 
@@ -496,5 +603,9 @@
   }
 
   DL.views = DL.views || {};
-  DL.views.calendar = { render: render, renderDay: renderDay, setMonth: function (m) { cursor = U.monthStart(m); } };
+  DL.views.calendar = {
+    render: render, renderDay: renderDay,
+    setMonth: function (m) { cursor = U.monthStart(m); },
+    clearFocus: clearFocus
+  };
 })(window.DL);

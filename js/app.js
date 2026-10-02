@@ -749,10 +749,16 @@
         DL.views.files.up();
         return;
       }
-      // 月表示を見ているときだけ。日別や1日の時間からは、いつもどおり月表示へ戻す
-      if (t.dataset.tab === 'calendar' && route.name === 'calendar') {
+      /* カレンダーのタブは、まず「1つの券だけ」の絞りを外す。
+         外すものが無ければ、月表示を見ているときに限って
+         案件と日常を切り替える（上の切替ボタンと同じ）。
+         ほかの画面から押したときは、絞りだけ外してそのままカレンダーへ */
+      if (t.dataset.tab === 'calendar') {
+        var cleared = DL.views.calendar.clearFocus();
+        if (route.name !== 'calendar') return;
         e.preventDefault();
-        flipCalMode();
+        if (cleared) DL.app.render();
+        else flipCalMode();
         return;
       }
       // ホームを見ているときにホームを押したら、いちばん上まで戻す
@@ -1161,7 +1167,7 @@
 
   /* この端末がいま動かしている版。sw.js の CACHE と揃えて上げる。
      2台で見比べて、片方だけ古いままになっていないか確かめるためのもの */
-  DL.VERSION = 'v224';
+  DL.VERSION = 'v225';
 
   DL.app = { render: render, init: init, get route() { return route; } };
   document.addEventListener('DOMContentLoaded', init);
