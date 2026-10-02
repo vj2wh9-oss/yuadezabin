@@ -194,13 +194,28 @@
     before: '開始前', done: '完了済', archived: '保管', nodate: '日付未設定'
   };
 
-  /* ある日のノルマ一覧 */
+  /**
+   * ある日のノルマ一覧。
+   *
+   * 終えた案件のぶんは、これから先の日には出さない（もう作業が無いので）。
+   * ただし過ぎた日は、そこに積んだぶんをそのまま残す。
+   * 案件を完了にした途端にカレンダーの過去が白くなってしまうと、
+   * いつ何をやったのかが分からなくなる。
+   *
+   * @param {string} date YYYY-MM-DD
+   * @param {Object} [opts]
+   * @param {boolean} [opts.includeDone] 先の日でも終えた案件を出す
+   * @param {boolean} [opts.hideDonePast] 過ぎた日でも終えた案件を隠す
+   * @param {string} [opts.today] 「過ぎた日」の基準（既定は今日）
+   */
   function dayEntries(date, opts) {
     opts = opts || {};
+    var past = U.cmp(date, opts.today || U.today()) < 0;
+    var keepDone = opts.includeDone || (past && !opts.hideDonePast);
     var out = [];
     DL.store.scopedProjects().forEach(function (p) {
       if (p.status === 'archived') return;
-      if (p.status === 'done' && !opts.includeDone) return;
+      if (p.status === 'done' && !keepDone) return;
       (p.tasks || []).forEach(function (t) {
         var plan = taskPlan(p, t);
         if (plan.byDate[date] === undefined) return;

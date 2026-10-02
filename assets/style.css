@@ -974,9 +974,42 @@ a.alert-main { text-decoration: none; }
 .cal-cell.duty-office { background: var(--duty-office-bg); }
 .cal-cell.duty-remote { background: var(--duty-remote-bg); }
 .cal-cell.duty-stay { background: var(--duty-stay-bg); }
-/* 敷いた色がそのまま見えるよう、日常の行には下地を置かない
+/* 予定は1つずつ四角で囲む。ただし敷いた色（勤務の3色）はそのまま
+   透かしたいので、中は塗らず、細い囲い線だけにする
    （案件側は card2 の帯のままにして、見分けが付くようにしておく） */
-.cal-page.cal-life .cal-line { background: transparent; }
+.cal-page.cal-life .cal-lines { gap: 2px; }
+.cal-page.cal-life .cal-line {
+  background: transparent;
+  border: 1px solid var(--line2); border-radius: 3px;
+  padding: 0 2px 0 0; overflow: hidden;
+}
+/* 色の帯は、囲いの内側の左端にぴったり付ける */
+.cal-page.cal-life .cal-line > i { min-height: 12px; border-radius: 2px 0 0 2px; }
+/* 祝日の名前は予定ではないので、囲わない */
+.cal-page.cal-life .cal-line.hol { border: 0; border-radius: 0; }
+
+/* 入りきらない名前は、右上のサイネージと同じように左へ流して全文を出す。
+   動かすのは中の字だけ（枠が動くと囲いごとずれてしまう）。
+   流れ終わると頭に戻り、2周で止まる（終わらない動きは置かない） */
+.cal-page.cal-life .cal-line .nmi { display: inline-block; white-space: nowrap; }
+/* 端のぼかしは、はみ出している行だけ。収まっている名前までぼかすと、
+   囲いの中で切れたように見える */
+.cal-page.cal-life .cal-line .nm { -webkit-mask-image: none; mask-image: none; }
+.cal-page.cal-life .cal-line .nm.cut {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 6px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 6px), transparent);
+}
+.cal-page.cal-life .cal-line .nmi.pan {
+  animation: calPan var(--pan-ms, 5s) ease-in-out .8s 2 both;
+}
+@keyframes calPan {
+  0%, 14% { transform: translateX(0); }
+  56%, 72% { transform: translateX(var(--pan, 0px)); }
+  100% { transform: translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cal-page.cal-life .cal-line .nmi.pan { animation: none; }
+}
 .cal-page.cal-life .cal-cell.today { border-color: var(--life); box-shadow: inset 0 0 0 1px var(--life); }
 .cal-page.cal-life .cal-line b { color: var(--muted); font-weight: 600; }
 /* iPhone の1マスは50px ほどしかなく、「10:30」を出すと予定名が2文字で切れてしまう。
@@ -4091,6 +4124,12 @@ body.skin-bar .tab .tabicon svg {
   stroke-width: 2.3; stroke-linecap: round; stroke-linejoin: round;
 }
 body.skin-bar .tab.on .tabicon svg { stroke-width: 2.7; }
+/* 「トレーニング」は6字あって、320px の端末では札からはみ出す。
+   狭いうちは字をもう一段詰めて、札の中に収める */
+@media (max-width: 379px) {
+  body.skin-bar .tabbar { gap: 1px; padding-left: 1px; padding-right: 1px; }
+  body.skin-bar .tab { font-size: 7.2px; letter-spacing: -.1em; }
+}
 /* 押して切り替わった絵は、ひと跳ねしてから落ち着く */
 @keyframes tab-pop {
   0% { transform: scale(.66); }
@@ -4380,6 +4419,7 @@ body.calm .alert.overdue, body.calm .alert.behind,
 body.calm.skin-bar .alert.overdue .alert-icon,
 body.calm.skin-bar .alert.behind .alert-icon,
 body.calm .due-face.in, body.calm .due-face.out, body.calm .due-line.pan,
+body.calm .cal-page.cal-life .cal-line .nmi.pan,
 body.calm .cal-cell.has-due, body.calm .cal-cell.has-event,
 body.calm .tp-now, body.calm .tp-nowarc, body.calm .tp-row.now, body.calm .tp-flow i,
 body.calm .appbar::after,
@@ -4430,17 +4470,32 @@ body.cal-new .cal-cell.out .cal-big { opacity: 0; }
 
 /* ---- 今日 ---- */
 /* 囲い線はやめて、上辺に太い帯とうっすらした塗り。
-   ゆっくり息をして、しばらくすると落ち着く（11秒で止まる） */
+   ゆっくり息をするとフリッカーが泊まり勤務の色と見分けづらかったので、
+   打ちかたを変えた。「パパッ・パパッ」と二回光って、ひと拍置いて
+   もう二回。色はそのまま。4周してから落ち着く（約7秒で止まる） */
 body.cal-new .cal-cell.today { border: 0; box-shadow: none; }
 body.cal-new .cal-cell.today::before {
   content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none;
   border-top: 3px solid var(--accent);
   background: color-mix(in srgb, var(--accent) 11%, transparent);
-  animation: cal-today-breathe 2.2s ease-in-out 5 both;
+  animation: cal-today-blink 1.75s linear 4 both;
 }
-@keyframes cal-today-breathe {
+/* 1周 1.75 秒。光りは 1 回 90ms ほどで、拍は 260ms、最後に休みを置く */
+@keyframes cal-today-blink {
   0%, 100% { background: color-mix(in srgb, var(--accent) 11%, transparent); }
-  50% { background: color-mix(in srgb, var(--accent) 26%, transparent); }
+  /* パパッ（1回目） */
+  3% { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+  8% { background: color-mix(in srgb, var(--accent) 11%, transparent); }
+  13% { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+  18% { background: color-mix(in srgb, var(--accent) 11%, transparent); }
+  /* ひと拍 */
+  33% { background: color-mix(in srgb, var(--accent) 11%, transparent); }
+  /* パパッ（2回目） */
+  38% { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+  43% { background: color-mix(in srgb, var(--accent) 11%, transparent); }
+  48% { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+  53% { background: color-mix(in srgb, var(--accent) 11%, transparent); }
+  /* 次の周まで休む */
 }
 /* 下地にもう色が付いている日（締切・入稿・イベント・休み・勤務）は、
    その上に青を重ねると濁る。塗りはやめて、上辺の帯と日付の札だけで示す。

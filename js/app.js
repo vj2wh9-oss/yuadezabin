@@ -44,6 +44,26 @@
     return { name: name, params: params };
   }
 
+  /* どの画面が、下のどのタブに属するか */
+  var TAB_OF = {
+    home: 'home', fit: 'fit',
+    calendar: 'calendar', day: 'calendar', log: 'calendar', logs: 'calendar', time: 'calendar',
+    projects: 'projects', project: 'projects', pages: 'projects', docs: 'projects',
+    doc: 'projects', crm: 'projects', ticket: 'projects',
+    sales: 'sales', stock: 'sales', onsite: 'sales',
+    books: 'books', files: 'files'
+  };
+
+  /* 下のタブの明かりを移す。同じところを二度押しても動きが
+     やり直しにならないよう、変わったときだけ触る */
+  function markTab(name) {
+    var tab = TAB_OF[name];
+    U.$$('.tab').forEach(function (t) {
+      var on = t.dataset.tab === tab;
+      if (t.classList.contains('on') !== on) t.classList.toggle('on', on);
+    });
+  }
+
   function render() {
     if (!S.state) return;      // 読み込みが終わるまでは描かない
 
@@ -51,6 +71,11 @@
        中身を入れ替える。先に入れ替えると、幕が降りる前に真っ黒になってしまい、
        幕の意味がなくなる。降りきったら、ここへ戻ってきて描き直す */
     var next = parseHash();
+    /* 下のタブの明かりは、幕より先に移しておく。押した絵がはねる動きは
+       .on が付いた瞬間に始まるので、ここで付けてから幕を降ろすと
+       「跳ねる → 幕が降りる」の順に見える。先に幕を降ろすと、
+       押した手ごたえが幕の裏で終わってしまう */
+    markTab(next.name);
     if (next.name === 'fit' && prevRoute !== 'fit'
       && DL.views.fit.dropCurtain(render)) return;
     /* METEO LOCK も同じ。幕の中で南京錠が閉まりきってから、金庫の画面を出す */
@@ -74,14 +99,13 @@
       settings: '設定', day: '日別', project: '案件の詳細',
       docs: '書類', doc: '書類', sales: '売上', files: 'ファイル', books: '経理',
       search: '検索', stock: '頒布と在庫', onsite: '当日モード', pages: '原稿のページ',
-      fit: '筋トレ',
+      fit: 'トレーニング',
       log: '1日の記録', logs: '記録', ideas: 'ひらめきメモ', time: '今日の予定', orders: '発注',
       crm: '顧客管理', lock: 'METEO LOCK', ticket: 'チケット'
     };
     setTitle(titles[route.name] || 'METEO365');
 
-    var tab = { home: 'home', fit: 'fit', calendar: 'calendar', day: 'calendar', log: 'calendar', logs: 'calendar', time: 'calendar', projects: 'projects', project: 'projects', pages: 'projects', docs: 'projects', doc: 'projects', crm: 'projects', ticket: 'projects', sales: 'sales', stock: 'sales', onsite: 'sales', books: 'books', files: 'files' }[route.name];
-    U.$$('.tab').forEach(function (t) { t.classList.toggle('on', t.dataset.tab === tab); });
+    markTab(route.name);
 
     /* 筋トレのタブだけ、黄と黒の見た目に切り替える。
        シートは .view の外（#sheetRoot）に出るので、body に付ける */
@@ -1167,7 +1191,7 @@
 
   /* この端末がいま動かしている版。sw.js の CACHE と揃えて上げる。
      2台で見比べて、片方だけ古いままになっていないか確かめるためのもの */
-  DL.VERSION = 'v225';
+  DL.VERSION = 'v226';
 
   DL.app = { render: render, init: init, get route() { return route; } };
   document.addEventListener('DOMContentLoaded', init);

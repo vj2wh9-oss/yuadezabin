@@ -57,7 +57,7 @@
     wrap.appendChild(todayCard(date));
     wrap.appendChild(weekStrip(date));
     wrap.appendChild(el('div', { class: 'actions' }, [
-      ui.btn('筋トレのホームへ', 'ghost', function () { location.hash = '#/fit'; }, 'home')
+      ui.btn('トレーニングのホームへ', 'ghost', function () { location.hash = '#/fit'; }, 'home')
     ]));
     root.appendChild(wrap);
   }
@@ -205,7 +205,7 @@
 
   function settingsSheet() {
     ui.sheet({
-      title: '筋トレの設定',
+      title: 'トレーニングの設定',
       body: el('div', { class: 'form' }, [
         el('div', { class: 'card' }, [
           el('div', { class: 'row-title', text: 'からだと目標' }),
@@ -1343,7 +1343,38 @@
 
      幕を降ろすのは、中身を入れ替える前。そうしないと明るい画面が
      一瞬で黒くなってしまい、幕が降りる意味がなくなる。
-     降りきったら app.js に描き直してもらい、そこから溜め始める。 */
+     降りきったら app.js に描き直してもらい、そこから溜め始める。
+
+     ただし、降ろすのは下のタブの絵が跳ね終わってから。
+     ダンベルが挙がる動き（tab-pop ＋ ti-lift）は押した手ごたえなので、
+     それを幕の裏に隠してしまうと、押した実感が無いまま暗くなる。 */
+
+  /* 押したタブの絵が動き終わるまでの待ち。
+     決め打ちにすると CSS を直したときにずれるので、実際に動いている
+     ぶんを見て測る。測れない古い端末では TAB_WAIT を使う。
+     安全のため、ここまでしか待たない */
+  var TAB_WAIT = 520;          // ti-lift（.5s）＋ わずかな余り
+  var TAB_WAIT_MAX = 900;
+
+  function tabWait() {
+    // 「動き：控える」ではタブの絵も動かないので、待たずに降ろす
+    if (document.body.classList.contains('calm')) return 0;
+    var ms = 0;
+    var icon = document.querySelector('.tab[data-tab="fit"] .tabicon');
+    if (icon && icon.getAnimations) {
+      try {
+        icon.getAnimations({ subtree: true }).forEach(function (a) {
+          if (a.playState === 'finished' || a.playState === 'idle') return;
+          var t = a.effect && a.effect.getComputedTiming ? a.effect.getComputedTiming() : null;
+          if (!t) return;
+          var end = Number(t.delay || 0) + Number(t.activeDuration || 0);
+          if (isFinite(end) && end > ms) ms = end;
+        });
+      } catch (e) { ms = 0; }
+    }
+    if (!ms) ms = TAB_WAIT;
+    return Math.min(Math.round(ms), TAB_WAIT_MAX);
+  }
 
   /**
    * 黒い幕を降ろす。降りきったら again() を呼ぶ。
@@ -1355,8 +1386,13 @@
     build();
     curtainDown = true;
     fxEl.style.setProperty('--fi-ms', CURTAIN_MS + 'ms');
-    document.body.appendChild(fxEl);
-    later(again, CURTAIN_MS);
+    var wait = tabWait();
+    if (wait) later(function () {
+      // 待っているあいだに別の画面へ行かれたら、もう出さない
+      if (curtainDown && fxEl && !fxEl.parentNode) document.body.appendChild(fxEl);
+    }, wait);
+    else document.body.appendChild(fxEl);
+    later(again, wait + CURTAIN_MS);
     return true;
   }
 

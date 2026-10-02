@@ -60,6 +60,42 @@ export default {
       s.ok('終わらない動きが無い', anims.filter((a) => a.c === Infinity).map((a) => a.n), []);
       s.yes('動きが付いている', anims.length > 0);
 
+      /* 点滅の打ちかた。「泊まり勤務」と同系色なので、ゆっくり息をするだけでは
+         見分けが付かなかった。パパッと二回 → ひと拍 → パパッと二回。
+         1周ぶんを刻んで、明るいところのかたまりを数える */
+      const beat = await page.evaluate(() => {
+        const cell = document.querySelector('.cal-cell.today');
+        const a = document.getAnimations()
+          .filter((x) => /^cal-today-blink/.test(x.animationName || ''))[0];
+        if (!a) return null;
+        a.pause();
+        const dur = a.effect.getComputedTiming().duration;
+        const N = 200, hi = [];
+        for (let i = 0; i <= N; i++) {
+          a.currentTime = (dur * i) / N;
+          const m = getComputedStyle(cell, '::before').backgroundColor.match(/[\d.]+/g) || [];
+          // color-mix の透かしぶん。濃いほうが光っているところ
+          hi.push(Number(m[3] === undefined ? 1 : m[3]) > 0.2);
+        }
+        a.currentTime = 0;
+        a.play();
+        // 明るいところのかたまり（＝光った回数）と、そのあいだの空き
+        const runs = [], gaps = [];
+        let i = 0;
+        while (i <= N) {
+          if (hi[i]) { const st = i; while (i <= N && hi[i]) i++; runs.push([st, i - 1]); }
+          else i++;
+        }
+        for (let k = 1; k < runs.length; k++) gaps.push(runs[k][0] - runs[k - 1][1]);
+        return { dur: Math.round(dur), blinks: runs.length, gaps: gaps };
+      });
+      s.note('点滅の打ちかた: ' + JSON.stringify(beat));
+      s.ok('1周で4回光る（二回 → ひと拍 → 二回）', beat && beat.blinks, 4);
+      s.yes('真ん中のひと拍が、となりの空きよりはっきり長い',
+        beat && beat.gaps.length === 3
+        && beat.gaps[1] > beat.gaps[0] * 2 && beat.gaps[1] > beat.gaps[2] * 2);
+      s.yes('1周は2秒以内（パパッと感じる速さ）', beat && beat.dur <= 2000);
+
       /* 「動き：控える」では動かない */
       await page.evaluate(() => { window.DL.store.updateSettings({ calm: true }); window.DL.app.render(); });
       await page.waitForTimeout(300);
@@ -197,6 +233,88 @@ export default {
         await page.locator('.cal-focus').count(), 0);
 
       s.ok('画面のエラー（絞り込み）', errors, []);
+    });
+
+    /* 日常のカレンダー。予定はひとつずつ四角で囲み、
+       入りきらない名前はサイネージと同じように左へ流す */
+    await withPage(base, IPHONE, async (page, errors) => {
+      await open(page, base);
+      await page.evaluate(() => {
+        const S = window.DL.store, U = window.DL.util, T = U.today();
+        S.addEvent({ date: T, title: '歯医者' });
+        S.addEvent({ date: T, title: '合同誌の打ち合わせと原稿の受け渡し（渋谷）' });
+        S.setCalMode('life');
+      });
+      await open(page, base, '#/calendar');
+      await page.waitForSelector('.cal-page.cal-life .cal-grid');
+
+      const box = await page.evaluate(() => {
+        const n = document.querySelector('.cal-page.cal-life .cal-cell.today .cal-line:not(.hol)');
+        if (!n) return null;
+        const cs = getComputedStyle(n);
+        return {
+          囲い: cs.borderTopWidth + ' / ' + cs.borderLeftWidth
+            + ' / ' + cs.borderRightWidth + ' / ' + cs.borderBottomWidth,
+          角: cs.borderTopLeftRadius,
+          塗り: cs.backgroundColor
+        };
+      });
+      s.note('予定の行: ' + JSON.stringify(box));
+      s.yes('四面すべてに囲い線がある',
+        box && box.囲い.split(' / ').every((w) => parseFloat(w) >= 1));
+      s.yes('角は少し落ちている（四角の囲いに見える）', box && parseFloat(box.角) > 0);
+      s.ok('中は塗らない（勤務の色をそのまま透かすため）', box && box.塗り, 'rgba(0, 0, 0, 0)');
+
+      /* 長い名前だけが流れる。短い名前は動かさない */
+      const pans = await page.evaluate(() => {
+        const out = [];
+        document.querySelectorAll('.cal-page.cal-life .cal-cell.today .cal-line:not(.hol) .nmi')
+          .forEach((n) => out.push({
+            名: n.textContent,
+            流す: n.classList.contains('pan'),
+            送り: n.style.getPropertyValue('--pan'),
+            動き: getComputedStyle(n).animationName,
+            回数: getComputedStyle(n).animationIterationCount
+          }));
+        return out;
+      });
+      s.note('流しかた: ' + JSON.stringify(pans));
+      s.yes('入りきらない名前は流す',
+        pans.some((x) => /合同誌/.test(x.名) && x.流す && x.動き === 'calPan'));
+      s.yes('流す量は、はみ出したぶんだけ左へ',
+        pans.some((x) => /合同誌/.test(x.名) && parseFloat(x.送り) < -10));
+      s.yes('収まっている名前は流さない',
+        pans.some((x) => x.名 === '歯医者' && !x.流す));
+      /* 端のぼかしも、はみ出している行だけ。収まっている名前までぼかすと
+         囲いの中で切れたように見える */
+      const blur = await page.evaluate(() => {
+        const out = [];
+        document.querySelectorAll('.cal-page.cal-life .cal-cell.today .cal-line:not(.hol) .nm')
+          .forEach((n) => out.push({
+            名: n.textContent,
+            ぼかし: getComputedStyle(n).maskImage !== 'none'
+          }));
+        return out;
+      });
+      s.note('端のぼかし: ' + JSON.stringify(blur));
+      s.yes('はみ出す行だけ端をぼかす',
+        blur.some((x) => /合同誌/.test(x.名) && x.ぼかし)
+        && blur.some((x) => x.名 === '歯医者' && !x.ぼかし));
+      s.ok('終わらない流しは無い（電池のため）',
+        pans.filter((x) => x.流す && x.回数 === 'infinite').map((x) => x.名), []);
+
+      /* 「動き：控える」では流さない */
+      await page.evaluate(() => { window.DL.store.updateSettings({ calm: true }); window.DL.app.render(); });
+      await page.waitForTimeout(300);
+      s.ok('「動き：控える」では流さない',
+        await page.evaluate(() => window.document.getAnimations()
+          .filter((a) => a.playState === 'running' && a.animationName === 'calPan').length), 0);
+      await page.evaluate(() => {
+        window.DL.store.updateSettings({ calm: false });
+        window.DL.store.setCalMode('work');
+      });
+
+      s.ok('画面のエラー（日常のカレンダー）', errors, []);
     });
     return s;
   }

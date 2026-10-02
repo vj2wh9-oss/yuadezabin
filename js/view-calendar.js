@@ -123,6 +123,38 @@
     attachWheel(wrap);
     root.appendChild(wrap);
     sizeRows(wrap, grid, rows);
+    if (life) panLines(grid);
+  }
+
+  /**
+   * 入りきらない予定の名前を、右上のサイネージと同じように左へ流す。
+   *
+   * 幅を測るので、グリッドを置いたあとに呼ぶ。
+   * 流れ終わると頭に戻るので、あとから名前の先で見分けられる。
+   * 動かす行は上から何本かまでに絞る（1画面に40本も動くと電池に障る）。
+   */
+  var PAN_MAX = 12;
+
+  function panLines(grid) {
+    var calm = !!S.settings.calm;
+    var left = PAN_MAX;
+    U.$$('.cal-line .nmi', grid).forEach(function (inner) {
+      var box = inner.parentNode;
+      var over = inner.scrollWidth - box.clientWidth;
+      // 幅は整数に丸められるので、ちょうど収まっている名前も1〜2px はみ出て
+      // 見える。そのぶんは動かさない（数文字の予定が揺れると落ち着かない）
+      if (over <= 3) return;
+      // はみ出している行だけ、切れる端をぼかす。
+      // 収まっている名前までぼかすと、囲いの中で切れたように見えてしまう
+      box.classList.add('cut');
+      if (calm || left <= 0) return;
+      left--;
+      // ぼかしている 6px のぶん、少し多めに送る（末尾が薄れないように）
+      inner.style.setProperty('--pan', '-' + (Math.round(over) + 7) + 'px');
+      // 速さは一定にする。長い名前ほど、そのぶん時間をかけて流す
+      inner.style.setProperty('--pan-ms', Math.round(1600 + over * 24) + 'ms');
+      inner.classList.add('pan');
+    });
   }
 
   /**
@@ -335,7 +367,11 @@
     load.entries.forEach(function (e) {
       if (shown >= MAX) return;
       shown++;
-      var doneAll = e.qty > 0 ? e.done >= e.qty : e.done > 0;
+      /* 終えた案件のぶんは、過ぎた日の記録として残している。
+         一日ぶんの実績を入れていない日もあるので、案件そのものが
+         終わっているなら済んだ扱いで出す */
+      var doneAll = e.project.status === 'done'
+        || (e.qty > 0 ? e.done >= e.qty : e.done > 0);
       var rt = sc.rangeText(e.task, e.from, e.to, { noUnit: true, sep: '-' });
       lines.appendChild(el('span', { class: 'cal-line' + (doneAll ? ' done' : '') }, [
         el('i', { style: { background: e.project.color } }),
@@ -379,9 +415,11 @@
       if (shown >= MAX) return;
       shown++;
       var note = DL.events.cellNote(o);
+      /* 名前はもうひと枚かぶせておく。入りきらないものを左へ流すとき、
+         枠（.nm）は動かさず、中の字（.nmi）だけを動かすため */
       lines.appendChild(el('span', { class: 'cal-line' }, [
         el('i', { style: { background: o.ev.color } }),
-        el('span', { class: 'nm', text: o.ev.title }),
+        el('span', { class: 'nm' }, el('span', { class: 'nmi', text: o.ev.title })),
         note ? el('b', { text: note }) : null
       ]));
     });
