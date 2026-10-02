@@ -650,13 +650,31 @@ const MENU_SCHEMA = {
             items: {
               type: 'object',
               additionalProperties: false,
-              required: ['role', 'name', 'seasonings', 'steps'],
+              required: ['role', 'name', 'items', 'seasonings', 'steps'],
               properties: {
                 role: {
                   type: 'string', enum: ['主菜', '副菜', '汁物', '主食'],
                   description: 'その一品の役どころ'
                 },
                 name: { type: 'string', description: '品名。例）鶏の照り焼き' },
+                /* その一品が使う食材。買い物（shopping）のどれを使うかを
+                   結び付けるためのもの。品名は shopping と同じ字で書いてもらう。
+                   一品を入れ替えたとき、その一品のためだけに買うものを
+                   買い物から下ろせるようにするため */
+                items: {
+                  type: 'array',
+                  description: 'この一品に使う食材。調味料は入れない（seasonings のほう）。'
+                    + '品名は shopping に書いたものと同じ字にすること',
+                  items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    required: ['name', 'qty'],
+                    properties: {
+                      name: { type: 'string', description: 'shopping と同じ品名。例）豚ロース' },
+                      qty: { type: 'string', description: 'この一品に使う量。例）150g / 1/2個' }
+                    }
+                  }
+                },
                 seasonings: {
                   type: 'array',
                   description: '使う調味料と分量。家にある調味料でも分量は必ず書く',
@@ -721,6 +739,12 @@ function menuCommonLines(o, one) {
       : null,
     'ただし使う調味料は、一品ごとに seasonings へ必ず分量まで書いてください'
       + '（大さじ1、小さじ1/2、100ml、ひとつまみ など）。「適量」は使わないでください。',
+    /* 一品ごとの食材。買い物のどれがどの一品のためのものかを結び付ける。
+       一品を入れ替えたとき、その一品のためだけに買うものを下ろせるようにする */
+    '買い物（shopping）に入れた食材は、どの一品で使うかを、その一品の items にも'
+      + '書いてください。品名は shopping とまったく同じ字にしてください'
+      + '（表記がずれると結び付けられません）。'
+      + '複数の一品で使うものは、使うすべての一品の items に書いてください。',
     '冷凍食品は使ってもよいですが、頼りすぎないでください（使うなら1品まで）。',
     /* 値段は「東京のふつうのスーパー」を目安にしてもらう。
        生鮮は特売でぶれるので、特売ではない平常の棚値で見てもらう。

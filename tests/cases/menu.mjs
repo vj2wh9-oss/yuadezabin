@@ -18,8 +18,10 @@ const seed = (page) => page.evaluate(() => {
   S.setMenu(a, {
     servings: 1,
     meals: [{ slot: 'dinner', name: '生姜焼き定食', dishes: [
-      { role: '主菜', name: '豚の生姜焼き', seasonings: [{ name: 'しょうゆ', qty: '大さじ1' }], steps: ['焼く'] },
-      { role: '副菜', name: 'キャベツの千切り', seasonings: [], steps: ['切る'] }
+      { role: '主菜', name: '豚の生姜焼き', items: [{ name: '豚ロース', qty: '200g' }],
+        seasonings: [{ name: 'しょうゆ', qty: '大さじ1' }], steps: ['焼く'] },
+      { role: '副菜', name: 'キャベツの千切り', items: [{ name: 'キャベツ', qty: '1/4玉' }],
+        seasonings: [], steps: ['切る'] }
     ] }],
     shopping: [
       { name: '豚ロース', qty: '200g', price: 400 },
@@ -29,8 +31,10 @@ const seed = (page) => page.evaluate(() => {
   S.setMenu(b, {
     servings: 1,
     meals: [{ slot: 'dinner', name: '鮭の塩焼き', dishes: [
-      { role: '主菜', name: '鮭の塩焼き', seasonings: [{ name: '塩', qty: '少々' }], steps: ['焼く'] },
-      { role: '副菜', name: 'ほうれん草のおひたし', seasonings: [], steps: ['ゆでる'] }
+      { role: '主菜', name: '鮭の塩焼き', items: [{ name: '鮭', qty: '2切' }],
+        seasonings: [{ name: '塩', qty: '少々' }], steps: ['焼く'] },
+      { role: '副菜', name: 'ほうれん草のおひたし', items: [{ name: 'ほうれん草', qty: '1束' }],
+        seasonings: [], steps: ['ゆでる'] }
     ] }],
     shopping: [
       { name: '鮭', qty: '2切', price: 380 },
@@ -97,8 +101,14 @@ export default {
       await page.waitForSelector('.sheet-title:has-text("鮭の塩焼き")');
       s.yes('買うものがその日のぶんから並ぶ',
         (await page.locator('.sheet-body .mn-buy').count()) === 2);
-      // 「ほうれん草」は、この一品には要らないので外す
-      await page.click('.sheet-body .mn-buy:has-text("ほうれん草") input');
+      /* 一品ごとの食材が分かっているので、その一品に使うものだけ
+         はじめから印が付く（ほうれん草は副菜のものなので付かない） */
+      const marks = await page.$$eval('.sheet-body .mn-buy', (ns) => ns.map((n) =>
+        n.innerText.replace(/\s+/g, ' ').trim() + '=' + (n.querySelector('input').checked ? 'on' : 'off')));
+      s.note('はじめの印: ' + marks.join(' / '));
+      s.yes('その一品に使うものだけ印が付く',
+        marks.some((x) => /^鮭 /.test(x) && /=on$/.test(x))
+        && marks.some((x) => /ほうれん草/.test(x) && /=off$/.test(x)));
       await page.click('.sheet-foot button:has-text("この一品を入れる")');
       await page.waitForTimeout(500);
 
@@ -121,6 +131,7 @@ export default {
       s.note('副菜を足したあと: ' + JSON.stringify(now));
       s.ok('主菜はそのままで、副菜が足される',
         now.一品, ['主菜:鮭の塩焼き', '副菜:キャベツの千切り']);
+      s.ok('買うものも、その一品ぶんだけ足される', now.買うもの, ['鮭', 'キャベツ']);
 
       /* 同じ役どころを入れると、入れ替わる（2つに増えない） */
       await openDay(page, base);
@@ -140,9 +151,10 @@ export default {
       s.note('主菜を入れ替えたあと: ' + JSON.stringify(now));
       s.ok('主菜が入れ替わり、2つに増えない',
         now.一品, ['主菜:豚の生姜焼き', '副菜:キャベツの千切り']);
+      s.ok('買うものも入れ替わる（鮭が下りて豚ロースが入る）',
+        now.買うもの, ['キャベツ', '豚ロース']);
 
-      s.ok('主菜を入れ替えたら、前の主菜のぶんは買い物から下りる',
-        now.買うもの.indexOf('鮭') < 0, true);
+
 
       /* 買い物リストに出るのは、献立に要るものと手で足したものだけ */
       const T = await page.evaluate(() => window.DL.util.today());
@@ -160,13 +172,39 @@ export default {
         (await page.$$eval('.mn-card .mn-buy .mn-item-n', (ns) => ns.map((n) => n.textContent)))
           .indexOf('ラップ') >= 0);
 
+      /* 2つの一品で使うものは、片方が入れ替わっても下りない */
+      await page.evaluate(() => {
+        const S = window.DL.store, U = window.DL.util, T = U.today();
+        const m = S.getMenu(T);
+        m.meals[0].dishes.forEach((d) => { d.items = (d.items || []).concat([{ name: '玉ねぎ', qty: '1/2個' }]); });
+        m.shopping = (m.shopping || []).concat([{ name: '玉ねぎ', qty: '1個', price: 80 }]);
+        S.setMenu(T, m);
+      });
+      const both = await page.evaluate((d) =>
+        (window.DL.store.getMenu(d).shopping || []).map((x) => x.name + '→' + (x.for || '—')), T);
+      s.note('名札: ' + both.join(' / '));
+      s.yes('2つの一品で使うものにも名札が付く', both.some((x) => /^玉ねぎ→/.test(x)));
+      await page.evaluate(() => {
+        // 主菜だけ外してみる。玉ねぎは副菜も使うので残るはず
+        const S = window.DL.store, U = window.DL.util, T = U.today();
+        const m = S.getMenu(T);
+        m.meals[0].dishes = m.meals[0].dishes.filter((d) => d.role !== '主菜');
+        S.setMenu(T, m);
+      });
+      s.yes('主菜を外しても、副菜も使う玉ねぎは残る', await page.evaluate((d) =>
+        (window.DL.store.getMenu(d).shopping || []).some((x) => x.name === '玉ねぎ'), T));
+      s.yes('主菜だけが使う豚ロースは下りる', !(await page.evaluate((d) =>
+        (window.DL.store.getMenu(d).shopping || []).some((x) => x.name === '豚ロース'), T)));
+
       /* 要らないものは、1行だけ手で外せる */
-      await page.click('[aria-label="豚ロースを買い物から外す"]');
+      await open(page, base, '#/home');
+      await page.waitForSelector('.mn-card .mn-buy');
+      await page.click('[aria-label="キャベツを買い物から外す"]');
       await page.waitForTimeout(400);
       s.yes('1行だけ外せる', !(await page.evaluate((d) =>
-        (window.DL.store.getMenu(d).shopping || []).some((x) => x.name === '豚ロース'), T)));
+        (window.DL.store.getMenu(d).shopping || []).some((x) => x.name === 'キャベツ'), T)));
       s.yes('外しても、献立の一品は残る', (await page.evaluate((d) =>
-        (window.DL.store.getMenu(d).meals || []).reduce((a, x) => a + (x.dishes || []).length, 0), T)) === 2);
+        (window.DL.store.getMenu(d).meals || []).reduce((a, x) => a + (x.dishes || []).length, 0), T)) === 1);
 
       s.ok('画面のエラー', errors, []);
     });

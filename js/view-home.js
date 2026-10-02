@@ -1776,6 +1776,15 @@
         : willSwap ? '「' + willSwap + '」と入れ替わります。'
         : 'いまの献立に足します。' }));
 
+    if ((r.dish.items || []).length) {
+      body.appendChild(ui.section('使う食材'));
+      body.appendChild(el('div', { class: 'mn-list' }, r.dish.items.map(function (x) {
+        return el('div', { class: 'mn-item' }, [
+          el('span', { class: 'mn-item-n', text: x.name }),
+          x.qty ? el('span', { class: 'muted small', text: x.qty }) : null
+        ]);
+      })));
+    }
     if ((r.dish.seasonings || []).length) {
       body.appendChild(ui.section('使う調味料'));
       body.appendChild(el('div', { class: 'mn-list' }, r.dish.seasonings.map(function (sz) {
@@ -1796,13 +1805,23 @@
       body.appendChild(el('p', { class: 'muted small', text: r.memo }));
     }
 
-    /* 買うもの。一品ぶんに分けて持っていないので、もとの日のぶんを並べて選ぶ。
+    /* 買うもの。もとの日のぶんを並べて選ぶ。
+       その一品に使う食材（dish.items）が分かっていれば、それだけに印を付ける。
+       昔の献立には入っていないので、そのときはこれまでどおり全部に印を付けて、
+       要らないものを外してもらう。
        いまの献立にもう入っているものは、はじめから外しておく */
     var have = {};
     ((cur && cur.shopping) || []).forEach(function (x) { have[x.name] = true; });
+    var mine = {};
+    var knows = (r.dish.items || []).length > 0;
+    (r.dish.items || []).forEach(function (x) { mine[S.priceKey(x.name)] = true; });
     var picks = (r.menu.shopping || []).map(function (x) {
-      return { name: x.name, qty: x.qty, price: S.priceOf(x.name) || Math.max(0, Math.round(U.num(x.price, 0))),
-        on: !have[x.name], had: !!have[x.name] };
+      var uses = !knows || !!mine[S.priceKey(x.name)];
+      return {
+        name: x.name, qty: x.qty,
+        price: S.priceOf(x.name) || Math.max(0, Math.round(U.num(x.price, 0))),
+        on: uses && !have[x.name], had: !!have[x.name], uses: uses
+      };
     });
     var sumLine = el('b', { class: 'mn-plan-p' });
     function retotal() {
@@ -1816,8 +1835,11 @@
       body.appendChild(ui.empty('その日の買い物は控えていません。'));
     } else {
       body.appendChild(el('p', { class: 'muted small',
-        text: '一品ぶんの食材は分けて控えていないので、その日に買ったものを並べています。'
-          + 'この一品に要るものだけ残してください。' }));
+        text: knows
+          ? 'この一品に使う食材に、はじめから印を付けてあります。'
+            + 'その日のほかの買い物も、要るものがあれば足せます。'
+          : '一品ぶんの食材を控える前の献立なので、その日に買ったものを並べています。'
+            + 'この一品に要るものだけ残してください。' }));
       body.appendChild(el('div', { class: 'mn-list' }, picks.map(function (x) {
         var box = el('input', { class: 'mn-chk', type: 'checkbox', checked: x.on ? 'checked' : null });
         box.addEventListener('change', function () { x.on = box.checked; retotal(); });
@@ -1825,7 +1847,8 @@
           box,
           el('span', { class: 'mn-item-n', text: x.name }),
           x.qty ? el('span', { class: 'muted small', text: x.qty }) : null,
-          x.had ? ui.chip('もうある', 'ghosty') : null,
+          x.had ? ui.chip('もうある', 'ghosty')
+            : (knows && !x.uses ? ui.chip('ほかの一品', 'ghosty') : null),
           el('b', { class: 'mn-plan-p', text: yen(x.price) })
         ]);
       })));

@@ -2219,11 +2219,25 @@
   function normalizeDish(d) {
     if (typeof d !== 'object' || !d) {
       return { role: '', name: String(d == null ? '' : d).trim().slice(0, 60),
-        seasonings: [], steps: [] };
+        items: [], seasonings: [], steps: [] };
     }
     return {
       role: DISH_ROLES.indexOf(d.role) >= 0 ? d.role : '',
       name: String(d.name || '').trim().slice(0, 60),
+      /* この一品に使う食材。買い物（shopping）のどれを使うかを結び付ける。
+         品名は shopping と同じ字で入ってくる。
+         昔の献立には入っていないので、空のこともある */
+      items: (Array.isArray(d.items) ? d.items : []).slice(0, 12)
+        .map(function (x) {
+          if (typeof x !== 'object' || !x) {
+            return { name: String(x == null ? '' : x).trim().slice(0, 60), qty: '' };
+          }
+          return {
+            name: String(x.name || '').trim().slice(0, 60),
+            qty: String(x.qty || '').trim().slice(0, 24)
+          };
+        })
+        .filter(function (x) { return x.name; }),
       seasonings: (Array.isArray(d.seasonings) ? d.seasonings : []).slice(0, 12)
         .map(function (s) {
           if (typeof s !== 'object' || !s) {
@@ -2275,11 +2289,30 @@
       };
     }).filter(function (x) { return x.name; });
 
-    /* 献立に居ない一品のために買うものは、下ろす。
-       一品を入れ替えたのに、前の一品の食材が買い物に残ってしまうため */
+    /* 買うものと一品を結び付ける。
+
+       一品ごとの食材（dish.items）が入っていれば、それを正とする。
+       いま献立に居る一品が使っている品は、その一品のものとして名札を付け直す
+       （2つの一品で使うものは、居るほうに付く）。
+
+       そのうえで、献立に居ない一品の名札が付いたままの行は下ろす。
+       一品を入れ替えたのに、前の一品の食材が買い物に残ってしまうため。
+       名札の無い行（昔の献立や、どの一品にも結び付かないもの）は残す。 */
     var names = {};
+    var owner = {};
     meals.forEach(function (x) {
-      (x.dishes || []).forEach(function (d) { if (d.name) names[priceKey(d.name)] = true; });
+      (x.dishes || []).forEach(function (d) {
+        if (!d.name) return;
+        names[priceKey(d.name)] = true;
+        (d.items || []).forEach(function (it) {
+          var k = priceKey(it.name);
+          if (k && !owner[k]) owner[k] = d.name;
+        });
+      });
+    });
+    shopping.forEach(function (x) {
+      var k = priceKey(x.name);
+      if (owner[k]) x.for = owner[k];
     });
     shopping = shopping.filter(function (x) {
       return !x.for || names[priceKey(x.for)];
