@@ -15,13 +15,15 @@ const todayLook = (page) => page.evaluate(() => {
   const cs = getComputedStyle(cell);
   const ns = getComputedStyle(n);
   const chip = getComputedStyle(n, '::before');
-  const band = getComputedStyle(cell, '::before');   // 上辺の帯は疑似要素に付く
+  const band = getComputedStyle(cell, '::before');   // 今日の枠は疑似要素に付く
   const cr = cell.getBoundingClientRect();
   const nr = n.getBoundingClientRect();
   return {
     札の左: Math.round(nr.left - cr.left),
     マスの囲い: cs.borderTopWidth,
-    上辺の帯: band.content === 'none' ? '0px' : band.borderTopWidth,
+    今日の枠: band.content === 'none' ? '0px' : band.borderTopWidth,
+    枠の四面: band.content === 'none' ? '0px' : [band.borderTopWidth, band.borderRightWidth,
+      band.borderBottomWidth, band.borderLeftWidth].join('/'),
     日付の色: ns.color,
     札の傾き: chip.transform,
     札の背景: chip.backgroundColor
@@ -46,7 +48,8 @@ export default {
       s.ok('札は長方形（傾けない）', now && now.札の傾き, 'none');
       s.yes('札がマスの左端に付いている', now && now.札の左 <= 1);
       s.yes('札に色が付いている', now && now.札の背景 !== 'rgba(0, 0, 0, 0)');
-      s.yes('マスの上辺に太い帯が乗る（3px）', now && parseFloat(now.上辺の帯) >= 3);
+      s.yes('マスを太い枠で囲う（3px）', now && parseFloat(now.今日の枠) >= 3);
+      s.ok('枠は四方すべてに付く', now && now.枠の四面, '3px/3px/3px/3px');
 
       /* 今日の曜日の見出しにも印が付く */
       s.ok('今日の曜日の見出しが1つだけ光る',
@@ -60,41 +63,42 @@ export default {
       s.ok('終わらない動きが無い', anims.filter((a) => a.c === Infinity).map((a) => a.n), []);
       s.yes('動きが付いている', anims.length > 0);
 
-      /* 点滅の打ちかた。「泊まり勤務」と同系色なので、ゆっくり息をするだけでは
-         見分けが付かなかった。パパッと二回 → ひと拍 → パパッと二回。
-         1周ぶんを刻んで、明るいところのかたまりを数える */
+      /* 点滅するのは塗りではなく「枠」。細かく明滅させると泊まり勤務の
+         色と紛れたので、太い枠がゆっくり濃くなったり薄くなったりする形にした。
+         1周ぶんを刻んで、枠と塗りの濃さを見る */
       const beat = await page.evaluate(() => {
         const cell = document.querySelector('.cal-cell.today');
         const a = document.getAnimations()
           .filter((x) => /^cal-today-blink/.test(x.animationName || ''))[0];
         if (!a) return null;
+        const alpha = (col) => {
+          const m = String(col).match(/[\d.]+/g) || [];
+          return Number(m[3] === undefined ? 1 : m[3]);
+        };
         a.pause();
         const dur = a.effect.getComputedTiming().duration;
-        const N = 200, hi = [];
+        const N = 40, frame = [], fill = [];
         for (let i = 0; i <= N; i++) {
           a.currentTime = (dur * i) / N;
-          const m = getComputedStyle(cell, '::before').backgroundColor.match(/[\d.]+/g) || [];
-          // color-mix の透かしぶん。濃いほうが光っているところ
-          hi.push(Number(m[3] === undefined ? 1 : m[3]) > 0.2);
+          const cs = getComputedStyle(cell, '::before');
+          frame.push(alpha(cs.borderTopColor));
+          fill.push(alpha(cs.backgroundColor));
         }
         a.currentTime = 0;
         a.play();
-        // 明るいところのかたまり（＝光った回数）と、そのあいだの空き
-        const runs = [], gaps = [];
-        let i = 0;
-        while (i <= N) {
-          if (hi[i]) { const st = i; while (i <= N && hi[i]) i++; runs.push([st, i - 1]); }
-          else i++;
-        }
-        for (let k = 1; k < runs.length; k++) gaps.push(runs[k][0] - runs[k - 1][1]);
-        return { dur: Math.round(dur), blinks: runs.length, gaps: gaps };
+        return {
+          dur: Math.round(dur),
+          枠の濃淡: [Math.min.apply(null, frame), Math.max.apply(null, frame)],
+          塗りの振れ: Math.max.apply(null, fill) - Math.min.apply(null, fill)
+        };
       });
       s.note('点滅の打ちかた: ' + JSON.stringify(beat));
-      s.ok('1周で4回光る（二回 → ひと拍 → 二回）', beat && beat.blinks, 4);
-      s.yes('真ん中のひと拍が、となりの空きよりはっきり長い',
-        beat && beat.gaps.length === 3
-        && beat.gaps[1] > beat.gaps[0] * 2 && beat.gaps[1] > beat.gaps[2] * 2);
-      s.yes('1周は2秒以内（パパッと感じる速さ）', beat && beat.dur <= 2000);
+      s.yes('点滅するのは枠（濃いところと薄いところの差が大きい）',
+        beat && (beat.枠の濃淡[1] - beat.枠の濃淡[0]) > 0.5);
+      s.yes('いちばん濃いところでは、枠がはっきり出ている', beat && beat.枠の濃淡[1] > 0.9);
+      s.yes('塗りのほうは動かさない（泊まり勤務の色と濁るため）',
+        beat && beat.塗りの振れ < 0.02);
+      s.yes('1周はゆっくり（2秒以上）', beat && beat.dur >= 2000);
 
       /* 「動き：控える」では動かない */
       await page.evaluate(() => { window.DL.store.updateSettings({ calm: true }); window.DL.app.render(); });
@@ -105,8 +109,9 @@ export default {
       await page.evaluate(() => { window.DL.store.updateSettings({ calm: false }); window.DL.app.render(); });
       await page.waitForTimeout(200);
 
-      /* 下地に色が付いている日（締切など）は、その上に青を重ねない。
-         重ねると濁って、赤とも青ともつかない色になる */
+      /* 下地に色が付いている日（締切など）は、その上に青の塗りを重ねない。
+         重ねると濁って、赤とも青ともつかない色になる。
+         枠の点滅は色を重ねないので、そのまま続ける */
       await page.evaluate(() => {
         const S = window.DL.store, U = window.DL.util, T = U.today();
         const pr = S.createProject({ name: '入稿するもの', category: 'manga', qty: 4,
@@ -123,14 +128,15 @@ export default {
           締切あり: c.classList.contains('has-due'),
           かぶせの塗り: bf.backgroundColor,
           かぶせの動き: bf.animationName,
-          帯の太さ: bf.borderTopWidth
+          枠の太さ: bf.borderTopWidth
         };
       });
       s.note('今日＋締切: ' + JSON.stringify(due));
       s.yes('今日に締切が重なっている', due.締切あり);
       s.ok('青の塗りを重ねない', due.かぶせの塗り, 'rgba(0, 0, 0, 0)');
-      s.ok('息づかいも止める（点滅と重なって濁るため）', due.かぶせの動き, 'none');
-      s.ok('そのぶん上辺の帯を太くする', due.帯の太さ, '4px');
+      s.ok('枠の点滅はそのまま続く（色を重ねないので濁らない）',
+        due.かぶせの動き, 'cal-today-blink');
+      s.ok('そのぶん枠を太くする', due.枠の太さ, '4px');
 
       /* ここが肝心。「前のまま」で、元の見た目に戻ること */
       await page.evaluate(() => { window.DL.store.updateSettings({ calSkin: 'classic' }); window.DL.app.render(); });
@@ -141,7 +147,7 @@ export default {
       s.note('戻したあと: ' + JSON.stringify(old));
       s.yes('札の塗りが無くなる', old && old.札の背景 === 'rgba(0, 0, 0, 0)');
       s.yes('元どおり、今日は囲い線で示される', old && parseFloat(old.マスの囲い) <= 1.5);
-      s.ok('上辺の帯も消える', old && old.上辺の帯, '0px');
+      s.ok('今日の枠も消える', old && old.今日の枠, '0px');
       s.ok('曜日の見出しの印も消える（元の組みには無い飾り）',
         await page.evaluate(() => getComputedStyle(document.querySelector('.cal-hd.is-today')).borderBottomWidth), '0px');
 
@@ -235,35 +241,51 @@ export default {
       s.ok('画面のエラー（絞り込み）', errors, []);
     });
 
-    /* 日常のカレンダー。予定はひとつずつ四角で囲み、
-       入りきらない名前はサイネージと同じように左へ流す */
+    /* 日常のカレンダー。予定はひとつずつ四角で囲んで、その色で塗る。
+       入りきらない名前は左へ流し、抜けきったら右端から入り直す */
     await withPage(base, IPHONE, async (page, errors) => {
       await open(page, base);
       await page.evaluate(() => {
         const S = window.DL.store, U = window.DL.util, T = U.today();
-        S.addEvent({ date: T, title: '歯医者' });
-        S.addEvent({ date: T, title: '合同誌の打ち合わせと原稿の受け渡し（渋谷）' });
+        // 色を決め打ちにして、塗りと字の色を確かめられるようにする
+        S.addEvent({ date: T, title: '歯医者', color: '#111827' });          // 暗い色
+        S.addEvent({ date: T, title: '合同誌の打ち合わせと原稿の受け渡し（渋谷）',
+          color: '#fde047' });                                               // 明るい色
         S.setCalMode('life');
       });
       await open(page, base, '#/calendar');
       await page.waitForSelector('.cal-page.cal-life .cal-grid');
 
-      const box = await page.evaluate(() => {
-        const n = document.querySelector('.cal-page.cal-life .cal-cell.today .cal-line:not(.hol)');
-        if (!n) return null;
-        const cs = getComputedStyle(n);
-        return {
-          囲い: cs.borderTopWidth + ' / ' + cs.borderLeftWidth
-            + ' / ' + cs.borderRightWidth + ' / ' + cs.borderBottomWidth,
-          角: cs.borderTopLeftRadius,
-          塗り: cs.backgroundColor
-        };
+      const boxes = await page.evaluate(() => {
+        const out = [];
+        document.querySelectorAll('.cal-page.cal-life .cal-cell.today .cal-line:not(.hol)')
+          .forEach((n) => {
+            const cs = getComputedStyle(n);
+            out.push({
+              名: n.textContent,
+              縦線: n.querySelectorAll(':scope > i').length,
+              角: cs.borderTopLeftRadius,
+              塗り: cs.backgroundColor,
+              字の色: cs.color,
+              囲いの色: cs.borderTopColor
+            });
+          });
+        return out;
       });
-      s.note('予定の行: ' + JSON.stringify(box));
-      s.yes('四面すべてに囲い線がある',
-        box && box.囲い.split(' / ').every((w) => parseFloat(w) >= 1));
-      s.yes('角は少し落ちている（四角の囲いに見える）', box && parseFloat(box.角) > 0);
-      s.ok('中は塗らない（勤務の色をそのまま透かすため）', box && box.塗り, 'rgba(0, 0, 0, 0)');
+      s.note('予定の行: ' + JSON.stringify(boxes));
+      s.ok('左端の縦線は無くした', boxes.map((x) => x.縦線), [0, 0]);
+      s.yes('角は少し落ちている（四角の囲いに見える）',
+        boxes.length === 2 && boxes.every((x) => parseFloat(x.角) > 0));
+      s.yes('決めた色で塗る（暗い色のほう）',
+        boxes.some((x) => x.名 === '歯医者' && x.塗り === 'rgb(17, 24, 39)'));
+      s.yes('決めた色で塗る（明るい色のほう）',
+        boxes.some((x) => /合同誌/.test(x.名) && x.塗り === 'rgb(253, 224, 71)'));
+      s.yes('囲いの色も、塗りと同じ色にする',
+        boxes.every((x) => x.塗り === x.囲いの色));
+      s.yes('暗い色の上は白い字',
+        boxes.some((x) => x.名 === '歯医者' && x.字の色 === 'rgb(255, 255, 255)'));
+      s.yes('明るい色の上は黒い字',
+        boxes.some((x) => /合同誌/.test(x.名) && x.字の色 === 'rgb(16, 20, 24)'));
 
       /* 長い名前だけが流れる。短い名前は動かさない */
       const pans = await page.evaluate(() => {
@@ -272,7 +294,9 @@ export default {
           .forEach((n) => out.push({
             名: n.textContent,
             流す: n.classList.contains('pan'),
-            送り: n.style.getPropertyValue('--pan'),
+            抜け: n.style.getPropertyValue('--pan-out'),
+            入り: n.style.getPropertyValue('--pan-in'),
+            幅: n.scrollWidth,
             動き: getComputedStyle(n).animationName,
             回数: getComputedStyle(n).animationIterationCount
           }));
@@ -281,8 +305,43 @@ export default {
       s.note('流しかた: ' + JSON.stringify(pans));
       s.yes('入りきらない名前は流す',
         pans.some((x) => /合同誌/.test(x.名) && x.流す && x.動き === 'calPan'));
-      s.yes('流す量は、はみ出したぶんだけ左へ',
-        pans.some((x) => /合同誌/.test(x.名) && parseFloat(x.送り) < -10));
+      /* 左へ少し送るのではなく、字の幅ぶんそっくり送って抜けきらせる。
+         そのあと右端の外（＋のほう）から入り直す */
+      const 長 = pans.filter((x) => /合同誌/.test(x.名))[0];
+      s.yes('左へ抜けきるまで送る（字の幅ぶん）',
+        長 && parseFloat(長.抜け) <= -長.幅);
+      s.yes('入り直すのは右端の外から（右へ戻るのではない）',
+        長 && parseFloat(長.入り) > 0);
+
+      /* 実際の動きも追う。左へ抜けきったあと、右（＋）へ回り込んで
+         頭に戻ること。左へ行って左から右へ戻るのでは駄目 */
+      const path = await page.evaluate(() => {
+        const n = document.querySelector('.cal-line .nmi.pan');
+        const a = document.getAnimations().filter((x) => x.animationName === 'calPan')[0];
+        if (!n || !a) return null;
+        const t = a.effect.getComputedTiming();
+        a.pause();
+        const xs = [];
+        for (let p = 0; p <= 100; p += 2) {
+          a.currentTime = (t.delay || 0) + t.duration * (p / 100);
+          const m = getComputedStyle(n).transform;
+          xs.push(m === 'none' ? 0 : Math.round(Number(m.match(/matrix\(([^)]*)\)/)[1].split(',')[4])));
+        }
+        a.currentTime = 0;
+        a.play();
+        const lo = Math.min.apply(null, xs);
+        const at = xs.indexOf(lo);
+        return { 幅: n.scrollWidth, いちばん左: lo, その後: xs.slice(at + 1) };
+      });
+      s.note('流れの道すじ: ' + JSON.stringify(path && {
+        幅: path.幅, いちばん左: path.いちばん左, その後: path.その後.slice(0, 6)
+      }));
+      s.yes('いちど左へ抜けきる（字の幅ぶん送る）',
+        path && path.いちばん左 <= -path.幅);
+      s.yes('抜けきったら、右の外から入り直す',
+        path && path.その後.some((x) => x > 0));
+      s.yes('最後は頭（0）に戻って次の周へ',
+        path && path.その後.length && path.その後[path.その後.length - 1] === 0);
       s.yes('収まっている名前は流さない',
         pans.some((x) => x.名 === '歯医者' && !x.流す));
       /* 端のぼかしも、はみ出している行だけ。収まっている名前までぼかすと

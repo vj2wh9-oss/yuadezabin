@@ -974,23 +974,25 @@ a.alert-main { text-decoration: none; }
 .cal-cell.duty-office { background: var(--duty-office-bg); }
 .cal-cell.duty-remote { background: var(--duty-remote-bg); }
 .cal-cell.duty-stay { background: var(--duty-stay-bg); }
-/* 予定は1つずつ四角で囲む。ただし敷いた色（勤務の3色）はそのまま
-   透かしたいので、中は塗らず、細い囲い線だけにする
+/* 予定は1つずつ四角で囲い、その予定に決めた色で塗る。
+   色は左端の縦線ではなく、囲いそのものが受け持つ。
+   塗りと字の色は view-calendar.js がその場で入れる
    （案件側は card2 の帯のままにして、見分けが付くようにしておく） */
 .cal-page.cal-life .cal-lines { gap: 2px; }
 .cal-page.cal-life .cal-line {
-  background: transparent;
-  border: 1px solid var(--line2); border-radius: 3px;
-  padding: 0 2px 0 0; overflow: hidden;
+  border: 1px solid transparent; border-radius: 3px;
+  padding: 0 2px; overflow: hidden;
 }
-/* 色の帯は、囲いの内側の左端にぴったり付ける */
-.cal-page.cal-life .cal-line > i { min-height: 12px; border-radius: 2px 0 0 2px; }
 /* 祝日の名前は予定ではないので、囲わない */
-.cal-page.cal-life .cal-line.hol { border: 0; border-radius: 0; }
+.cal-page.cal-life .cal-line.hol {
+  border: 0; border-radius: 0; padding-left: 2px;
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
 
 /* 入りきらない名前は、右上のサイネージと同じように左へ流して全文を出す。
-   動かすのは中の字だけ（枠が動くと囲いごとずれてしまう）。
-   流れ終わると頭に戻り、2周で止まる（終わらない動きは置かない） */
+   左へ抜けきったら、いちど消えて右端から入り直す（流れ直すのであって、
+   右へ戻るのではない）。動かすのは中の字だけで、囲いは動かさない。
+   2周で止まる（終わらない動きは置かない） */
 .cal-page.cal-life .cal-line .nmi { display: inline-block; white-space: nowrap; }
 /* 端のぼかしは、はみ出している行だけ。収まっている名前までぼかすと、
    囲いの中で切れたように見える */
@@ -1000,18 +1002,22 @@ a.alert-main { text-decoration: none; }
   mask-image: linear-gradient(to right, #000 calc(100% - 6px), transparent);
 }
 .cal-page.cal-life .cal-line .nmi.pan {
-  animation: calPan var(--pan-ms, 5s) ease-in-out .8s 2 both;
+  animation: calPan var(--pan-ms, 5s) linear .8s 2 both;
 }
+/* --pan-out … 左へ抜けきるところ（字の幅ぶん）
+   --pan-in  … 右端の外。ここから入り直す */
 @keyframes calPan {
-  0%, 14% { transform: translateX(0); }
-  56%, 72% { transform: translateX(var(--pan, 0px)); }
-  100% { transform: translateX(0); }
+  0%, 10% { transform: translateX(0); }
+  70% { transform: translateX(var(--pan-out, 0px)); }
+  70.01% { transform: translateX(var(--pan-in, 0px)); }
+  80%, 100% { transform: translateX(0); }
 }
 @media (prefers-reduced-motion: reduce) {
   .cal-page.cal-life .cal-line .nmi.pan { animation: none; }
 }
 .cal-page.cal-life .cal-cell.today { border-color: var(--life); box-shadow: inset 0 0 0 1px var(--life); }
-.cal-page.cal-life .cal-line b { color: var(--muted); font-weight: 600; }
+/* 時刻は塗った色の上に乗るので、字の色をそのまま受け継ぐ */
+.cal-page.cal-life .cal-line b { color: inherit; opacity: .78; font-weight: 600; }
 /* iPhone の1マスは50px ほどしかなく、「10:30」を出すと予定名が2文字で切れてしまう。
    狭いうちは名前を優先し、時刻は日別の画面で見せる */
 @media (max-width: 520px) {
@@ -4410,6 +4416,26 @@ body.skin-bar .alert.behind .alert-icon { animation-iteration-count: 20; }
 /* 筋トレの帯 */
 body.fit-theme .appbar::after { animation-iteration-count: 12; }
 
+/* ---- 「止めない」を入れているとき ----
+   上の上限をぜんぶ外して、開いているあいだは回し続ける。
+   電池は食うが、動いていてほしい人のために設定から選べるようにしてある。
+   （「控える」と両方は入らない。app.js で控えるほうを優先する） */
+body.loopfx .logo-word.spin .logo-num i,
+body.loopfx .wx-rays, body.loopfx .wx-core, body.loopfx .wx-moon, body.loopfx .wx-cloud,
+body.loopfx .wx-drop, body.loopfx .wx-flake, body.loopfx .wx-fog, body.loopfx .wx-bolt,
+body.loopfx .alert.overdue, body.loopfx .alert.behind,
+body.loopfx.skin-bar .alert.overdue .alert-icon,
+body.loopfx.skin-bar .alert.behind .alert-icon,
+body.loopfx .cal-cell.has-due, body.loopfx .cal-cell.has-event,
+body.loopfx .tp-now, body.loopfx .tp-nowarc, body.loopfx .tp-row.now, body.loopfx .tp-flow i,
+body.loopfx.fit-theme .appbar::after,
+body.loopfx.cal-new .cal-cell.today::before,
+body.loopfx .cal-page.cal-life .cal-line .nmi.pan {
+  animation-iteration-count: infinite;
+}
+/* 止めないときは、最後の形で固まらせない（また頭から流すため） */
+body.loopfx .cal-page.cal-life .cal-line .nmi.pan { animation-fill-mode: backwards; }
+
 /* ---- 「動きを控える」を入れているとき ----
    飾りは動かさず、地の網点も敷かない。いちばん電池にやさしい。 */
 body.calm .logo-word.spin .logo-num i,
@@ -4469,37 +4495,26 @@ body.cal-new .cal-cell.out .cal-lines { opacity: .4; }
 body.cal-new .cal-cell.out .cal-big { opacity: 0; }
 
 /* ---- 今日 ---- */
-/* 囲い線はやめて、上辺に太い帯とうっすらした塗り。
-   ゆっくり息をするとフリッカーが泊まり勤務の色と見分けづらかったので、
-   打ちかたを変えた。「パパッ・パパッ」と二回光って、ひと拍置いて
-   もう二回。色はそのまま。4周してから落ち着く（約7秒で止まる） */
+/* 四方を太い枠で囲い、その枠をゆっくり点滅させる。
+   細かく明滅させると、泊まり勤務の色と紛れて読み取りにくかった。
+   枠そのものが太く入り切りするほうが、離れて見ても分かる。
+   5周してから落ち着く（約14秒で止まる） */
 body.cal-new .cal-cell.today { border: 0; box-shadow: none; }
 body.cal-new .cal-cell.today::before {
   content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none;
-  border-top: 3px solid var(--accent);
+  border: 3px solid var(--accent);
   background: color-mix(in srgb, var(--accent) 11%, transparent);
-  animation: cal-today-blink 1.75s linear 4 both;
+  animation: cal-today-blink 2.8s ease-in-out 5 both;
 }
-/* 1周 1.75 秒。光りは 1 回 90ms ほどで、拍は 260ms、最後に休みを置く */
+/* 1周 2.8 秒。枠が濃く出て、すっと薄れて、また濃くなる。
+   薄いほうでも少し残しておく（消えきると、どの日か見失うため） */
 @keyframes cal-today-blink {
-  0%, 100% { background: color-mix(in srgb, var(--accent) 11%, transparent); }
-  /* パパッ（1回目） */
-  3% { background: color-mix(in srgb, var(--accent) 30%, transparent); }
-  8% { background: color-mix(in srgb, var(--accent) 11%, transparent); }
-  13% { background: color-mix(in srgb, var(--accent) 30%, transparent); }
-  18% { background: color-mix(in srgb, var(--accent) 11%, transparent); }
-  /* ひと拍 */
-  33% { background: color-mix(in srgb, var(--accent) 11%, transparent); }
-  /* パパッ（2回目） */
-  38% { background: color-mix(in srgb, var(--accent) 30%, transparent); }
-  43% { background: color-mix(in srgb, var(--accent) 11%, transparent); }
-  48% { background: color-mix(in srgb, var(--accent) 30%, transparent); }
-  53% { background: color-mix(in srgb, var(--accent) 11%, transparent); }
-  /* 次の周まで休む */
+  0%, 100% { border-color: var(--accent); }
+  50% { border-color: color-mix(in srgb, var(--accent) 18%, transparent); }
 }
 /* 下地にもう色が付いている日（締切・入稿・イベント・休み・勤務）は、
-   その上に青を重ねると濁る。塗りはやめて、上辺の帯と日付の札だけで示す。
-   帯はそのぶん太くして、ひと目で今日と分かるようにする */
+   その上に青を重ねると濁る。塗りはやめて、枠と日付の札だけで示す。
+   枠はそのぶん太くする（点滅は枠の色だけなので、濁らない） */
 body.cal-new .cal-cell.today.has-due::before,
 body.cal-new .cal-cell.today.has-event::before,
 body.cal-new .cal-cell.today.off::before,
@@ -4507,8 +4522,7 @@ body.cal-new .cal-cell.today.duty-office::before,
 body.cal-new .cal-cell.today.duty-remote::before,
 body.cal-new .cal-cell.today.duty-stay::before {
   background: none;
-  animation: none;
-  border-top-width: 4px;
+  border-width: 4px;
 }
 /* 日付を、白抜きの札に乗せる。
    札はマスの左端にぴたりと付ける（左の余白ぶんだけ外へ出す） */

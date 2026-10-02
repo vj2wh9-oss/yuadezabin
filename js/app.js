@@ -117,6 +117,8 @@
     document.body.classList.toggle('skin-bar', S.settings.cardSkin !== 'classic');
     /* 動きを控える。飾りの動きを出さず、地の網点も敷かない（電池のため） */
     document.body.classList.toggle('calm', !!S.settings.calm);
+    /* 逆に、飾りの動きを止めない。何周かで止める上限を外す */
+    document.body.classList.toggle('loopfx', !S.settings.calm && !!S.settings.loopFx);
     /* カレンダーの見た目。外すと、これまでの見た目に戻る */
     document.body.classList.toggle('cal-new', S.settings.calSkin !== 'classic');
     // 設定は下のタブから外し、題名の右の歯車から開く。
@@ -1191,7 +1193,7 @@
 
   /* この端末がいま動かしている版。sw.js の CACHE と揃えて上げる。
      2台で見比べて、片方だけ古いままになっていないか確かめるためのもの */
-  DL.VERSION = 'v226';
+  DL.VERSION = 'v227';
 
   DL.app = { render: render, init: init, get route() { return route; } };
   document.addEventListener('DOMContentLoaded', init);

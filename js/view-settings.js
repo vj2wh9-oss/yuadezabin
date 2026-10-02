@@ -47,13 +47,21 @@
         function (v) { S.updateSettings({ calSkin: v }); DL.app.render(); }
       ), 'この端末だけ。今日のマスを目立たせ、マスの囲いを細い罫にします'),
       /* 飾りの動きは、開いてしばらくで自分から止まるようにしてある。
-         それでも電池が気になるときは、ここではじめから出さないようにできる。
+         それでも電池が気になるときは、はじめから出さないようにできるし、
+         逆に止めずに回し続けることもできる。
          この端末だけの設定（同期には持ち出さない） */
       ui.field('動き', ui.segmented(
-        [{ value: 'on', label: 'ふつう' }, { value: 'calm', label: '控える（電池優先）' }],
-        s.calm ? 'calm' : 'on',
-        function (v) { S.updateSettings({ calm: v === 'calm' }); DL.app.render(); }
-      ), 'この端末だけ。飾りの動きと、背景の網点を出さなくなります')
+        [{ value: 'on', label: 'ふつう' },
+          { value: 'loop', label: '止めない' },
+          { value: 'calm', label: '控える' }],
+        s.calm ? 'calm' : (s.loopFx ? 'loop' : 'on'),
+        function (v) {
+          S.updateSettings({ calm: v === 'calm', loopFx: v === 'loop' });
+          DL.app.render();
+        }
+      ), 'この端末だけ。「ふつう」は何周かで自分から止まります。'
+        + '「止めない」は開いているあいだ回し続け（電池を使います）、'
+        + '「控える」は飾りの動きも背景の網点も出しません')
     ]));
 
     /* 休業日はカレンダーの日別画面から指定する（ここには置かない） */
