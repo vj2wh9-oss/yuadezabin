@@ -38,7 +38,7 @@ function routesFor(at) {
     at.pid ? '#/p/' + at.pid : null,
     at.pid ? '#/project/' + at.pid : null,
     at.pid ? '#/pages/' + at.pid : null,
-    '#/sales', '#/books', '#/outgo', '#/body', '#/files', '#/stock', '#/settings', '#/search',
+    '#/sales', '#/books', '#/outgo', '#/body', '#/supply', '#/files', '#/stock', '#/settings', '#/search',
     '#/day/' + at.today, '#/time/' + at.today,
     '#/logs', '#/ideas', '#/orders', '#/crm', '#/docs', '#/fit', '#/lock', '#/home'
   ].filter(Boolean);

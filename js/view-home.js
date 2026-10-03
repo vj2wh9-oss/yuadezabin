@@ -3,9 +3,20 @@
   'use strict';
   var U = DL.util, ui = DL.ui, S = DL.store, sc = DL.schedule, el = U.el;
 
+  /* 備えの棚から買い物リストへ積むのは、開いた拍子に一度だけ。
+     描き直すたびにやると、消した行が何度でも戻ってきてしまう */
+  var supplySynced = false;
+
   function render(root) {
     var today = U.today();
     var wrap = el('div', { class: 'page' });
+
+    /* 描いている最中に store を触ると、その場で描き直しが起きて
+       画面が二重になる。いまの描き直しが終わってからにする */
+    if (!supplySynced) {
+      supplySynced = true;
+      setTimeout(function () { DL.supply.sync(today); }, 0);
+    }
 
     /* 今日。案件のノルマと日常の予定を、どちらもここに出す */
     var load = sc.loadOfDay(today);
@@ -75,7 +86,8 @@
     var al = sc.alerts(today)
       .concat(DL.expenses.renewAlerts(today))
       .concat(DL.outgo.alerts(today))
-      .concat(DL.body.alerts(today));
+      .concat(DL.body.alerts(today))
+      .concat(DL.supply.alerts(today));
     var urgent = plans.filter(function (o) { return o.ev.important; });
     if (al.length || urgent.length) {
       var box = el('div', { class: 'alerts' });
@@ -143,6 +155,9 @@
     /* からだの台帳（通院・服薬・健診）。毎日さわるものではないので、
        METEO LOCK と同じく入口だけ置く */
     wrap.appendChild(DL.views.body.entry());
+
+    /* 備えの棚（備蓄と消耗品）。こちらも入口だけ */
+    wrap.appendChild(DL.views.supply.entry());
 
     if (DL.views.lock) wrap.appendChild(DL.views.lock.entry());
 

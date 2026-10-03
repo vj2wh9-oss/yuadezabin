@@ -246,6 +246,10 @@
     visits: [],
     // 健診 [{id, date, name, memo, values:{<数値のキー>: 数}}]
     checkups: [],
+    /* 備えの棚。期限のある備蓄（ローリングストック）と、減っていく消耗品
+       [{id, name, kind:'stock'|'use', unit, need, lots:[{id,until,qty}],
+         have, days, lastAt, lead, price, place, memo, queuedAt, active}] */
+    supplies: [],
     // 家にある調味料 [{id, name, qty, unit, until}]
     pantry: [],
     // 残り物 [{id, name, qty, unit, until, kept}]。kept＝食材ではない作り置き
@@ -398,6 +402,7 @@
     s.settings.medLog = normalizeMedLog(s.settings.medLog);
     s.settings.visits = (s.settings.visits || []).map(normalizeVisit);
     s.settings.checkups = (s.settings.checkups || []).map(normalizeCheckup);
+    s.settings.supplies = (s.settings.supplies || []).map(normalizeSupply);
     s.settings.tags = (s.settings.tags || []).map(normalizeTag);
     s.settings.expenseCategories = normalizeExpenseCategories(s.settings.expenseCategories);
     s.settings.items = (s.settings.items || []).map(normalizeItem);
@@ -3719,6 +3724,66 @@
     save();
   }
 
+  /* ---- 備えの棚 ----
+
+     備蓄は期限ごとの束（lots）で持つ。古いものから使って買い足す
+     ローリングストックのため、ひとまとめの数では足りない。
+     消耗品のほうは「1つで何日もつか」と「いま何個あるか」で読む。 */
+
+  var SUPPLY_KINDS = ['stock', 'use'];
+
+  function normalizeSupply(x) {
+    x = x || {};
+    x.id = x.id || U.uid();
+    x.name = String(x.name || '').trim().slice(0, 60) || '(名称未設定)';
+    x.kind = SUPPLY_KINDS.indexOf(x.kind) >= 0 ? x.kind : 'stock';
+    x.unit = String(x.unit || '').trim().slice(0, 8);
+    x.need = Math.max(0, Math.round(U.num(x.need, 0)));       // 備蓄の目標
+    x.lots = (Array.isArray(x.lots) ? x.lots : []).map(function (l) {
+      return {
+        id: (l && l.id) || U.uid(),
+        until: U.isISO(l && l.until) ? l.until : '',
+        qty: Math.max(0, Math.round(U.num(l && l.qty, 0)))
+      };
+    }).filter(function (l) { return l.qty > 0; }).slice(0, 60);
+    x.have = Math.max(0, Math.round(U.num(x.have, 0)));       // 消耗品の予備
+    x.days = Math.max(0, Math.round(U.num(x.days, 0)));       // 1つで何日もつか
+    x.lastAt = U.isISO(x.lastAt) ? x.lastAt : '';             // 最後に開けた日
+    x.lead = Math.min(60, Math.max(0, Math.round(U.num(x.lead, 3))));
+    x.price = Math.max(0, Math.round(U.num(x.price, 0)));
+    x.place = String(x.place || '').slice(0, 40);             // しまってある場所
+    x.memo = String(x.memo || '').slice(0, 300);
+    // 買い物リストへ積んだ日。二度積まないための印
+    x.queuedAt = U.isISO(x.queuedAt) ? x.queuedAt : '';
+    x.active = x.active !== false;
+    x.at = x.at || new Date().toISOString();
+    return x;
+  }
+
+  function supplies() { return (state.settings.supplies || []).slice(); }
+  function getSupply(id) {
+    return (state.settings.supplies || []).filter(function (x) { return x.id === id; })[0] || null;
+  }
+  function addSupply(data) {
+    var x = normalizeSupply(Object.assign({ id: U.uid() }, data));
+    state.settings.supplies = (state.settings.supplies || []).concat([x]);
+    save();
+    return x;
+  }
+  function updateSupply(id, patch, opts) {
+    var x = getSupply(id);
+    if (!x) return null;
+    Object.assign(x, patch);
+    normalizeSupply(x);
+    save(opts);
+    return x;
+  }
+  function removeSupply(id) {
+    state.settings.supplies = (state.settings.supplies || [])
+      .filter(function (x) { return x.id !== id; });
+    save();
+  }
+
   /* ---- 家にある調味料と、残り物 ----
 
      調味料は「家にあるか・切れていないか」を見るだけのもので、
@@ -4987,6 +5052,7 @@
       mergeById(state.settings.meds || (state.settings.meds = []), incoming.settings.meds || []);
       mergeById(state.settings.visits || (state.settings.visits = []), incoming.settings.visits || []);
       mergeById(state.settings.checkups || (state.settings.checkups = []), incoming.settings.checkups || []);
+      mergeById(state.settings.supplies || (state.settings.supplies = []), incoming.settings.supplies || []);
       var mlog = state.settings.medLog || (state.settings.medLog = {});
       Object.keys(incoming.settings.medLog || {}).forEach(function (d) {
         var day = mlog[d] || (mlog[d] = {});
@@ -5294,6 +5360,8 @@
     removeVisit: removeVisit,
     checkups: checkups, getCheckup: getCheckup, addCheckup: addCheckup,
     updateCheckup: updateCheckup, removeCheckup: removeCheckup,
+    supplies: supplies, getSupply: getSupply, addSupply: addSupply,
+    updateSupply: updateSupply, removeSupply: removeSupply, SUPPLY_KINDS: SUPPLY_KINDS,
     items: items, getItem: getItem, addItem: addItem, updateItem: updateItem, removeItem: removeItem,
     stockMoves: stockMoves, getMove: getMove, addMove: addMove, updateMove: updateMove, removeMove: removeMove,
     MOVE_KINDS: MOVE_KINDS,
