@@ -134,6 +134,52 @@
     }, function () { throw new Error('通信できませんでした'); });
   }
 
+  /**
+   * その日の買い物を、いまのレシピに要るものだけにする。
+   *
+   * 食材の分からない一品（items の無い一品）があると、どの買い物が
+   * どの一品のためのものか分からず、要らなくなったものを下ろせない。
+   * そこを先に数え直してから、買い物を組み直す。
+   *
+   * @param {string} date
+   * @returns {Promise<{ok, filled, dropped, added}>}
+   *   filled … 数え直した一品の数／dropped … 下ろした品／added … 足した品
+   */
+  function tidy(date) {
+    var m = S.getMenu(date);
+    if (!m) return Promise.resolve({ ok: false, filled: 0, dropped: [], added: [] });
+
+    var dishes = [];
+    (m.meals || []).forEach(function (x) {
+      (x.dishes || []).forEach(function (d) { if (d.name) dishes.push(d); });
+    });
+    var blind = dishes.filter(function (d) { return !(d.items || []).length; });
+
+    var fill = (blind.length && ready())
+      ? fillItems(blind, { servings: m.servings }).catch(function () { return {}; })
+      : Promise.resolve({});
+
+    return fill.then(function (got) {
+      var next = U.clone(m);
+      var filled = 0;
+      (next.meals || []).forEach(function (x) {
+        (x.dishes || []).forEach(function (d) {
+          if ((d.items || []).length) return;
+          if ((got[d.name] || []).length) { d.items = got[d.name]; filled++; }
+        });
+      });
+      var was = (m.shopping || []).map(function (x) { return x.name; });
+      var out = S.syncMenuShopping(next);
+      var now = (out.shopping || []).map(function (x) { return x.name; });
+      S.setMenu(date, out);
+      return {
+        ok: true, filled: filled,
+        dropped: was.filter(function (n) { return now.indexOf(n) < 0; }),
+        added: now.filter(function (n) { return was.indexOf(n) < 0; })
+      };
+    });
+  }
+
   /* 作りたいもの。料理の名前そのもの。[{name, role}] にそろえる */
   var WANT_ROLES = ['主菜', '副菜'];
 
@@ -516,6 +562,7 @@
     season: season,
     extras: extras, seasoningState: seasoningState, matcher: matcher, pantryMap: pantryMap,
     dropOwned: dropOwned,
-    useLeftovers: useLeftovers, key: key, wantOf: wantOf, fillItems: fillItems
+    useLeftovers: useLeftovers, key: key, wantOf: wantOf,
+    fillItems: fillItems, tidy: tidy
   };
 })(window.DL);

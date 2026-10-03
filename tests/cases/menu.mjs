@@ -293,6 +293,84 @@ export default {
       s.ok('画面のエラー（入れ替えと買い物）', errors, []);
     });
 
+    /* 買い物リストの精査。
+       いまのレシピに要らなくなったものを下ろし、足りないものを足す。
+       食材の分からない一品は、先に数え直してもらう（OpenAI） */
+    await withPage(base, IPHONE, async (page, errors) => {
+      await open(page, base);
+      await page.route(/\/v1\/menu\/items$/, (r) => {
+        const b = JSON.parse(r.request().postData() || '{}');
+        const by = {
+          'チキンカレー': [
+            { name: '鶏もも肉', qty: '300g', price: 450 },
+            // その料理だけに要る調味料。家にあるもの扱いにせず、買い物へ
+            { name: 'カレールウ', qty: '1箱', price: 280 },
+            { name: '玉ねぎ', qty: '2個', price: 160 }
+          ]
+        };
+        return r.fulfill({
+          status: 200, contentType: 'application/json',
+          body: JSON.stringify({ ok: true, data: { dishes: (b.dishes || [])
+            .map((d) => ({ name: d.name, items: by[d.name] || [] })) } })
+        });
+      });
+      await page.route(/\/v1\/(inbox|meta|state|files)\b/, (r) => r.fulfill({
+        status: 200, contentType: 'application/json', body: '{"items":[]}'
+      }));
+
+      const T = await page.evaluate(() => {
+        const S = window.DL.store, U = window.DL.util, T = U.today();
+        S.updateSettings({ lifeBudget: 60000 });
+        S.updateSync({
+          url: location.origin, token: 'test-token-0123456789abcdefghij', id: 't', enabled: true
+        });
+        // 食材の控えが無い一品。買い物には前のレシピのものが残っている
+        S.setMenu(T, { servings: 1, meals: [{ slot: 'dinner', name: 'チキンカレー', dishes: [
+          { role: '主菜', name: 'チキンカレー',
+            seasonings: [{ name: 'カレールウ', qty: '1/2箱' }], steps: ['煮る'] }
+        ] }], shopping: [
+          { name: '豚ロース', qty: '200g', price: 400 },
+          { name: 'キャベツ', qty: '1/4玉', price: 120 },
+          { name: '鶏もも肉', qty: '300g', price: 450 }
+        ] });
+        // 手で足したぶん。献立とは関わらないので、精査でも残る
+        S.addShopItem({ name: 'ラップ', price: 200 });
+        return T;
+      });
+      const shop = () => page.evaluate((d) =>
+        (window.DL.store.getMenu(d).shopping || []).map((x) => x.name), T);
+
+      s.ok('精査の前は、前のレシピのものが残っている', await shop(),
+        ['豚ロース', 'キャベツ', '鶏もも肉']);
+
+      await open(page, base, '#/home');
+      await page.waitForSelector('.mn-card .mn-acts');
+      await page.locator('.mn-card button:has-text("精査")').click();
+      await page.waitForTimeout(900);
+
+      const after = await shop();
+      s.note('精査のあと: ' + JSON.stringify(after));
+      s.yes('要らなくなったものが下りる',
+        after.indexOf('豚ロース') < 0 && after.indexOf('キャベツ') < 0);
+      s.yes('レシピに要るものは残る', after.indexOf('鶏もも肉') >= 0);
+      s.yes('足りないものが足される', after.indexOf('玉ねぎ') >= 0);
+      s.yes('その料理だけに要る調味料も買い物に入る', after.indexOf('カレールウ') >= 0);
+      s.ok('いまのレシピのぶんだけになる', after.slice().sort(),
+        ['カレールウ', '玉ねぎ', '鶏もも肉'].sort());
+
+      /* 手で足したぶんは、献立とは別なので触らない */
+      s.yes('手で足したものは残る', await page.evaluate(() =>
+        window.DL.store.shopItems().some((x) => x.name === 'ラップ')));
+
+      /* 数えたぶんは控えるので、次からは頼まずに済む */
+      s.yes('数えた食材は、その一品に控えておく', await page.evaluate((d) =>
+        (window.DL.store.getMenu(d).meals || [])
+          .reduce((a, x) => a.concat(x.dishes || []), [])
+          .every((x) => (x.items || []).length > 0), T));
+
+      s.ok('画面のエラー（精査）', errors, []);
+    });
+
     /* 献立の選ぶところと「作りたいもの」 */
     await withPage(base, IPHONE, async (page, errors) => {
       await open(page, base);

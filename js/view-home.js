@@ -943,6 +943,35 @@
     }
   }
 
+  /* 買い物を、いまのレシピに要るものだけにする。
+     食材の分からない一品は、先に数え直してもらう（OpenAI）。
+     要らなくなったものが下り、足りないものが足される */
+  var mTidy = false;
+
+  function tidyShop(dates) {
+    if (mTidy) return;
+    mTidy = true;
+    DL.app.render();
+    var dropped = [], added = [], filled = 0;
+    dates.reduce(function (p, d) {
+      return p.then(function () {
+        return DL.menu.tidy(d).then(function (r) {
+          dropped = dropped.concat(r.dropped);
+          added = added.concat(r.added);
+          filled += r.filled;
+        }, function () { /* 1日ぶん駄目でも、ほかは続ける */ });
+      });
+    }, Promise.resolve()).then(function () {
+      mTidy = false;
+      DL.app.render();
+      if (!dropped.length && !added.length) { ui.toast('そのままで合っています'); return; }
+      ui.toast([
+        dropped.length ? dropped.join('・') + ' を下ろしました' : '',
+        added.length ? added.join('・') + ' を足しました' : ''
+      ].filter(Boolean).join('／'));
+    });
+  }
+
   /* ---------------- ホームの買い物リスト ----------------
 
      献立はカレンダーの日付ごとに作る。ホームに出すのは「何を買うか」だけ。
@@ -991,6 +1020,11 @@
       menus.length ? ui.btn('献立', 'ghost', function () {
         planShopSheet(r.from, r.to);
       }, 'books') : null,
+      /* いまのレシピに要るものだけに整える。
+         一品を入れ替える前の食材が残っているときに使う */
+      menus.length ? ui.btn(mTidy ? '精査中…' : '精査', 'ghost', function () {
+        tidyShop(menus.map(function (x) { return x.date; }));
+      }, 'refresh') : null,
       /* 買い終わったものを消す口。献立があってもなくても、いつでも同じ場所に置く */
       ui.btn('チェック済削除', 'ghost', function () { dropGotShop(r); }, 'trash')
     ]));

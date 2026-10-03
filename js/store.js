@@ -2381,6 +2381,10 @@
       });
     });
 
+    // いま献立に居る一品の名前。名札の付いた行が宛て先を失っていないか見る
+    var here = {};
+    dishes.forEach(function (d) { here[priceKey(d.name)] = true; });
+
     var shopping = [];
     var seen = {};
     (menu.shopping || []).forEach(function (x) {
@@ -2391,7 +2395,10 @@
         shopping.push(Object.assign({}, x, { for: want[k].dish }));
         return;
       }
-      // どの一品も使わない行。食材がぜんぶ分かっているときだけ下ろす
+      /* もう居ない一品の名札が付いた行は、いつでも下ろす。
+         （名札があるのだから、持ち主が居なくなったことは分かる） */
+      if (x.for && !here[priceKey(x.for)]) return;
+      // 名札の無い行。食材がぜんぶ分かっているときだけ下ろす
       if (blind) { seen[k] = true; shopping.push(x); }
     });
 
