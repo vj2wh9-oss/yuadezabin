@@ -13,7 +13,9 @@
     var plans = DL.events.ofDay(today).filter(function (o) { return !DL.events.isDone(o); });
     // 期限の切れた調味料と残り物。捨てるものとして、ここにだけ出す
     var toss = S.expiredFood(today);
-    var todo = load.entries.length + plans.length + toss.length;
+    // 飲み残しているくすり。1行にまとめて「今日やること」に並べる
+    var medRow = DL.views.body.todoRow(today);
+    var todo = load.entries.length + plans.length + toss.length + (medRow ? 1 : 0);
     wrap.appendChild(el('div', { class: 'today-head' }, [ui.dateHead(today), weatherChip(today)]));
 
     // iCloud への書き出しは Cloudflare 同期の予備なので、ホームでは案内しない。
@@ -72,7 +74,8 @@
     // 年表（年払い・税・更新）で、近いものと払い残しもここに混ぜる
     var al = sc.alerts(today)
       .concat(DL.expenses.renewAlerts(today))
-      .concat(DL.outgo.alerts(today));
+      .concat(DL.outgo.alerts(today))
+      .concat(DL.body.alerts(today));
     var urgent = plans.filter(function (o) { return o.ev.important; });
     if (al.length || urgent.length) {
       var box = el('div', { class: 'alerts' });
@@ -108,6 +111,7 @@
       // カレンダーの切り替えとは関わりなく、ホームには両方を出す
       plans.forEach(function (o) { list.appendChild(planRow(o)); });
       toss.forEach(function (t) { list.appendChild(tossRow(t)); });
+      if (medRow) list.appendChild(medRow);
       wrap.appendChild(list);
     }
 
@@ -136,6 +140,10 @@
     /* ID とパスワードの金庫（METEO LOCK）。いちばん下に入口だけ置く。
        プロット相談はここから外した——案件の画面から開けるようになったので、
        ホームに二重に置いておく理由がなくなった */
+    /* からだの台帳（通院・服薬・健診）。毎日さわるものではないので、
+       METEO LOCK と同じく入口だけ置く */
+    wrap.appendChild(DL.views.body.entry());
+
     if (DL.views.lock) wrap.appendChild(DL.views.lock.entry());
 
     // 「いまの様子」「売上」「1日の記録」は、それぞれのタブと重なるのでホームには出さない。

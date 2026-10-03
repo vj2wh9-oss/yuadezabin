@@ -197,6 +197,75 @@
       }
     },
 
+    /* くすり */
+    meds: {
+      label: 'くすり',
+      note: 'その日まだ飲んでいないぶんを、いつ飲むか（朝・昼・夜・寝る前）ごとに知らせます。'
+        + '飲んだ印を付けたぶんは鳴りません',
+      whens: [{ value: 'slots', label: 'いつ飲むかの時刻' }],
+      noTime: true,
+      times: DL.body ? DL.body.SLOTS.map(function (sl) {
+        return { key: sl.key + 'Time', short: sl.label, def: sl.time,
+          label: sl.label + 'に知らせる時刻' };
+      }) : [],
+      build: function (rule, from, to) {
+        var out = [];
+        U.rangeDays(from, to).forEach(function (date) {
+          DL.body.SLOTS.forEach(function (sl) {
+            var rows = DL.body.dose(date).filter(function (r) {
+              return r.slot === sl.key && !r.taken;
+            });
+            if (!rows.length) return;
+            var at = atLocal(date, rule[sl.key + 'Time'] || sl.time, 0);
+            if (!at) return;
+            out.push({
+              id: 'med|' + rule.id + '|' + sl.key + '|' + date,
+              at: at,
+              title: sl.label + 'のくすり　' + rows.length + '件',
+              body: rows.map(function (r) {
+                return r.med.name + (r.med.dose ? ' ' + r.med.dose : '');
+              }).slice(0, 4).join('、'),
+              tag: 'med-' + sl.key + '-' + date,
+              url: '#/body'
+            });
+          });
+        });
+        return out;
+      }
+    },
+
+    /* 通院の予約 */
+    visit: {
+      label: '通院の予約',
+      note: '次の通院の予約を知らせます',
+      days: true,
+      whens: [
+        { value: 'beforeDay', label: '予約の◯日前' },
+        { value: 'onDay', label: '当日の指定時刻' }
+      ],
+      build: function (rule, from, to) {
+        var out = [];
+        var lead = rule.when === 'beforeDay' ? Math.max(1, U.num(rule.days, 1)) : 0;
+        S.visits().forEach(function (v) {
+          if (!U.isISO(v.next)) return;
+          var fire = U.addDays(v.next, -lead);
+          if (U.cmp(fire, from) < 0 || U.cmp(fire, to) > 0) return;
+          var at = atLocal(fire, rule.time || '09:00', 0);
+          if (!at) return;
+          out.push({
+            id: 'visit|' + rule.id + '|' + v.id + '|' + v.next,
+            at: at,
+            title: (lead ? lead + '日後' : '今日') + '　' + (v.place || '通院') + 'の予約',
+            body: U.fmtMD(v.next) + (v.nextTime ? ' ' + v.nextTime : '')
+              + (v.dept ? '　' + v.dept : ''),
+            tag: 'visit-' + v.id + '-' + v.next,
+            url: '#/body'
+          });
+        });
+        return out;
+      }
+    },
+
     /* 出ていくお金（年表） */
     outgo: {
       label: '出ていくお金',

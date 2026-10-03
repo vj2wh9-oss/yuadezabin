@@ -1652,6 +1652,61 @@ a.alert-main { text-decoration: none; }
 .due-card { display: flex; flex-direction: column; gap: 7px; border-left: 3px solid var(--accent); }
 .due-card .row-title { align-items: center; gap: 6px; font-weight: 700; }
 
+/* ---------------- からだの台帳 ---------------- */
+/* 今日のくすり。いつ飲むかで束ねて、1回ぶんずつ押せるようにする */
+.bd-dose { display: flex; flex-direction: column; gap: 5px; }
+.bd-slot {
+  font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: .06em;
+  padding: 4px 0 0;
+}
+.bd-pill {
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  background: var(--card2); border: 1px solid var(--line2); border-radius: var(--radius-s);
+  padding: 8px 10px; font-size: 14px;
+}
+.bd-pill.on { opacity: .55; }
+.bd-pill.on .bd-pill-n { text-decoration: line-through; }
+.bd-pill-n { flex: 1; min-width: 0; font-weight: 600; }
+/* ホームの「今日やること」に出すときは、囲いを軽くする */
+.bd-dose.flat .bd-slot { display: none; }
+.bd-dose.flat { flex-direction: row; flex-wrap: wrap; gap: 5px; }
+.bd-dose.flat .bd-pill { padding: 5px 8px; font-size: 13px; }
+
+/* 次の通院 */
+.bd-next { border-left: 3px solid var(--accent); padding-left: 9px; }
+.bd-next.soon { border-left-color: var(--warn); }
+
+/* 健診の数値。前回との差と、基準の内外を並べる */
+.bd-vitals { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.bd-vital {
+  display: flex; flex-direction: column; gap: 2px; align-items: flex-start;
+  background: var(--card2); border: 1px solid var(--line2); border-radius: var(--radius-s);
+  padding: 7px 9px; font: inherit; color: inherit; text-align: left; cursor: pointer;
+}
+.bd-vital.out { border-color: var(--warn); }
+.bd-vital-k { font-size: 10.5px; color: var(--muted); }
+.bd-vital-v { font-size: 15px; font-variant-numeric: tabular-nums; }
+.bd-vital-d { display: flex; align-items: center; gap: 5px; }
+
+/* 健診を入れるときの並び */
+.bd-input-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.bd-input { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.bd-input-k { font-size: 11.5px; color: var(--muted); display: flex; gap: 4px; align-items: baseline; }
+.bd-input-k i { font-style: normal; font-size: 10px; }
+.bd-input-r { font-size: 10px; color: var(--muted); }
+
+/* 推移 */
+.bd-trend { display: flex; flex-direction: column; gap: 4px; padding: 4px 12px; }
+.bd-trend-row { display: grid; grid-template-columns: 78px 1fr auto; gap: 7px; align-items: center; }
+.bd-trend-d { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.bd-trend-rail { height: 8px; background: var(--card2); border-radius: 2px; overflow: hidden; }
+.bd-trend-rail > i { display: block; height: 100%; background: var(--accent); }
+.bd-trend-v { font-size: 12.5px; font-variant-numeric: tabular-nums; }
+
+/* 選べるチップ（いつ飲むか・曜日） */
+.chip.pick { cursor: pointer; border-color: var(--line2); background: var(--chip-under); }
+.chip.pick.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
 /* ---------------- 出ていくお金の年表 ---------------- */
 /* 枠の中に並べる行。カードの中では囲いを外して、仕切り線だけにする */
 .list.tight { gap: 0; }

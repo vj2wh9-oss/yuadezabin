@@ -76,6 +76,16 @@
 
   function isPaid(x, date) { return !!S.outgoPaid()[key(x, date)]; }
 
+  /**
+   * 入れた日。
+   * at は世界時で持っているので、そのまま頭を切ると日本では前の日になる。
+   * いちど日付に直してから見る。
+   */
+  function addedOn(x) {
+    var at = new Date(String((x && x.at) || ''));
+    return isFinite(at.getTime()) ? U.toISO(at) : '';
+  }
+
   /* 'MM-DD' を、その年の日付に。2/29 のような無い日は、その月の末日に寄せる */
   function dayOfYear(year, md) {
     var p = String(md).split('-');
@@ -122,7 +132,7 @@
        入れた年より前の回まで数えると、去年の住民税をいつまでも
        催促することになるので、登録より前の回は初めから見ない。
        周期（cycle）のほうは next が目印そのものなので、この断りは要らない */
-    var since = x.kind === 'dates' ? String(x.at || '').slice(0, 10) : '';
+    var since = x.kind === 'dates' ? addedOn(x) : '';
     if (since && U.isISO(since)) {
       raw = raw.filter(function (dt) { return U.cmp(dt, since) >= 0; });
     }
@@ -241,7 +251,7 @@
   function span(x, today) {
     if (x.kind === 'once') {
       if (!U.isISO(x.next)) return null;
-      var from = U.isISO(String(x.at).slice(0, 10)) ? String(x.at).slice(0, 10) : today;
+      var from = addedOn(x) || today;
       return { prev: U.cmp(from, x.next) < 0 ? from : x.next, next: x.next };
     }
     if (x.kind === 'dates') {

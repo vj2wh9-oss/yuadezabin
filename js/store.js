@@ -237,6 +237,15 @@
     // 貯金（貯蓄用の口座）。残高は銀行から読むか、手で入れる
     // { goal, at, total, accounts:[{id,name,balance}], history:{'YYYY-MM-DD': 残高} }
     savings: { goal: 0, at: '', total: 0, accounts: [], history: {} },
+    /* からだの台帳。体重とトレーニングの隣に置く、通院・服薬・健診 */
+    // くすり [{id, name, dose, times:['morning',…], weekdays:[0-6], from, until, memo, active}]
+    meds: [],
+    // 飲んだ印 { 'YYYY-MM-DD': { '<くすりID>|<いつ>': true } }
+    medLog: {},
+    // 通院 [{id, date, time, place, dept, reason, cost, memo, next, expenseId}]
+    visits: [],
+    // 健診 [{id, date, name, memo, values:{<数値のキー>: 数}}]
+    checkups: [],
     // 家にある調味料 [{id, name, qty, unit, until}]
     pantry: [],
     // 残り物 [{id, name, qty, unit, until, kept}]。kept＝食材ではない作り置き
@@ -385,6 +394,10 @@
     s.settings.recurring = (s.settings.recurring || []).map(normalizeRecurring);
     s.settings.outgo = (s.settings.outgo || []).map(normalizeOutgo);
     s.settings.outgoPaid = normalizeOutgoPaid(s.settings.outgoPaid);
+    s.settings.meds = (s.settings.meds || []).map(normalizeMed);
+    s.settings.medLog = normalizeMedLog(s.settings.medLog);
+    s.settings.visits = (s.settings.visits || []).map(normalizeVisit);
+    s.settings.checkups = (s.settings.checkups || []).map(normalizeCheckup);
     s.settings.tags = (s.settings.tags || []).map(normalizeTag);
     s.settings.expenseCategories = normalizeExpenseCategories(s.settings.expenseCategories);
     s.settings.items = (s.settings.items || []).map(normalizeItem);
@@ -3529,6 +3542,183 @@
     return state.settings.savings;
   }
 
+  /* ---- からだの台帳（くすり・通院・健診） ----
+
+     くすりは「いつ飲むか」と「飲んだか」を分けて持つ。
+     飲んだ印は日ごと（medLog）なので、さかのぼって付けられる。
+     寝る前のぶんは、たいてい翌朝に思い出すため。 */
+
+  var MED_SLOTS = ['morning', 'noon', 'night', 'bed'];
+
+  function normalizeMed(m) {
+    m = m || {};
+    m.id = m.id || U.uid();
+    m.name = String(m.name || '').trim().slice(0, 60) || '(名称未設定)';
+    m.dose = String(m.dose || '').slice(0, 40);        // 「1錠」「2包」
+    m.times = (Array.isArray(m.times) ? m.times : [])
+      .filter(function (t) { return MED_SLOTS.indexOf(t) >= 0; })
+      .filter(function (t, i, a) { return a.indexOf(t) === i; });
+    if (!m.times.length) m.times = ['morning'];
+    // 空なら毎日。曜日を入れると、その曜日だけ
+    m.weekdays = (Array.isArray(m.weekdays) ? m.weekdays : [])
+      .map(function (d) { return Math.round(U.num(d, -1)); })
+      .filter(function (d) { return d >= 0 && d <= 6; })
+      .filter(function (d, i, a) { return a.indexOf(d) === i; })
+      .sort();
+    m.from = U.isISO(m.from) ? m.from : '';
+    m.until = U.isISO(m.until) ? m.until : '';
+    m.memo = String(m.memo || '').slice(0, 300);
+    m.active = m.active !== false;
+    m.at = m.at || new Date().toISOString();
+    return m;
+  }
+
+  function normalizeMedLog(map) {
+    var out = {};
+    Object.keys(map || {}).forEach(function (d) {
+      if (!U.isISO(d)) return;
+      var day = {};
+      Object.keys(map[d] || {}).forEach(function (k) {
+        if (/^[^|]+\|[a-z]+$/.test(k) && map[d][k]) day[k] = true;
+      });
+      if (Object.keys(day).length) out[d] = day;
+    });
+    return out;
+  }
+
+  function normalizeVisit(v) {
+    v = v || {};
+    v.id = v.id || U.uid();
+    v.date = U.isISO(v.date) ? v.date : U.today();
+    v.time = /^\d{2}:\d{2}$/.test(String(v.time)) ? v.time : '';
+    v.place = String(v.place || '').trim().slice(0, 60);
+    v.dept = String(v.dept || '').slice(0, 40);        // 内科・歯科など
+    v.reason = String(v.reason || '').slice(0, 80);
+    v.cost = Math.max(0, Math.round(U.num(v.cost, 0)));
+    v.memo = String(v.memo || '').slice(0, 600);
+    v.next = U.isISO(v.next) ? v.next : '';            // 次の予約
+    v.nextTime = /^\d{2}:\d{2}$/.test(String(v.nextTime)) ? v.nextTime : '';
+    v.expenseId = String(v.expenseId || '');
+    v.at = v.at || new Date().toISOString();
+    return v;
+  }
+
+  function normalizeCheckup(c) {
+    c = c || {};
+    c.id = c.id || U.uid();
+    c.date = U.isISO(c.date) ? c.date : U.today();
+    c.name = String(c.name || '').trim().slice(0, 60) || '健診';
+    c.memo = String(c.memo || '').slice(0, 600);
+    var vals = {};
+    Object.keys(c.values || {}).forEach(function (k) {
+      if (!/^[a-zA-Z0-9_]{1,20}$/.test(k)) return;
+      var raw = c.values[k];
+      if (raw === '' || raw === null || raw === undefined) return;
+      /* 健診の数値は小数を持つ（BMI 25.8、HbA1c 5.9）。
+         U.num は整数に丸めてしまうので、ここでは使えない */
+      var n = parseFloat(raw);
+      if (!isFinite(n)) return;
+      vals[k] = Math.round(n * 100) / 100;
+    });
+    c.values = vals;
+    c.at = c.at || new Date().toISOString();
+    return c;
+  }
+
+  function meds() { return (state.settings.meds || []).slice(); }
+  function getMed(id) {
+    return (state.settings.meds || []).filter(function (m) { return m.id === id; })[0] || null;
+  }
+  function addMed(data) {
+    var m = normalizeMed(Object.assign({ id: U.uid() }, data));
+    state.settings.meds = (state.settings.meds || []).concat([m]);
+    save();
+    return m;
+  }
+  function updateMed(id, patch) {
+    var m = getMed(id);
+    if (!m) return null;
+    Object.assign(m, patch);
+    normalizeMed(m);
+    save();
+    return m;
+  }
+  function removeMed(id) {
+    state.settings.meds = (state.settings.meds || []).filter(function (m) { return m.id !== id; });
+    // 飲んだ印も、そのくすりのぶんだけ片づける
+    var log = state.settings.medLog || {};
+    Object.keys(log).forEach(function (d) {
+      Object.keys(log[d]).forEach(function (k) {
+        if (k.slice(0, k.indexOf('|')) === id) delete log[d][k];
+      });
+      if (!Object.keys(log[d]).length) delete log[d];
+    });
+    save();
+  }
+
+  /** その日の、飲んだ印 */
+  function medLog(date) {
+    return (state.settings.medLog || {})[date] || {};
+  }
+
+  function setMedTaken(date, key, on) {
+    if (!U.isISO(date)) return null;
+    var log = state.settings.medLog || (state.settings.medLog = {});
+    var day = log[date] || (log[date] = {});
+    if (on) day[key] = true; else delete day[key];
+    if (!Object.keys(day).length) delete log[date];
+    /* 画面は描き直さない。描き直すと、いま押した行がその場から消えて
+       「押せたのか分からない」になる。見た目は押した側で合わせる */
+    save({ noRender: true });
+    return log[date] || {};
+  }
+
+  function visits() { return (state.settings.visits || []).slice(); }
+  function getVisit(id) {
+    return (state.settings.visits || []).filter(function (v) { return v.id === id; })[0] || null;
+  }
+  function addVisit(data) {
+    var v = normalizeVisit(Object.assign({ id: U.uid() }, data));
+    state.settings.visits = (state.settings.visits || []).concat([v]);
+    save();
+    return v;
+  }
+  function updateVisit(id, patch) {
+    var v = getVisit(id);
+    if (!v) return null;
+    Object.assign(v, patch);
+    normalizeVisit(v);
+    save();
+    return v;
+  }
+  function removeVisit(id) {
+    state.settings.visits = (state.settings.visits || []).filter(function (v) { return v.id !== id; });
+    save();
+  }
+
+  function checkups() { return (state.settings.checkups || []).slice(); }
+  function getCheckup(id) {
+    return (state.settings.checkups || []).filter(function (c) { return c.id === id; })[0] || null;
+  }
+  function addCheckup(data) {
+    var c = normalizeCheckup(Object.assign({ id: U.uid() }, data));
+    state.settings.checkups = (state.settings.checkups || []).concat([c]);
+    save();
+    return c;
+  }
+  function updateCheckup(id, patch) {
+    var c = getCheckup(id);
+    if (!c) return null;
+    Object.assign(c, patch);
+    normalizeCheckup(c);
+    save();
+    return c;
+  }
+  function removeCheckup(id) {
+    state.settings.checkups = (state.settings.checkups || []).filter(function (c) { return c.id !== id; });
+    save();
+  }
+
   /* ---- 家にある調味料と、残り物 ----
 
      調味料は「家にあるか・切れていないか」を見るだけのもので、
@@ -4792,6 +4982,17 @@
         if (!opaid[k]) opaid[k] = incoming.settings.outgoPaid[k];
       });
       state.settings.outgoPaid = normalizeOutgoPaid(opaid);
+      /* からだの台帳も、こちらに無いものだけ足す。
+         飲んだ印は、どちらかで付いていれば付いたものとして足し合わせる */
+      mergeById(state.settings.meds || (state.settings.meds = []), incoming.settings.meds || []);
+      mergeById(state.settings.visits || (state.settings.visits = []), incoming.settings.visits || []);
+      mergeById(state.settings.checkups || (state.settings.checkups = []), incoming.settings.checkups || []);
+      var mlog = state.settings.medLog || (state.settings.medLog = {});
+      Object.keys(incoming.settings.medLog || {}).forEach(function (d) {
+        var day = mlog[d] || (mlog[d] = {});
+        Object.keys(incoming.settings.medLog[d] || {}).forEach(function (k) { day[k] = true; });
+      });
+      state.settings.medLog = normalizeMedLog(mlog);
       mergeById(state.settings.tags || (state.settings.tags = []), incoming.settings.tags || []);
       // 頒布物と在庫の出入りも、こちらに無いものだけ足す
       r.items = mergeById(state.settings.items || (state.settings.items = []), incoming.settings.items || []);
@@ -5087,6 +5288,12 @@
     outgo: outgo, getOutgo: getOutgo, addOutgo: addOutgo, updateOutgo: updateOutgo,
     removeOutgo: removeOutgo, outgoPaid: outgoPaid, setOutgoPaid: setOutgoPaid,
     OUTGO_KINDS: OUTGO_KINDS,
+    meds: meds, getMed: getMed, addMed: addMed, updateMed: updateMed, removeMed: removeMed,
+    medLog: medLog, setMedTaken: setMedTaken, MED_SLOTS: MED_SLOTS,
+    visits: visits, getVisit: getVisit, addVisit: addVisit, updateVisit: updateVisit,
+    removeVisit: removeVisit,
+    checkups: checkups, getCheckup: getCheckup, addCheckup: addCheckup,
+    updateCheckup: updateCheckup, removeCheckup: removeCheckup,
     items: items, getItem: getItem, addItem: addItem, updateItem: updateItem, removeItem: removeItem,
     stockMoves: stockMoves, getMove: getMove, addMove: addMove, updateMove: updateMove, removeMove: removeMove,
     MOVE_KINDS: MOVE_KINDS,

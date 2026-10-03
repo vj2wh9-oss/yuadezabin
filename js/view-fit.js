@@ -44,7 +44,9 @@
     wrap.appendChild(el('div', { class: 'actions' }, [
       ui.btn('計画自動作成', 'primary', function () { planSheet(today); }, 'idea'),
       ui.btn('記録の一覧', 'ghost', function () { historySheet(); }, 'task'),
-      ui.btn('設定', 'ghost', function () { settingsSheet(); }, 'settings')
+      ui.btn('設定', 'ghost', function () { settingsSheet(); }, 'settings'),
+      /* 通院・服薬・健診は、体重と同じ「からだ」の話なのでここからも行ける */
+      ui.btn('からだの台帳', 'ghost', function () { location.hash = '#/body'; }, 'heart')
     ]));
 
     root.appendChild(wrap);
