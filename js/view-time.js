@@ -529,11 +529,28 @@
 
   /* ---------------- 日別画面に出す一枚 ---------------- */
 
+  /* 円グラフの下の両隅に置く、前後の日へのボタン。
+     指で左右になぞっても移れるが、それと分かる掴みどころが要る。
+     円の下は空いているので、そこの角に置く */
+  function dayHop(path, date, delta) {
+    var to = U.addDays(date, delta);
+    var what = delta < 0 ? '前の日' : '次の日';
+    return el('a', {
+      class: 'tp-hop ' + (delta < 0 ? 'prev' : 'next'),
+      href: '#/' + path + '/' + to,
+      'aria-label': what + '（' + U.fmtMD(to) + '）', title: what
+    }, ui.icon(delta < 0 ? 'chevronLeft' : 'chevronRight', 20));
+  }
+
   /**
    * カレンダーの日別画面に差し込む。案件でも日常でも同じものを出す。
    * @param {Element} wrap 差し込み先
+   * @param {string} date
+   * @param {object} [opts] opts.path は円グラフの矢印で移る先の画面
+   *   （'time' か 'day'。いま見ている画面のまま日を移すため）
    */
-  function dayCard(wrap, date) {
+  function dayCard(wrap, date, opts) {
+    var path = (opts && opts.path) || 'time';
     var list = T.ofDay(date);
     wrap.appendChild(ui.section('今日の予定'));
 
@@ -544,9 +561,13 @@
     if (nb) card.appendChild(nb);
 
     if (list.length) {
-      /* 円は真ん中に大きく。名前は円のまわりに置くので、横に並べない */
-      card.appendChild(el('div', { class: 'tp-pie-wrap' },
-        pie(date, { onPick: function (b) { blockSheet(b.carry ? b.date : date, b); } })));
+      /* 円は真ん中に大きく。名前は円のまわりに置くので、横に並べない。
+         空いている下の両隅に、前後の日へのボタンを置く */
+      card.appendChild(el('div', { class: 'tp-pie-wrap' }, [
+        dayHop(path, date, -1),
+        pie(date, { onPick: function (b) { blockSheet(b.carry ? b.date : date, b); } }),
+        dayHop(path, date, 1)
+      ]));
       card.appendChild(rows(date));
       var pr = projRows(date);
       if (pr) card.appendChild(pr);

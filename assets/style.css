@@ -2133,10 +2133,31 @@ a.alert-main { text-decoration: none; }
 .tp-card { display: flex; flex-direction: column; gap: 12px; }
 /* 円グラフ。カードの余白ぶんまで広げて、真ん中に大きく置く */
 .tp-pie-wrap {
+  position: relative;
   display: flex; justify-content: center;
   width: calc(100% + 20px); margin: 0 -10px;
 }
 .tp-pie-wrap .tp-pie { width: 100%; height: auto; }
+/* 円の下は空いているので、その両隅に前後の日へのボタンを置く。
+   指で左右になぞっても移れるが、それと分かる掴みどころが要る */
+.tp-hop {
+  position: absolute; bottom: 0; z-index: 2;
+  width: 36px; height: 36px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--card2); border: 1px solid var(--line);
+  color: var(--muted); cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.tp-hop.prev { left: 10px; }
+.tp-hop.next { right: 10px; }
+.tp-hop:active { background: var(--line2); color: var(--text); }
+@media (hover: hover) and (pointer: fine) {
+  .tp-hop:hover { background: var(--line2); color: var(--text); }
+}
+/* バーの組みでは、ほかのボタンとそろえて角を落とした四角にする */
+body.skin-bar .tp-hop {
+  border-radius: var(--radius-s); border-color: var(--line2); border-bottom-width: 2px;
+}
 /* まわりに置いた名前と、そこへ引く線 */
 .tp-lead { stroke-width: .7; stroke-linecap: round; opacity: .8; }
 /* 円を囲う細い目盛り（数字を置かない時刻） */

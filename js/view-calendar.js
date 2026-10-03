@@ -537,7 +537,8 @@
     ));
 
     /* 1日の時間の振り分け（案件と日常で分けない） */
-    DL.views.time.dayCard(wrap, date);
+    // 円グラフの矢印は、この画面のまま前後の日へ移す
+    DL.views.time.dayCard(wrap, date, { path: 'day' });
 
     /* この日の勤務（出社・リモート・泊まり） */
     DL.views.events.dutyBox(wrap, date);
