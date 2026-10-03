@@ -67,6 +67,9 @@
         wrap.appendChild(ui.section('集計', tallyChip(tally)));
         wrap.appendChild(tallyCard(t, projects));
       }
+      /* 会場で数えたぶんが届いていないか見に行く。
+         届いていれば、持ち帰りの数としてここへ入れられる */
+      wrap.appendChild(eventSiteCard(t));
     }
 
     /* ---- 準備 ---- */
@@ -252,6 +255,71 @@
       ]),
       el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
     ]);
+  }
+
+  /* ---------------- イベント当日用サイトから届いた在庫 ----------------
+
+     会場では別の端末（だてメテオ）で数える。
+     届いているぶんを取り込むと、持ち帰りの数として入る。
+     そこから先（販売数・売上・在庫から引く）は、これまでどおり集計の欄で決める。 */
+
+  var evBusy = false;
+  var evGot = null;        // null＝まだ見に行っていない
+
+  function eventSiteCard(t) {
+    var E = DL.eventsite;
+    var box = el('div', { class: 'card tk-evsite' });
+    if (!E || !E.ready()) return box;
+
+    function draw() {
+      U.clear(box);
+      box.appendChild(el('div', { class: 'row-title' }, [
+        ui.icon('cloud', 17), el('span', { text: 'イベント当日用サイト' })
+      ]));
+
+      var mine = (evGot || []).filter(function (g) { return g.ticketId === t.id; });
+      if (evGot === null) {
+        box.appendChild(el('p', { class: 'muted small', text: '会場で数えたぶんを取りに行けます。' }));
+      } else if (!mine.length) {
+        box.appendChild(el('p', { class: 'muted small', text: 'この券に届いているぶんはありません。' }));
+      } else {
+        box.appendChild(el('div', { class: 'list' }, mine.map(function (g) {
+          return el('div', { class: 'row' }, [
+            el('div', { class: 'row-main' }, [
+              el('div', { class: 'row-title', text: E.text(g) }),
+              el('div', { class: 'row-sub' },
+                ui.chip(DL.sync.fmtAt(g.at), 'ghosty'))
+            ]),
+            ui.btn('取り込む', 'primary tiny', function () { take(g); })
+          ]);
+        })));
+      }
+
+      box.appendChild(ui.btn(evBusy ? '取りに行っています…' : '届いているか見る',
+        'ghost full', function () {
+          if (evBusy) return;
+          evBusy = true;
+          draw();
+          E.pending().then(function (list) {
+            evBusy = false;
+            evGot = list;
+            draw();
+          });
+        }, 'refresh'));
+    }
+
+    function take(g) {
+      var r = E.apply(g);
+      if (!r.ticket) { ui.toast('この券が見つかりませんでした', 'danger'); return; }
+      E.forget([g.id]);
+      evGot = (evGot || []).filter(function (x) { return x.id !== g.id; });
+      ui.toast('持ち帰りの数を入れました（' + r.set + '点）'
+        + (r.unknown.length ? '／こちらに無いもの: ' + r.unknown.join('・') : ''));
+      DL.app.render();
+    }
+
+    draw();
+    return box;
   }
 
   function tallyChip(tally) {

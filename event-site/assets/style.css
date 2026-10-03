@@ -1,0 +1,270 @@
+/* ===== だてメテオ －イベント当日用－ =====
+
+   METEO365（締切管理アプリ）と同じ組みにそろえる。
+   青系で統一し、角丸は最小限。影とグラデーションは使わず、
+   1px の罫線と面の塗り分けで構造を見せる。
+
+   会場で片手で触るので、押すところは大きめに取る。 */
+
+:root {
+  --bg: #0b0f15;
+  --bg2: #0f151d;
+  --card: #111823;
+  --card2: #172130;
+  --line: #223140;
+  --line2: #2c3d50;
+  --text: #e7eef7;
+  --muted: #8ba0b8;
+
+  --accent: #3b82f6;
+  --accent-ink: #ffffff;
+  --accent-soft: #16283f;
+  --accent2: #38bdf8;
+  --ok: #12a5b8;
+  --event: #35b364;
+  --warn: #d9a441;
+  --danger: #e0555f;
+
+  --radius: 4px;
+  --radius-s: 3px;
+  --bar-h: 48px;
+  --sab: env(safe-area-inset-bottom);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #eaeff5;
+    --bg2: #ffffff;
+    --card: #ffffff;
+    --card2: #eef3f9;
+    --line: #cfdae6;
+    --line2: #b9c8d8;
+    --text: #0e1a28;
+    --muted: #56697e;
+
+    --accent: #1d63d8;
+    --accent-ink: #ffffff;
+    --accent-soft: #e2ecfc;
+    --accent2: #0b7fb8;
+    --ok: #0b7f8f;
+    --event: #1d8f4c;
+    --warn: #9a6a05;
+    --danger: #c62f3c;
+    color-scheme: light;
+  }
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN",
+    "Hiragino Sans", "Noto Sans JP", "Yu Gothic", sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* ---------------- 上の帯 ---------------- */
+.appbar {
+  position: sticky; top: 0; z-index: 30;
+  display: flex; align-items: center; gap: 8px;
+  height: calc(var(--bar-h) + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) 10px 0;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--line);
+}
+.title { flex: none; margin: 0; font-size: 17px; font-weight: 800; letter-spacing: -.01em; }
+.tag {
+  flex: 1; min-width: 0; font-size: 10.5px; font-weight: 700; color: var(--muted);
+  letter-spacing: .08em; white-space: nowrap; overflow: hidden;
+}
+.iconbtn {
+  flex: none; display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; padding: 0; cursor: pointer;
+  background: none; border: 0; color: var(--text); border-radius: var(--radius-s);
+}
+.iconbtn:active { background: var(--card2); }
+.iconbtn[hidden] { display: none; }
+.iconbtn.busy { color: var(--muted); }
+
+/* ---------------- 中身 ---------------- */
+.view { padding: 12px 10px calc(28px + var(--sab)); max-width: 720px; margin: 0 auto; }
+.page { display: flex; flex-direction: column; gap: 12px; }
+
+.section {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-size: 11.5px; font-weight: 800; color: var(--muted); letter-spacing: .08em;
+  padding: 2px 2px 0;
+}
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 12px; display: flex; flex-direction: column; gap: 10px;
+}
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+p { margin: 0; }
+
+.empty {
+  border: 1px dashed var(--line2); border-radius: var(--radius);
+  padding: 22px 12px; text-align: center; color: var(--muted); font-size: 13px;
+}
+
+/* ---------------- ボタン ---------------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  font: inherit; font-size: 14px; font-weight: 700; line-height: 1.2;
+  padding: 11px 14px; cursor: pointer; white-space: nowrap;
+  background: var(--card2); border: 1px solid var(--line2); color: var(--text);
+  border-radius: var(--radius-s);
+}
+.btn:active { opacity: .82; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.danger { color: var(--danger); border-color: var(--danger); background: transparent; }
+.btn.full { width: 100%; }
+.btn.tiny { font-size: 12px; padding: 6px 9px; }
+.btn.big { font-size: 16px; padding: 15px 16px; }
+.btn[disabled] { opacity: .45; pointer-events: none; }
+.row-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 11px; font-weight: 700; line-height: 1;
+  padding: 4px 7px; border-radius: var(--radius-s);
+  border: 1px solid var(--line2); color: var(--muted); background: var(--card2);
+}
+.chip.ok { color: var(--ok); border-color: var(--ok); background: transparent; }
+.chip.warn { color: var(--warn); border-color: var(--warn); background: transparent; }
+.chip.soft { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.chip.ghosty { background: transparent; }
+
+/* ---------------- 入れるところ ---------------- */
+.input {
+  width: 100%; background: var(--card2); border: 1px solid var(--line2); color: var(--text);
+  border-radius: var(--radius-s); padding: 10px 11px;
+  font-size: 16px;                       /* iOS で寄らないよう 16px */
+  appearance: none; -webkit-appearance: none;
+}
+.input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field-label { font-size: 11.5px; color: var(--muted); font-weight: 700; letter-spacing: .06em; }
+
+/* ---------------- イベントの一覧 ---------------- */
+.ev-list { display: flex; flex-direction: column; gap: 10px; }
+.ev-card {
+  display: flex; align-items: stretch; gap: 0; width: 100%; padding: 0; overflow: hidden;
+  text-align: left; font: inherit; color: inherit; cursor: pointer;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+}
+.ev-card:active { border-color: var(--accent); }
+.ev-logo {
+  flex: none; width: 82px; align-self: stretch; object-fit: cover;
+  background: var(--card2); border-right: 1px solid var(--line);
+}
+.ev-logo.none { display: flex; align-items: center; justify-content: center; color: var(--muted); }
+.ev-main { flex: 1; min-width: 0; padding: 11px 12px; display: flex; flex-direction: column; gap: 5px; }
+.ev-name { font-size: 15px; font-weight: 800; }
+.ev-sub { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.ev-chev { flex: none; display: flex; align-items: center; padding-right: 8px; color: var(--muted); }
+/* 当日のものは、ひと目で分かるように緑で縁取る */
+.ev-card.today { border-color: var(--event); }
+.ev-card.today .ev-logo { border-right-color: var(--event); }
+
+/* ---------------- 頒布物 ---------------- */
+.it-head {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px;
+}
+.it-head-logo { flex: none; width: 44px; height: 44px; object-fit: cover; border-radius: var(--radius-s); }
+.it-head-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.it-head-n { font-size: 15px; font-weight: 800; }
+
+.it-list { display: flex; flex-direction: column; gap: 8px; }
+.it-row {
+  display: flex; align-items: stretch; gap: 0; overflow: hidden;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+}
+.it-row.off { opacity: .45; }
+.it-cover {
+  flex: none; width: 58px; align-self: stretch; object-fit: cover;
+  background: var(--card2); border-right: 1px solid var(--line);
+}
+.it-cover.none { display: flex; align-items: center; justify-content: center; color: var(--muted); }
+.it-main { flex: 1; min-width: 0; padding: 9px 10px; display: flex; flex-direction: column; gap: 6px; }
+.it-name { font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.it-sub { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+/* 持込・在庫・頒布の3つ。狭い端末では折り返させる */
+.it-nums { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.it-num { display: flex; align-items: center; gap: 5px; }
+.it-lbl { font-size: 10.5px; color: var(--muted); font-weight: 700; white-space: nowrap; }
+.it-in {
+  width: 56px; text-align: center; padding: 8px 2px;
+  font-variant-numeric: tabular-nums;
+}
+.it-sold { font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; min-width: 26px; text-align: right; }
+.it-sold.on { color: var(--event); }
+.it-acts { flex: none; display: flex; flex-direction: column; justify-content: center; padding-right: 6px; }
+
+/* 下に貼り付く締めの帯。数えながらでも、いつでも押せる */
+.it-foot {
+  position: sticky; bottom: 0; z-index: 10;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 10px 0 calc(6px + var(--sab));
+  background: linear-gradient(to bottom, transparent, var(--bg) 24%);
+}
+.it-sum {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center;
+}
+
+/* ---------------- 知らせ ---------------- */
+.toast-root {
+  position: fixed; left: 0; right: 0; bottom: calc(84px + var(--sab)); z-index: 60;
+  display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none;
+}
+.toast {
+  max-width: min(92vw, 420px);
+  background: var(--card2); border: 1px solid var(--line2); color: var(--text);
+  border-radius: var(--radius); padding: 9px 13px; font-size: 13px; font-weight: 600;
+}
+.toast.danger { border-color: var(--danger); color: var(--danger); }
+.toast.ok { border-color: var(--ok); color: var(--ok); }
+
+/* ---------------- シート ---------------- */
+.sheet-back {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(0, 0, 0, .5);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.sheet {
+  width: min(100%, 560px); max-height: 86vh; display: flex; flex-direction: column;
+  background: var(--bg2); border: 1px solid var(--line); border-bottom: 0;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.sheet-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 12px 8px; border-bottom: 1px solid var(--line);
+}
+.sheet-title { flex: 1; min-width: 0; font-size: 15px; font-weight: 800; }
+.sheet-body { padding: 12px; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
+.sheet-foot {
+  display: flex; gap: 8px; padding: 10px 12px calc(12px + var(--sab));
+  border-top: 1px solid var(--line);
+}
+.sheet-foot .btn { flex: 1; }
+
+/* 足すものの並び */
+.pick-row {
+  display: flex; align-items: center; gap: 9px; width: 100%; padding: 9px 10px;
+  text-align: left; font: inherit; color: inherit; cursor: pointer;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-s);
+}
+.pick-row:active { border-color: var(--accent); }
+.pick-cover { flex: none; width: 34px; height: 34px; object-fit: cover; border-radius: 2px; background: var(--card2); }
+.pick-main { flex: 1; min-width: 0; }
+.pick-n { font-size: 13.5px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+svg { display: block; }
+.icon { flex: none; }

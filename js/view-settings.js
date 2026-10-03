@@ -175,6 +175,11 @@
       DL.orders.unread() ? ui.chip(DL.orders.unread() + '件の未確認', 'warn') : null));
     at.appendChild(orderCard());
 
+    /* ---- イベント当日用サイト ---- */
+    at.appendChild(ui.section('イベント当日用サイト',
+      DL.eventsite.ready() ? ui.chip('使えます', 'ok') : null));
+    at.appendChild(eventSiteCard());
+
     /* ---- ROOM RESERVE の取り込み ---- */
     at.appendChild(ui.section('ROOM RESERVE の取り込み',
       DL.roomreserve.ready() ? ui.chip('使えます', 'ok') : null));
@@ -909,6 +914,92 @@
    * 発注フォーム（yuadezabin.com）から届いた発注の様子。
    * 受け取りは同期サーバーを通すので、ここで設定することは無い。
    */
+  /* ---------------- イベント当日用サイト（だてメテオ） ----------------
+
+     即売会の当日、会場で在庫を数えるための別サイト。
+     ここで合鍵を作って、その URL を会場の端末で開く。
+     渡すのはこのサイト専用の合鍵で、できるのは
+     「即売会の券と頒布物を読むこと」と「数えた在庫を預けること」だけ。
+     本物の合鍵（読み書き全部）は、けっして渡らない。 */
+
+  function eventSiteCard() {
+    var E = DL.eventsite;
+    var card = el('div', { class: 'card' });
+    var host = el('div', { class: 'form' });
+    card.appendChild(host);
+
+    if (!E.ready()) {
+      host.appendChild(el('div', { class: 'alert warn' }, [
+        el('span', { class: 'alert-icon' }, ui.icon('alert', 17)),
+        el('span', { text: '先に「PC・iPhone の同期」を設定してください。' })
+      ]));
+      return card;
+    }
+
+    var busy = false;
+    var now = null;        // null＝まだ見に行っていない
+
+    function draw() {
+      U.clear(host);
+      if (now === null) {
+        host.appendChild(el('p', { class: 'muted small', text: '読んでいます…' }));
+        return;
+      }
+
+      if (!now.key) {
+        host.appendChild(el('p', { class: 'muted small',
+          text: '合鍵を作ると、会場の端末で開く URL ができます。'
+            + 'この合鍵でできるのは、即売会の券と頒布物を読むことと、'
+            + '数えた在庫を預けることだけです。' }));
+        host.appendChild(ui.btn(busy ? '作っています…' : '合鍵を作る', 'primary full',
+          function () { run(E.key.create()); }, 'lock'));
+        return;
+      }
+
+      var url = E.siteUrl(now.key);
+      var box = ui.input({ value: url, readonly: 'readonly', 'aria-label': 'イベント用サイトの URL' });
+      box.addEventListener('focus', function () { box.select(); });
+      host.appendChild(ui.field('会場の端末で開く URL', box));
+      host.appendChild(el('div', { class: 'row-wrap' }, [
+        ui.btn('写す', 'primary', function () {
+          U.copy(url).then(function () { ui.toast('写しました'); },
+            function () { ui.toast('写せませんでした', 'danger'); });
+        }, 'backup'),
+        ui.btn('開く', 'ghost', function () { window.open(url, '_blank', 'noopener'); }, 'arrowRight'),
+        ui.btn('作り直す', 'ghost', function () {
+          ui.confirm('合鍵を作り直します。いま渡してある URL は使えなくなります。',
+            { okText: '作り直す' }).then(function (ok) { if (ok) run(E.key.create()); });
+        }, 'refresh'),
+        ui.btn('捨てる', 'ghost danger', function () {
+          ui.confirm('合鍵を捨てます。会場の端末からは、もう読めなくなります。',
+            { danger: true, okText: '捨てる' }).then(function (ok) { if (ok) run(E.key.remove()); });
+        }, 'trash')
+      ]));
+      host.appendChild(el('p', { class: 'muted small',
+        text: '会場で数えて「在庫締め」を押すと、ここへ届きます。'
+          + '取り込みは、その即売会のチケットの画面から。' }));
+    }
+
+    function run(p) {
+      busy = true;
+      draw();
+      p.then(function (r) {
+        busy = false;
+        now = r;
+        draw();
+      }, function (e) {
+        busy = false;
+        draw();
+        ui.toast(e.message, 'danger');
+      });
+    }
+
+    E.key.get().then(function (r) { now = r; draw(); },
+      function () { now = { key: null }; draw(); });
+    draw();
+    return card;
+  }
+
   /* ---------------- ROOM RESERVE ----------------
 
      ルームシェアの予定表から、部屋を使う予定だけをこちらへ持ってくる。

@@ -119,7 +119,8 @@ export default {
           fitbit: fitbitReady(env),
           menuWebhook: !!env.DISCORD_MENU_WEBHOOK
         },
-        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/img', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/inbox/weights', '/v1/inbox/weight/key', '/v1/inbox/card', '/v1/inbox/cards', '/v1/inbox/card/key', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/menu/dish', '/v1/menu/items', '/v1/menu/send', '/v1/reschedule', '/v1/bank/balance', '/v1/plot', '/v1/plot/send', '/v1/spend', '/v1/fit/plan', '/v1/fitbit'],
+        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/img', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/inbox/weights', '/v1/inbox/weight/key', '/v1/inbox/card', '/v1/inbox/cards', '/v1/inbox/card/key', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/menu/dish', '/v1/menu/items', '/v1/menu/send',
+          '/v1/event/key', '/v1/event/list', '/v1/event/one', '/v1/event/img', '/v1/event/close', '/v1/inbox/events', '/v1/reschedule', '/v1/bank/balance', '/v1/plot', '/v1/plot/send', '/v1/spend', '/v1/fit/plan', '/v1/fitbit'],
         // どの食事に対応しているか。deploy を忘れると古いままなのが分かる
         menuSlots: MENU_SLOTS,
         note: '各 /v1/... は Authorization: Bearer <合鍵> が必要です'
@@ -157,6 +158,22 @@ export default {
         if (owner) return cards(request, env, cors, url, owner);
       }
       return json({ error: 'bad_key', hint: 'カード用の合鍵が違います' }, 401, cors);
+    }
+
+    /* イベント当日用サイト（だてメテオ）の合鍵。体重・カードと同じ考えかた。
+       会場では別の端末・別のサイトから触るので、本物の合鍵は渡さない。
+       この合鍵でできるのは
+         ・即売会の券と、そこへ持っていく頒布物を読むこと
+         ・数えた在庫を預かり箱へ置くこと
+       だけ。ほかの持ちものには手が届かない */
+    if (url.pathname.indexOf('/v1/event/') === 0 && url.pathname !== '/v1/event/key'
+      && url.searchParams.get('k')) {
+      const k = String(url.searchParams.get('k'));
+      if (env.SYNC && /^[0-9a-f]{32}$/.test(k)) {
+        const owner = await env.SYNC.get('ekey:' + k, 'text');
+        if (owner) return eventSite(request, env, cors, url, owner);
+      }
+      return json({ error: 'bad_key', hint: 'イベント用サイトの合鍵が違います' }, 401, cors);
     }
 
     const token = bearer(request);
@@ -332,6 +349,16 @@ export default {
 
       if (url.pathname === '/v1/inbox/weight' || url.pathname === '/v1/inbox/weights') {
         return weights(request, env, cors, url, id);
+      }
+
+      // イベント当日用サイトの合鍵（作る・捨てる）
+      if (url.pathname === '/v1/event/key') {
+        return eventKey(request, env, cors, id);
+      }
+
+      // 会場から届いた在庫。取り込むのは持ち主だけ
+      if (url.pathname === '/v1/inbox/events') {
+        return eventInbox(request, env, cors, id);
       }
 
       if (url.pathname === '/v1/roomreserve') {
@@ -3214,6 +3241,196 @@ async function docSend(request, env, cors, id) {
     return json({ error: 'discord_error', status: res.status, message: msg }, 502, cors);
   }
   return json({ ok: true, label: kind.label, size: obj.size }, 200, cors);
+}
+
+/* ---------------- イベント当日用サイト（だてメテオ） ----------------
+
+   即売会の当日、会場で在庫を数えるための別サイト。
+   https://github.com/vj2wh9-oss/torani
+
+   会場では別の端末から触るので、本物の合鍵は渡さない。
+   ここ専用の合鍵（32桁）を配って、できることを次の3つに絞る。
+
+     GET  /v1/event/list?k=…            即売会の券の一覧
+     GET  /v1/event/one?k=…&id=券ID     その券に持っていく頒布物
+     GET  /v1/event/img?k=…&r=img:…     表紙・ロゴの絵
+     POST /v1/event/close?k=…           数えた在庫を預ける
+
+   state そのものは渡さない。券と頒布物の、見せるぶんだけを組み立てて返す。
+   預かった在庫は、アプリ（METEO365）が取りに来るまで預かり箱に置く。 */
+
+const EVENT_IN_MAX = 40;        // 預かっておく件数
+
+async function eventKey(request, env, cors, id) {
+  const mine = 'ekeyOf:' + id;
+
+  if (request.method === 'GET') {
+    const k = await env.SYNC.get(mine, 'text');
+    return json({ ok: true, key: k || null }, 200, cors);
+  }
+  if (request.method === 'POST') {
+    const old = await env.SYNC.get(mine, 'text');
+    if (old) await env.SYNC.delete('ekey:' + old);
+    const b = new Uint8Array(16);
+    crypto.getRandomValues(b);
+    const k = [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
+    await env.SYNC.put('ekey:' + k, id);
+    await env.SYNC.put(mine, k);
+    return json({ ok: true, key: k }, 200, cors);
+  }
+  if (request.method === 'DELETE') {
+    const old = await env.SYNC.get(mine, 'text');
+    if (old) await env.SYNC.delete('ekey:' + old);
+    await env.SYNC.delete(mine);
+    return json({ ok: true, key: null }, 200, cors);
+  }
+  return json({ error: 'not_found' }, 404, cors);
+}
+
+/* 持ち主の控えを読む。無ければ null */
+async function ownerState(env, id) {
+  const raw = await env.SYNC.get('state:' + id, 'text');
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch (e) { return null; }
+}
+
+/* 絵の指し先。'img:…' はそのまま返し、画面側が /v1/event/img で引く。
+   dataURL をそのまま持っているぶんは、そのまま渡す */
+function imgRef(v) {
+  const s = String(v == null ? '' : v);
+  if (/^img:[0-9a-f]{8,64}$/.test(s)) return s;
+  if (/^data:image\//.test(s)) return s;
+  return '';
+}
+
+/* 券1枚の、見せるぶん */
+function eventFace(t) {
+  return {
+    id: String(t.id || ''),
+    name: String(t.name || ''),
+    date: String(t.date || ''),
+    venue: String(t.venue || ''),
+    space: String(t.space || ''),
+    logo: imgRef(t.logo)
+  };
+}
+
+async function eventSite(request, env, cors, url, id) {
+  if (!env.SYNC) return json({ error: 'kv_not_bound' }, 500, cors);
+  const path = url.pathname;
+
+  /* 絵。持ち主の置き場から出すだけ（合鍵では置けない） */
+  if (path === '/v1/event/img') {
+    if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405, cors);
+    const ref = String(url.searchParams.get('r') || '').replace(/^img:/, '');
+    if (!/^[0-9a-f]{8,64}$/.test(ref)) return json({ error: 'bad_id' }, 400, cors);
+    let data = null;
+    if (env.FILES) {
+      const obj = await env.FILES.get('img/' + id + '/' + ref);
+      if (obj) data = await obj.text();
+    }
+    if (data === null) data = await env.SYNC.get('img:' + id + ':' + ref, 'text');
+    if (data === null) return json({ error: 'not_found' }, 404, cors);
+    return json({ url: data }, 200, cors);
+  }
+
+  /* 在庫を預ける。できるのは「置く」ことだけ */
+  if (path === '/v1/event/close') {
+    if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405, cors);
+    let body;
+    try { body = await request.json(); } catch (e) { return json({ error: 'bad_json' }, 400, cors); }
+    const str = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
+    const num = (v) => Math.max(0, Math.min(99999, Math.round(Number(v) || 0)));
+    const ticketId = str(body && body.ticketId, 40);
+    if (!ticketId) return json({ error: 'no_ticket' }, 400, cors);
+    const lines = (Array.isArray(body && body.lines) ? body.lines : []).slice(0, 120)
+      .map((x) => ({
+        itemId: str(x && x.itemId, 40),
+        title: str(x && x.title, 80),
+        bring: num(x && x.bring),
+        back: (x && (x.back === '' || x.back == null)) ? null : num(x.back)
+      })).filter((x) => x.itemId || x.title);
+    if (!lines.length) return json({ error: 'empty' }, 400, cors);
+
+    const key = 'events:' + id;
+    const box = (await env.SYNC.get(key, 'json')) || [];
+    box.unshift({
+      id: crypto.randomUUID(),
+      at: new Date().toISOString(),
+      ticketId,
+      ticketName: str(body && body.ticketName, 80),
+      lines
+    });
+    await env.SYNC.put(key, JSON.stringify(box.slice(0, EVENT_IN_MAX)));
+    return json({ ok: true, lines: lines.length }, 200, cors);
+  }
+
+  // ここから先は読むだけ
+  if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405, cors);
+  const st = await ownerState(env, id);
+  if (!st) return json({ error: 'no_state', hint: 'まず METEO365 から同期してください' }, 404, cors);
+  const sets = (st && st.settings) || {};
+  const tickets = (sets.tickets || []).filter((t) => t && t.kind === 'event');
+
+  if (path === '/v1/event/list') {
+    /* 新しい日付のものから。日付の無いものは後ろへ */
+    const list = tickets.map(eventFace).sort((a, b) => {
+      if (!a.date) return 1;
+      if (!b.date) return -1;
+      return a.date < b.date ? 1 : a.date > b.date ? -1 : 0;
+    });
+    return json({ ok: true, events: list, name: 'だてメテオ' }, 200, cors);
+  }
+
+  if (path === '/v1/event/one') {
+    const want = String(url.searchParams.get('id') || '');
+    const t = tickets.filter((x) => String(x.id) === want)[0];
+    if (!t) return json({ error: 'not_found' }, 404, cors);
+    const items = sets.items || [];
+    const byId = {};
+    items.forEach((x) => { if (x && x.id) byId[x.id] = x; });
+    const face = (x, row) => ({
+      itemId: String(x.id),
+      title: String(x.title || ''),
+      kind: x.kind === 'goods' ? 'goods' : 'book',
+      price: Math.max(0, Math.round(Number(x.price) || 0)),
+      cover: imgRef(x.cover),
+      bring: row ? Math.max(0, Math.round(Number(row.bring) || 0)) : 0,
+      back: (row && row.back != null) ? Math.max(0, Math.round(Number(row.back) || 0)) : null
+    });
+    const lines = (t.stock || []).map((row) => {
+      const x = byId[row.itemId];
+      return x ? face(x, row) : null;
+    }).filter(Boolean);
+    const taken = {};
+    lines.forEach((l) => { taken[l.itemId] = true; });
+    // 券に入っていない頒布物。会場で足したくなったとき用
+    const rest = items.filter((x) => x && x.id && !taken[x.id] && !x.archived).map((x) => face(x, null));
+    return json({ ok: true, event: eventFace(t), lines, more: rest }, 200, cors);
+  }
+
+  return json({ error: 'not_found' }, 404, cors);
+}
+
+/* 会場から届いた在庫。取り込むのは持ち主だけ */
+async function eventInbox(request, env, cors, id) {
+  const key = 'events:' + id;
+
+  if (request.method === 'GET') {
+    const box = (await env.SYNC.get(key, 'json')) || [];
+    return json({ ok: true, items: box }, 200, cors);
+  }
+  if (request.method === 'DELETE') {
+    let body = null;
+    try { body = await request.json(); } catch (e) { /* 本文なしは「ぜんぶ」 */ }
+    const ids = (body && Array.isArray(body.ids)) ? body.ids.map(String) : null;
+    if (!ids) { await env.SYNC.delete(key); return json({ ok: true, left: 0 }, 200, cors); }
+    const box = ((await env.SYNC.get(key, 'json')) || [])
+      .filter((x) => ids.indexOf(String(x && x.id)) < 0);
+    await env.SYNC.put(key, JSON.stringify(box));
+    return json({ ok: true, left: box.length }, 200, cors);
+  }
+  return json({ error: 'method_not_allowed' }, 405, cors);
 }
 
 /* ---------------- ROOM RESERVE の予定を取り次ぐ ----------------
