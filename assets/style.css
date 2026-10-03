@@ -969,6 +969,12 @@ a.alert-main { text-decoration: none; }
   -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 6px), transparent);
   mask-image: linear-gradient(to right, #000 calc(100% - 6px), transparent);
 }
+/* 出ていくお金（年払い・税・更新）。予定とは別のものなので、黄で敷く */
+.cal-line.money {
+  font-weight: 700;
+  background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn);
+}
+.cal-line.money > i { background: var(--warn); }
 .cal-more { font-size: 9px; color: var(--muted); padding-left: 4px; }
 
 /* ---------------- 日常のカレンダー ---------------- */
@@ -1645,6 +1651,40 @@ a.alert-main { text-decoration: none; }
 .fx-v { flex: none; font-variant-numeric: tabular-nums; }
 .due-card { display: flex; flex-direction: column; gap: 7px; border-left: 3px solid var(--accent); }
 .due-card .row-title { align-items: center; gap: 6px; font-weight: 700; }
+
+/* ---------------- 出ていくお金の年表 ---------------- */
+/* 枠の中に並べる行。カードの中では囲いを外して、仕切り線だけにする */
+.list.tight { gap: 0; }
+.list.tight .row.flat {
+  background: transparent; border: 0; border-bottom: 1px solid var(--line);
+  border-radius: 0; padding: 8px 0;
+}
+.list.tight .row.flat:last-child { border-bottom: 0; }
+/* 月の見出し。年表を月ごとに束ねる */
+.og-month {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  padding: 10px 2px 2px; font-size: 12px; color: var(--muted);
+}
+.og-month b { font-size: 13px; color: var(--text); letter-spacing: -.01em; }
+.og-row.soon { border-color: var(--warn); }
+.og-row.late { border-color: var(--danger); }
+.og-acts { display: flex; gap: 6px; flex: none; }
+/* 月ごとの山。棒の長さで、重い月がひと目で分かる */
+.og-year { gap: 0; padding: 4px 10px; }
+.og-bar {
+  display: grid; grid-template-columns: 30px 1fr auto; gap: 6px; align-items: center;
+  padding: 5px 0; border-bottom: 1px solid var(--line);
+}
+.og-bar:last-child { border-bottom: 0; }
+.og-bar.zero { opacity: .4; }
+.og-bar-m { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.og-bar-rail { height: 8px; background: var(--card2); border-radius: 2px; overflow: hidden; }
+.og-bar-rail > i { display: block; height: 100%; background: var(--warn); }
+.og-bar-v { font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.og-bar-nm {
+  grid-column: 2 / 4; font-size: 10.5px; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
 /* レシートの読み取り */
 .ocr-box { display: flex; flex-direction: column; gap: 6px; width: 100%; }

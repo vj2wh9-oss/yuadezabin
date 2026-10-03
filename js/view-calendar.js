@@ -109,10 +109,13 @@
 
     // 日常は繰り返しを毎回ひろげるので、画面に出す範囲を一度にまとめて計算する
     var evMap = life ? DL.events.byDay(gridStart, U.addDays(gridStart, rows * 7 - 1)) : null;
+    // 日常のカレンダーには、出ていくお金（年払い・税・更新）も敷く
+    var ogMap = life ? DL.outgo.byDay(gridStart, U.addDays(gridStart, rows * 7 - 1)) : null;
 
     for (var c = 0; c < rows * 7; c++) {
       var dt = U.addDays(gridStart, c);
-      grid.appendChild(life ? lifeCell(dt, cursor, today, evMap[dt] || []) : cell(dt, cursor, today));
+      grid.appendChild(life ? lifeCell(dt, cursor, today, evMap[dt] || [], ogMap[dt] || [])
+        : cell(dt, cursor, today));
     }
     wrap.appendChild(grid);
 
@@ -395,7 +398,7 @@
   }
 
   /* 日常のマス。案件の締切・ノルマは出さず、その日の予定だけを載せる */
-  function lifeCell(date, cursorMonth, today, list) {
+  function lifeCell(date, cursorMonth, today, list, money) {
     var d = U.dow(date);
     var hol = DL.holidays.name(date);
     var cls = 'cal-cell';
@@ -411,6 +414,15 @@
     var lines = el('div', { class: 'cal-lines' });
     var MAX = 10, shown = 0;
     if (hol) lines.appendChild(el('span', { class: 'cal-line hol', text: hol }));
+    /* 出ていくお金は予定より先に出す。金額まで入れるとマスが潰れるので、
+       名前だけ。いくらかは日別の画面で見る */
+    (money || []).forEach(function (oc) {
+      if (shown >= MAX) return;
+      shown++;
+      lines.appendChild(el('span', { class: 'cal-line money' }, [
+        el('i', {}), el('span', { class: 'nm', text: oc.name })
+      ]));
+    });
     list.forEach(function (o) {
       if (shown >= MAX) return;
       shown++;
@@ -510,6 +522,31 @@
         ]));
       });
       wrap.appendChild(ml);
+    }
+
+    /* この日に出ていくお金（年払い・税・更新）。
+       当日になってから気づくことがいちばん困るので、日別にも出す */
+    var money = DL.outgo.ofDay(date);
+    if (money.length) {
+      wrap.appendChild(ui.section('この日に出ていくお金',
+        ui.chip(DL.docs.yen(U.sum(money, function (m) { return m.amount; })), 'warn')));
+      var mlist = el('div', { class: 'list' });
+      money.forEach(function (oc) {
+        mlist.appendChild(el('a', { class: 'row', href: '#/outgo' }, [
+          el('div', { class: 'row-main' }, [
+            el('div', { class: 'row-title' }, [
+              ui.icon('books', 16), el('span', { text: oc.name })
+            ]),
+            el('div', { class: 'row-sub' }, [
+              ui.chip(DL.expenses.bookLabel(oc.book), 'ghosty'),
+              oc.category ? ui.chip(oc.category, 'ghosty') : null
+            ])
+          ]),
+          el('b', { class: 'fx-v', text: DL.docs.yen(oc.amount) }),
+          el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+        ]));
+      });
+      wrap.appendChild(mlist);
     }
 
     var load = sc.loadOfDay(date);

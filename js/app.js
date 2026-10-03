@@ -50,7 +50,7 @@
     projects: 'projects', project: 'projects', pages: 'projects', docs: 'projects',
     doc: 'projects', crm: 'projects', ticket: 'projects',
     sales: 'sales', stock: 'sales', onsite: 'sales',
-    books: 'books', files: 'files'
+    books: 'books', outgo: 'books', files: 'files'
   };
 
   /* 下のタブの明かりを移す。同じところを二度押しても動きが
@@ -100,7 +100,8 @@
       search: '検索', stock: '頒布と在庫', onsite: '当日モード', pages: '原稿のページ',
       fit: 'トレーニング',
       log: '1日の記録', logs: '記録', ideas: 'ひらめきメモ', time: '今日の予定', orders: '発注',
-      crm: '顧客管理', lock: 'METEO LOCK', ticket: 'チケット'
+      crm: '顧客管理', lock: 'METEO LOCK', ticket: 'チケット',
+      outgo: '出ていくお金'
     };
     setTitle(titles[route.name] || 'METEO365');
 
@@ -140,7 +141,7 @@
     var life = S.calMode() === 'life';
 
     // 売上は下のタブから直接開くので、戻るボタンは要らない
-    var showBack = ['project', 'pages', 'day', 'docs', 'doc', 'search', 'stock', 'onsite', 'log', 'logs', 'ideas', 'time', 'orders', 'crm', 'lock', 'ticket'].indexOf(route.name) >= 0
+    var showBack = ['project', 'pages', 'day', 'docs', 'doc', 'search', 'stock', 'onsite', 'log', 'logs', 'ideas', 'time', 'orders', 'crm', 'lock', 'ticket', 'outgo'].indexOf(route.name) >= 0
       // 筋トレは、日付が付いているとき（その日の中身）だけ戻れるようにする
       || (route.name === 'fit' && !!route.params.date);
     backBtn.hidden = !showBack;
@@ -215,6 +216,7 @@
       case 'doc': DL.views.doc.renderDoc(view, route.params); break;
       case 'sales': DL.views.sales.render(view); break;
       case 'books': DL.views.books.render(view); break;
+      case 'outgo': DL.views.outgo.render(view); break;
       case 'files': DL.views.files.render(view); break;
       case 'stock': DL.views.stock.render(view); break;
       case 'onsite': DL.views.onsite.render(view, route.params); break;
@@ -683,7 +685,7 @@
     /* カレンダーは画面いっぱいに出すので、重なるボタンは置かない。
        筋トレには案件を作る用がないので、ここも出さない。
        ホームは眺める場所で、案件を作るなら案件タブの＋を使うので、ここも出さない */
-    if (['home', 'settings', 'calendar', 'docs', 'doc', 'sales', 'search', 'onsite', 'log', 'logs', 'ideas', 'time', 'orders', 'crm', 'fit', 'lock', 'ticket'].indexOf(route.name) >= 0) { fab.hidden = true; return; }
+    if (['home', 'settings', 'calendar', 'docs', 'doc', 'sales', 'search', 'onsite', 'log', 'logs', 'ideas', 'time', 'orders', 'crm', 'fit', 'lock', 'ticket', 'outgo'].indexOf(route.name) >= 0) { fab.hidden = true; return; }
     fab.hidden = false;
     fab.onclick = function () {
       /* 日別画面では、ここがその日の予定の追加口になる。
@@ -1182,7 +1184,7 @@
 
   /* この端末がいま動かしている版。sw.js の CACHE と揃えて上げる。
      2台で見比べて、片方だけ古いままになっていないか確かめるためのもの */
-  DL.VERSION = 'v235';
+  DL.VERSION = 'v236';
 
   DL.app = { render: render, init: init, get route() { return route; } };
   document.addEventListener('DOMContentLoaded', init);

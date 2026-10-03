@@ -145,6 +145,16 @@
     // 自分で足した科目。もとから入っている科目のうしろに並ぶ
     expenseCategories: { work: [], life: [] },
     recurring: [],         // 固定費 [{id,book,name,amount,category,day,startYm,lastYm,active}]
+    /* 出ていくお金の年表。年払い・隔月・数年に一度のもの。
+       固定費（recurring）が「毎月きまって出るもの」なのに対して、
+       こちらは「忘れたころに大きく出ていくもの」を持つ。
+       [{id, name, amount, book, category, vendor, memo,
+         kind:'cycle'（n ヶ月ごと）|'dates'（年の決まった日）|'once'（一度きり）,
+         months, next:'YYYY-MM-DD', dates:['MM-DD', …], saveUp, active, at}] */
+    outgo: [],
+    /* 払い終えたぶんの印 { '<id>|YYYY-MM-DD': {at, amount, expenseId} }。
+       何度も催促しないため、そして年表に済みの印を出すために持つ */
+    outgoPaid: {},
     // 自分で決める分類。科目とは別に、種別ごとに見返すための札
     tags: [],              // [{id,name,color,order}]
     // 頒布物（本・グッズ）と、その出入り
@@ -373,6 +383,8 @@
     s.settings.fanbox = normalizeFanbox(s.settings.fanbox);
     s.settings.expenses = (s.settings.expenses || []).map(normalizeExpense);
     s.settings.recurring = (s.settings.recurring || []).map(normalizeRecurring);
+    s.settings.outgo = (s.settings.outgo || []).map(normalizeOutgo);
+    s.settings.outgoPaid = normalizeOutgoPaid(s.settings.outgoPaid);
     s.settings.tags = (s.settings.tags || []).map(normalizeTag);
     s.settings.expenseCategories = normalizeExpenseCategories(s.settings.expenseCategories);
     s.settings.items = (s.settings.items || []).map(normalizeItem);
@@ -1815,6 +1827,111 @@
   function removeRecurring(id) {
     state.settings.recurring = (state.settings.recurring || []).filter(function (r) { return r.id !== id; });
     save();
+  }
+
+  /* ---------------- 出ていくお金の年表 ----------------
+
+     年払いの保険、住民税の4期、国保、年金、予定納税、ドメイン、年会費、
+     免許の更新——「忘れたころに大きく出ていくもの」。
+     出かたは3通りだけ持つ。
+
+       cycle … n ヶ月ごと（毎年の保険料、2年ごとの更新料）
+       dates … 年の決まった日（住民税の4期のように、間が等しくないもの）
+       once  … 一度きり（車検、引っ越し） */
+
+  var OUTGO_KINDS = ['cycle', 'dates', 'once'];
+
+  function normalizeOutgo(x) {
+    x = x || {};
+    x.id = x.id || U.uid();
+    x.name = String(x.name || '').trim().slice(0, 60) || '(名称未設定)';
+    x.amount = Math.max(0, Math.round(U.num(x.amount, 0)));
+    x.book = x.book === 'work' ? 'work' : 'life';
+    x.category = String(x.category || '').slice(0, 40) || 'その他';
+    x.vendor = String(x.vendor || '').slice(0, 60);
+    x.memo = String(x.memo || '').slice(0, 300);
+    x.kind = OUTGO_KINDS.indexOf(x.kind) >= 0 ? x.kind : 'cycle';
+    // 周期（月数）。1ヶ月から10年まで
+    x.months = Math.min(120, Math.max(1, Math.round(U.num(x.months, 12))));
+    x.next = U.isISO(x.next) ? x.next : '';
+    x.dates = (Array.isArray(x.dates) ? x.dates : [])
+      .map(function (d) { return /^\d{2}-\d{2}$/.test(String(d)) ? String(d) : ''; })
+      .filter(Boolean)
+      .filter(function (d, i, a) { return a.indexOf(d) === i; })
+      .sort().slice(0, 12);
+    // 毎月すこしずつ取りのけておくか（1日の予算から先に引く）
+    x.saveUp = x.saveUp !== false;
+    x.active = x.active !== false;
+    x.at = x.at || new Date().toISOString();
+    return x;
+  }
+
+  /* 払った印。合鍵は '<id>|YYYY-MM-DD' の形だけ残す */
+  function normalizeOutgoPaid(map) {
+    var out = {};
+    Object.keys(map || {}).forEach(function (k) {
+      if (!/^[^|]+\|\d{4}-\d{2}-\d{2}$/.test(k)) return;
+      var v = map[k] || {};
+      out[k] = {
+        at: String(v.at || ''),
+        amount: Math.max(0, Math.round(U.num(v.amount, 0))),
+        expenseId: String(v.expenseId || '')
+      };
+    });
+    return out;
+  }
+
+  function outgo(book) {
+    var list = (state.settings.outgo || []).slice();
+    return book ? list.filter(function (x) { return x.book === book; }) : list;
+  }
+
+  function getOutgo(id) {
+    return (state.settings.outgo || []).filter(function (x) { return x.id === id; })[0] || null;
+  }
+
+  function addOutgo(data) {
+    var x = normalizeOutgo(Object.assign({ id: U.uid() }, data));
+    state.settings.outgo = (state.settings.outgo || []).concat([x]);
+    save();
+    return x;
+  }
+
+  function updateOutgo(id, patch) {
+    var x = getOutgo(id);
+    if (!x) return null;
+    Object.assign(x, patch);
+    normalizeOutgo(x);
+    save();
+    return x;
+  }
+
+  function removeOutgo(id) {
+    state.settings.outgo = (state.settings.outgo || []).filter(function (x) { return x.id !== id; });
+    // その年表の払った印も、一緒に片づける（宙に浮かせない）
+    var paid = state.settings.outgoPaid || {};
+    Object.keys(paid).forEach(function (k) {
+      if (k.slice(0, k.indexOf('|')) === id) delete paid[k];
+    });
+    save();
+  }
+
+  function outgoPaid() { return state.settings.outgoPaid || (state.settings.outgoPaid = {}); }
+
+  /** 払った印を付ける。v を渡さなければ外す */
+  function setOutgoPaid(key, v) {
+    var paid = outgoPaid();
+    if (v) {
+      paid[key] = {
+        at: new Date().toISOString(),
+        amount: Math.max(0, Math.round(U.num(v.amount, 0))),
+        expenseId: String(v.expenseId || '')
+      };
+    } else {
+      delete paid[key];
+    }
+    save();
+    return paid[key] || null;
   }
 
   /* ---------------- 頒布物と在庫 ---------------- */
@@ -4668,6 +4785,13 @@
       // 経費も、こちらに無いものだけ足す
       r.expenses = mergeById(state.settings.expenses, incoming.settings.expenses || []);
       mergeById(state.settings.recurring, incoming.settings.recurring || []);
+      // 年表も、こちらに無いものだけ足す。払った印は足し合わせる
+      mergeById(state.settings.outgo || (state.settings.outgo = []), incoming.settings.outgo || []);
+      var opaid = state.settings.outgoPaid || (state.settings.outgoPaid = {});
+      Object.keys(incoming.settings.outgoPaid || {}).forEach(function (k) {
+        if (!opaid[k]) opaid[k] = incoming.settings.outgoPaid[k];
+      });
+      state.settings.outgoPaid = normalizeOutgoPaid(opaid);
       mergeById(state.settings.tags || (state.settings.tags = []), incoming.settings.tags || []);
       // 頒布物と在庫の出入りも、こちらに無いものだけ足す
       r.items = mergeById(state.settings.items || (state.settings.items = []), incoming.settings.items || []);
@@ -4960,6 +5084,9 @@
     removeTag: removeTag, reorderTags: reorderTags, tagUseCount: tagUseCount,
     recurring: recurring, getRecurring: getRecurring, addRecurring: addRecurring,
     updateRecurring: updateRecurring, removeRecurring: removeRecurring, postRecurring: postRecurring, skipRecurring: skipRecurring, unskipRecurring: unskipRecurring,
+    outgo: outgo, getOutgo: getOutgo, addOutgo: addOutgo, updateOutgo: updateOutgo,
+    removeOutgo: removeOutgo, outgoPaid: outgoPaid, setOutgoPaid: setOutgoPaid,
+    OUTGO_KINDS: OUTGO_KINDS,
     items: items, getItem: getItem, addItem: addItem, updateItem: updateItem, removeItem: removeItem,
     stockMoves: stockMoves, getMove: getMove, addMove: addMove, updateMove: updateMove, removeMove: removeMove,
     MOVE_KINDS: MOVE_KINDS,

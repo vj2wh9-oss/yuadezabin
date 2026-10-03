@@ -197,6 +197,37 @@
       }
     },
 
+    /* 出ていくお金（年表） */
+    outgo: {
+      label: '出ていくお金',
+      note: '年表に入れた年払い・税金・更新料の支払日を知らせます。'
+        + '口座に用意しておく日があるので、すこし早めがよく効きます',
+      days: true,
+      whens: [
+        { value: 'beforeDay', label: '支払日の◯日前' },
+        { value: 'onDay', label: '支払日の当日' }
+      ],
+      build: function (rule, from, to) {
+        var out = [];
+        var lead = rule.when === 'beforeDay' ? Math.max(1, U.num(rule.days, 7)) : 0;
+        DL.outgo.between(from, U.addDays(to, lead)).forEach(function (oc) {
+          var fire = U.addDays(oc.date, -lead);
+          if (U.cmp(fire, from) < 0 || U.cmp(fire, to) > 0) return;
+          var at = atLocal(fire, rule.time || '09:00', 0);
+          if (!at) return;
+          out.push({
+            id: 'outgo|' + rule.id + '|' + oc.id + '|' + oc.date,
+            at: at,
+            title: (lead ? lead + '日後' : '今日') + '　' + oc.name + 'の支払い',
+            body: DL.docs.yen(oc.amount) + '　' + U.fmtMD(oc.date),
+            tag: 'outgo-' + oc.id + '-' + oc.date,
+            url: '#/outgo'
+          });
+        });
+        return out;
+      }
+    },
+
     /* 請求漏れ */
     uninvoiced: {
       label: '請求漏れ',

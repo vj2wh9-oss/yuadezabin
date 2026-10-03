@@ -68,6 +68,11 @@
       el('span', { class: 'muted small', text: fixed.length ? '毎月 ' + D.yen(monthlyFixed(fixed)) : '' })));
     wrap.appendChild(fixedCard(fixed));
 
+    /* ---- 出ていくお金の年表。年払い・税・更新は、固定費の隣に置く ---- */
+    wrap.appendChild(ui.section('出ていくお金',
+      el('span', { class: 'muted small', text: '年払い・税・更新' })));
+    wrap.appendChild(DL.views.outgo.entryCard());
+
     /* ---- 科目ごと ---- */
     var cats = E.byCategory(all);
     wrap.appendChild(ui.section('科目ごと'));

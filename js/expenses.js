@@ -239,7 +239,11 @@
 
     var fx = fixedDetail(ym);                         // 事業＋日常
     var fixed = fx.total;
-    var budget = Math.max(0, month - fixed);          // 日割りにできる額
+    /* 年表（年払い・税・更新）のために、毎月取りのけておくぶん。
+       固定費と同じで、日割りにしても意味がないので先に引く。
+       こうしておけば、保険料の月だけ食費を削る、ということにならない */
+    var reserve = DL.outgo ? Math.max(0, DL.outgo.perMonth(date).total) : 0;
+    var budget = Math.max(0, month - fixed - reserve); // 日割りにできる額
 
     var rows = (S.settings.expenses || []).filter(function (x) {
       return String(x.date).slice(0, 7) === ym        // 事業も日常も、まとめて数える
@@ -267,6 +271,8 @@
 
     return {
       month: month, fixed: fixed,
+      // 年表のための積立。固定費と同じく、先に取りのけてある
+      reserve: reserve,
       fixedWork: fx.work, fixedLife: fx.life,
       // 固定費ぶんの記録か（折れ線や節約実績でも同じ見方をするため）
       isFixed: fx.isFixed,
@@ -286,7 +292,7 @@
       restPct: restPerDay > 0 ? pct(today, restPerDay) : (today > 0 ? 100 : 0),
       spent: spent, before: before, left: budget - spent,
       // 固定費だけで予算を使い切っている。使いすぎとは別の話
-      noRoom: fixed >= month,
+      noRoom: fixed + reserve >= month,
       // 自由に使えるぶんをもう使い切っている
       overspent: room <= 0,
       // 立て直しの予算がふだんより目に見えて少ない＝ペースがよくない
