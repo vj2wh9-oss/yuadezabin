@@ -1707,6 +1707,15 @@ a.alert-main { text-decoration: none; }
 .chip.pick { cursor: pointer; border-color: var(--line2); background: var(--chip-under); }
 .chip.pick.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 
+/* ---------------- 家事の周期表 ---------------- */
+.ch-row.soon { border-color: var(--warn); }
+.ch-row.late { border-color: var(--danger); }
+/* 周期のどこまで来たかの帯。過ぎていれば振り切る */
+.ch-rail {
+  height: 4px; background: var(--card2); border-radius: 2px; overflow: hidden; margin-top: 2px;
+}
+.ch-rail > i { display: block; height: 100%; background: var(--accent); }
+
 /* ---------------- 出ていくお金の年表 ---------------- */
 /* 枠の中に並べる行。カードの中では囲いを外して、仕切り線だけにする */
 .list.tight { gap: 0; }

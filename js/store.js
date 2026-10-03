@@ -246,6 +246,9 @@
     visits: [],
     // 健診 [{id, date, name, memo, values:{<数値のキー>: 数}}]
     checkups: [],
+    /* 家事の周期表。「前にやった日から数えて次」で回す
+       [{id, name, every（日）, lastAt, log:[日付], from, place, memo, active}] */
+    chores: [],
     /* 備えの棚。期限のある備蓄（ローリングストック）と、減っていく消耗品
        [{id, name, kind:'stock'|'use', unit, need, lots:[{id,until,qty}],
          have, days, lastAt, lead, price, place, memo, queuedAt, active}] */
@@ -403,6 +406,7 @@
     s.settings.visits = (s.settings.visits || []).map(normalizeVisit);
     s.settings.checkups = (s.settings.checkups || []).map(normalizeCheckup);
     s.settings.supplies = (s.settings.supplies || []).map(normalizeSupply);
+    s.settings.chores = (s.settings.chores || []).map(normalizeChore);
     s.settings.tags = (s.settings.tags || []).map(normalizeTag);
     s.settings.expenseCategories = normalizeExpenseCategories(s.settings.expenseCategories);
     s.settings.items = (s.settings.items || []).map(normalizeItem);
@@ -3724,6 +3728,52 @@
     save();
   }
 
+  /* ---- 家事の周期表 ----
+
+     繰り返しの予定（events）と違うのは、間隔の数えかた。
+     あちらは決めた日に出るので、さぼった日はただ流れていく。
+     こちらは「最後にやった日＋周期」なので、さぼってもずれない。 */
+
+  function normalizeChore(c) {
+    c = c || {};
+    c.id = c.id || U.uid();
+    c.name = String(c.name || '').trim().slice(0, 60) || '(名称未設定)';
+    c.every = Math.min(3650, Math.max(1, Math.round(U.num(c.every, 7))));
+    c.lastAt = U.isISO(c.lastAt) ? c.lastAt : '';
+    c.from = U.isISO(c.from) ? c.from : '';        // まだ一度もやっていないときの初回
+    c.log = (Array.isArray(c.log) ? c.log : []).filter(U.isISO)
+      .filter(function (d, i, a) { return a.indexOf(d) === i; })
+      .sort().slice(-60);
+    c.place = String(c.place || '').slice(0, 30);
+    c.memo = String(c.memo || '').slice(0, 300);
+    c.active = c.active !== false;
+    c.at = c.at || new Date().toISOString();
+    return c;
+  }
+
+  function chores() { return (state.settings.chores || []).slice(); }
+  function getChore(id) {
+    return (state.settings.chores || []).filter(function (c) { return c.id === id; })[0] || null;
+  }
+  function addChore(data) {
+    var c = normalizeChore(Object.assign({ id: U.uid() }, data));
+    state.settings.chores = (state.settings.chores || []).concat([c]);
+    save();
+    return c;
+  }
+  function updateChore(id, patch, opts) {
+    var c = getChore(id);
+    if (!c) return null;
+    Object.assign(c, patch);
+    normalizeChore(c);
+    save(opts);
+    return c;
+  }
+  function removeChore(id) {
+    state.settings.chores = (state.settings.chores || []).filter(function (c) { return c.id !== id; });
+    save();
+  }
+
   /* ---- 備えの棚 ----
 
      備蓄は期限ごとの束（lots）で持つ。古いものから使って買い足す
@@ -5053,6 +5103,7 @@
       mergeById(state.settings.visits || (state.settings.visits = []), incoming.settings.visits || []);
       mergeById(state.settings.checkups || (state.settings.checkups = []), incoming.settings.checkups || []);
       mergeById(state.settings.supplies || (state.settings.supplies = []), incoming.settings.supplies || []);
+      mergeById(state.settings.chores || (state.settings.chores = []), incoming.settings.chores || []);
       var mlog = state.settings.medLog || (state.settings.medLog = {});
       Object.keys(incoming.settings.medLog || {}).forEach(function (d) {
         var day = mlog[d] || (mlog[d] = {});
@@ -5362,6 +5413,8 @@
     updateCheckup: updateCheckup, removeCheckup: removeCheckup,
     supplies: supplies, getSupply: getSupply, addSupply: addSupply,
     updateSupply: updateSupply, removeSupply: removeSupply, SUPPLY_KINDS: SUPPLY_KINDS,
+    chores: chores, getChore: getChore, addChore: addChore,
+    updateChore: updateChore, removeChore: removeChore,
     items: items, getItem: getItem, addItem: addItem, updateItem: updateItem, removeItem: removeItem,
     stockMoves: stockMoves, getMove: getMove, addMove: addMove, updateMove: updateMove, removeMove: removeMove,
     MOVE_KINDS: MOVE_KINDS,

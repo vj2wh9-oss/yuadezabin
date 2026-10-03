@@ -26,7 +26,10 @@
     var toss = S.expiredFood(today);
     // 飲み残しているくすり。1行にまとめて「今日やること」に並べる
     var medRow = DL.views.body.todoRow(today);
-    var todo = load.entries.length + plans.length + toss.length + (medRow ? 1 : 0);
+    // 周期の過ぎた家事も、まとめて1行
+    var choreRow = DL.views.chores.todoRow(today);
+    var todo = load.entries.length + plans.length + toss.length
+      + (medRow ? 1 : 0) + (choreRow ? 1 : 0);
     wrap.appendChild(el('div', { class: 'today-head' }, [ui.dateHead(today), weatherChip(today)]));
 
     // iCloud への書き出しは Cloudflare 同期の予備なので、ホームでは案内しない。
@@ -87,7 +90,8 @@
       .concat(DL.expenses.renewAlerts(today))
       .concat(DL.outgo.alerts(today))
       .concat(DL.body.alerts(today))
-      .concat(DL.supply.alerts(today));
+      .concat(DL.supply.alerts(today))
+      .concat(DL.chores.alerts(today));
     var urgent = plans.filter(function (o) { return o.ev.important; });
     if (al.length || urgent.length) {
       var box = el('div', { class: 'alerts' });
@@ -124,6 +128,7 @@
       plans.forEach(function (o) { list.appendChild(planRow(o)); });
       toss.forEach(function (t) { list.appendChild(tossRow(t)); });
       if (medRow) list.appendChild(medRow);
+      if (choreRow) list.appendChild(choreRow);
       wrap.appendChild(list);
     }
 
@@ -158,6 +163,9 @@
 
     /* 備えの棚（備蓄と消耗品）。こちらも入口だけ */
     wrap.appendChild(DL.views.supply.entry());
+
+    /* 家事の周期表 */
+    wrap.appendChild(DL.views.chores.entry());
 
     if (DL.views.lock) wrap.appendChild(DL.views.lock.entry());
 
