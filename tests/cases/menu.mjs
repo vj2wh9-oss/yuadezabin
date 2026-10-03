@@ -60,11 +60,9 @@ async function openDay(page, base) {
   await page.waitForSelector('.mn-card');
 }
 
-/* 「前に作ったものから選ぶ」を開く。入口はその日の様子で名前が変わる */
+/* 「前に作ったものから選ぶ」を開く。入口はどの様子でも★の絵だけ */
 async function openPast(page) {
-  const star = page.locator('[aria-label="前に作った献立から選ぶ"]');
-  if (await star.count()) await star.first().click();
-  else await page.locator('button:has-text("前のから選ぶ")').first().click();
+  await page.locator('[aria-label="前に作った献立から選ぶ"]').first().click();
   await page.waitForSelector('.sheet-title:has-text("前に作ったものから選ぶ")');
 }
 
@@ -207,6 +205,110 @@ export default {
         (window.DL.store.getMenu(d).meals || []).reduce((a, x) => a + (x.dishes || []).length, 0), T)) === 1);
 
       s.ok('画面のエラー', errors, []);
+    });
+
+    /* 献立の選ぶところと「作りたいもの」 */
+    await withPage(base, IPHONE, async (page, errors) => {
+      await open(page, base);
+      await page.evaluate(() => {
+        window.DL.store.updateSettings({ lifeBudget: 60000 });
+        // 「作ってもらう」の口が出るように、同期をつないだことにする
+        window.DL.store.updateSync({
+          url: location.origin, token: 'test-token-0123456789abcdefghij', id: 't', enabled: true
+        });
+      });
+      // 預かりの問い合わせは、空の返事でいなす
+      await page.route(/\/v1\/(inbox|meta|state|files)\b/, (r) => r.fulfill({
+        status: 200, contentType: 'application/json', body: '{"items":[]}'
+      }));
+      await openDay(page, base);
+      await page.waitForSelector('.mn-serv');
+
+      /* 人数はプルダウン1つ。その右に系統を1行で並べる */
+      const row = await page.evaluate(() => {
+        const r = document.querySelector('.mn-serv');
+        const sel = r.querySelector('select.mn-serv-sel');
+        const gs = [...r.querySelectorAll('.mn-g')];
+        return {
+          人数: sel ? [...sel.options].map((o) => o.text) : null,
+          系統: gs.map((n) => n.textContent),
+          一行: new Set([sel].concat(gs).map((n) => Math.round(n.getBoundingClientRect().top))).size,
+          はみ出し: Math.round(r.scrollWidth - r.clientWidth),
+          切れ: [sel].concat(gs).filter((n) => n.scrollWidth - n.clientWidth > 1).length
+        };
+      });
+      s.note('人数と系統の行: ' + JSON.stringify(row));
+      s.ok('人数はプルダウン', row.人数, ['1人分', '2人分']);
+      s.ok('系統は4つ', row.系統, ['指定なし', '和食', '洋食', '中華']);
+      s.ok('ぜんぶ1行に入る', row.一行, 1);
+      s.ok('横にはみ出さない', row.はみ出し, 0);
+      s.ok('字が切れない', row.切れ, 0);
+
+      /* 人数はプルダウンで選べる */
+      await page.selectOption('select.mn-serv-sel', '2');
+      await page.waitForTimeout(300);
+      s.ok('選ぶと2人分になる',
+        await page.evaluate(() => document.querySelector('select.mn-serv-sel').value), '2');
+
+      /* 作りたいもの。入れると札になり、役どころを回せる */
+      const add = async (name) => {
+        await page.fill('[aria-label="作りたいものを足す"]', name);
+        await page.locator('.mn-use:has([aria-label="作りたいものを足す"]) button:has-text("足す")').click();
+        await page.waitForTimeout(250);
+      };
+      await add('麻婆豆腐');
+      await add('ポテトサラダ');
+      const tags = () => page.$$eval('.mn-want-tag',
+        (ns) => ns.map((n) => n.innerText.replace(/\s+/g, ' ').trim()));
+      s.note('作りたいもの: ' + JSON.stringify(await tags()));
+      s.ok('2つ並ぶ', (await tags()).length, 2);
+      s.yes('はじめは役どころを決めていない',
+        (await tags()).every((t) => /おまかせ/.test(t)));
+
+      // 札の左を押すと おまかせ → 主菜 → 副菜 と回る
+      await page.locator('.mn-want-role').first().click();
+      await page.waitForTimeout(250);
+      s.yes('1回で主菜', /主菜 麻婆豆腐/.test((await tags())[0]));
+      await page.locator('.mn-want-role').first().click();
+      await page.waitForTimeout(250);
+      s.yes('もう1回で副菜', /副菜 麻婆豆腐/.test((await tags())[0]));
+      await page.locator('.mn-want-role').first().click();
+      await page.waitForTimeout(250);
+      s.yes('もう1回でおまかせに戻る', /おまかせ 麻婆豆腐/.test((await tags())[0]));
+      await page.locator('.mn-want-role').first().click();   // 主菜に戻しておく
+      await page.waitForTimeout(250);
+
+      /* 頼みに乗ること。主菜だけ指して、副菜は向こうに任せられる */
+      let sent = null;
+      await page.route(/\/v1\/menu$/, (r) => {
+        sent = JSON.parse(r.request().postData() || '{}');
+        return r.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"stop"}' });
+      });
+      await page.locator('.mn-acts button:has-text("通常出力")').click();
+      await page.waitForTimeout(600);
+      s.note('送った中身: ' + JSON.stringify(sent && { want: sent.want, servings: sent.servings }));
+      s.ok('作りたいものが頼みに乗る',
+        sent && sent.want, [{ name: '麻婆豆腐', role: '主菜' }, { name: 'ポテトサラダ', role: '' }]);
+      s.ok('人数も乗る', sent && sent.servings, 2);
+      s.yes('主菜だけ指して、副菜は向こうに任せられる',
+        sent.want.filter((w) => w.role === '主菜').length === 1
+        && sent.want.filter((w) => w.role === '副菜').length === 0);
+
+      /* ×で外せる */
+      await page.locator('.mn-want-x').first().click();
+      await page.waitForTimeout(250);
+      s.ok('×で1つ外れる', (await tags()).length, 1);
+
+      /* 説明の文は置かない */
+      s.ok('作りたいもののまわりに説明文を置かない',
+        await page.evaluate(() => {
+          const box = document.querySelector('.mn-use:has([aria-label="作りたいものを足す"])');
+          return box ? box.querySelectorAll('p').length : -1;
+        }), 0);
+
+      /* わざと 500 を返して頼みの中身だけ見たので、そのぶんは数えない */
+      s.ok('画面のエラー（作りたいもの）',
+        errors.filter((e) => !/500/.test(e)), []);
     });
     return s;
   }

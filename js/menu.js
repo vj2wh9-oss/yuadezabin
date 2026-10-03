@@ -78,6 +78,18 @@
     });
   }
 
+  /* 作りたいもの。料理の名前そのもの。[{name, role}] にそろえる */
+  var WANT_ROLES = ['主菜', '副菜'];
+
+  function wantOf(list) {
+    return (Array.isArray(list) ? list : []).slice(0, 4).map(function (w) {
+      return {
+        name: String((w && w.name) || '').trim().slice(0, 40),
+        role: WANT_ROLES.indexOf(String(w && w.role)) >= 0 ? String(w.role) : ''
+      };
+    }).filter(function (w) { return w.name; });
+  }
+
   /** ['breakfast','dinner'] → '朝食・夕飯' */
   function slotsJa(slots) {
     return (slots || []).map(function (s) { return SLOT_LABEL[s] || s; }).join('・');
@@ -182,6 +194,10 @@
         avoid: (o.avoid || []).concat(S.recentMenuNames(30, 40)).slice(0, 30),
         // 使いたい食材。入れてあれば、必ずそれを主にした献立にしてもらう
         use: (o.use || []).slice(0, 8),
+        /* 作りたいもの（料理そのもの）。[{name, role}]。
+           role を指してあればその役どころに、空なら向こうに任せる。
+           指していない役どころは、これまでどおり予算の中で考えてもらう */
+        want: wantOf(o.want),
         disliked: S.dislikedDishes(20),
         // 前に作ったときのメモ。同じ料理が来たら活かしてもらう
         notes: S.dishHints(24),
@@ -274,6 +290,7 @@
         // いま出ている一品と、最近の献立は避ける
         avoid: [d.name].concat(S.recentMenuNames(30, 40)).slice(0, 30),
         use: (o.use || []).slice(0, 8),
+        want: wantOf(o.want),
         disliked: S.dislikedDishes(20),
         notes: S.dishHints(24),
         leftovers: useLeftovers(o.date),
@@ -443,6 +460,6 @@
     season: season,
     extras: extras, seasoningState: seasoningState, matcher: matcher, pantryMap: pantryMap,
     dropOwned: dropOwned,
-    useLeftovers: useLeftovers, key: key
+    useLeftovers: useLeftovers, key: key, wantOf: wantOf
   };
 })(window.DL);

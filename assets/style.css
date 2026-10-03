@@ -2144,19 +2144,20 @@ a.alert-main { text-decoration: none; }
   position: absolute; bottom: 0; z-index: 2;
   width: 36px; height: 36px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  background: var(--card2); border: 1px solid var(--line);
-  color: var(--muted); cursor: pointer;
+  background: var(--accent); border: 1px solid var(--accent);
+  color: var(--accent-ink); cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 .tp-hop.prev { left: 10px; }
 .tp-hop.next { right: 10px; }
-.tp-hop:active { background: var(--line2); color: var(--text); }
+.tp-hop:active { filter: brightness(.9); }
 @media (hover: hover) and (pointer: fine) {
-  .tp-hop:hover { background: var(--line2); color: var(--text); }
+  .tp-hop:hover { filter: brightness(1.08); }
 }
 /* バーの組みでは、ほかのボタンとそろえて角を落とした四角にする */
 body.skin-bar .tp-hop {
-  border-radius: var(--radius-s); border-color: var(--line2); border-bottom-width: 2px;
+  border-radius: var(--radius-s);
+  border-bottom-width: 2px; border-bottom-color: color-mix(in srgb, #000 22%, var(--accent));
 }
 /* まわりに置いた名前と、そこへ引く線 */
 .tp-lead { stroke-width: .7; stroke-linecap: round; opacity: .8; }
@@ -2503,19 +2504,34 @@ a.tp-proj:active { color: var(--accent); }
 .mn-pick .btn { flex: 1; }
 /* 何人分。見出しを付けないぶん、控えめな大きさで左に置く */
 /* 人数と、料理の系統。iPhone の幅でも1行に収まるよう、どちらも小さめに */
-.mn-serv { display: flex; align-items: stretch; gap: 6px; }
-.mn-serv .segmented { flex: none; }
-.mn-serv .seg { flex: none; padding: 7px 11px; font-size: 12.5px; }
+/* 人数のプルダウンと、系統の4つを1行に並べる */
+.mn-serv { display: flex; align-items: stretch; gap: 5px; }
+/* 人数はボタン1つぶんの幅に収める。
+   地の部品は appearance:none なので、押せると分かるよう▽を自分で描く */
+.mn-serv-sel {
+  flex: none; width: 80px; padding: 6px 17px 6px 8px; font-size: 12.5px;
+  text-align: left;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-size: 4px 4px, 4px 4px;
+  background-position: right 10px center, right 6px center;
+  background-repeat: no-repeat;
+}
 .mn-genre { display: flex; gap: 4px; flex: 1; min-width: 0; }
 .mn-g {
-  flex: 1; min-width: 0; padding: 7px 2px; font-size: 12.5px; font: inherit;
-  font-size: 12.5px; line-height: 1.2; color: var(--muted); cursor: pointer;
+  flex: 1; min-width: 0; padding: 7px 1px; font: inherit;
+  font-size: 12px; letter-spacing: -.04em; line-height: 1.2;
+  color: var(--muted); cursor: pointer; white-space: nowrap;
   background: var(--card); border: 1px solid var(--line2); border-radius: var(--radius-s);
 }
 .mn-g:active { opacity: .8; }
 .mn-g.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
-/* 系統は「指定なし」を入れて4つ。人数とは行を分けて、字がつぶれないようにする */
-.mn-serv-wrap { display: flex; flex-direction: column; gap: 6px; }
+/* 320px の端末では、人数ぶんを引くと1つ 46px しかない */
+@media (max-width: 379px) {
+  .mn-serv-sel { width: 72px; font-size: 11.5px; padding-left: 6px; padding-right: 15px; }
+  .mn-g { font-size: 10.5px; letter-spacing: -.07em; }
+}
 
 /* ---------------- 使いたい食材 ----------------
    入れた食材は札にして並べる。押すと外れる */
@@ -2535,6 +2551,27 @@ a.tp-proj:active { color: var(--accent); }
 }
 .mn-use-tag:active { opacity: .7; }
 .mn-use-tag .icon { flex: none; }
+/* 作りたいもの。左に役どころ、右に料理の名前。
+   役どころを押すと おまかせ → 主菜 → 副菜 と回る */
+.mn-want-tag {
+  display: inline-flex; align-items: stretch; font-size: 12.5px;
+  border: 1px solid var(--line2); border-radius: var(--radius-s);
+  background: var(--card); overflow: hidden;
+}
+.mn-want-role {
+  font: inherit; font-size: 11px; font-weight: 700; line-height: 1;
+  display: flex; align-items: center; padding: 0 6px; cursor: pointer;
+  background: var(--line2); color: var(--muted); border: 0; white-space: nowrap;
+}
+.mn-want-tag.is-main .mn-want-role { background: var(--accent); color: var(--accent-ink); }
+.mn-want-tag.is-side .mn-want-role { background: var(--accent2); color: #fff; }
+.mn-want-n { display: flex; align-items: center; padding: 4px 2px 4px 6px; }
+.mn-want-x {
+  font: inherit; display: flex; align-items: center; padding: 0 6px 0 4px;
+  background: none; border: 0; color: var(--muted); cursor: pointer;
+}
+.mn-want-role:active, .mn-want-x:active { opacity: .7; }
+
 .mn-use-add { display: flex; gap: 6px; align-items: stretch; }
 .mn-use-add input { flex: 1; min-width: 0; }
 .mn-use-add .btn { flex: none; }

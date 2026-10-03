@@ -64,7 +64,7 @@
 
       if (tk.length || ['event', 'work', 'support'].indexOf(filter) >= 0) {
         listBox.appendChild(ui.section('チケット',
-          ui.btn('作る', 'ghost tiny', function () { DL.views.ticket.form(null); }, 'plus')));
+          ui.btn('起票', 'ghost tiny', function () { DL.views.ticket.form(null); }, 'plus')));
         /* 券は下から流れてきて、下のものから順に積み上がる。
            いちばん下を先に置き、上へ向かって少しずつ遅らせる */
         var cards = tk.map(function (t) { return DL.views.ticket.card(t, today); });

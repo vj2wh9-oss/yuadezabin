@@ -126,7 +126,7 @@
     var sp = shopCard(today);
     if (sp) {
       wrap.appendChild(ui.section('買い物リスト',
-        ui.btn('品を足す', 'ghost tiny', function () { shopItemSheet(null); }, 'plus')));
+        ui.btn('追加', 'ghost tiny', function () { shopItemSheet(null); }, 'plus')));
       wrap.appendChild(sp);
     }
 
@@ -565,7 +565,7 @@
       el('div', { class: 'bg-rest-c' }, [
         el('span', { class: 'bg-rest-l', text: '本日使える金額' }),
         el('b', { text: yen(b.todayLeft) }),
-        b.todayOver ? el('span', { class: 'bg-rest-s', text: yen(b.todayOver) + ' 使いすぎ' }) : null
+        b.todayOver ? el('span', { class: 'bg-rest-s', text: yen(b.todayOver) + ' 超過' }) : null
       ]),
       sv ? el('div', { class: 'bg-rest-c save' + (sv.left <= 0 ? ' zero' : '') }, [
         el('span', { class: 'bg-rest-l', text: '貯金するなら' }),
@@ -585,7 +585,7 @@
        レシートを入れたのに支出が増えないと戸惑うので、そこは書いておく */
     if (b.todaySupply > 0) {
       card.appendChild(el('p', { class: 'muted small bg-supply', text:
-        '日用品・消耗品 ' + yen(b.todaySupply) + ' は今日ぶんに数えていません（明日から効きます）' }));
+        '日用品・消耗品 ' + yen(b.todaySupply) + ' 非対象／明日以降 予算自動調整' }));
     }
 
     if (b.noRoom) {
@@ -640,7 +640,7 @@
       type: 'button', class: 'mo-line',
       onclick: function () { savedSheet(today); }
     }, [
-      el('span', { class: 'mo-k', text: '今月の節約' }),
+      el('span', { class: 'mo-k', text: '節約実績' }),
       el('b', { class: minus ? 'over' : 'save',
         text: (minus ? '-' : '+') + yen(Math.abs(r.saved)) }),
       el('span', { class: 'mo-s' + (r.today < 0 ? ' over' : ''),
@@ -736,6 +736,10 @@
   var mServ = 1;             // 何人分
   var mGenre = '';           // 和食・洋食・中華。空なら指定なし
   var mUse = [];             // 使いたい食材。入れておくと、必ずそれを使った献立になる
+  /* 作りたいもの。料理の名前そのものを指す。
+     [{name, role}] で、role は '' / '主菜' / '副菜'。
+     主菜だけ指しておけば、副菜はこれまでどおり予算の中で考えてもらえる */
+  var mWant = [];
   var mDraft = null;         // まだ採用していない献立
   var mDate = '';            // その下書きは、どの日のぶんか
   var mBusy = '';            // いま考えている日（空なら考えていない）
@@ -798,6 +802,7 @@
         card.appendChild(slotPick());
         card.appendChild(servRow());
         card.appendChild(usePick());
+        card.appendChild(wantPick());
       }
       card.appendChild(el('div', { class: 'row-wrap mn-acts' }, [
         b ? ui.btn(busy ? '考えています…' : '再考案', 'ghost', function () {
@@ -823,10 +828,9 @@
 
     if (!M.ready()) {
       /* 作ってもらうには同期が要る。前に作ったものから選ぶだけなら、それも要らない */
-      card.appendChild(el('p', { class: 'muted small',
-        text: '同期を設定すると、献立を作ってもらえます' }));
       card.appendChild(el('div', { class: 'row-wrap mn-acts' }, [
-        ui.btn('前のから選ぶ', 'ghost grow', function () { pastMenuSheet(today); }, 'star')
+        onlyIcon('star', '前に作った献立から選ぶ', 'ghost grow',
+          function () { pastMenuSheet(today); })
       ]));
       return card;
     }
@@ -835,6 +839,7 @@
     card.appendChild(slotPick());
     card.appendChild(servRow());
     card.appendChild(usePick());
+    card.appendChild(wantPick());
 
     // まだ出していないとき
     if (!draft) {
@@ -854,7 +859,8 @@
           run(today, b, [], sv.left);
         }) : null,
         // 作ってもらわずに、前に作ったものから選ぶ
-        ui.btn('前のから選ぶ', 'ghost grow', function () { pastMenuSheet(today); }),
+        onlyIcon('star', '前に作った献立から選ぶ', 'ghost',
+          function () { pastMenuSheet(today); }),
         kitchenBtn()
       ]));
       return card;
@@ -918,7 +924,7 @@
       DL.app.render();
       DL.menu.suggest({
         budget: budget || (bd ? bd.todayLeft : 0), slots: mSlots.slice(), servings: mServ,
-        genre: mGenre, use: mUse.slice(), avoid: avoid, date: date
+        genre: mGenre, use: mUse.slice(), want: wantList(), avoid: avoid, date: date
       }).then(function (m) {
         mBusy = '';
         mDraft = m;
@@ -981,12 +987,12 @@
     card.appendChild(ul);
 
     card.appendChild(el('div', { class: 'row-wrap mn-acts' }, [
-      ui.btn('品を足す', 'ghost', function () { shopItemSheet(null); }, 'plus'),
-      menus.length ? ui.btn('献立ごとに見る', 'ghost', function () {
+      ui.btn('追加', 'ghost', function () { shopItemSheet(null); }, 'plus'),
+      menus.length ? ui.btn('献立', 'ghost', function () {
         planShopSheet(r.from, r.to);
       }, 'books') : null,
       /* 買い終わったものを消す口。献立があってもなくても、いつでも同じ場所に置く */
-      ui.btn('買ったぶんを消す', 'ghost', function () { dropGotShop(r); }, 'trash')
+      ui.btn('チェック済削除', 'ghost', function () { dropGotShop(r); }, 'trash')
     ]));
     return card;
 
@@ -2036,14 +2042,13 @@
 
   /* 人数と、料理の系統。1行に並べる */
   function servRow() {
-    /* 系統は「指定なし」を入れて4つになったので、人数とは行を分ける
-       （iPhone の幅では1行に収まらず、字が読めなくなる） */
-    return el('div', { class: 'mn-serv-wrap' }, [
-      el('div', { class: 'mn-serv' },
-        ui.segmented([{ value: 1, label: '1人分' }, { value: 2, label: '2人分' }],
-          mServ, function (v) { mServ = U.num(v, 1); DL.app.render(); })),
-      genrePick()
-    ]);
+    /* 人数はプルダウン1つにまとめて、空いた横へ系統を並べる */
+    var serv = ui.select(
+      [{ value: 1, label: '1人分' }, { value: 2, label: '2人分' }],
+      mServ, function (e) { mServ = U.num(e.target.value, 1); DL.app.render(); });
+    serv.classList.add('mn-serv-sel');
+    serv.setAttribute('aria-label', '何人分');
+    return el('div', { class: 'mn-serv' }, [serv, genrePick()]);
   }
 
   /* 指定なし・和食・洋食・中華。いまどれなのかが分かるよう、
@@ -2118,10 +2123,92 @@
       input,
       ui.btn('足す', 'ghost', push, 'plus')
     ]));
-    // 打ち止めは、そのとき初めて出す知らせなので残す
-    if (mUse.length >= 8) {
-      box.appendChild(el('p', { class: 'muted small', text: '足せるのは8つまでです。' }));
+    return box;
+  }
+
+  /* ---------------- 作りたいもの ----------------
+
+     使いたい「食材」ではなく、作りたい「料理」そのものを指す。
+     名前を入れておくと、その料理のレシピを予算の中で組んでもらえる。
+     主菜・副菜を指してもよく、指さなければ向こうに任せる。
+     主菜だけ指せば、副菜はこれまでどおり予算の中で考えてもらえる。 */
+
+  var WANT_MAX = 4;
+  var WANT_ROLES = ['', '主菜', '副菜'];
+
+  /** 頼みに乗せる形。名前の無いものは落とす */
+  function wantList() {
+    return mWant.filter(function (w) { return w.name; })
+      .map(function (w) { return { name: w.name, role: w.role || '' }; });
+  }
+
+  /** その役どころに、作りたいものが指してあれば返す（一品の出し直し用） */
+  function wantFor(role) {
+    return mWant.filter(function (w) { return w.name && w.role === role; })
+      .map(function (w) { return { name: w.name, role: w.role }; });
+  }
+
+  function addWant(s) {
+    String(s || '').split(/[,、,・\n]+/).forEach(function (x) {
+      var name = x.trim().slice(0, 40);
+      if (!name || mWant.length >= WANT_MAX) return;
+      if (mWant.some(function (w) { return w.name === name; })) return;
+      mWant.push({ name: name, role: '' });
+    });
+  }
+
+  /* 入れた料理の並びと、足すところ。
+     札を押すと おまかせ → 主菜 → 副菜 と回り、×で外れる */
+  function wantPick() {
+    var box = el('div', { class: 'mn-use' });
+    box.appendChild(el('div', { class: 'mn-use-head' }, [
+      el('span', { class: 'mn-use-l', text: '作りたいもの' }),
+      mWant.length ? el('button', {
+        type: 'button', class: 'mn-use-clear',
+        onclick: function () { mWant = []; DL.app.render(); }
+      }, el('span', { text: 'ぜんぶ外す' })) : null
+    ]));
+
+    if (mWant.length) {
+      box.appendChild(el('div', { class: 'mn-use-tags' }, mWant.map(function (w) {
+        return el('span', { class: 'mn-want-tag' + (w.role ? ' is-' + (w.role === '主菜' ? 'main' : 'side') : '') }, [
+          el('button', {
+            type: 'button', class: 'mn-want-role',
+            'aria-label': w.name + 'の役どころ（いまは' + (w.role || 'おまかせ') + '）',
+            onclick: function () {
+              w.role = WANT_ROLES[(WANT_ROLES.indexOf(w.role) + 1) % WANT_ROLES.length];
+              DL.app.render();
+            }
+          }, el('span', { text: w.role || 'おまかせ' })),
+          el('span', { class: 'mn-want-n', text: w.name }),
+          el('button', {
+            type: 'button', class: 'mn-want-x', 'aria-label': w.name + 'を外す',
+            onclick: function () {
+              mWant = mWant.filter(function (v) { return v !== w; });
+              DL.app.render();
+            }
+          }, ui.icon('close', 12))
+        ]);
+      })));
     }
+
+    var input = ui.input({
+      value: '', maxlength: 40, placeholder: '例）麻婆豆腐',
+      'aria-label': '作りたいものを足す'
+    });
+    var push = function () {
+      if (!input.value.trim()) return;
+      addWant(input.value);
+      input.value = '';
+      DL.app.render();
+    };
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); push(); }
+    });
+    box.appendChild(el('div', { class: 'mn-use-add' }, [
+      input,
+      ui.btn('足す', 'ghost', push, 'plus')
+    ]));
     return box;
   }
 
@@ -2255,7 +2342,8 @@
     DL.app.render();
     DL.menu.suggestDish({
       menu: m, slot: ctx.meal.slot, dish: d, genre: mGenre, use: mUse.slice(),
-      budget: m.budget, date: date
+      // その役どころに作りたいものを指してあれば、それで組み直してもらう
+      want: wantFor(d.role), budget: m.budget, date: date
     }).then(function (r) {
       mRedo = '';
       var next = swapDish(m, ctx.meal, d, r);

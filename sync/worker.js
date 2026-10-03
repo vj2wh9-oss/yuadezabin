@@ -781,6 +781,25 @@ function menuCommonLines(o, one) {
     lines.push('予算に収まらないときは、量を減らすか安い部位・安い切り身に替えて、'
       + 'その食材を使うほうを優先してください。使わずに済ませてはいけません。');
   }
+  /* 作りたいもの。料理の名前そのものを指されている。
+     その料理のレシピを、この予算の中で組んでもらう。
+     役どころを指していないものは、向こうの判断で置いてもらう。
+     指されていない役どころは、これまでどおり予算の中で考えてもらう */
+  if (o.want && o.want.length) {
+    lines.push('この人が作りたい料理です。'
+      + (one ? 'この一品は、' : '今回の献立には、')
+      + '次の料理を必ずそのまま入れてください：'
+      + o.want.map((w) => '「' + w.name + '」'
+        + (w.role ? '（' + w.role + 'として）' : '')).join('、'));
+    lines.push('名前を変えたり、似た別の料理に置き替えたりしないでください。'
+      + '材料・分量・手順は、家の台所で作れる形にこの予算の中で組んでください。');
+    lines.push('予算に収まらないときは、量を減らすか安い部位・安い切り身に替えて、'
+      + 'その料理を作るほうを優先してください。');
+    if (!one) {
+      lines.push('役どころを指していない一品（指された料理以外）は、'
+        + 'これまでどおり残りの予算の中で考えてください。');
+    }
+  }
   if (o.avoid && o.avoid.length) {
     lines.push((one ? 'この一品は、次のものとは別の料理にしてください：'
       : '次の料理は最近出したので、それとは別のものにしてください'
@@ -857,8 +876,12 @@ function dishPrompt(o) {
   const meal = SLOT_JA[o.slot] || '食事';
   const lines = [
     'いまある献立のうち、' + meal + 'の' + o.role + 'を1品だけ、別のものに差し替えます。',
-    o.old ? 'いまの' + o.role + 'は「' + o.old + '」です。これとは違う料理にしてください。'
-      : 'その' + o.role + 'を新しく1品考えてください。',
+    /* 作りたいものを指されているときは、そちらが勝つ。
+       「違う料理に」と言うと、指された料理を外してしまう */
+    (o.want && o.want.length)
+      ? 'その' + o.role + 'を、下に挙げる作りたい料理で組み直してください。'
+      : (o.old ? 'いまの' + o.role + 'は「' + o.old + '」です。これとは違う料理にしてください。'
+        : 'その' + o.role + 'を新しく1品考えてください。'),
     '量は' + people + 'です。'
   ];
   if (o.keep && o.keep.length) {
@@ -907,6 +930,18 @@ async function askDish(env, model, o) {
 
 /* 献立ぜんぶでも、一品の差し替えでも同じように受け取るところ */
 function menuOpts(body) {
+  const o = menuOptsRaw(body);
+  /* 作りたいものに挙がっている料理は、「避けて」の並びから外す。
+     残しておくと「これを作って」と「これは避けて」で言うことが食い違う */
+  if (o.want.length) {
+    const want = new Set(o.want.map((w) => w.name));
+    o.avoid = o.avoid.filter((a) => !want.has(a));
+    o.disliked = o.disliked.filter((a) => !want.has(a));
+  }
+  return o;
+}
+
+function menuOptsRaw(body) {
   return {
     servings: Number(body.servings) === 2 ? 2 : 1,
     // 知らない値は指定なし扱い（古いアプリからは そもそも来ない）
@@ -916,6 +951,14 @@ function menuOpts(body) {
     // 使いたい食材。入れてあれば必ず使ってもらう
     use: (Array.isArray(body.use) ? body.use : []).slice(0, 8)
       .map((s) => String(s || '').trim().slice(0, 30)).filter(Boolean),
+    /* 作りたいもの（料理そのもの）。role は '主菜' / '副菜' / 空（おまかせ）。
+       指した役どころはこの料理に決め打ち、指していない役どころは
+       これまでどおり予算の中で考えてもらう */
+    want: (Array.isArray(body.want) ? body.want : []).slice(0, 4)
+      .map((w) => ({
+        name: String((w && w.name) || '').trim().slice(0, 40),
+        role: DISH_ROLES.indexOf(String(w && w.role)) >= 0 ? String(w.role) : ''
+      })).filter((w) => w.name),
     // 家の残り物。先に使い切ってもらう
     leftovers: (Array.isArray(body.leftovers) ? body.leftovers : []).slice(0, 12)
       .map((x) => ({

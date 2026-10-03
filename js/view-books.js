@@ -314,7 +314,7 @@
     var diff = limit - (atToday.spent || 0);
     var note = diff >= 0
       ? '今日の目安より ' + D.yen(diff) + ' 少なく済んでいます'
-      : '今日の目安より ' + D.yen(-diff) + ' 多く使っています';
+      : '貯金目安を ' + D.yen(-diff) + ' 超過';
 
     /* 予算のカードの中に入れる。上の点線が、棒のところと折れ線の区切りになる */
     var box = el('div', { class: 'lchart-box bg-chart' }, [
@@ -596,8 +596,8 @@
     }
 
     box.appendChild(el('div', { class: 'row-wrap' }, [
-      ui.btn('手で入れる', 'primary', function () { savingsInput(); }, 'edit'),
-      ui.btn('目標入力', 'ghost', function () { savingsGoal(); }, 'chartLine'),
+      ui.btn('残高入力', 'primary', function () { savingsInput(); }, 'edit'),
+      ui.btn('目標設定', 'ghost', function () { savingsGoal(); }, 'chartLine'),
       ui.btn('節約目標', 'ghost', function () { savingsPlan(); }, 'books'),
       ui.btn('アドバイス', 'ghost', function () { savingsAdvice(); }, 'idea')
     ]));
@@ -639,7 +639,7 @@
     }
 
     body.appendChild(el('div', { class: 'row-wrap' }, [
-      ui.btn('目標入力', 'ghost', function () { ui.closeAllSheets(); savingsGoal(); }, 'chartLine'),
+      ui.btn('目標設定', 'ghost', function () { ui.closeAllSheets(); savingsGoal(); }, 'chartLine'),
       ui.btn('アドバイス', 'ghost', function () { ui.closeAllSheets(); savingsAdvice(); }, 'idea')
     ]));
     return body;
@@ -650,7 +650,7 @@
     if (!body) {
       body = el('div', { class: 'form sv-plan' });
       body.appendChild(ui.empty('目標と期日を決めると出ます。',
-        ui.btn('目標入力', 'primary', function () { ui.closeAllSheets(); savingsGoal(); })));
+        ui.btn('目標設定', 'primary', function () { ui.closeAllSheets(); savingsGoal(); })));
     }
     ui.sheet({ title: '節約目標', body: body });
   }
@@ -819,10 +819,7 @@
     }, [
       ui.icon('alert', 18),
       el('div', { class: 'sv-due-t' }, [
-        el('b', { text: due.month + '月の貯金額を入れてください' }),
-        el('span', { class: 'muted small',
-          text: '入れると、毎日の節約ノルマを引き直します（いまは '
-            + D.yen(due.perDay) + '/日）' })
+        el('b', { text: due.month + '月の貯金額を入れてください' })
       ]),
       el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
     ]);
@@ -833,7 +830,7 @@
     var goal = ui.input({ type: 'number', inputmode: 'numeric', min: 0, value: sv.goal || '' });
     var on = ui.input({ type: 'date', value: sv.goalOn || '' });
     var close = ui.sheet({
-      title: '目標入力',
+      title: '目標設定',
       body: el('div', { class: 'form' }, [
         ui.field('目標（円）', goal),
         ui.field('いつまでに', on)
