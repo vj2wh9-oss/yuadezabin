@@ -119,7 +119,7 @@ export default {
           fitbit: fitbitReady(env),
           menuWebhook: !!env.DISCORD_MENU_WEBHOOK
         },
-        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/img', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/inbox/weights', '/v1/inbox/weight/key', '/v1/inbox/card', '/v1/inbox/cards', '/v1/inbox/card/key', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/menu/dish', '/v1/menu/send', '/v1/reschedule', '/v1/bank/balance', '/v1/plot', '/v1/plot/send', '/v1/spend', '/v1/fit/plan', '/v1/fitbit'],
+        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/img', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/inbox/weights', '/v1/inbox/weight/key', '/v1/inbox/card', '/v1/inbox/cards', '/v1/inbox/card/key', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/menu/dish', '/v1/menu/items', '/v1/menu/send', '/v1/reschedule', '/v1/bank/balance', '/v1/plot', '/v1/plot/send', '/v1/spend', '/v1/fit/plan', '/v1/fitbit'],
         // どの食事に対応しているか。deploy を忘れると古いままなのが分かる
         menuSlots: MENU_SLOTS,
         note: '各 /v1/... は Authorization: Bearer <合鍵> が必要です'
@@ -271,6 +271,10 @@ export default {
 
       if (url.pathname === '/v1/doc/send') {
         return docSend(request, env, cors, id);
+      }
+
+      if (url.pathname === '/v1/menu/items') {
+        return menuItems(request, env, cors);
       }
 
       if (url.pathname === '/v1/menu') {
@@ -1081,6 +1085,113 @@ async function menuDish(request, env, cors) {
 
   return json({ ok: true, data: pass.data, match: match, model: pass.model, usage: pass.usage },
     200, cors);
+}
+
+/* ---- 一品の食材を割り出す ----
+
+   前に作った献立には、一品ごとの食材（items）が入っていないものがある。
+   それを入れ替えると、どの買い物がどの一品のためのものか分からず、
+   前の一品の食材が買い物に残ってしまう。
+
+   料理の名前・調味料・作りかたから、スーパーで買う食材を割り出してもらい、
+   一品に結び付け直す。献立そのものは変えない（材料を数えるだけ）。 */
+
+const ITEMS_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['dishes'],
+  properties: {
+    dishes: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['name', 'items'],
+        properties: {
+          name: { type: 'string', description: '料理の名前。渡されたものと同じ字で返す' },
+          items: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['name', 'qty', 'price'],
+              properties: {
+                name: { type: 'string', description: 'スーパーで買う食材の名前' },
+                qty: { type: 'string', description: '買う量。例）200g、1束、2切' },
+                price: { type: 'number', description: '買う単位ぶんの値段（円・税込）' }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+};
+
+function itemsPrompt(o) {
+  const people = o.servings === 2 ? '成人男性2人分' : '成人男性1人分';
+  const lines = [
+    '次の料理をそれぞれ作るのに、スーパーで買う食材を挙げてください。量は' + people + 'です。',
+    '料理ごとに、その料理だけに要る食材を items に書いてください。',
+    'お米と、塩・こしょう・しょうゆ・みそ・砂糖・みりん・酒・油などの基本の調味料は、'
+      + '家にあるものとして入れないでください。'
+  ];
+  if (o.pantry && o.pantry.length) {
+    lines.push('次の調味料も家にあるので、入れないでください：' + o.pantry.join('、'));
+  }
+  lines.push('値段は東京都内のスーパーの平常の店頭価格（税込）を目安に、'
+    + '特売ではない値段で、買う単位（1パック・1袋など）で数えてください。');
+  if (o.prices && o.prices.length) {
+    lines.push('次の品は、この人がいつも行く店で実際に払った値段です。'
+      + 'これらを使うときは、必ずこの値段で数えてください：'
+      + o.prices.map((x) => x.name + ' ' + x.price + '円').join('、'));
+  }
+  lines.push('料理：');
+  (o.dishes || []).forEach((d) => {
+    lines.push('・「' + d.name + '」'
+      + (d.role ? '（' + d.role + '）' : '')
+      + (d.seasonings && d.seasonings.length
+        ? ' 使う調味料：' + d.seasonings.map((x) => x.name + (x.qty ? ' ' + x.qty : '')).join('、') : '')
+      + (d.steps && d.steps.length ? ' 作りかた：' + d.steps.join(' / ') : ''));
+  });
+  lines.push('name は渡した料理の名前と同じ字で返してください。');
+  return lines.join('\n');
+}
+
+async function menuItems(request, env, cors) {
+  if (request.method !== 'POST') return json({ error: 'not_found' }, 404, cors);
+  if (!env.OPENAI_API_KEY) return json({ error: 'no_api_key' }, 503, cors);
+
+  let body;
+  try { body = await request.json(); } catch (e) { return json({ error: 'bad_json' }, 400, cors); }
+
+  const str = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
+  const dishes = (Array.isArray(body.dishes) ? body.dishes : []).slice(0, 8).map((d) => ({
+    name: str(d && d.name, 60),
+    role: DISH_ROLES.indexOf(String(d && d.role)) >= 0 ? String(d.role) : '',
+    seasonings: (Array.isArray(d && d.seasonings) ? d.seasonings : []).slice(0, 12)
+      .map((x) => ({ name: str(x && x.name, 40), qty: str(x && x.qty, 20) }))
+      .filter((x) => x.name),
+    steps: (Array.isArray(d && d.steps) ? d.steps : []).slice(0, 6).map((x) => str(x, 200)).filter(Boolean)
+  })).filter((d) => d.name);
+  if (!dishes.length) return json({ error: 'empty' }, 400, cors);
+
+  const o = {
+    dishes,
+    servings: Number(body.servings) === 2 ? 2 : 1,
+    pantry: (Array.isArray(body.pantry) ? body.pantry : []).slice(0, 60)
+      .map((x) => str(x, 40)).filter(Boolean),
+    prices: (Array.isArray(body.prices) ? body.prices : []).slice(0, 60)
+      .map((x) => ({ name: str(x && x.name, 40), price: Math.max(0, Math.round(Number(x && x.price) || 0)) }))
+      .filter((x) => x.name && x.price)
+  };
+
+  const model = String(body.model || env.OPENAI_MENU_MODEL || env.OPENAI_MODEL || OCR_DEFAULTS.model);
+  const pass = await askJson(env, model, itemsPrompt(o), 'items', ITEMS_SCHEMA,
+    Number(env.OPENAI_ITEMS_MAX_TOKENS || 2000));
+  if (!pass.ok) return json(pass.body, pass.status, cors);
+
+  return json({ ok: true, data: pass.data, model: pass.model, usage: pass.usage }, 200, cors);
 }
 
 /* ---- 献立を Discord へ送る ----

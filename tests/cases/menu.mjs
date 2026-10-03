@@ -97,16 +97,14 @@ export default {
 
       await page.click('.sheet-body .pm-row:has-text("鮭の塩焼き")');
       await page.waitForSelector('.sheet-title:has-text("鮭の塩焼き")');
-      s.yes('買うものがその日のぶんから並ぶ',
-        (await page.locator('.sheet-body .mn-buy').count()) === 2);
-      /* 一品ごとの食材が分かっているので、その一品に使うものだけ
-         はじめから印が付く（ほうれん草は副菜のものなので付かない） */
+      /* 一品ごとの食材が分かっているので、その一品に使うものだけを並べる
+         （ほうれん草は副菜のものなので、そもそも出てこない） */
       const marks = await page.$$eval('.sheet-body .mn-buy', (ns) => ns.map((n) =>
         n.innerText.replace(/\s+/g, ' ').trim() + '=' + (n.querySelector('input').checked ? 'on' : 'off')));
       s.note('はじめの印: ' + marks.join(' / '));
-      s.yes('その一品に使うものだけ印が付く',
-        marks.some((x) => /^鮭 /.test(x) && /=on$/.test(x))
-        && marks.some((x) => /ほうれん草/.test(x) && /=off$/.test(x)));
+      s.ok('その一品に使うものだけ並ぶ', marks.length, 1);
+      s.yes('はじめから印が付いている', /^鮭 .*=on$/.test(marks[0]));
+      s.yes('ほかの一品のものは出てこない', !marks.some((x) => /ほうれん草/.test(x)));
       await page.click('.sheet-foot button:has-text("この一品を入れる")');
       await page.waitForTimeout(500);
 
@@ -205,6 +203,94 @@ export default {
         (window.DL.store.getMenu(d).meals || []).reduce((a, x) => a + (x.dishes || []).length, 0), T)) === 1);
 
       s.ok('画面のエラー', errors, []);
+    });
+
+    /* 一品を入れ替えたら、買い物も入れ替わること。
+
+       前の一品の食材が残ってしまう、新しいぶんが出てこない、というのが
+       もとの不具合。一品ごとの食材（items）が控えてある献立と、
+       控える前の古い献立（OpenAI に数え直してもらう）の両方を見る。 */
+    await withPage(base, IPHONE, async (page, errors) => {
+      await open(page, base);
+
+      /* 古い献立には items が無い。数え直しの頼みは、ここで代わりに答える */
+      let asked = null;
+      await page.route(/\/v1\/menu\/items$/, (r) => {
+        asked = JSON.parse(r.request().postData() || '{}');
+        const by = {
+          'ほうれん草のおひたし': [{ name: 'ほうれん草', qty: '1束', price: 160 }],
+          '豚の生姜焼き': [{ name: '豚ロース', qty: '200g', price: 400 }]
+        };
+        return r.fulfill({
+          status: 200, contentType: 'application/json',
+          body: JSON.stringify({ ok: true, data: { dishes: (asked.dishes || [])
+            .map((d) => ({ name: d.name, items: by[d.name] || [] })) } })
+        });
+      });
+      await page.route(/\/v1\/(inbox|meta|state|files)\b/, (r) => r.fulfill({
+        status: 200, contentType: 'application/json', body: '{"items":[]}'
+      }));
+
+      const T = await page.evaluate(() => {
+        const S = window.DL.store, U = window.DL.util, T = U.today();
+        S.updateSettings({ lifeBudget: 60000 });
+        S.updateSync({
+          url: location.origin, token: 'test-token-0123456789abcdefghij', id: 't', enabled: true
+        });
+        // お気に入り側。一品ごとの食材を控える前の形（items が無い）
+        S.setMenu(U.addDays(T, -3), { servings: 1, meals: [{ slot: 'dinner', name: '鮭の塩焼き', dishes: [
+          { role: '主菜', name: '鮭の塩焼き', seasonings: [], steps: ['焼く'] },
+          { role: '副菜', name: 'ほうれん草のおひたし', seasonings: [], steps: ['ゆでる'] }
+        ] }], shopping: [{ name: '鮭', qty: '2切', price: 380 },
+          { name: 'ほうれん草', qty: '1束', price: 160 }] });
+        // 今日のぶん。こちらも古い形
+        S.setMenu(T, { servings: 1, meals: [{ slot: 'dinner', name: '生姜焼き定食', dishes: [
+          { role: '主菜', name: '豚の生姜焼き', seasonings: [], steps: ['焼く'] },
+          { role: '副菜', name: 'キャベツの千切り', seasonings: [], steps: ['切る'] }
+        ] }], shopping: [{ name: '豚ロース', qty: '200g', price: 400 },
+          { name: 'キャベツ', qty: '1/4玉', price: 120 }] });
+        return T;
+      });
+      const shop = () => page.evaluate((d) =>
+        (window.DL.store.getMenu(d).shopping || []).map((x) => x.name), T);
+
+      s.ok('入れ替える前の買い物', await shop(), ['豚ロース', 'キャベツ']);
+
+      await openDay(page, base);
+      await openPast(page);
+      await page.click('.sheet-body button:has-text("一品ずつ")');
+      await page.waitForTimeout(250);
+      await page.click('.sheet-body .pm-row:has-text("ほうれん草のおひたし")');
+      await page.waitForSelector('.sheet-title:has-text("ほうれん草のおひたし")');
+      await page.waitForTimeout(500);       // 数え直しの返事を待つ
+
+      s.note('数え直しを頼んだ一品: '
+        + JSON.stringify(asked && (asked.dishes || []).map((d) => d.name)));
+      s.yes('食材の分からない一品は、数え直してもらう',
+        asked && asked.dishes.some((d) => d.name === 'ほうれん草のおひたし'));
+      const marks = await page.$$eval('.sheet-body .mn-buy', (ns) => ns.map((n) =>
+        n.innerText.replace(/\s+/g, ' ').trim()));
+      s.note('数え直したあとの買うもの: ' + JSON.stringify(marks));
+      s.ok('その一品に要るものだけ並ぶ', marks.length, 1);
+      s.yes('並ぶのは数え直した食材', /ほうれん草/.test(marks[0]));
+
+      await page.click('.sheet-foot button:has-text("この一品を入れる")');
+      await page.waitForTimeout(700);
+
+      const after = await shop();
+      s.note('入れ替えたあとの買い物: ' + JSON.stringify(after));
+      s.yes('入れ替えた一品の食材が出る', after.indexOf('ほうれん草') >= 0);
+      s.yes('前の一品の食材は残らない', after.indexOf('キャベツ') < 0);
+      s.yes('残る一品の食材はそのまま', after.indexOf('豚ロース') >= 0);
+      s.ok('買い物は、いまの一品のぶんだけ', after.sort(), ['ほうれん草', '豚ロース'].sort());
+
+      /* 数え直したぶんは献立にも残るので、次からは頼まずに済む */
+      s.yes('数えた食材は、その一品に控えておく', await page.evaluate((d) =>
+        (window.DL.store.getMenu(d).meals || [])
+          .reduce((a, x) => a.concat(x.dishes || []), [])
+          .every((x) => (x.items || []).length > 0), T));
+
+      s.ok('画面のエラー（入れ替えと買い物）', errors, []);
     });
 
     /* 献立の選ぶところと「作りたいもの」 */

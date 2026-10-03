@@ -1811,72 +1811,104 @@
       body.appendChild(el('p', { class: 'muted small', text: r.memo }));
     }
 
-    /* 買うもの。もとの日のぶんを並べて選ぶ。
-       その一品に使う食材（dish.items）が分かっていれば、それだけに印を付ける。
-       昔の献立には入っていないので、そのときはこれまでどおり全部に印を付けて、
-       要らないものを外してもらう。
-       いまの献立にもう入っているものは、はじめから外しておく */
+    /* 買うもの。その一品に使う食材に、はじめから印を付ける。
+       もとの日に買ったぶんがあれば その値段で、無ければ控えの値段で出す。
+       いまの献立にもう入っているものは、はじめから外しておく。
+
+       一品ごとの食材が入っていない昔の献立のときは、先に数え直してもらう
+       （数えてもらうまでは、その日に買ったものを並べておく） */
     var have = {};
-    ((cur && cur.shopping) || []).forEach(function (x) { have[x.name] = true; });
-    var mine = {};
-    var knows = (r.dish.items || []).length > 0;
-    (r.dish.items || []).forEach(function (x) { mine[S.priceKey(x.name)] = true; });
-    var picks = (r.menu.shopping || []).map(function (x) {
-      var uses = !knows || !!mine[S.priceKey(x.name)];
-      return {
-        name: x.name, qty: x.qty,
-        price: S.priceOf(x.name) || Math.max(0, Math.round(U.num(x.price, 0))),
-        on: uses && !have[x.name], had: !!have[x.name], uses: uses
-      };
-    });
+    ((cur && cur.shopping) || []).forEach(function (x) { have[S.priceKey(x.name)] = true; });
+    var picks = [];
+    var shopBox = el('div');
     var sumLine = el('b', { class: 'mn-plan-p' });
+
     function retotal() {
       sumLine.textContent = yen(picks.reduce(function (a, x) { return a + (x.on ? x.price : 0); }, 0));
     }
 
-    body.appendChild(ui.section('買うもの',
-      el('span', { class: 'muted small',
-        text: picks.length ? U.fmtMD(r.date) + ' のぶんから選ぶ' : '控えなし' })));
-    if (!picks.length) {
-      body.appendChild(ui.empty('その日の買い物は控えていません。'));
-    } else {
-      body.appendChild(el('p', { class: 'muted small',
-        text: knows
-          ? 'この一品に使う食材に、はじめから印を付けてあります。'
-            + 'その日のほかの買い物も、要るものがあれば足せます。'
-          : '一品ぶんの食材を控える前の献立なので、その日に買ったものを並べています。'
-            + 'この一品に要るものだけ残してください。' }));
-      body.appendChild(el('div', { class: 'mn-list' }, picks.map(function (x) {
+    /* 並べるもの。食材が分かっていれば それ、分からなければ その日の買い物ぜんぶ。
+       その日に同じものを買っていれば、量と値段はそちらを使う */
+    function buildPicks() {
+      var knows = (r.dish.items || []).length > 0;
+      var day = {};
+      (r.menu.shopping || []).forEach(function (x) { day[S.priceKey(x.name)] = x; });
+      var src = knows ? r.dish.items : (r.menu.shopping || []);
+      var seen = {};
+      picks = src.map(function (x) {
+        var k = S.priceKey(x.name);
+        if (!k || seen[k]) return null;
+        seen[k] = true;
+        var was = day[k];
+        return {
+          name: x.name, qty: x.qty || (was && was.qty) || '',
+          price: S.priceOf(x.name)
+            || Math.max(0, Math.round(U.num(x.price, 0)))
+            || Math.max(0, Math.round(U.num(was && was.price, 0))),
+          on: !have[k], had: !!have[k]
+        };
+      }).filter(Boolean);
+      return knows;
+    }
+
+    function drawShop(loading) {
+      var knows = buildPicks();
+      U.clear(shopBox);
+      shopBox.appendChild(ui.section('買うもの', el('span', { class: 'muted small',
+        text: loading ? '数えています…' : (knows ? '' : U.fmtMD(r.date) + ' のぶんから選ぶ') })));
+      if (!picks.length) {
+        shopBox.appendChild(ui.empty('買うものはありません。'));
+        return;
+      }
+      shopBox.appendChild(el('div', { class: 'mn-list' }, picks.map(function (x) {
         var box = el('input', { class: 'mn-chk', type: 'checkbox', checked: x.on ? 'checked' : null });
         box.addEventListener('change', function () { x.on = box.checked; retotal(); });
         return el('label', { class: 'mn-item mn-buy' }, [
           box,
           el('span', { class: 'mn-item-n', text: x.name }),
           x.qty ? el('span', { class: 'muted small', text: x.qty }) : null,
-          x.had ? ui.chip('もうある', 'ghosty')
-            : (knows && !x.uses ? ui.chip('ほかの一品', 'ghosty') : null),
+          x.had ? ui.chip('もうある', 'ghosty') : null,
           el('b', { class: 'mn-plan-p', text: yen(x.price) })
         ]);
       })));
-      body.appendChild(el('div', { class: 'mn-item pm-sum' }, [
+      shopBox.appendChild(el('div', { class: 'mn-item pm-sum' }, [
         el('span', { class: 'mn-item-n', text: '足すぶん' }), sumLine
       ]));
       retotal();
     }
 
+    body.appendChild(shopBox);
+    drawShop(!(r.dish.items || []).length && DL.menu.ready());
+
+    /* 食材が分かっていなければ、ここで数え直してもらう。
+       そのあとに並べ直すので、印はその一品に要るものだけになる */
+    if (!(r.dish.items || []).length && DL.menu.ready()) {
+      DL.menu.fillItems([r.dish], { servings: r.menu.servings || 1 }).then(function (got) {
+        if ((got[r.dish.name] || []).length) r.dish.items = got[r.dish.name];
+        drawShop(false);
+      }, function () { drawShop(false); });
+    }
+
+    var busy = false;
+    var ok = ui.btn('この一品を入れる', 'primary', function () {
+      if (busy) return;
+      busy = true;
+      ok.disabled = true;
+      var add = picks.filter(function (x) { return x.on; });
+      /* 食材の分からない一品があれば、先に数え直してもらう。
+         そうしないと、入れ替えた前の一品の食材が買い物に残る */
+      fillDishItems(cur, r, add).then(function (f) {
+        S.setMenu(date, withDish(f.cur, slot, f.r, add));
+        close();
+        closeList();
+        DL.app.render();
+        ui.toast(U.fmtMD(date) + ' に「' + r.name + '」を入れました');
+      });
+    });
     var close = ui.sheet({
       title: r.name,
       body: body,
-      actions: [
-        ui.btn('やめる', 'ghost', function () { close(); }),
-        ui.btn('この一品を入れる', 'primary', function () {
-          S.setMenu(date, withDish(cur, slot, r, picks.filter(function (x) { return x.on; })));
-          close();
-          closeList();
-          DL.app.render();
-          ui.toast(U.fmtMD(date) + ' に「' + r.name + '」を入れました');
-        })
-      ]
+      actions: [ui.btn('やめる', 'ghost', function () { close(); }), ok]
     });
   }
 
@@ -1906,23 +1938,73 @@
     }
 
     /* 買うものは、この一品のために入れたと分かるよう名札を付ける。
-       入れ替えで居なくなった一品のぶんは、normalizeMenu が下ろす */
+       選んだぶんを先に足してから、syncMenuShopping で
+       「いまの一品が要るもの」に合わせ直す（居なくなった一品のぶんが下りる） */
     var shopping = (m.shopping || []).slice();
     var have = {};
-    shopping.forEach(function (x) { have[x.name] = true; });
+    shopping.forEach(function (x) { have[S.priceKey(x.name)] = true; });
     add.forEach(function (x) {
-      if (have[x.name]) return;
-      have[x.name] = true;
-      shopping.push({ name: x.name, qty: x.qty, price: x.price, got: false, for: r.name });
+      var k = S.priceKey(x.name);
+      if (!k || have[k]) return;
+      have[k] = true;
+      shopping.push({ name: x.name, qty: x.qty, price: x.price, got: false, for: r.dish.name });
     });
 
-    return S.normalizeMenu(Object.assign({}, m, {
+    return S.syncMenuShopping(Object.assign({}, m, {
       meals: meals, shopping: shopping,
       // もとの献立の言い換え（調味料の呼び方）も引き継ぐ
       match: Object.assign({}, m.match, r.menu.match),
       total: 0,                       // 買い物から数え直す
       at: m.at
     }));
+  }
+
+  /**
+   * 一品を入れる前に、食材の分かっていない一品を埋める。
+   *
+   * 前に作った献立には、一品ごとの食材（items）が入っていないものがある。
+   * そのままだと「どの買い物がどの一品のためか」が分からず、
+   * 入れ替えても前の一品の食材が買い物に残ってしまう。
+   * 入れる一品と、いまの献立に居る一品の、分からないぶんを数え直してもらう。
+   *
+   * 頼めないとき（同期が無い・断られた）は、分かるぶんだけで進める。
+   * 入れる一品には、選んだ買い物をそのまま食材として持たせておく。
+   *
+   * @returns {Promise<{cur, r}>} 埋めたあとの、いまの献立と入れる一品
+   */
+  function fillDishItems(cur, r, add) {
+    var need = [];
+    var dish = U.clone(r.dish);
+    var m = cur ? U.clone(cur) : null;
+    if (!(dish.items || []).length) need.push(dish);
+    ((m && m.meals) || []).forEach(function (x) {
+      (x.dishes || []).forEach(function (d) {
+        // 入れ替わって居なくなるぶんは、数え直さなくてよい
+        if (r.role && d.role === r.role) return;
+        if (!(d.items || []).length) need.push(d);
+      });
+    });
+    if (!need.length || !DL.menu.ready()) return Promise.resolve(fallback());
+
+    return DL.menu.fillItems(need, { servings: (m && m.servings) || r.menu.servings || 1 })
+      .then(function (got) {
+        need.forEach(function (d) {
+          if ((got[d.name] || []).length) d.items = got[d.name];
+        });
+        return fallback();
+      }, function () { return fallback(); });
+
+    /* 埋まらなかったぶんの逃げ道。
+       入れる一品だけは、選んだ買い物を食材として持たせておく
+       （次に入れ替えたときには、ちゃんと下ろせるようになる） */
+    function fallback() {
+      if (!(dish.items || []).length && add.length) {
+        dish.items = add.map(function (x) {
+          return { name: x.name, qty: x.qty || '', price: U.num(x.price, 0) };
+        });
+      }
+      return { cur: m, r: Object.assign({}, r, { dish: dish }) };
+    }
   }
 
   function pastPickSheet(r, date, closeList) {

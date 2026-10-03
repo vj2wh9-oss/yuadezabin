@@ -2344,6 +2344,70 @@
     };
   }
 
+  /**
+   * 買い物を、いまの一品に合わせ直す。
+   *
+   *   ・どの一品も使わなくなった行は下ろす
+   *   ・一品が使うのに買い物に無いものは足す
+   *
+   * 印（買った）と値段は、元からある行のものを引き継ぐ。
+   * 足すものの値段は、控えがあればそれを、無ければ一品に書いてある見当を使う。
+   *
+   * 食材の分からない一品（items の無い一品）が1つでも残っているときは、
+   * その一品のための行まで「どれも使わない」ことになってしまうので、
+   * 下ろすほうはやらない（足すほうだけ行う）。
+   *
+   * @param {object} m 献立
+   * @returns {object} 作り直した献立
+   */
+  function syncMenuShopping(m) {
+    var menu = normalizeMenu(m);
+    var dishes = [];
+    (menu.meals || []).forEach(function (x) {
+      (x.dishes || []).forEach(function (d) { if (d.name) dishes.push(d); });
+    });
+    if (!dishes.length) return menu;
+
+    // 食材の分からない一品があるか
+    var blind = dishes.some(function (d) { return !(d.items || []).length; });
+
+    // いま要るもの。先に書いてある一品のものとして持つ
+    var want = {};
+    dishes.forEach(function (d) {
+      (d.items || []).forEach(function (it) {
+        var k = priceKey(it.name);
+        if (!k || want[k]) return;
+        want[k] = { name: it.name, qty: it.qty || '', price: U.num(it.price, 0), dish: d.name };
+      });
+    });
+
+    var shopping = [];
+    var seen = {};
+    (menu.shopping || []).forEach(function (x) {
+      var k = priceKey(x.name);
+      if (!k || seen[k]) return;
+      if (want[k]) {
+        seen[k] = true;
+        shopping.push(Object.assign({}, x, { for: want[k].dish }));
+        return;
+      }
+      // どの一品も使わない行。食材がぜんぶ分かっているときだけ下ろす
+      if (blind) { seen[k] = true; shopping.push(x); }
+    });
+
+    Object.keys(want).forEach(function (k) {
+      if (seen[k]) return;
+      var w = want[k];
+      shopping.push({
+        name: w.name, qty: w.qty,
+        price: priceOf(w.name) || Math.max(0, Math.round(w.price)),
+        got: false, for: w.dish
+      });
+    });
+
+    return normalizeMenu(Object.assign({}, menu, { shopping: shopping, total: 0 }));
+  }
+
   function normalizeMenus(map) {
     var out = {};
     Object.keys(map || {}).forEach(function (d) {
@@ -4920,6 +4984,7 @@
     prices: prices, priceOf: priceOf, setPrice: setPrice,
     priceList: priceList, priceKey: priceKey,
     recentMenuNames: recentMenuNames, normalizeMenu: normalizeMenu,
+    syncMenuShopping: syncMenuShopping,
     normalizeDish: normalizeDish, DISH_ROLES: DISH_ROLES,
     pantry: pantry, getPantry: getPantry, addPantry: addPantry,
     updatePantry: updatePantry, removePantry: removePantry,

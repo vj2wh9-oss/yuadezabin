@@ -78,6 +78,62 @@
     });
   }
 
+  /**
+   * 一品ごとの食材（items）を割り出してもらう。
+   *
+   * 前に作った献立には、一品ごとの食材が入っていないものがある。
+   * そのままだと「どの買い物がどの一品のためか」が分からず、
+   * 一品を入れ替えても前の食材が買い物に残ってしまう。
+   * 料理の名前・調味料・作りかたから数え直してもらう。献立そのものは変えない。
+   *
+   * @param {Array} dishes [{name, role, seasonings, steps}]
+   * @param {object} [o] {servings}
+   * @returns {Promise<object>} {料理の名前: [{name, qty, price}]}
+   */
+  function fillItems(dishes, o) {
+    o = o || {};
+    var list = (dishes || []).filter(function (d) { return d && d.name; }).slice(0, 8);
+    if (!list.length) return Promise.resolve({});
+    if (!ready()) return Promise.reject(new Error('同期の接続先が未設定です'));
+
+    return fetch(base() + '/v1/menu/items', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer ' + conf().token,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        dishes: list.map(function (d) {
+          return {
+            name: d.name, role: d.role || '',
+            seasonings: (d.seasonings || []).slice(0, 12),
+            steps: (d.steps || []).slice(0, 6)
+          };
+        }),
+        servings: U.num(o.servings, 1) === 2 ? 2 : 1,
+        pantry: S.pantry().map(function (x) { return x.name; }).filter(Boolean).slice(0, 60),
+        prices: S.priceList(60)
+      })
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (b) {
+        if (!res.ok) throw new Error(reason(res.status, b));
+        var out = {};
+        (((b.data || {}).dishes) || []).forEach(function (d) {
+          if (!d || !d.name) return;
+          out[d.name] = (d.items || []).map(function (it) {
+            return {
+              name: String(it.name || '').trim().slice(0, 40),
+              qty: String(it.qty || '').trim().slice(0, 24),
+              // 控えてある値段があれば、見当よりそちらを使う
+              price: S.priceOf(it.name) || Math.max(0, Math.round(U.num(it.price, 0)))
+            };
+          }).filter(function (it) { return it.name; });
+        });
+        return out;
+      });
+    }, function () { throw new Error('通信できませんでした'); });
+  }
+
   /* 作りたいもの。料理の名前そのもの。[{name, role}] にそろえる */
   var WANT_ROLES = ['主菜', '副菜'];
 
@@ -460,6 +516,6 @@
     season: season,
     extras: extras, seasoningState: seasoningState, matcher: matcher, pantryMap: pantryMap,
     dropOwned: dropOwned,
-    useLeftovers: useLeftovers, key: key, wantOf: wantOf
+    useLeftovers: useLeftovers, key: key, wantOf: wantOf, fillItems: fillItems
   };
 })(window.DL);
