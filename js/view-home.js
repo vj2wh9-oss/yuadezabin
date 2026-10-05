@@ -2470,6 +2470,8 @@
     box.appendChild(el('div', { class: 'mn-dish-h' }, [
       d.role ? ui.chip(d.role, 'soft') : null,
       el('b', { text: d.name }),
+      /* 作ったら、そのまま冷蔵庫へ。下書きのうちは出さない（まだ作っていない） */
+      (ctx && ctx.draft) ? null : toFridgeBtn(d, date),
       redoBtn(d, date, ctx)
     ]));
     if ((d.seasonings || []).length) {
@@ -2497,6 +2499,29 @@
     }
     box.appendChild(rateRow(d.name));
     return box;
+  }
+
+  /* 作ったものを、そのまま冷蔵庫へ入れるボタン。
+     名前も作った日も分かっているので、あとは量だけ入れればいい。
+     日もちは開いた拍子に見てもらう（作り置きの期限を手で決めなくて済む） */
+  function toFridgeBtn(d, date) {
+    var name = String((d && d.name) || '').trim();
+    if (!name) return null;
+    // もう入れてあるものは、そう出す（二度入れを防ぐ）
+    var inside = S.leftovers().filter(function (x) {
+      return x.name === name && !S.foodExpired(x, U.today());
+    })[0];
+    return el('button', {
+      type: 'button', class: 'mn-tofr' + (inside ? ' on' : ''),
+      'aria-label': inside ? name + 'は冷蔵庫に入っています' : name + 'を冷蔵庫へ入れる',
+      onclick: function () {
+        if (inside) { DL.views.fridge.editSheet('cooked', inside); return; }
+        DL.views.fridge.editSheet('cooked', null, {
+          auto: true,
+          seed: { name: name, from: date, where: 'fridge', kept: true }
+        });
+      }
+    }, [ui.icon('fridge', 15), el('span', { text: inside ? '冷蔵庫に' : '冷蔵庫へ' })]);
   }
 
   /* ---------------- 一品だけ出し直す ----------------

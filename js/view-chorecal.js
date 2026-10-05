@@ -148,6 +148,22 @@
     ]);
   }
 
+  /** その日の献立に出てくる一品、ぜんぶ（同じ名前はひとつに） */
+  function menuDishes(date) {
+    var m = S.getMenu(date);
+    if (!m) return [];
+    var seen = {}, out = [];
+    (m.meals || []).forEach(function (meal) {
+      (meal.dishes || []).forEach(function (d) {
+        var n = String((d && d.name) || '').trim();
+        if (!n || seen[n]) return;
+        seen[n] = true;
+        out.push({ name: n, role: d.role || '' });
+      });
+    });
+    return out;
+  }
+
   /* 献立の顔。主菜があればそれ、無ければ最初の一品 */
   function mainDish(menu) {
     var dishes = [];
@@ -207,6 +223,28 @@
     else {
       wrap.appendChild(ui.empty('この日の献立はまだありません。',
         el('span', { class: 'muted small', text: '上の「献立」から作れます' })));
+    }
+
+    /* 作ったものを冷蔵庫へ。
+       献立の一品ごとにも同じボタンが付いているが、あちらは食事の束を
+       開かないと見えない。ここは畳まずに、料理名を並べて押せるようにする */
+    var dishes = menuDishes(date);
+    if (dishes.length) {
+      wrap.appendChild(ui.section('作ったものを冷蔵庫へ',
+        el('span', { class: 'muted small', text: '押すと日もちも見てもらいます' })));
+      wrap.appendChild(el('div', { class: 'card' },
+        el('div', { class: 'row-wrap' }, dishes.map(function (d) {
+          var inside = S.leftovers().filter(function (x) {
+            return x.name === d.name && !S.foodExpired(x, U.today());
+          })[0];
+          return ui.btn(d.name, inside ? 'ghost' : 'ghost', function () {
+            if (inside) { DL.views.fridge.editSheet('cooked', inside); return; }
+            DL.views.fridge.editSheet('cooked', null, {
+              auto: true,
+              seed: { name: d.name, from: date, where: 'fridge', kept: true }
+            });
+          }, inside ? 'check' : 'fridge');
+        }))));
     }
 
     /* 冷蔵庫で早く食べたいものを、ここで思い出せるように */

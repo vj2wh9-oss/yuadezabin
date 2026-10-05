@@ -153,6 +153,65 @@ export default {
       s.yes('その日の家事が出る', dayText.indexOf('この日の家事') >= 0);
       s.yes('早く食べるものも出る', dayText.indexOf('早く食べるもの') >= 0);
 
+      /* ---- 献立から、そのまま冷蔵庫へ ----
+         「作った日」がその日から来ていることを見たいので、今日ではない日で試す
+         （今日だと、入力欄の初期値（今日）と見分けが付かない） */
+      const cooked = await d(-1);
+      await page.evaluate(async (dt) => {
+        window.DL.store.setMenu(dt, {
+          meals: [{ slot: 'dinner', name: '晩ごはん', dishes: [
+            { name: '鶏の照り焼き', role: '主菜' },
+            { name: 'かぼちゃの煮物', role: '副菜' }
+          ] }],
+          shopping: [], total: 0, servings: 1
+        });
+        location.hash = '#/chores/' + dt;
+        await new Promise((r) => setTimeout(r, 500));
+      }, cooked);
+
+      s.yes('料理名が、押せる形で並ぶ',
+        (await page.locator('.view').innerText()).indexOf('作ったものを冷蔵庫へ') >= 0);
+      const dishBtns = page.locator('.card .btn').filter({ hasText: '鶏の照り焼き' });
+      s.ok('その料理のボタンがある', await dishBtns.count(), 1);
+
+      /* 押すと、名前と作った日が入った状態で開く。
+         同期の接続先が無いので、日もちは「見当」で入る */
+      await dishBtns.first().click();
+      await page.waitForSelector('.sheet');
+      await page.waitForTimeout(600);
+      s.ok('料理名が入っている',
+        await page.locator('.sheet .input').first().inputValue(), '鶏の照り焼き');
+      s.ok('作り置きとして開く',
+        (await page.locator('.sheet-title').innerText()).indexOf('作り置き') >= 0, true);
+      s.ok('日もちから期限が入る', await page.evaluate(() => {
+        const ins = [...document.querySelectorAll('.sheet .input')];
+        const until = ins.filter((n) => n.type === 'date')[1];
+        return !!(until && until.value);
+      }), true);
+
+      await page.locator('.sheet-foot .btn.primary').click();
+      await page.waitForTimeout(400);
+      s.yes('冷蔵庫に入る', (await page.evaluate(
+        () => window.DL.store.leftovers().map((x) => x.name))).indexOf('鶏の照り焼き') >= 0);
+      s.ok('作った日と置き場も入る', await page.evaluate(() => {
+        const x = window.DL.store.leftovers()
+          .filter((o) => o.name === '鶏の照り焼き')[0] || {};
+        return [x.from, x.where, x.kept];
+      }), [cooked, 'fridge', true]);
+
+      /* もう入れたものは、そう出す */
+      await page.evaluate(async (dt) => {
+        location.hash = '#/home';
+        await new Promise((r) => setTimeout(r, 200));
+        location.hash = '#/chores/' + dt;
+        await new Promise((r) => setTimeout(r, 500));
+      }, cooked);
+      s.ok('二度入れないよう、印が変わる', await page.evaluate(() => {
+        const b = [...document.querySelectorAll('.card .btn')]
+          .filter((n) => n.textContent.indexOf('鶏の照り焼き') >= 0)[0];
+        return b ? b.querySelector('svg').getAttribute('class') : '';
+      }), 'icon');
+
       /* ---- 周期表は、別の画面として残っている ---- */
       await page.evaluate(async () => {
         location.hash = '#/choreplan';

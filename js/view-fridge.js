@@ -126,10 +126,20 @@
 
   /* ---------------- 入れる・直す ---------------- */
 
-  function editSheet(kind, x) {
+  /**
+   * 入れる・直す。
+   *
+   * @param {string} kind 'food'|'cooked'|'season'
+   * @param {object|null} x 直すもの。新しく入れるなら null
+   * @param {object} [o] {seed: 初期値, auto: true なら開いた拍子に日もちを見てもらう}
+   */
+  function editSheet(kind, x, o) {
+    o = o || {};
     var isNew = !x;
-    var v = x || { name: '', qty: '', unit: '', where: kind === 'season' ? 'room' : 'fridge',
-      until: '', from: U.today(), openedAt: '', memo: '', kept: false };
+    var v = x || Object.assign({ name: '', qty: '', unit: '',
+      where: kind === 'season' ? 'room' : 'fridge',
+      until: '', from: U.today(), openedAt: '', memo: '', kept: kind === 'cooked' },
+    o.seed || {});
 
     var nameIn = ui.input({ value: v.name || '' });
     var qtyIn = ui.input({ value: v.qty || '' });
@@ -154,21 +164,23 @@
 
     /* 作り置きは、日もちを見てもらえる */
     var keepNote = el('p', { class: 'muted small' });
-    var keepBtn = kind === 'cooked' ? ui.btn('日もちを見てもらう', 'ghost', function () {
+    function askKeep() {
       var name = nameIn.value.trim();
       if (!name) { ui.toast('料理の名前を入れてください', 'warn'); return; }
-      keepBtn.disabled = true;
+      if (keepBtn) keepBtn.disabled = true;
       keepNote.textContent = '聞いています…';
       F.keep(name, { where: wh, madeOn: fromIn.value, memo: memoIn.value })
         .then(function (r) {
-          keepBtn.disabled = false;
+          if (keepBtn) keepBtn.disabled = false;
           untilIn.value = r.until;
           keepNote.textContent = (r.guess ? '（見当）' : '')
             + name + 'は ' + F.whereLabel(wh) + 'で ' + r.days + '日ぶん。'
             + U.fmtYMD(r.until) + ' までにしました'
             + (r.note ? '　' + r.note : '');
         });
-    }, 'idea') : null;
+    }
+    var keepBtn = kind === 'cooked'
+      ? ui.btn('日もちを見てもらう', 'ghost', askKeep, 'idea') : null;
 
     var close = ui.sheet({
       title: (isNew ? '入れる' : '直す') + '（' + KIND[kind].label + '）',
@@ -216,6 +228,10 @@
         })
       ]
     });
+
+    /* 献立から入れたときは、開いた拍子に日もちを聞きにいく。
+       押す手間をひとつ減らすため（名前はもう入っている） */
+    if (isNew && o.auto && kind === 'cooked' && nameIn.value.trim()) askKeep();
   }
 
   /* ---------------- ほかの画面から ---------------- */
