@@ -119,7 +119,7 @@ export default {
           fitbit: fitbitReady(env),
           menuWebhook: !!env.DISCORD_MENU_WEBHOOK
         },
-        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/img', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/inbox/weights', '/v1/inbox/weight/key', '/v1/inbox/card', '/v1/inbox/cards', '/v1/inbox/card/key', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/menu/dish', '/v1/menu/items', '/v1/menu/send',
+        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/img', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/inbox/weights', '/v1/inbox/weight/key', '/v1/inbox/card', '/v1/inbox/cards', '/v1/inbox/card/key', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/menu/dish', '/v1/menu/items', '/v1/menu/send', '/v1/keep',
           '/v1/event/key', '/v1/event/list', '/v1/event/one', '/v1/event/img', '/v1/event/close', '/v1/inbox/events', '/v1/reschedule', '/v1/bank/balance', '/v1/plot', '/v1/plot/send', '/v1/spend', '/v1/fit/plan', '/v1/fitbit'],
         // どの食事に対応しているか。deploy を忘れると古いままなのが分かる
         menuSlots: MENU_SLOTS,
@@ -292,6 +292,10 @@ export default {
 
       if (url.pathname === '/v1/menu/items') {
         return menuItems(request, env, cors);
+      }
+
+      if (url.pathname === '/v1/keep') {
+        return keepDays(request, env, cors);
       }
 
       if (url.pathname === '/v1/menu') {
@@ -1261,6 +1265,73 @@ async function menuItems(request, env, cors) {
   if (!pass.ok) return json(pass.body, pass.status, cors);
 
   return json({ ok: true, data: pass.data, model: pass.model, usage: pass.usage }, 200, cors);
+}
+
+/* ---- 作り置きの日もち ----
+
+   作った料理が何日もつかは、料理名と置き場でだいたい決まる。
+   そこだけ見てもらう。返すのは日数とひとことだけで、
+   アプリ側はそれを期限の初期値に入れる（直せる）。
+
+   食べものの話なので、短めに言ってもらう。
+   迷ったら短いほうへ——あとで腹をこわすより、早く食べるほうがいい。 */
+
+const KEEP_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['days', 'note'],
+  properties: {
+    days: { type: 'number', description: '何日もつか（作った日を1日目と数えない。冷蔵なら1〜5が普通）' },
+    note: { type: 'string', description: '気をつけることを40字以内で。無ければ空' }
+  }
+};
+
+const KEEP_WHERE = { fridge: '冷蔵庫（4℃前後）', freezer: '冷凍庫（-18℃前後）', room: '常温' };
+
+function keepPrompt(o) {
+  const lines = [
+    '家庭で作った料理の日もちを見てください。',
+    '料理：' + o.name,
+    '置き場：' + (KEEP_WHERE[o.where] || KEEP_WHERE.fridge),
+    o.memo ? 'メモ：' + o.memo : '',
+    '',
+    '決まりごと',
+    '・日数は「作った翌日から数えて何日まで食べられるか」。作った日は数えない',
+    '・迷ったら短いほうにしてください。腹をこわすより早く食べるほうがいいので',
+    '・生もの（刺身・生卵を使ったもの）、和え物、芋のサラダは特に短く',
+    '・冷凍でも、味が落ちるところまでを日数にしてください',
+    '・note は「取り分けて小分けに」「よく火を通してから」のような、短い注意だけ。'
+      + '無ければ空にしてください。言い訳や前置きは書かないでください'
+  ];
+  return lines.filter(Boolean).join('\n');
+}
+
+async function keepDays(request, env, cors) {
+  if (request.method !== 'POST') return json({ error: 'not_found' }, 404, cors);
+  if (!env.OPENAI_API_KEY) return json({ error: 'no_api_key' }, 503, cors);
+
+  let body;
+  try { body = await request.json(); } catch (e) { return json({ error: 'bad_json' }, 400, cors); }
+
+  const name = String(body.name == null ? '' : body.name).trim().slice(0, 60);
+  if (!name) return json({ error: 'empty' }, 400, cors);
+  const o = {
+    name,
+    where: KEEP_WHERE[String(body.where)] ? String(body.where) : 'fridge',
+    memo: String(body.memo == null ? '' : body.memo).trim().slice(0, 120)
+  };
+
+  const model = String(body.model || env.OPENAI_MENU_MODEL || env.OPENAI_MODEL || OCR_DEFAULTS.model);
+  const pass = await askJson(env, model, keepPrompt(o), 'keep', KEEP_SCHEMA,
+    Number(env.OPENAI_KEEP_MAX_TOKENS || 400));
+  if (!pass.ok) return json(pass.body, pass.status, cors);
+
+  const days = Math.min(365, Math.max(1, Math.round(Number(pass.data && pass.data.days) || 0)));
+  return json({
+    ok: true,
+    data: { days, note: String((pass.data && pass.data.note) || '').slice(0, 120) },
+    model: pass.model, usage: pass.usage
+  }, 200, cors);
 }
 
 /* ---- 献立を Discord へ送る ----

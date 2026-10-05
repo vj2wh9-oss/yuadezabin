@@ -1,7 +1,10 @@
 /* 家事の周期表（画面）。
 
    上に「いまやるもの」、下に全部。どちらも遅れている順。
-   やった日を押すと、そこから周期ぶん先が次になる。 */
+   やった日を押すと、そこから周期ぶん先が次になる。
+
+   v240 から、家事タブのトップはカレンダー（view-home2 ではなく view-chorecal）に
+   なったので、この画面は #/choreplan として、その中のひとつになった。 */
 (function (DL) {
   'use strict';
   var U = DL.util, ui = DL.ui, S = DL.store, el = U.el;
@@ -216,7 +219,7 @@
   /** ホームの下に置く入口 */
   function entry() {
     var sm = C.summary();
-    return el('a', { class: 'row', href: '#/chores' }, [
+    return el('a', { class: 'row', href: '#/choreplan' }, [
       el('div', { class: 'row-main' }, [
         el('div', { class: 'row-title' }, [
           ui.icon('broom', 17), el('span', { text: '家事の周期表' })

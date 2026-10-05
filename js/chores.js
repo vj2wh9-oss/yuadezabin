@@ -174,7 +174,7 @@
     if (!rows.length) return [];
     return [{
       level: 'info',
-      href: '#/chores',
+      href: '#/choreplan',
       text: '家事が ' + rows.length + '件 遅れています（'
         + rows.slice(0, 3).map(function (st) { return st.c.name; }).join('・')
         + (rows.length > 3 ? ' ほか' : '') + '）'

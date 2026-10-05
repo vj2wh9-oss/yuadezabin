@@ -208,6 +208,20 @@
             '<rect x="14.8" y="6.6" width="5" height="10.8" rx="2" fill="currentColor" stroke="none"/>' +
             '<path d="M9.2 12h5.6"/>',
 
+    // 冷蔵庫：上下2段と、取っ手
+    fridge: '<path d="M5.4 2.8h13.2v18.4H5.4z"/><path d="M5.4 10h13.2"/>'
+      + '<path d="M8.2 5.8v2.4M8.2 12.4v2.6"/>',
+    // 冷凍：雪の結晶
+    snow: '<path d="M12 3v18M4.2 7.5l15.6 9M19.8 7.5l-15.6 9"/>'
+      + '<path d="M12 6.6 9.9 4.6M12 6.6l2.1-2M12 17.4l-2.1 2M12 17.4l2.1 2"/>',
+
+    /* 家事：ほうきで掃いて、ほこりが順に飛ぶ */
+    tabChores: '<path d="M15.4 3.2 9.8 8.8"/>' +
+               '<path d="M12.2 6.4 7.2 11.4l5.4 5.4 5-5z"/>' +
+               '<path d="M12.6 16.8 8.2 21.2H4l3.2-4.4z"/>' +
+               '<circle class="i-dust d1" cx="17.6" cy="16.4" r="1.2" fill="currentColor" stroke="none"/>' +
+               '<circle class="i-dust d2" cx="20.6" cy="19.2" r="1.2" fill="currentColor" stroke="none"/>',
+
     // 前の袋が下から満ちる
     tabFiles: '<path d="M2.8 7.4a2.4 2.4 0 0 1 2.4-2.4h4.2l2.4 3h7.4a2.4 2.4 0 0 1 2.4 2.4v8.8a2.4 2.4 0 0 1-2.4 2.4H5.2a2.4 2.4 0 0 1-2.4-2.4z"/>' +
               '<path class="i-front" d="M2.8 12.8h18.8v6.4a2.4 2.4 0 0 1-2.4 2.4H5.2a2.4 2.4 0 0 1-2.4-2.4z" fill="currentColor" stroke="none"/>'

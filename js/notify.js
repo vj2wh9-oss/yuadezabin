@@ -197,6 +197,71 @@
       }
     },
 
+    /* ゴミの日 */
+    trash: {
+      label: 'ゴミの日',
+      note: '前の晩に知らせます。朝に言われても、もう袋はまとめられないので。'
+        + '当日の朝にも出せます',
+      whens: [
+        { value: 'beforeDay', label: '前の晩の指定時刻' },
+        { value: 'onDay', label: '当日の指定時刻' }
+      ],
+      build: function (rule, from, to) {
+        var out = [];
+        var lead = rule.when === 'beforeDay' ? 1 : 0;
+        U.rangeDays(from, U.addDays(to, lead)).forEach(function (date) {
+          var rows = DL.trash.ofDay(date);
+          if (!rows.length) return;
+          var fire = U.addDays(date, -lead);
+          if (U.cmp(fire, from) < 0 || U.cmp(fire, to) > 0) return;
+          var at = atLocal(fire, rule.time || (lead ? '20:00' : '07:00'), 0);
+          if (!at) return;
+          out.push({
+            id: 'trash|' + rule.id + '|' + date,
+            at: at,
+            title: (lead ? '明日' : '今日') + 'は '
+              + rows.map(function (t) { return t.name; }).join('・') + ' の日',
+            body: U.fmtMDW(date)
+              + (rows[0].memo ? '　' + rows[0].memo : ''),
+            tag: 'trash-' + date,
+            url: '#/trash'
+          });
+        });
+        return out;
+      }
+    },
+
+    /* 冷蔵庫の期限 */
+    fridge: {
+      label: '冷蔵庫の期限',
+      note: '期限の近いもの・切れたものを、まとめて1通で知らせます',
+      days: true,
+      whens: [{ value: 'beforeDay', label: '期限の◯日前までのものを、指定時刻に' }],
+      build: function (rule, from, to) {
+        var out = [];
+        var n = Math.max(0, U.num(rule.days, 2));
+        U.rangeDays(from, to).forEach(function (date) {
+          var rows = DL.fridge.watch(date, n);
+          if (!rows.length) return;
+          var at = atLocal(date, rule.time || '09:00', 0);
+          if (!at) return;
+          var over = rows.filter(function (r) { return r.over; }).length;
+          out.push({
+            id: 'fridge|' + rule.id + '|' + date,
+            at: at,
+            title: over ? '冷蔵庫：期限切れ ' + over + '件'
+              : '冷蔵庫：早く食べるもの ' + rows.length + '件',
+            body: rows.slice(0, 4).map(function (r) {
+              return r.name + '（' + U.untilLabel(r.until, date) + '）';
+            }).join('、'),
+            tag: 'fridge-' + date,
+            url: '#/fridge'
+          });
+        });
+        return out;
+      }
+    },
+
     /* くすり */
     meds: {
       label: 'くすり',

@@ -10,7 +10,9 @@
  */
 import { sheet, withPage, open, IPHONE } from '../lib/harness.mjs';
 
-const TABS = ['home', 'calendar', 'projects', 'sales', 'books', 'fit', 'files'];
+/* v240 で組み替えた。ファイルはホームのいちばん下の入口へ移し、
+   空いたところに家事タブを作って、トレーニングを右端に寄せた */
+const TABS = ['home', 'calendar', 'projects', 'sales', 'books', 'chores', 'fit'];
 
 export default {
   name: '下タブ',

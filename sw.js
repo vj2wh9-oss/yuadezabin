@@ -1,12 +1,12 @@
 /* オフライン用のシンプルなキャッシュ（アプリ本体のみ。データは localStorage） */
-var CACHE = 'shimekiri-v239';
+var CACHE = 'shimekiri-v240';
 var ASSETS = [
   './', './index.html', './assets/style.css', './manifest.webmanifest',
   './assets/icon-180.png', './assets/icon-192.png', './assets/icon-512.png',
   './assets/icon-maskable-512.png', './assets/favicon-64.png',
-  './js/util.js', './js/icons.js', './js/db.js', './js/store.js', './js/schedule.js', './js/events.js', './js/holidays.js', './js/printing.js', './js/notify.js', './js/search.js', './js/documents.js', './js/fanbox.js', './js/roomreserve.js', './js/crm.js', './js/orders.js', './js/weather.js', './js/fit.js', './js/daylog.js', './js/timeblocks.js', './js/expenses.js', './js/outgo.js', './js/body.js', './js/supply.js', './js/chores.js', './js/stock.js', './js/crop.js', './js/ocr.js', './js/sync.js', './js/backup.js', './js/zip.js', './js/files.js', './js/imgbank.js', './js/receipt.js', './js/memosend.js', './js/docpdf.js', './js/menu.js', './js/card.js', './js/eventsite.js', './js/advice.js', './js/bank.js', './js/ui.js', './js/forms.js', './js/kitchen.js', './js/plot.js', './js/lock.js',
+  './js/util.js', './js/icons.js', './js/db.js', './js/store.js', './js/schedule.js', './js/events.js', './js/holidays.js', './js/printing.js', './js/notify.js', './js/search.js', './js/documents.js', './js/fanbox.js', './js/roomreserve.js', './js/crm.js', './js/orders.js', './js/weather.js', './js/fit.js', './js/daylog.js', './js/timeblocks.js', './js/expenses.js', './js/outgo.js', './js/body.js', './js/supply.js', './js/chores.js', './js/fridge.js', './js/trash.js', './js/stock.js', './js/crop.js', './js/ocr.js', './js/sync.js', './js/backup.js', './js/zip.js', './js/files.js', './js/imgbank.js', './js/receipt.js', './js/memosend.js', './js/docpdf.js', './js/menu.js', './js/card.js', './js/eventsite.js', './js/advice.js', './js/bank.js', './js/ui.js', './js/forms.js', './js/kitchen.js', './js/plot.js', './js/lock.js',
   './js/view-home.js', './js/view-calendar.js', './js/view-events.js', './js/view-daylog.js', './js/view-time.js', './js/view-projects.js', './js/view-ticket.js',
-  './js/view-detail.js', './js/view-pages.js', './js/view-fit.js', './js/view-doc.js', './js/view-sales.js', './js/view-books.js', './js/view-outgo.js', './js/view-body.js', './js/view-supply.js', './js/view-chores.js', './js/view-receipt.js', './js/view-files.js', './js/view-stock.js', './js/view-onsite.js', './js/view-orders.js', './js/view-crm.js', './js/view-lock.js', './js/view-search.js', './js/view-settings.js', './js/app.js',
+  './js/view-detail.js', './js/view-pages.js', './js/view-fit.js', './js/view-doc.js', './js/view-sales.js', './js/view-books.js', './js/view-outgo.js', './js/view-body.js', './js/view-supply.js', './js/view-chores.js', './js/view-chorecal.js', './js/view-fridge.js', './js/view-trash.js', './js/view-receipt.js', './js/view-files.js', './js/view-stock.js', './js/view-onsite.js', './js/view-orders.js', './js/view-crm.js', './js/view-lock.js', './js/view-search.js', './js/view-settings.js', './js/app.js',
   // FANBOX のページで動かすスクリプト（設定画面がこれを読んで組み立てる）
   './tools/fanbox-collect.js'
 ];

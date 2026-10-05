@@ -91,7 +91,10 @@
       .concat(DL.outgo.alerts(today))
       .concat(DL.body.alerts(today))
       .concat(DL.supply.alerts(today))
-      .concat(DL.chores.alerts(today));
+      .concat(DL.chores.alerts(today))
+      /* ゴミは前の晩に思い出せることがいちばん効くので、上のほうに置く */
+      .concat(DL.trash.alerts(today))
+      .concat(DL.fridge.alerts(today));
     var urgent = plans.filter(function (o) { return o.ev.important; });
     if (al.length || urgent.length) {
       var box = el('div', { class: 'alerts' });
@@ -161,18 +164,37 @@
        METEO LOCK と同じく入口だけ置く */
     wrap.appendChild(DL.views.body.entry());
 
-    /* 備えの棚（備蓄と消耗品）。こちらも入口だけ */
-    wrap.appendChild(DL.views.supply.entry());
-
-    /* 家事の周期表 */
-    wrap.appendChild(DL.views.chores.entry());
+    /* 備えの棚と家事の周期表は、家事タブの中へ移した。
+       ここに二重に置くと、どちらが本家か分からなくなる */
 
     if (DL.views.lock) wrap.appendChild(DL.views.lock.entry());
+
+    /* ファイル。下のタブから外したので、ここがいちばん下の入口になる。
+       中身・画面・使い勝手はそのまま（#/files を開くだけ） */
+    wrap.appendChild(filesEntry());
 
     // 「いまの様子」「売上」「1日の記録」は、それぞれのタブと重なるのでホームには出さない。
     // 「近い締切」「進行中の案件」も同じ理由で出さない
 
     root.appendChild(wrap);
+  }
+
+  /* ファイルへの入口。下のタブから外したぶん、ホームのいちばん下に置く。
+     開く先も中身も、これまでと同じ #/files */
+  function filesEntry() {
+    var n = (S.settings.folders || []).length;
+    return el('a', { class: 'row', href: '#/files' }, [
+      el('div', { class: 'row-main' }, [
+        el('div', { class: 'row-title' }, [
+          ui.icon('folder', 17), el('span', { text: 'ファイル' })
+        ]),
+        el('div', { class: 'row-sub' }, [
+          ui.chip('PC と iPhone でやりとり', 'ghosty'),
+          n ? ui.chip('フォルダ ' + n + '個', 'ghosty') : null
+        ])
+      ]),
+      el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+    ]);
   }
 
   /* ショートカットから届いたカードの決済通知のお知らせ。
@@ -2256,6 +2278,21 @@
       })));
     }
 
+    /* 冷蔵庫で切れそうなものを、押すだけで入れられるようにする。
+       「早く食べるもの」をわざわざ打ち直さなくて済む */
+    var soon = DL.fridge.useSoon().filter(function (n) { return mUse.indexOf(n) < 0; });
+    if (soon.length) {
+      box.appendChild(el('div', { class: 'mn-use-soon' }, [
+        el('span', { class: 'muted small', text: '冷蔵庫で切れそうなもの' }),
+        el('div', { class: 'row-wrap' }, soon.map(function (n) {
+          return ui.btn(n, 'ghost tiny', function () {
+            addUse(n);
+            DL.app.render();
+          }, 'plus');
+        }))
+      ]));
+    }
+
     var input = ui.input({
       value: '', maxlength: 60, placeholder: '例）魚、豚肉、なす',
       'aria-label': '使いたい食材を足す'
@@ -2381,12 +2418,14 @@
      献立の設定に置いたものなので、出すのはホームだけ */
   function tossRow(t) {
     var x = t.item;
-    var what = t.kind === 'pantry' ? '調味料' : (x.kept ? '保存あり' : '残り物');
+    var what = t.kind === 'pantry' ? '調味料'
+      : t.kind === 'fridge' ? '食材' : (x.kept ? '保存あり' : '残り物');
     return el('button', { class: 'row toss-row', onclick: function () {
       ui.confirm(x.name + 'を捨てましたか？　一覧からも消します。',
         { okText: '捨てた', danger: true }).then(function (ok) {
         if (!ok) return;
         if (t.kind === 'pantry') S.removePantry(x.id);
+        else if (t.kind === 'fridge') S.removeFridge(x.id);
         else S.removeLeftover(x.id);
         ui.toast('消しました');
       });

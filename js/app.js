@@ -37,6 +37,7 @@
     if (name === 'day') params.date = parts[1];
     if (name === 'log') params.date = parts[1];
     if (name === 'time') params.date = parts[1];
+    if (name === 'chores') params.date = parts[1];
     if (name === 'crm') params.id = parts[1];
     if (name === 'ticket') params.id = parts[1];
     if (name === 'calendar' && parts[1]) params.month = parts[1] + '-01';
@@ -50,8 +51,12 @@
     projects: 'projects', project: 'projects', pages: 'projects', docs: 'projects',
     doc: 'projects', crm: 'projects', ticket: 'projects',
     sales: 'sales', stock: 'sales', onsite: 'sales',
-    books: 'books', outgo: 'books', files: 'files',
-    body: 'fit', supply: 'home', chores: 'home'
+    books: 'books', outgo: 'books',
+    /* ファイルは下タブから外して、ホームの入口から開く。
+       開いているあいだはホームの札を点ける */
+    files: 'home', supply: 'home',
+    chores: 'chores', fridge: 'chores', trash: 'chores', choreplan: 'chores',
+    body: 'fit'
   };
 
   /* 下のタブの明かりを移す。同じところを二度押しても動きが
@@ -102,7 +107,8 @@
       fit: 'トレーニング',
       log: '1日の記録', logs: '記録', ideas: 'ひらめきメモ', time: '今日の予定', orders: '発注',
       crm: '顧客管理', lock: 'METEO LOCK', ticket: 'チケット',
-      outgo: '出ていくお金', body: 'からだ', supply: '備えの棚', chores: '家事'
+      outgo: '出ていくお金', body: 'からだ', supply: '備えの棚',
+      chores: '家事', choreplan: '家事の周期表', fridge: '冷蔵庫', trash: 'ゴミの日'
     };
     setTitle(titles[route.name] || 'METEO365');
 
@@ -142,7 +148,9 @@
     var life = S.calMode() === 'life';
 
     // 売上は下のタブから直接開くので、戻るボタンは要らない
-    var showBack = ['project', 'pages', 'day', 'docs', 'doc', 'search', 'stock', 'onsite', 'log', 'logs', 'ideas', 'time', 'orders', 'crm', 'lock', 'ticket', 'outgo', 'body', 'supply', 'chores'].indexOf(route.name) >= 0
+    var showBack = ['project', 'pages', 'day', 'docs', 'doc', 'search', 'stock', 'onsite', 'log', 'logs', 'ideas', 'time', 'orders', 'crm', 'lock', 'ticket', 'outgo', 'body', 'supply', 'files', 'fridge', 'trash', 'choreplan'].indexOf(route.name) >= 0
+      // 家事タブは、日付を開いているときだけ戻れるようにする
+      || (route.name === 'chores' && !!route.params.date)
       // 筋トレは、日付が付いているとき（その日の中身）だけ戻れるようにする
       || (route.name === 'fit' && !!route.params.date);
     backBtn.hidden = !showBack;
@@ -220,7 +228,10 @@
       case 'outgo': DL.views.outgo.render(view); break;
       case 'body': DL.views.body.render(view); break;
       case 'supply': DL.views.supply.render(view); break;
-      case 'chores': DL.views.chores.render(view); break;
+      case 'chores': DL.views.chorecal.render(view, route.params); break;
+      case 'choreplan': DL.views.chores.render(view); break;
+      case 'fridge': DL.views.fridge.render(view); break;
+      case 'trash': DL.views.trash.render(view); break;
       case 'files': DL.views.files.render(view); break;
       case 'stock': DL.views.stock.render(view); break;
       case 'onsite': DL.views.onsite.render(view, route.params); break;
@@ -689,7 +700,7 @@
     /* カレンダーは画面いっぱいに出すので、重なるボタンは置かない。
        筋トレには案件を作る用がないので、ここも出さない。
        ホームは眺める場所で、案件を作るなら案件タブの＋を使うので、ここも出さない */
-    if (['home', 'settings', 'calendar', 'docs', 'doc', 'sales', 'search', 'onsite', 'log', 'logs', 'ideas', 'time', 'orders', 'crm', 'fit', 'lock', 'ticket', 'outgo', 'body', 'supply', 'chores'].indexOf(route.name) >= 0) { fab.hidden = true; return; }
+    if (['home', 'settings', 'calendar', 'docs', 'doc', 'sales', 'search', 'onsite', 'log', 'logs', 'ideas', 'time', 'orders', 'crm', 'fit', 'lock', 'ticket', 'outgo', 'body', 'supply', 'chores', 'choreplan', 'fridge', 'trash'].indexOf(route.name) >= 0) { fab.hidden = true; return; }
     fab.hidden = false;
     fab.onclick = function () {
       /* 日別画面では、ここがその日の予定の追加口になる。
@@ -1188,7 +1199,7 @@
 
   /* この端末がいま動かしている版。sw.js の CACHE と揃えて上げる。
      2台で見比べて、片方だけ古いままになっていないか確かめるためのもの */
-  DL.VERSION = 'v239';
+  DL.VERSION = 'v240';
 
   DL.app = { render: render, init: init, get route() { return route; } };
   document.addEventListener('DOMContentLoaded', init);

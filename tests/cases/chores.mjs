@@ -100,7 +100,7 @@ export default {
           .some((t) => t.indexOf('家事が') === 0));
 
       /* ---- 画面 ---- */
-      await page.evaluate(() => { location.hash = '#/chores'; });
+      await page.evaluate(() => { location.hash = '#/choreplan'; });
       await page.waitForTimeout(500);
       s.yes('周期表が出る',
         (await page.locator('.view').innerText()).indexOf('いまやるもの') >= 0);
@@ -119,8 +119,9 @@ export default {
       await page.waitForTimeout(500);
       s.yes('遅れている家事がホームに出る',
         (await page.locator('.home-chore').count()) === 1);
-      s.yes('ホームから周期表へ行ける',
-        (await page.locator('a[href="#/chores"]').count()) >= 1);
+      /* 入口そのものは家事タブへ移したが、遅れの知らせからは一息で行ける */
+      s.yes('ホームの知らせから周期表へ行ける',
+        (await page.locator('a[href="#/choreplan"]').count()) >= 1);
 
       const n0 = await page.locator('.home-chore .bd-pill').count();
       await page.locator('.home-chore .bd-pill').first().click();

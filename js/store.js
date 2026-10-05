@@ -253,6 +253,14 @@
        [{id, name, kind:'stock'|'use', unit, need, lots:[{id,until,qty}],
          have, days, lastAt, lead, price, place, memo, queuedAt, active}] */
     supplies: [],
+    /* 冷蔵庫の中身（食材）。買ってきたものを、しまうときに期限を入れて持つ。
+       袋を開けてジップロックに移すと期限が分からなくなる——それを防ぐためのもの
+       [{id, name, qty, unit, where:'fridge'|'freezer'|'room', until, from, openedAt, memo}] */
+    fridge: [],
+    /* ゴミの日 [{id, name, color, weekdays:[0-6], weeks:[1-5]（空＝毎週）, memo, active}] */
+    trash: [],
+    /* 出した印 { 'YYYY-MM-DD|<ゴミのID>': true } */
+    trashDone: {},
     // 家にある調味料 [{id, name, qty, unit, until}]
     pantry: [],
     // 残り物 [{id, name, qty, unit, until, kept}]。kept＝食材ではない作り置き
@@ -407,6 +415,9 @@
     s.settings.checkups = (s.settings.checkups || []).map(normalizeCheckup);
     s.settings.supplies = (s.settings.supplies || []).map(normalizeSupply);
     s.settings.chores = (s.settings.chores || []).map(normalizeChore);
+    s.settings.fridge = (s.settings.fridge || []).map(normalizeFridge);
+    s.settings.trash = (s.settings.trash || []).map(normalizeTrash);
+    s.settings.trashDone = normalizeTrashDone(s.settings.trashDone);
     s.settings.tags = (s.settings.tags || []).map(normalizeTag);
     s.settings.expenseCategories = normalizeExpenseCategories(s.settings.expenseCategories);
     s.settings.items = (s.settings.items || []).map(normalizeItem);
@@ -3852,10 +3863,122 @@
 
   function normalizePantry(x) { return normalizeFood(x); }
 
+  var FOOD_WHERE = ['fridge', 'freezer', 'room'];
+
   function normalizeLeftover(x) {
     x = normalizeFood(x);
     x.kept = !!x.kept;       // 食材ではない作り置き（「保存あり」）
+    // どこにしまったか。冷蔵庫の画面で置き場ごとに並べるために持つ
+    x.where = FOOD_WHERE.indexOf(x.where) >= 0 ? x.where : 'fridge';
+    x.from = U.isISO(x.from) ? x.from : '';        // 作った日
+    x.memo = String(x.memo || '').slice(0, 200);
     return x;
+  }
+
+  /* ---- 冷蔵庫の中身（食材） ----
+
+     作り置き（leftovers）とは分けて持つ。献立を頼むときの扱いが違うため——
+     作り置きは「先に食べ切ってほしいもの」として渡し、
+     食材は「使えるもの」として渡す。画面ではひとつの棚として見せる。 */
+
+  function normalizeFridge(x) {
+    x = normalizeFood(x);
+    x.where = FOOD_WHERE.indexOf(x.where) >= 0 ? x.where : 'fridge';
+    x.from = U.isISO(x.from) ? x.from : '';          // 買った日
+    x.openedAt = U.isISO(x.openedAt) ? x.openedAt : '';  // 袋を開けた日
+    x.memo = String(x.memo || '').slice(0, 200);
+    x.at = x.at || new Date().toISOString();
+    return x;
+  }
+
+  function fridge() { return (state.settings.fridge || []).slice(); }
+  function getFridge(id) {
+    return (state.settings.fridge || []).filter(function (x) { return x.id === id; })[0] || null;
+  }
+  function addFridge(data) {
+    var x = normalizeFridge(Object.assign({ id: U.uid() }, data));
+    if (!x.name) return null;
+    state.settings.fridge = (state.settings.fridge || []).concat([x]);
+    save();
+    return x;
+  }
+  function updateFridge(id, patch) {
+    var x = getFridge(id);
+    if (!x) return null;
+    Object.assign(x, patch);
+    normalizeFridge(x);
+    save();
+    return x;
+  }
+  function removeFridge(id) {
+    state.settings.fridge = (state.settings.fridge || []).filter(function (x) { return x.id !== id; });
+    save();
+  }
+
+  /* ---- ゴミの日 ----
+
+     曜日で決まるものがほとんどなので、曜日（と、第何週か）で持つ。
+     出したかどうかは日ごとの印にする。 */
+
+  function normalizeTrash(t) {
+    t = t || {};
+    t.id = t.id || U.uid();
+    t.name = String(t.name || '').trim().slice(0, 30) || '(名称未設定)';
+    t.color = /^#[0-9a-fA-F]{6}$/.test(String(t.color)) ? t.color : '#7a8aa0';
+    t.weekdays = (Array.isArray(t.weekdays) ? t.weekdays : [])
+      .map(function (d) { return Math.round(U.num(d, -1)); })
+      .filter(function (d) { return d >= 0 && d <= 6; })
+      .filter(function (d, i, a) { return a.indexOf(d) === i; })
+      .sort();
+    // 第何週か。空なら毎週
+    t.weeks = (Array.isArray(t.weeks) ? t.weeks : [])
+      .map(function (w) { return Math.round(U.num(w, 0)); })
+      .filter(function (w) { return w >= 1 && w <= 5; })
+      .filter(function (w, i, a) { return a.indexOf(w) === i; })
+      .sort();
+    t.memo = String(t.memo || '').slice(0, 200);
+    t.active = t.active !== false;
+    t.at = t.at || new Date().toISOString();
+    return t;
+  }
+
+  function normalizeTrashDone(map) {
+    var out = {};
+    Object.keys(map || {}).forEach(function (k) {
+      if (/^\d{4}-\d{2}-\d{2}\|[^|]+$/.test(k) && map[k]) out[k] = true;
+    });
+    return out;
+  }
+
+  function trash() { return (state.settings.trash || []).slice(); }
+  function getTrash(id) {
+    return (state.settings.trash || []).filter(function (t) { return t.id === id; })[0] || null;
+  }
+  function addTrash(data) {
+    var t = normalizeTrash(Object.assign({ id: U.uid() }, data));
+    state.settings.trash = (state.settings.trash || []).concat([t]);
+    save();
+    return t;
+  }
+  function updateTrash(id, patch) {
+    var t = getTrash(id);
+    if (!t) return null;
+    Object.assign(t, patch);
+    normalizeTrash(t);
+    save();
+    return t;
+  }
+  function removeTrash(id) {
+    state.settings.trash = (state.settings.trash || []).filter(function (t) { return t.id !== id; });
+    save();
+  }
+  function trashDone() { return state.settings.trashDone || (state.settings.trashDone = {}); }
+  function setTrashDone(date, id, on, opts) {
+    var map = trashDone();
+    var k = date + '|' + id;
+    if (on) map[k] = true; else delete map[k];
+    save(opts);
+    return !!map[k];
   }
 
   /** 「1本」「500ml」。数量も単位も無ければ空 */
@@ -3931,6 +4054,10 @@
     });
     leftovers().forEach(function (x) {
       if (foodExpired(x, date)) out.push({ kind: 'leftover', item: x });
+    });
+    // 冷蔵庫の食材も同じ扱い。期限が切れたら捨てるものとして出す
+    fridge().forEach(function (x) {
+      if (foodExpired(x, date)) out.push({ kind: 'fridge', item: x });
     });
     return out.sort(function (a, b) { return U.cmp(a.item.until, b.item.until); });
   }
@@ -5104,6 +5231,11 @@
       mergeById(state.settings.checkups || (state.settings.checkups = []), incoming.settings.checkups || []);
       mergeById(state.settings.supplies || (state.settings.supplies = []), incoming.settings.supplies || []);
       mergeById(state.settings.chores || (state.settings.chores = []), incoming.settings.chores || []);
+      mergeById(state.settings.fridge || (state.settings.fridge = []), incoming.settings.fridge || []);
+      mergeById(state.settings.trash || (state.settings.trash = []), incoming.settings.trash || []);
+      var tdone = state.settings.trashDone || (state.settings.trashDone = {});
+      Object.keys(incoming.settings.trashDone || {}).forEach(function (k) { tdone[k] = true; });
+      state.settings.trashDone = normalizeTrashDone(tdone);
       var mlog = state.settings.medLog || (state.settings.medLog = {});
       Object.keys(incoming.settings.medLog || {}).forEach(function (d) {
         var day = mlog[d] || (mlog[d] = {});
@@ -5415,6 +5547,10 @@
     updateSupply: updateSupply, removeSupply: removeSupply, SUPPLY_KINDS: SUPPLY_KINDS,
     chores: chores, getChore: getChore, addChore: addChore,
     updateChore: updateChore, removeChore: removeChore,
+    fridge: fridge, getFridge: getFridge, addFridge: addFridge,
+    updateFridge: updateFridge, removeFridge: removeFridge, FOOD_WHERE: FOOD_WHERE,
+    trash: trash, getTrash: getTrash, addTrash: addTrash, updateTrash: updateTrash,
+    removeTrash: removeTrash, trashDone: trashDone, setTrashDone: setTrashDone,
     items: items, getItem: getItem, addItem: addItem, updateItem: updateItem, removeItem: removeItem,
     stockMoves: stockMoves, getMove: getMove, addMove: addMove, updateMove: updateMove, removeMove: removeMove,
     MOVE_KINDS: MOVE_KINDS,
