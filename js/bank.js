@@ -96,11 +96,13 @@
     var sv = S.savings();
     var days = Object.keys(sv.history).sort();
     if (!days.length) return null;
-    ym = ym || U.today().slice(0, 7);
+    ym = ym || DL.expenses.cycleOf(U.today());
     var before = null, last = null;
     days.forEach(function (d) {
-      if (d.slice(0, 7) < ym) before = sv.history[d];
-      if (d.slice(0, 7) === ym) last = sv.history[d];
+      // 月は会計月（締め日で区切ったぶん）で見る
+      var k = DL.expenses.cycleOf(d);
+      if (U.cmp(k, ym) < 0) before = sv.history[d];
+      if (k === ym) last = sv.history[d];
     });
     if (last === null) last = sv.total;
     if (before === null) return null;      // 先月ぶんの控えが無ければ出さない
@@ -182,15 +184,18 @@
     var sv = S.savings();
     if (!sv.goal || !sv.goalOn) return null;       // 目標が無ければ、ノルマも無い
     var today = U.isISO(date) ? date : U.today();
-    var ym = today.slice(0, 7);
-    if (ym > String(sv.goalOn).slice(0, 7)) return null;   // 期日の月を過ぎたら促さない
+    var ym = DL.expenses.cycleOf(today);
+    // 期日の月を過ぎたら促さない
+    if (U.cmp(ym, DL.expenses.cycleOf(sv.goalOn)) > 0) return null;
 
     var days = Object.keys(sv.history).sort();
-    var has = days.filter(function (d) { return d.slice(0, 7) === ym; }).length;
+    var has = days.filter(function (d) { return DL.expenses.cycleOf(d) === ym; }).length;
     if (has) return null;                          // 今月ぶんは入っている
 
     // 前の月までに控えた、いちばん新しい額。入力の初期値にする
-    var before = days.filter(function (d) { return d.slice(0, 7) < ym; });
+    var before = days.filter(function (d) {
+      return U.cmp(DL.expenses.cycleOf(d), ym) < 0;
+    });
     var last = before.length ? sv.history[before[before.length - 1]] : sv.total;
     return {
       ym: ym, month: U.num(ym.slice(5, 7), 0),
@@ -201,7 +206,9 @@
 
   /* 今月を入れて、期日の月まで何ヶ月あるか */
   function monthsLeft(today, on) {
-    var a = today.split('-'), b = String(on).split('-');
+    // 月は会計月。今月を1と数える
+    var a = DL.expenses.cycleOf(today).split('-');
+    var b = DL.expenses.cycleOf(on).split('-');
     return (U.num(b[0], 0) - U.num(a[0], 0)) * 12 + (U.num(b[1], 0) - U.num(a[1], 0)) + 1;
   }
 

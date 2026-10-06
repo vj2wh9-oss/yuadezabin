@@ -142,6 +142,12 @@
     fanbox: [],
     expenses: [],          // 経費 [{id,book,date,amount,category,vendor,memo,projectId,issuerId,fileId}]
     lifeBudget: 0,         // 日常（家計簿）の1ヶ月の予算。0で無効
+    /* ひと月の締め日。6 なら「7日〜翌月6日」でひと月を数える。
+       クレジットカードの請求が6日締めなので、そこに合わせる。
+       0 にすると、これまでどおりカレンダーの月で数える */
+    closeDay: 6,
+    // 締め日を入れたときに、固定費の月の覚え書きを合わせ直したか（1度きりの後始末）
+    closeDayInit: false,
     // 自分で足した科目。もとから入っている科目のうしろに並ぶ
     expenseCategories: { work: [], life: [] },
     recurring: [],         // 固定費 [{id,book,name,amount,category,day,startYm,lastYm,active}]
@@ -407,6 +413,7 @@
     s.settings.fanbox = normalizeFanbox(s.settings.fanbox);
     s.settings.expenses = (s.settings.expenses || []).map(normalizeExpense);
     s.settings.recurring = (s.settings.recurring || []).map(normalizeRecurring);
+    migrateCloseDay(s);
     s.settings.outgo = (s.settings.outgo || []).map(normalizeOutgo);
     s.settings.outgoPaid = normalizeOutgoPaid(s.settings.outgoPaid);
     s.settings.meds = (s.settings.meds || []).map(normalizeMed);
@@ -659,6 +666,31 @@
   }
 
   /* 旧形式 {invoice:12} は「今年ぶんの連番」として引き継ぐ（以後は年ごとにリセット） */
+  /* 締め日（7日〜翌月6日）に切り替えたときの後始末。
+
+     固定費は「毎月何日」と、どこまで記録したかの覚え書き（月の名前）を持つ。
+     締め日より前に出るもの（1日〜6日）は、これまで「11月ぶん」と呼んでいた
+     11月3日の支払いが、これからは「10月ぶん」になる。覚え書きだけ1つ前へずらす。
+
+     7日以降に出るものは、呼び名が変わらないのでそのまま。 */
+  function migrateCloseDay(s) {
+    if (s.settings.closeDayInit) return;
+    s.settings.closeDayInit = true;
+    var c = Math.round(U.num(s.settings.closeDay, 0));
+    if (!(c >= 1 && c <= 27)) return;
+    var back = function (ym) {
+      return /^\d{4}-\d{2}$/.test(String(ym)) ? U.addYm(ym, -1) : ym;
+    };
+    (s.settings.recurring || []).forEach(function (r) {
+      if (U.num(r.day, 1) > c) return;          // 締め日より後に出るものは、そのまま
+      r.startYm = back(r.startYm);
+      if (r.lastYm) r.lastYm = back(r.lastYm);
+      if (r.endYm) r.endYm = back(r.endYm);
+      if (r.reviewedYm) r.reviewedYm = back(r.reviewedYm);
+      r.skipYm = (r.skipYm || []).map(back);
+    });
+  }
+
   function migrateDocSeq(seq) {
     var out = { estimate: {}, invoice: {}, receipt: {} };
     var y = U.today().slice(0, 4);
@@ -1813,7 +1845,8 @@
     r.memo = r.memo || '';
     r.projectId = r.projectId || '';
     r.issuerId = r.issuerId || '';
-    r.startYm = /^\d{4}-\d{2}$/.test(String(r.startYm)) ? r.startYm : U.today().slice(0, 7);
+    r.startYm = /^\d{4}-\d{2}$/.test(String(r.startYm)) ? r.startYm
+      : (DL.expenses ? DL.expenses.cycleOf(U.today()) : U.today().slice(0, 7));
     r.lastYm = /^\d{4}-\d{2}$/.test(String(r.lastYm)) ? r.lastYm : '';   // 最後に記録した月
     /* 契約を解除した月。その月までは出ていき、次の月から数えない。
        解約の手続きをした時点で入れておけば、あとは勝手に外れる */
@@ -4499,18 +4532,27 @@
 
   /**
    * 経費を取り出す。新しい順。
-   * @param {object} [q] {book, year, month:'YYYY-MM', category, projectId, scoped}
+   * @param {object} [q] {book, year, month:'YYYY-MM'（会計月）, from, to, category, projectId, scoped}
    *   book は 'work'（事業）か 'life'（日常）。省略すると両方
    *   scoped を立てると、いま選んでいる名義のぶんだけ返す
    *   （名義を割り当てていない経費は、案件と同じ考えでどの名義でも返す）
    */
+  /* 会計月（締め日で区切ったひと月）。決めかたは expenses.js にある。
+     あちらはこのあとに読まれるので、使うときに見に行く */
+  function cycleOf(date) {
+    return DL.expenses ? DL.expenses.cycleOf(date) : String(date || '').slice(0, 7);
+  }
+
   function expenses(q) {
     q = q || {};
     var scope = q.scoped ? scopeId() : '';
     return (state.settings.expenses || []).filter(function (x) {
       if (q.book && x.book !== q.book) return false;
       if (q.year && x.date.slice(0, 4) !== String(q.year)) return false;
-      if (q.month && x.date.slice(0, 7) !== q.month) return false;
+      // 月は会計月（締め日で区切ったぶん）で絞る
+      if (q.month && cycleOf(x.date) !== q.month) return false;
+      if (q.from && U.cmp(x.date, q.from) < 0) return false;
+      if (q.to && U.cmp(x.date, q.to) > 0) return false;
       if (q.category && x.category !== q.category) return false;
       if (q.projectId && x.projectId !== q.projectId) return false;
       if (scope && x.issuerId && x.issuerId !== scope) return false;

@@ -91,7 +91,12 @@
     /* ---- 月ごと ---- */
     if (all.length) {
       wrap.appendChild(ui.section('月ごと'));
-      wrap.appendChild(monthCard(E.byMonth(all, y)));
+      /* 12月ぶんは翌年の6日まで入るので、年で切った all ではなく
+         その年の会計月ぜんぶが入る範囲で取り直す */
+      wrap.appendChild(monthCard(E.byMonth(S.expenses({
+        book: book, scoped: !isLife,
+        from: E.cycleStart(y + '-01'), to: E.cycleEnd(y + '-12')
+      }), y)));
     }
 
     /* ---- 一覧 ---- */
@@ -172,10 +177,12 @@
   /* 日常：家計簿として、月あたり・1日あたりの目安を出す */
   function lifeBoxes(all, spent, y) {
     var t = U.today();
-    var thisMonth = E.total(all.filter(function (x) { return x.date.slice(0, 7) === t.slice(0, 7); }));
+    // 月は会計月（締め日で区切ったぶん。既定は7日〜翌月6日）
+    var nowYm = E.cycleOf(t);
+    var thisMonth = E.total(all.filter(function (x) { return E.cycleOf(x.date) === nowYm; }));
     // 記録のある月だけで割る（まだ来ていない月で薄めない）
     var months = {};
-    all.forEach(function (x) { months[x.date.slice(0, 7)] = true; });
+    all.forEach(function (x) { months[E.cycleOf(x.date)] = true; });
     var n = Object.keys(months).length || 1;
     var sameYear = t.slice(0, 4) === String(y);
     // いちばん見たいのは今月なので、今月を大きく、年の合計はその隣に置く
@@ -208,10 +215,16 @@
     var left = b.month - used;
     var pct = Math.min(100, Math.round(used / b.month * 100));
 
+    var ym = E.cycleOf(U.today());
     box.appendChild(el('div', { class: 'bg-head' }, [
-      el('span', { text: U.num(U.today().slice(5, 7), 0) + '月の予算' }),
+      el('span', { text: U.num(ym.slice(5, 7), 0) + '月ぶんの予算' }),
       el('b', { class: left < 0 ? 'over' : '', text: left < 0 ? D.yen(-left) + ' 超過' : '残り ' + D.yen(left) })
     ]));
+    // どこからどこまでを「ひと月」と数えているか。締め日を決めているときだけ
+    if (E.cycleLabel(ym)) {
+      box.appendChild(el('p', { class: 'muted small',
+        text: E.cycleLabel(ym) + '（' + b.days + '日）　いま ' + b.day + '日目' }));
+    }
 
     /* 棒を押すと、予算を変える画面が開く（内訳もそこで見る）。
        棒は細いので、下の数字までまとめて押せるようにしておく */
@@ -379,17 +392,41 @@
     var input = ui.input({ type: 'number', inputmode: 'numeric', min: 0,
       value: U.num(S.settings.lifeBudget, 0) || '' });
     var b = E.dailyBudget();
+
+    /* ひと月の区切り。カードの請求に合わせたいので、締め日で決める。
+       0 を選ぶと、これまでどおりカレンダーの月で数える */
+    var cd = E.closeDay();
+    var cdSel = ui.select([{ value: '0', label: 'カレンダーどおり（1日〜末日）' }]
+      .concat([3, 5, 6, 10, 15, 20, 25, 27].map(function (n) {
+        return { value: String(n), label: n + '日締め（' + (n + 1) + '日〜翌月' + n + '日）' };
+      })), String(cd));
+    var cdNote = el('p', { class: 'muted small' });
+    function drawNote() {
+      var n = U.num(cdSel.value, 0);
+      cdNote.textContent = n
+        ? '毎月 ' + (n + 1) + '日から翌月 ' + n + '日までを、ひと月として数えます。'
+          + '固定費・貯金・節約実績・月ごとのグラフも、この区切りになります。'
+        : 'カレンダーの月（1日〜末日）で数えます。';
+    }
+    cdSel.addEventListener('change', drawNote);
+    drawNote();
+
     var close = ui.sheet({
       title: '1ヶ月の予算',
       body: el('div', { class: 'form' }, [
         ui.field('予算（円）', input),
+        ui.field('ひと月の区切り', cdSel),
+        cdNote,
         // いま何にいくら出ているか。棒を押した人がまず知りたいところ
         b ? budgetBreak(b) : null
       ]),
       actions: [
         ui.btn('キャンセル', 'ghost', function () { close(); }),
         ui.btn('保存', 'primary', function () {
-          S.updateSettings({ lifeBudget: Math.max(0, U.num(input.value, 0)) });
+          S.updateSettings({
+            lifeBudget: Math.max(0, U.num(input.value, 0)),
+            closeDay: Math.min(27, Math.max(0, U.num(cdSel.value, 0)))
+          });
           close(); ui.toast('保存しました');
         })
       ]
@@ -400,7 +437,7 @@
 
   /* 今月ぶんの固定費の合計。解約したものと、今月だけ休むぶんは数えない */
   function monthlyFixed(list) {
-    var ym = U.today().slice(0, 7);
+    var ym = E.cycleOf(U.today());
     return list.filter(function (r) { return E.liveInMonth(r, ym); })
       .reduce(function (n, r) { return n + r.amount; }, 0);
   }
@@ -493,7 +530,7 @@
   function fixedCard(list) {
     var box = el('div', { class: 'card' });
     if (list.length) {
-      var nowYm = U.today().slice(0, 7);
+      var nowYm = E.cycleOf(U.today());
       var rows = el('div', { class: 'fx-list' });
       list.forEach(function (r) {
         // 解約して、もう出ていかなくなったものは薄く出す（記録は残す）
@@ -909,7 +946,7 @@
       el('div', { class: 'rv-right' }, [
         el('b', { class: 'rv-year', text: D.yen(x.yearly) }),
         ui.btn('見た', 'ghost tiny', function () {
-          S.updateRecurring(r.id, { reviewedYm: today.slice(0, 7) });
+          S.updateRecurring(r.id, { reviewedYm: E.cycleOf(today) });
           ui.toast('見直したことにしました');
           refresh();
         }, 'check')
@@ -930,7 +967,7 @@
         && String(o.vendor || '').trim() === String(x.vendor || '').trim();
     });
     var months = {};
-    same.forEach(function (o) { months[String(o.date).slice(0, 7)] = true; });
+    same.forEach(function (o) { months[E.cycleOf(o.date)] = true; });
     return {
       name: String(x.vendor || '').trim() || x.category,
       vendor: String(x.vendor || '').trim(),
@@ -948,9 +985,9 @@
 
   function fromExpenseSheet() {
     // 直近2年ぶんから探す。それより前のものは固定費の当たりにしない
-    var from = U.addYm(U.today().slice(0, 7), -23);
+    var from = U.addYm(E.cycleOf(U.today()), -23);
     var rows = S.expenses({ book: book }).filter(function (x) {
-      return U.cmp(String(x.date).slice(0, 7), from) >= 0;
+      return U.cmp(E.cycleOf(x.date), from) >= 0;
     });
     var cands = E.fixedCandidates(rows, S.recurring(book));
     var body = el('div', { class: 'form' });
@@ -1017,7 +1054,7 @@
     var vendorIn = ui.input({ value: v.vendor || '', maxlength: 40, placeholder: '空なら名前を使います' });
     // 起こしはじめる月。支出から作るときは、最後に出た月の翌月から
     var firstYm = r ? r.startYm
-      : (from && from.last ? U.addYm(String(from.last).slice(0, 7), 1) : U.today().slice(0, 7));
+      : (from && from.last ? U.addYm(E.cycleOf(from.last), 1) : E.cycleOf(U.today()));
     var startIn = ui.input({ type: 'month', value: firstYm });
     /* 契約を解除した月。入れておくと、その次の月から勝手に外れる。
        解約の手続きをしたその場で入れて、あとは忘れられるように */
@@ -1162,7 +1199,7 @@
   function monthCard(months) {
     var max = Math.max.apply(null, months.map(function (x) { return x.amount; }).concat([1]));
     var box = el('div', { class: 'card month-sales' });
-    var now = U.today().slice(0, 7);
+    var now = E.cycleOf(U.today());
     months.forEach(function (x) {
       box.appendChild(el('div', { class: 'ms-row' + (x.ym === now ? ' now' : '') + (x.amount ? '' : ' zero') }, [
         el('span', { class: 'ms-m', text: x.m + '月' }),

@@ -21,6 +21,67 @@
            '保険', '税金・社会保険', 'その他']
   };
 
+  /* ---------------- ひと月の区切り ----------------
+
+     クレジットカードの請求が6日締めなので、7日から翌月6日までをひと月として
+     数える。カレンダーの月で数えると、締め日をまたいだ支払いが別の月に落ちて、
+     請求額と家計簿が合わなくなる。
+
+     会計月の呼び名は「はじまった月」。2026-10 は 2026-10-07 〜 2026-11-06。
+     締め日を 0 にすると、これまでどおりカレンダーの月で数える。 */
+
+  var CLOSE_DEFAULT = 6;
+
+  /** いまの締め日。1〜27。0 ならカレンダーどおり */
+  function closeDay() {
+    var raw = DL.store && DL.store.settings ? DL.store.settings.closeDay : CLOSE_DEFAULT;
+    var n = Math.round(U.num(raw, CLOSE_DEFAULT));
+    return (n >= 1 && n <= 27) ? n : 0;
+  }
+
+  /** その日が入る会計月 'YYYY-MM' */
+  function cycleOf(date) {
+    var d = String(date || '');
+    var c = closeDay();
+    if (!c || !U.isISO(d)) return d.slice(0, 7);
+    // 締め日までは、前の月のぶん
+    return U.num(d.slice(8, 10), 1) <= c ? U.addYm(d.slice(0, 7), -1) : d.slice(0, 7);
+  }
+
+  /** その会計月のはじまりの日 */
+  function cycleStart(ym) {
+    var c = closeDay();
+    return c ? U.clampDay(ym, c + 1) : ym + '-01';
+  }
+
+  /** その会計月の終わりの日 */
+  function cycleEnd(ym) {
+    var c = closeDay();
+    return c ? U.clampDay(U.addYm(ym, 1), c) : U.monthEnd(ym + '-01');
+  }
+
+  /** その会計月は何日あるか */
+  function cycleDays(ym) { return U.diffDays(cycleStart(ym), cycleEnd(ym)) + 1; }
+
+  /** その日は、会計月の何日目か（1 はじまり） */
+  function cycleIndex(date) {
+    return U.diffDays(cycleStart(cycleOf(date)), date) + 1;
+  }
+
+  /** その会計月の日付を、順に */
+  function cycleRange(ym) { return U.rangeDays(cycleStart(ym), cycleEnd(ym)); }
+
+  /** 「10/7〜11/6」。締め日を決めていなければ空 */
+  function cycleLabel(ym) {
+    if (!closeDay()) return '';
+    return U.fmtMD(cycleStart(ym)) + '〜' + U.fmtMD(cycleEnd(ym));
+  }
+
+  /** 会計月の呼び名「2026年10月ぶん」 */
+  function cycleName(ym) {
+    return U.num(ym.slice(0, 4), 0) + '年' + U.num(ym.slice(5, 7), 0) + '月';
+  }
+
   // レシートの写真を置くフォルダ。帳簿ごとに分ける
   var RECEIPT_FOLDER = { work: '経費レシート', life: '日常レシート' };
   function receiptFolder(book) { return RECEIPT_FOLDER[book] || RECEIPT_FOLDER.work; }
@@ -137,7 +198,7 @@
     if (fxCache[key]) return fxCache[key];
 
     var rows = (S.settings.expenses || []).filter(function (x) {
-      return String(x.date).slice(0, 7) === ym;
+      return cycleOf(x.date) === ym;
     });
     var mark = {};                    // 固定費ぶんとして数えた記録
     var sum = { work: 0, life: 0 };
@@ -174,7 +235,7 @@
 
   /** この支出は固定費ぶんか（一覧に印を付けるのに使う） */
   function isFixedExpense(x) {
-    return !!x && fixedDetail(String(x.date).slice(0, 7)).isFixed(x);
+    return !!x && fixedDetail(cycleOf(x.date)).isFixed(x);
   }
 
   /**
@@ -232,10 +293,11 @@
     if (!month) return null;
     date = U.isISO(date) ? date : U.today();
 
-    var ym = date.slice(0, 7);
-    var day = U.num(date.slice(8, 10), 1);
-    // その月の日数（翌月の0日＝今月の末日）
-    var days = new Date(U.num(ym.slice(0, 4), 2000), U.num(ym.slice(5, 7), 1), 0).getDate();
+    /* ひと月は、締め日で区切った会計月（既定は7日〜翌月6日）。
+       日数も「何日目か」も、そこから数える */
+    var ym = cycleOf(date);
+    var day = cycleIndex(date);
+    var days = cycleDays(ym);
 
     var fx = fixedDetail(ym);                         // 事業＋日常
     var fixed = fx.total;
@@ -246,7 +308,7 @@
     var budget = Math.max(0, month - fixed - reserve); // 日割りにできる額
 
     var rows = (S.settings.expenses || []).filter(function (x) {
-      return String(x.date).slice(0, 7) === ym        // 事業も日常も、まとめて数える
+      return cycleOf(x.date) === ym                   // 事業も日常も、まとめて数える
         && !fx.isFixed(x);                            // 固定費ぶんは先に引いてある
     });
     var spent = total(rows);
@@ -324,7 +386,8 @@
     var b = dailyBudget(date);
     if (!b) return null;
     date = U.isISO(date) ? date : U.today();
-    var ym = date.slice(0, 7);
+    var ym = cycleOf(date);
+    var dates = cycleRange(ym);
 
     // 貯金の目標を決めていれば、その1日ぶんを予算から削った線も引く
     var pl = DL.bank && DL.bank.plan ? DL.bank.plan(date) : null;
@@ -333,14 +396,14 @@
     // 日ごとの支出（固定費ぶんは、先に引いてあるので数えない）
     var byDay = {};
     (S.settings.expenses || []).forEach(function (x) {
-      if (String(x.date).slice(0, 7) !== ym || b.isFixed(x)) return;
+      if (cycleOf(x.date) !== ym || b.isFixed(x)) return;
       byDay[x.date] = (byDay[x.date] || 0) + U.num(x.amount, 0);
     });
 
     var perDay = b.days ? b.budget / b.days : 0;
     var rows = [], run = 0;
     for (var d = 1; d <= b.days; d++) {
-      var iso = ym + '-' + (d < 10 ? '0' : '') + d;
+      var iso = dates[d - 1];
       run += byDay[iso] || 0;
       rows.push({
         d: d, date: iso,
@@ -379,12 +442,13 @@
     var b = dailyBudget(date);
     if (!b) return null;
     date = U.isISO(date) ? date : U.today();
-    var ym = date.slice(0, 7);
+    var ym = cycleOf(date);
+    var dates = cycleRange(ym);
 
     // 日ごとの支出（固定費ぶんは、先に引いてあるので数えない）
     var byDay = {};
     (S.settings.expenses || []).forEach(function (x) {
-      if (String(x.date).slice(0, 7) !== ym || b.isFixed(x)) return;
+      if (cycleOf(x.date) !== ym || b.isFixed(x)) return;
       if (String(x.date) > date) return;                 // 先の日付のぶんは、まだ数えない
       byDay[x.date] = (byDay[x.date] || 0) + U.num(x.amount, 0);
     });
@@ -392,7 +456,7 @@
     var perDay = b.perDay;
     var rows = [], saved = 0;
     for (var d = 1; d <= b.day; d++) {
-      var iso = ym + '-' + (d < 10 ? '0' : '') + d;
+      var iso = dates[d - 1];
       var spent = Math.round(byDay[iso] || 0);
       var day = Math.round(perDay - spent);              // その日の節約ぶん（マイナスもある）
       saved += day;
@@ -415,12 +479,22 @@
     };
   }
 
+  /**
+   * 月ごとの合計。月は会計月（締め日で区切ったぶん）。
+   * 渡す rows は、その年の会計月ぜんぶが入る範囲で取っておくこと
+   * （12月ぶんは翌年の6日まで入るため）。
+   */
   function byMonth(rows, year) {
+    var by = {};
+    (rows || []).forEach(function (x) {
+      var k = cycleOf(x.date);
+      (by[k] || (by[k] = [])).push(x);
+    });
     var out = [];
     for (var m = 1; m <= 12; m++) {
-      var mm = (m < 10 ? '0' : '') + m;
-      var inMonth = (rows || []).filter(function (x) { return x.date.slice(5, 7) === mm; });
-      out.push({ m: m, ym: year + '-' + mm, amount: total(inMonth), count: inMonth.length });
+      var ym = year + '-' + (m < 10 ? '0' : '') + m;
+      var inMonth = by[ym] || [];
+      out.push({ m: m, ym: ym, amount: total(inMonth), count: inMonth.length });
     }
     return out;
   }
@@ -539,7 +613,7 @@
         rows: [], months: {}
       });
       g.rows.push(x);
-      g.months[String(x.date).slice(0, 7)] = true;
+      g.months[cycleOf(x.date)] = true;
     });
 
     var regs = {};
@@ -594,7 +668,7 @@
    */
   function recurringRecorded(r, ym, rows) {
     return (rows || []).some(function (x) {
-      if (String(x.date).slice(0, 7) !== ym) return false;
+      if (cycleOf(x.date) !== ym) return false;
       if (x.recurringId === r.id) return true;           // この固定費から起こしたもの
       if (x.recurringId) return false;                   // ほかの固定費のぶん
       if (x.book !== r.book || x.category !== r.category) return false;
@@ -613,7 +687,7 @@
    * @returns {Array} [{recurringId, ym, name, amount, book}]
    */
   function dueRecurring(list, nowYm) {
-    var now = nowYm || U.today().slice(0, 7);
+    var now = nowYm || cycleOf(U.today());
     var rows = DL.store.settings.expenses || [];
     var out = [];
     (list || []).forEach(function (r) {
@@ -657,7 +731,7 @@
         // 次の更新まであと何日（決めていなければ null）
         renewIn: r.renewOn ? U.diffDays(today, r.renewOn) : null,
         // 最後に見直してから何ヶ月（一度も見ていなければ null）
-        since: r.reviewedYm ? monthsBetween(r.reviewedYm, today.slice(0, 7)) : null
+        since: r.reviewedYm ? monthsBetween(r.reviewedYm, cycleOf(today)) : null
       };
     }).map(function (x) {
       x.stale = x.r.active !== false && (x.since === null || x.since >= STALE_MONTHS);
@@ -694,7 +768,10 @@
   }
 
   DL.expenses = {
-    STALE_MONTHS: STALE_MONTHS, RENEW_SOON: RENEW_SOON,
+    STALE_MONTHS: STALE_MONTHS, RENEW_SOON: RENEW_SOON, CLOSE_DEFAULT: CLOSE_DEFAULT,
+    closeDay: closeDay, cycleOf: cycleOf, cycleStart: cycleStart, cycleEnd: cycleEnd,
+    cycleDays: cycleDays, cycleIndex: cycleIndex, cycleRange: cycleRange,
+    cycleLabel: cycleLabel, cycleName: cycleName,
     yearlyOf: yearlyOf, review: review, renewAlerts: renewAlerts,
     RECEIPT_FOLDER: RECEIPT_FOLDER, receiptFolder: receiptFolder,
     BOOKS: BOOKS, categories: categories, baseCategories: baseCategories, bookLabel: bookLabel,

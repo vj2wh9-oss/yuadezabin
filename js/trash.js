@@ -68,32 +68,20 @@
   }
 
   /**
-   * ホームの知らせ。
+   * ホームの知らせ。今日ぶんだけ。
    *
-   * 今日ぶんは「まだ出していなければ」、明日ぶんは「前の晩に思い出せるよう」出す。
+   * 明日ぶんも出していたが、ホームに毎日2行並ぶのはうるさいのでやめた。
+   * 前の晩に思い出したいときは、通知の「ゴミの日（前の晩の指定時刻）」を使う。
    * 出した印を付けたものは、もう言わない。
    */
   function alerts(date) {
     var today = U.isISO(date) ? date : U.today();
-    var out = [];
-
     var mine = ofDay(today).filter(function (t) { return !isDone(today, t.id); });
-    if (mine.length) {
-      out.push({
-        level: 'warn', href: '#/trash',
-        text: '今日は ' + mine.map(function (t) { return t.name; }).join('・') + ' の日です'
-      });
-    }
-
-    var tm = U.addDays(today, 1);
-    var next1 = ofDay(tm);
-    if (next1.length) {
-      out.push({
-        level: 'info', href: '#/trash',
-        text: '明日は ' + next1.map(function (t) { return t.name; }).join('・') + ' の日です'
-      });
-    }
-    return out;
+    if (!mine.length) return [];
+    return [{
+      level: 'warn', href: '#/trash',
+      text: '今日は ' + mine.map(function (t) { return t.name; }).join('・') + ' の日です'
+    }];
   }
 
   /** 曜日の言いかた */

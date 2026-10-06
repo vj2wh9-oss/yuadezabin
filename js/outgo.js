@@ -205,9 +205,11 @@
     return between(ym + '-01', U.monthEnd(ym + '-01'), o);
   }
 
-  /* 今日から、その日まで何ヶ月あるか（今月を1と数える） */
+  /* 今日から、その日まで何ヶ月あるか（今月を1と数える）。
+     月は会計月（締め日で区切ったぶん） */
   function monthsUntil(from, to) {
-    var a = String(from).split('-'), b = String(to).split('-');
+    var a = DL.expenses.cycleOf(from).split('-');
+    var b = DL.expenses.cycleOf(to).split('-');
     return (U.num(b[0], 0) - U.num(a[0], 0)) * 12 + (U.num(b[1], 0) - U.num(a[1], 0)) + 1;
   }
 

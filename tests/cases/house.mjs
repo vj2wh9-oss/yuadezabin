@@ -115,10 +115,15 @@ export default {
         return n ? [n.date, n.rows.map((t) => t.name)] : null;
       }), ['2026-10-09', ['燃えるゴミ']]);
 
-      s.ok('前の晩に知らせる', await page.evaluate(() => {
-        // 2026-10-08(木) の晩 → 明日(金)は燃えるゴミ
+      /* ホームに出すのは今日ぶんだけ。明日ぶんは通知のほうに任せる
+         （ホームに毎日2行並ぶとうるさいので） */
+      s.ok('明日のぶんは、ホームには出さない', await page.evaluate(() => {
+        // 2026-10-08(木) の晩。明日(金)は燃えるゴミだが、ここでは言わない
         return window.DL.trash.alerts('2026-10-08').map((a) => a.text);
-      }), ['明日は 燃えるゴミ の日です']);
+      }), []);
+      s.ok('今日ぶんは出す', await page.evaluate(() => {
+        return window.DL.trash.alerts('2026-10-09').map((a) => a.text);
+      }), ['今日は 燃えるゴミ の日です']);
 
       s.ok('出した印を付けたら、もう言わない', await page.evaluate(() => {
         const T = window.DL.trash, S = window.DL.store;
