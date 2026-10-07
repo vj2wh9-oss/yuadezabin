@@ -1652,6 +1652,34 @@ a.alert-main { text-decoration: none; }
 .due-card { display: flex; flex-direction: column; gap: 7px; border-left: 3px solid var(--accent); }
 .due-card .row-title { align-items: center; gap: 6px; font-weight: 700; }
 
+/* ---------------- 表紙の工程 ----------------
+   本文はページごとのマス目、表紙は1枚なので割合の帯で出す */
+.cv-off { flex-direction: row; align-items: center; gap: 10px; }
+.cv-card { gap: 8px; }
+.cv-card.done { border-color: var(--ok); }
+.cv-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cv-pct { font-size: 20px; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.cv-card.done .cv-pct { color: var(--ok); }
+.cv-rail { height: 7px; background: var(--card2); border-radius: 2px; overflow: hidden; }
+.cv-rail > i { display: block; height: 100%; background: var(--accent); transition: width .2s; }
+.cv-card.done .cv-rail > i { background: var(--ok); }
+/* 工程の札。終えたものは塗る */
+.cv-steps { display: flex; flex-wrap: wrap; gap: 5px; }
+.cv-step {
+  display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
+  font: inherit; font-size: 12.5px; font-weight: 700; line-height: 1;
+  padding: 7px 9px; color: var(--muted);
+  background: var(--card2); border: 1px solid var(--line2); border-radius: var(--radius-s);
+}
+.cv-step.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.cv-step:active { opacity: .82; }
+.cv-step-i { display: inline-flex; width: 13px; }
+.cv-step-w { font-size: 10px; opacity: .75; font-variant-numeric: tabular-nums; }
+.cv-foot { display: flex; flex-direction: column; gap: 6px; }
+/* 工程を直すところ */
+.cv-edit { display: flex; flex-direction: column; gap: 6px; }
+.cv-edit-row { display: grid; grid-template-columns: 1fr 64px auto auto; gap: 6px; align-items: center; }
+
 /* ---------------- からだの台帳 ---------------- */
 /* 今日のくすり。いつ飲むかで束ねて、1回ぶんずつ押せるようにする */
 .bd-dose { display: flex; flex-direction: column; gap: 5px; }

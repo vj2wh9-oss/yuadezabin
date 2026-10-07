@@ -778,6 +778,60 @@
      notes は ページ番号 → メモ（「このコマ描き直す」など）。 */
   var MAX_PAGES = 999;
 
+  /* ---- 表紙の工程 ----
+
+     本文はページごとにマス目で追うが、表紙は1枚なので同じ表に載せられない。
+     そこで「どこまで進んだか」を割合で持つ。重みの合計は 100。
+
+     ラフ 10 → 下書き 20 → 線画 30 → 塗り 30 → 仕上げ 10
+
+     案件ごとに名前も重みも変えられる（モノクロの表紙に「塗り」は要らない、
+     など）。変えていなければ、この5つを使う。 */
+
+  var COVER_STEPS = [
+    { key: 'rough', label: 'ラフ', weight: 10 },
+    { key: 'draft', label: '下書き', weight: 20 },
+    { key: 'line', label: '線画', weight: 30 },
+    { key: 'color', label: '塗り', weight: 30 },
+    { key: 'finish', label: '仕上げ', weight: 10 }
+  ];
+
+  function normalizeCoverSteps(list) {
+    var out = (Array.isArray(list) ? list : []).map(function (x, i) {
+      return {
+        key: String((x && x.key) || ('s' + i)).slice(0, 20),
+        label: String((x && x.label) || '').trim().slice(0, 20) || ('工程' + (i + 1)),
+        weight: Math.max(0, Math.min(100, Math.round(U.num(x && x.weight, 0))))
+      };
+    }).filter(function (x, i, a) {
+      return a.map(function (o) { return o.key; }).indexOf(x.key) === i;
+    }).slice(0, 12);
+    return out.length ? out : null;        // 空なら既定を使う
+  }
+
+  function normalizeCover(c) {
+    c = c || {};
+    var steps = normalizeCoverSteps(c.steps);
+    var keys = (steps || COVER_STEPS).map(function (x) { return x.key; });
+    var done = {};
+    Object.keys(c.done || {}).forEach(function (k) {
+      if (keys.indexOf(k) < 0) return;     // 消した工程の印は残さない
+      done[k] = U.isISO(c.done[k]) ? c.done[k] : U.today();
+    });
+    return {
+      on: !!c.on,                          // 表紙を描く案件か
+      steps: steps,                        // null なら既定の5工程
+      done: done,                          // { 工程のキー: 終えた日 }
+      memo: String(c.memo || '').slice(0, 300)
+    };
+  }
+
+  /** その案件の表紙の工程。変えていなければ既定の5つ */
+  function coverSteps(p) {
+    var c = p && p.pages ? p.pages.cover : null;
+    return (c && c.steps) ? c.steps.slice() : U.clone(COVER_STEPS);
+  }
+
   function normalizePages(g) {
     g = g || {};
     var marks = {};
@@ -797,7 +851,8 @@
     });
     return {
       total: Math.max(0, Math.min(MAX_PAGES, Math.round(U.num(g.total, 0)))),
-      marks: marks, notes: notes
+      marks: marks, notes: notes,
+      cover: normalizeCover(g.cover)
     };
   }
 
@@ -5072,6 +5127,59 @@
     return (p && p.pages ? p.pages.notes[Math.round(U.num(page, 0))] : '') || '';
   }
 
+  /* ---- 表紙 ---- */
+
+  function cover(p) {
+    if (!p) return null;
+    if (!p.pages.cover) p.pages.cover = normalizeCover(null);
+    return p.pages.cover;
+  }
+
+  /** 表紙を描く案件にする／やめる */
+  function setCoverOn(pid, on) {
+    var p = getProject(pid);
+    if (!p) return null;
+    cover(p).on = !!on;
+    save();
+    return p.pages.cover;
+  }
+
+  /** その工程を終えた／戻す。日付を入れておくと、いつ終えたかが残る */
+  function setCoverDone(pid, key, on, date) {
+    var p = getProject(pid);
+    if (!p) return null;
+    var c = cover(p);
+    var keys = coverSteps(p).map(function (x) { return x.key; });
+    if (keys.indexOf(key) < 0) return c;
+    if (on) c.done[key] = U.isISO(date) ? date : U.today();
+    else delete c.done[key];
+    save();
+    return c;
+  }
+
+  /** 工程そのものを決め直す。null を渡すと既定の5つに戻る */
+  function setCoverSteps(pid, list) {
+    var p = getProject(pid);
+    if (!p) return null;
+    var c = cover(p);
+    c.steps = normalizeCoverSteps(list);
+    // 消した工程の印は落とす
+    var keys = coverSteps(p).map(function (x) { return x.key; });
+    Object.keys(c.done).forEach(function (k) {
+      if (keys.indexOf(k) < 0) delete c.done[k];
+    });
+    save();
+    return c;
+  }
+
+  function setCoverMemo(pid, text) {
+    var p = getProject(pid);
+    if (!p) return null;
+    cover(p).memo = String(text || '').slice(0, 300);
+    save();
+    return p.pages.cover;
+  }
+
   // テンプレートからタスクを生成
   function templateTasks(category, qty) {
     var tpl = state.settings.templates[category] || TEMPLATES[category] || [];
@@ -5525,6 +5633,9 @@
     addTask: addTask, getTask: getTask, updateTask: updateTask, removeTask: removeTask,
     moveTask: moveTask, setProgress: setProgress, bumpProgress: bumpProgress,
     MAX_PAGES: MAX_PAGES, pageTotal: pageTotal, setPageTotal: setPageTotal,
+    COVER_STEPS: COVER_STEPS, coverSteps: coverSteps, cover: cover,
+    setCoverOn: setCoverOn, setCoverDone: setCoverDone, setCoverSteps: setCoverSteps,
+    setCoverMemo: setCoverMemo,
     markedPages: markedPages, markedCountBefore: markedCountBefore,
     isPageMarked: isPageMarked, markPages: markPages,
     setPageMark: setPageMark, togglePageMark: togglePageMark,

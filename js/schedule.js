@@ -442,6 +442,46 @@
     });
   }
 
+  /* ---- 表紙の進みぐあい ----
+
+     本文はページごとに数えるが、表紙は1枚なので割合で見る。
+     工程に重みがあり（ラフ10・下書き20・線画30・塗り30・仕上げ10）、
+     終えたぶんの重みを足したのが進みぐあい。 */
+
+  /**
+   * 表紙の進みぐあい。
+   * @returns {{on, pct, done, all, steps, next, at}}
+   *   steps … [{key,label,weight,done,at}]
+   *   next  … 次にやる工程（ぜんぶ終わっていれば null）
+   */
+  function coverPace(p) {
+    var c = (p && p.pages && p.pages.cover) || { on: false, done: {} };
+    var steps = DL.store.coverSteps(p).map(function (x) {
+      return {
+        key: x.key, label: x.label, weight: x.weight,
+        done: !!c.done[x.key], at: c.done[x.key] || ''
+      };
+    });
+    var all = steps.reduce(function (n, x) { return n + x.weight; }, 0);
+    var done = steps.filter(function (x) { return x.done; })
+      .reduce(function (n, x) { return n + x.weight; }, 0);
+    var next = steps.filter(function (x) { return !x.done; })[0] || null;
+    // 終えた日のうち、いちばん新しいもの
+    var at = steps.filter(function (x) { return x.at; })
+      .map(function (x) { return x.at; }).sort().pop() || '';
+    return {
+      on: !!c.on,
+      all: all,
+      doneWeight: done,
+      pct: all ? Math.round(done / all * 100) : 0,
+      steps: steps,
+      doneCount: steps.filter(function (x) { return x.done; }).length,
+      count: steps.length,
+      next: next, at: at,
+      finished: !!steps.length && !next
+    };
+  }
+
   /* ページ管理表の単位の呼び名（ページ／枚） */
   function pageWord(project) {
     var ts = pageTasks(project);
@@ -783,7 +823,7 @@
     taskPlan: taskPlan, taskDone: taskDone, taskTotal: taskTotal, taskPct: taskPct,
     rangeText: rangeText, UNIT_RANGE: UNIT_RANGE,
     taskIsComplete: taskIsComplete, taskPace: taskPace, unit: unit,
-    pageTasks: pageTasks, pageWord: pageWord,
+    pageTasks: pageTasks, pageWord: pageWord, coverPace: coverPace,
     projectProgress: projectProgress, projectStatus: projectStatus, STATUS_LABEL: STATUS_LABEL,
     deadlineLabel: deadlineLabel, deadlineShort: deadlineShort,
     dayEntries: dayEntries, dayMarks: dayMarks, timeline: timeline,

@@ -41,6 +41,11 @@
       el('span', { class: 'chev' }, ui.icon('chevronRight', 15))
     ]));
 
+    /* ---- 表紙 ----
+       本文はページごとに数えるが、表紙は1枚なので同じ表に載せられない。
+       工程に重みを持たせて、割合で追う */
+    wrap.appendChild(coverCard(p, today));
+
     if (!tasks.length) {
       wrap.appendChild(ui.empty(
         word + 'で数える工程がありません。ネームや線画のように「' + word + '」で進める工程を作ると、ここに表が出ます。',
@@ -119,6 +124,148 @@
     var caughtUp = Math.max(0, (c.count - c.countBefore) - c.todayQty);
     var left = Math.max(0, total - c.count);
     return Math.max(0, Math.min(c.due - c.countBefore - caughtUp, left));
+  }
+
+  /* ---------------- 表紙 ----------------
+
+     ラフ10 → 下書き20 → 線画30 → 塗り30 → 仕上げ10 で合わせて100。
+     終えたぶんの重みを足したのが進みぐあい。
+     工程の名前も重みも、案件ごとに変えられる。 */
+
+  function coverCard(p, today) {
+    var c = sc.coverPace(p);
+
+    if (!c.on) {
+      return el('div', { class: 'card cv-off' }, [
+        el('div', { class: 'row-main' }, [
+          el('div', { class: 'row-title' }, [
+            ui.icon('illust', 16), el('span', { text: '表紙' })
+          ]),
+          el('div', { class: 'row-sub' }, [
+            ui.chip('ラフ→下書き→線画→塗り→仕上げ', 'ghosty')
+          ])
+        ]),
+        ui.btn('表紙も進める', 'ghost', function () {
+          S.setCoverOn(p.id, true);
+          ui.toast('表紙の工程を出しました');
+        }, 'plus')
+      ]);
+    }
+
+    var box = el('div', { class: 'card cv-card' + (c.finished ? ' done' : '') });
+
+    box.appendChild(el('div', { class: 'cv-head' }, [
+      el('div', { class: 'row-title' }, [
+        ui.icon('illust', 16), el('span', { text: '表紙' }),
+        c.finished ? ui.chip('仕上がり', 'ok') : null
+      ]),
+      el('b', { class: 'cv-pct', text: c.pct + '%' })
+    ]));
+
+    box.appendChild(el('div', { class: 'cv-rail' },
+      el('i', { style: { width: c.pct + '%' } })));
+
+    /* 工程の札。押すと、その工程を終えた／戻す。
+       前の工程がまだでも押せる——やる順は人それぞれなので */
+    box.appendChild(el('div', { class: 'cv-steps' }, c.steps.map(function (st) {
+      return el('button', {
+        type: 'button', class: 'cv-step' + (st.done ? ' on' : ''),
+        'aria-label': st.label + (st.done ? 'を戻す' : 'を終える'),
+        onclick: function () {
+          S.setCoverDone(p.id, st.key, !st.done, today);
+          ui.toast(st.done ? st.label + 'を戻しました' : st.label + 'まで終わりました');
+        }
+      }, [
+        el('span', { class: 'cv-step-i' }, st.done ? ui.icon('check', 13) : null),
+        el('span', { class: 'cv-step-n', text: st.label }),
+        el('span', { class: 'cv-step-w', text: st.weight + '%' })
+      ]);
+    })));
+
+    box.appendChild(el('div', { class: 'cv-foot' }, [
+      el('span', { class: 'muted small', text: c.finished ? '仕上げまで終わりました'
+        : c.next ? '次は ' + c.next.label + '（' + c.next.weight + '%）'
+          : '工程がありません' }),
+      el('div', { class: 'row-wrap' }, [
+        (p.pages.cover && p.pages.cover.memo)
+          ? ui.chip(p.pages.cover.memo, 'ghosty') : null,
+        ui.btn('工程を直す', 'ghost tiny', function () { coverSheet(p); }, 'settings')
+      ])
+    ]));
+    return box;
+  }
+
+  /* 工程の名前と重み、メモ。表紙をやめることもここから */
+  function coverSheet(p) {
+    var steps = S.coverSteps(p).map(function (x) {
+      return { key: x.key, label: x.label, weight: x.weight };
+    });
+    var memoIn = ui.input({ value: (p.pages.cover || {}).memo || '',
+      placeholder: '例）カラー・B5・背表紙あり' });
+
+    var list = el('div', { class: 'cv-edit' });
+    var sum = el('p', { class: 'muted small' });
+
+    function drawSum() {
+      var n = steps.reduce(function (a, x) { return a + U.num(x.weight, 0); }, 0);
+      sum.textContent = '合わせて ' + n + '%'
+        + (n === 100 ? '' : '（100 でなくても構いません。割合で数えます）');
+    }
+
+    function draw() {
+      U.clear(list);
+      steps.forEach(function (st, i) {
+        var nameIn = ui.input({ value: st.label, maxlength: 20 });
+        nameIn.addEventListener('input', function () { st.label = nameIn.value; });
+        var wIn = ui.input({ type: 'number', inputmode: 'numeric', min: 0, max: 100,
+          value: String(st.weight) });
+        wIn.addEventListener('input', function () {
+          st.weight = Math.max(0, Math.min(100, U.num(wIn.value, 0)));
+          drawSum();
+        });
+        list.appendChild(el('div', { class: 'cv-edit-row' }, [
+          nameIn, wIn,
+          el('span', { class: 'muted small', text: '%' }),
+          el('button', {
+            type: 'button', class: 'iconbtn small', 'aria-label': (st.label || '工程') + 'を外す',
+            onclick: function () { steps.splice(i, 1); draw(); }
+          }, ui.icon('close', 16))
+        ]));
+      });
+      drawSum();
+    }
+    draw();
+
+    var close = ui.sheet({
+      title: '表紙の工程',
+      body: el('div', { class: 'form' }, [
+        el('p', { class: 'muted small',
+          text: '終えた工程の重みを足したものが、表紙の進みぐあいになります。' }),
+        list, sum,
+        ui.btn('工程を足す', 'ghost', function () {
+          steps.push({ key: 's' + U.uid(), label: '', weight: 10 });
+          draw();
+        }, 'plus'),
+        ui.field('メモ', memoIn),
+        ui.btn('はじめの5つに戻す', 'ghost full mt', function () {
+          steps = U.clone(S.COVER_STEPS);
+          draw();
+        }, 'refresh'),
+        ui.btn('表紙を出さない', 'danger full mt', function () {
+          S.setCoverOn(p.id, false); close(); ui.toast('表紙を下げました');
+        }, 'eyeOff')
+      ]),
+      actions: [
+        ui.btn('キャンセル', 'ghost', function () { close(); }),
+        ui.btn('保存', 'primary', function () {
+          var keep = steps.filter(function (x) { return String(x.label || '').trim(); });
+          if (!keep.length) { ui.toast('工程を1つ以上入れてください', 'warn'); return; }
+          S.setCoverSteps(p.id, keep);
+          S.setCoverMemo(p.id, memoIn.value);
+          close(); ui.toast('保存しました');
+        })
+      ]
+    });
   }
 
   /* ---------------- まとめ（工程ごとの進み） ---------------- */

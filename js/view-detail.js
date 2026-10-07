@@ -74,6 +74,10 @@
        いちばんよく開くので、基本情報より上に置く */
     var pgEntry = pagesEntry(p, today);
     if (pgEntry) wrap.appendChild(pgEntry);
+    /* 表紙の工程。ページで数える工程が無い案件（表紙だけ、イラスト1枚）でも
+       ここから進められるよう、別の行として出す */
+    var cvEntry = coverEntry(p);
+    if (cvEntry) wrap.appendChild(cvEntry);
 
     /* ---- 基本情報 ---- */
     var info = [];
@@ -328,6 +332,30 @@
           ui.icon('manga', 17), el('span', { text: '原稿の' + word + '管理表' })
         ]),
         el('div', { class: 'row-sub' }, chips)
+      ]),
+      el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+    ]);
+  }
+
+  /* ---------------- 表紙への入口 ----------------
+
+     進みぐあいを割合で出す。押すと、ページ管理表の表紙のところへ行く。
+     まだ表紙を出していない案件には、何も出さない（増やさない）。 */
+
+  function coverEntry(p) {
+    var c = sc.coverPace(p);
+    if (!c.on) return null;
+    return el('a', { class: 'row docs-entry', href: '#/pages/' + p.id }, [
+      el('div', { class: 'row-main' }, [
+        el('div', { class: 'row-title' }, [
+          ui.icon('illust', 17), el('span', { text: '表紙' }),
+          c.finished ? ui.chip('仕上がり', 'ok') : null
+        ]),
+        el('div', { class: 'row-sub' }, [
+          ui.chip(c.pct + '%', c.finished ? 'ok' : c.pct ? 'soft' : 'ghosty'),
+          c.next ? ui.chip('次は ' + c.next.label, 'ghosty') : null,
+          ui.chip(c.doneCount + ' / ' + c.count + '工程', 'ghosty')
+        ])
       ]),
       el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
     ]);
