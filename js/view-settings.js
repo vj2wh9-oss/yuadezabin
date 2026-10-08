@@ -835,6 +835,32 @@
           ])
         ])
       ]));
+      /* 行き来する地点は、押すだけで切り替える（位置情報は使わない）。
+         いま見ているところは塗りつぶす */
+      var saved = W.places();
+      if (saved.length) {
+        box.appendChild(el('div', { class: 'wx-pick' }, saved.map(function (o) {
+          var here = W.isHere(o);
+          return el('button', {
+            type: 'button', class: 'wx-pick-b' + (here ? ' on' : ''),
+            onclick: function () {
+              if (here) return;
+              W.usePlace(o.id);
+              ui.toast(o.name + ' にしました');
+              W.load().then(function () { DL.app.render(); });
+            }
+          }, [
+            el('b', { text: o.name }),
+            (function () {
+              var cc = W.cache(o);
+              var dd = cc && cc.days && cc.days[0];
+              return dd ? el('span', { class: 'muted small',
+                text: dd.max + '°/' + dd.min + '°' }) : null;
+            })()
+          ]);
+        })));
+      }
+
       box.appendChild(el('div', { class: 'row-wrap' }, [
         ui.btn('取り直す', 'ghost', function () {
           ui.toast('取りに行きます…');
@@ -843,10 +869,21 @@
             DL.app.render();
           });
         }, 'refresh'),
-        ui.btn('地点を変える', 'ghost', function () { placeSheet(); }, 'edit'),
+        ui.btn('地点を足す', 'ghost', function () { placeSheet(); }, 'plus'),
+        saved.length > 1 ? ui.btn('この地点を外す', 'ghost', function () {
+          var here = saved.filter(function (o) { return W.isHere(o); })[0];
+          if (!here) { ui.toast('覚えていない地点です', 'warn'); return; }
+          ui.confirm('「' + here.name + '」を並びから外します。',
+            { okText: '外す' }).then(function (ok) {
+            if (!ok) return;
+            W.removePlace(here.id);
+            ui.toast('外しました');
+            W.load().then(function () { DL.app.render(); });
+          });
+        }, 'close') : null,
         ui.btn('やめる', 'ghost', function () {
           W.setPlace(null); ui.toast('天気を出さないようにしました');
-        }, 'close')
+        }, 'eyeOff')
       ]));
     } else {
       box.appendChild(ui.btn('地点を登録する', 'primary full', function () { placeSheet(); }, 'plus'));
@@ -861,7 +898,8 @@
     var note = el('p', { class: 'muted small' });
 
     function pick(o) {
-      W.setPlace(o);
+      // 探して選んだものは、次から押すだけで出せるよう並びにも足す
+      W.addPlace(o);
       close();
       ui.toast(o.name + ' にしました');
       W.load({ force: true }).then(function () { DL.app.render(); });

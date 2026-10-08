@@ -63,18 +63,62 @@
     return (w && isNum(w.lat) && isNum(w.lon)) ? w : null;
   }
 
+  function trim(o) {
+    return {
+      name: String((o && o.name) || '').slice(0, 40),
+      lat: Math.round(o.lat * 10000) / 10000,
+      lon: Math.round(o.lon * 10000) / 10000
+    };
+  }
+
   function setPlace(o) {
     if (!o) {
       S.updateSettings({ weather: { name: '', lat: null, lon: null } });
     } else {
-      S.updateSettings({ weather: {
-        name: String(o.name || '').slice(0, 40),
-        lat: Math.round(o.lat * 10000) / 10000,
-        lon: Math.round(o.lon * 10000) / 10000
-      } });
+      S.updateSettings({ weather: trim(o) });
     }
-    S.updateSettings({ weatherCache: null }, { quiet: true });   // 地点が変わったら前の予報は捨てる
+    /* 地点ごとに予報を取っておくので、ここでは捨てない。
+       行ったり来たりしても、そのたびに取りに行かなくて済む */
     return place();
+  }
+
+  /* ---------------- 覚えておく地点 ----------------
+
+     行き来する場所は決まっているので、何度も探さなくていいように
+     並べて持っておく。押すだけで切り替わる（位置情報は要らない）。 */
+
+  function places() { return S.weatherPlaces(); }
+
+  /** いま見ている地点か */
+  function isHere(o) {
+    var p = place();
+    return !!(p && o && keyOf(p) === keyOf(o));
+  }
+
+  /** 並びに足して、そこへ切り替える */
+  function addPlace(o) {
+    if (!o || !isNum(o.lat) || !isNum(o.lon)) return null;
+    var x = S.addWeatherPlace(trim(o));
+    setPlace(x || o);
+    return x;
+  }
+
+  /** 並びから外す。いま見ているところを外したら、残りの先頭へ移る */
+  function removePlace(id) {
+    var was = place();
+    S.removeWeatherPlace(id);
+    var left = places();
+    if (was && !left.filter(function (o) { return keyOf(o) === keyOf(was); }).length) {
+      setPlace(left[0] || null);
+    }
+    return left;
+  }
+
+  /** 覚えてある地点へ切り替える */
+  function usePlace(id) {
+    var x = places().filter(function (o) { return o.id === id; })[0];
+    if (!x) return null;
+    return setPlace(x);
   }
 
   /* 地名を探す。Open-Meteo の検索はローマ字で当たる（表示名は日本語で返る） */
@@ -122,12 +166,31 @@
 
   /* ---------------- 予報 ---------------- */
 
-  function cache() {
-    var c = S.settings.weatherCache;
+  function keyOf(p) { return p ? p.lat + ',' + p.lon : ''; }
+
+  /* 予報は地点ごとに取っておく（{ '緯度,経度': 予報 }）。
+     港区と中野区を行き来しても、そのたびに取りに行かなくて済む */
+  function caches() {
+    var m = S.settings.weatherCache;
+    return (m && typeof m === 'object' && !m.days) ? m : {};
+  }
+
+  function cache(p) {
+    var c = caches()[keyOf(p || place())];
     return (c && c.days && c.days.length) ? c : null;
   }
 
-  function keyOf(p) { return p ? p.lat + ',' + p.lon : ''; }
+  function putCache(p, data) {
+    var m = Object.assign({}, caches());
+    m[keyOf(p)] = data;
+    // 覚えてある地点ぶんだけ残す（使わなくなった地点の予報は持ち続けない）
+    var keep = {};
+    [place()].concat(places()).forEach(function (o) {
+      var k = keyOf(o);
+      if (k && m[k]) keep[k] = m[k];
+    });
+    S.updateSettings({ weatherCache: keep }, { quiet: true });
+  }
 
   function fresh(c, p) {
     if (!c || c.key !== keyOf(p)) return false;
@@ -164,7 +227,7 @@
       busy = null;
       var data = shape(j, p);
       if (!data) return c;
-      S.updateSettings({ weatherCache: data }, { quiet: true });
+      putCache(p, data);
       // 今日の正午の天気を、1日の記録に写しておく（記録の画面を開かない日のため）
       if (DL.daylog) DL.daylog.keepWeather(U.today());
       // 予報が新しくなったら、雨の知らせも作り直して預け直す
@@ -495,6 +558,8 @@
 
   DL.weather = {
     place: place, setPlace: setPlace, search: search, nameOf: nameOf, locate: locate,
+    places: places, addPlace: addPlace, removePlace: removePlace, usePlace: usePlace,
+    isHere: isHere, keyOf: keyOf,
     load: load, cache: cache, dayOf: dayOf, noonOf: noonOf, codeInfo: codeInfo,
     nearHour: nearHour, hoursOf: hoursOf, isNight: isNight, stamp: stamp, current: current,
     isWet: isWet, wetAround: wetAround, WET_POP: WET_POP,

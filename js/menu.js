@@ -247,13 +247,26 @@
     return '冬';
   }
 
-  /* 献立を頼むときに渡す残り物。期限の切れたものは食べないので外す */
-  function useLeftovers(date) {
+  /**
+   * 献立を頼むときに渡す「家にある食材」。
+   *
+   * 冷蔵庫の食材だけを渡し、作り置きは渡さない。
+   * 献立は「これから作るもの」を決める場なので、もう料理になっているものを
+   * 混ぜると、献立に出来合いが並ぶ。作り置きは冷蔵庫の画面で
+   * 「早く食べるもの」として別に出している。
+   *
+   * 期限の切れたものは食べないので外す。切れそうなものから先に渡す。
+   */
+  function haveFood(date) {
     var d = U.isISO(date) ? date : U.today();
-    return S.leftovers().filter(function (x) {
+    return S.fridge().filter(function (x) {
       return x.name && !S.foodExpired(x, d);
+    }).sort(function (a, b) {
+      // 期限の近いものから。期限の無いものは後ろ
+      if (!a.until !== !b.until) return a.until ? -1 : 1;
+      return U.cmp(a.until || '', b.until || '');
     }).slice(0, 12).map(function (x) {
-      return { name: x.name, qty: S.foodQty(x), until: x.until, kept: !!x.kept };
+      return { name: x.name, qty: S.foodQty(x), until: x.until };
     });
   }
 
@@ -303,8 +316,8 @@
         disliked: S.dislikedDishes(20),
         // 前に作ったときのメモ。同じ料理が来たら活かしてもらう
         notes: S.dishHints(24),
-        // 残り物は先に食べたいので渡す
-        leftovers: useLeftovers(o.date),
+        // 冷蔵庫の食材は先に使いたいので渡す（作り置きは渡さない）
+        have: haveFood(o.date),
         // 家にある調味料の名前。献立を作ったあとに、呼び方を突き合わせるためだけに使う
         pantry: S.pantry().map(function (x) { return x.name; }).filter(Boolean).slice(0, 60),
         season: season(o.date),
@@ -368,8 +381,18 @@
     // 同じ食事のうち、そのまま残す一品。食材や味が重ならないようにしてもらう
     var meal = (m.meals || []).filter(function (x) { return x.slot === o.slot; })[0]
       || { dishes: [] };
-    var keep = (meal.dishes || []).filter(function (x) { return x !== d; })
-      .map(function (x) { return { role: x.role, name: x.name }; });
+    var others = (meal.dishes || []).filter(function (x) { return x !== d; });
+    var keep = others.map(function (x) { return { role: x.role, name: x.name }; });
+    /* 残る一品で使っている食材。こちらでは使わせない。
+       主菜で鶏もも肉を使っているのに副菜でも鶏もも肉、では
+       同じ皿が2つ並んだようになるし、買う量も読めなくなる */
+    var keepItems = [];
+    others.forEach(function (x) {
+      (x.items || []).forEach(function (it) {
+        var n = String((it && it.name) || '').trim();
+        if (n && keepItems.indexOf(n) < 0) keepItems.push(n);
+      });
+    });
 
     return fetch(base() + '/v1/menu/dish', {
       method: 'POST',
@@ -383,6 +406,7 @@
         role: d.role,
         old: d.name,
         keep: keep,
+        keepItems: keepItems.slice(0, 24),
         // いまの買い物リスト。残る一品のぶんは、この値段のまま残してもらう
         shopping: (m.shopping || []).map(function (x) {
           return { name: x.name, qty: x.qty, price: x.price };
@@ -395,7 +419,7 @@
         want: wantOf(o.want),
         disliked: S.dislikedDishes(20),
         notes: S.dishHints(24),
-        leftovers: useLeftovers(o.date),
+        have: haveFood(o.date),
         pantry: S.pantry().map(function (x) { return x.name; }).filter(Boolean).slice(0, 60),
         season: season(o.date),
         prices: S.priceList(60)
@@ -561,8 +585,9 @@
     slotsLabel: slotsLabel, slotsJa: slotsJa, useKnownPrice: useKnownPrice,
     season: season,
     extras: extras, seasoningState: seasoningState, matcher: matcher, pantryMap: pantryMap,
+    haveFood: haveFood,
     dropOwned: dropOwned,
-    useLeftovers: useLeftovers, key: key, wantOf: wantOf,
+    key: key, wantOf: wantOf,
     fillItems: fillItems, tidy: tidy
   };
 })(window.DL);

@@ -91,6 +91,26 @@ export default {
     s.ok('長すぎるものは1年で止める',
       (await ask({ name: '氷' }, { days: 9999, note: '' })).body.data.days, 365);
 
+    /* ---- 買ってきた食材 ----
+       作り置きだけでなく、食材の日もちも見てもらう。
+       食材は「封を開けたか」で持ちがまるで変わる */
+    const f = await ask({ name: 'ウィンナー', kind: 'food', where: 'fridge', opened: true });
+    s.yes('食材として聞いている', /買ってきた食材の日もち/.test(f.prompt));
+    s.yes('食材の名前が入っている', /ウィンナー/.test(f.prompt));
+    s.yes('開けてあることが伝わる', /封は開けてあります/.test(f.prompt));
+    s.yes('開けたものは短く、と頼んでいる', /未開封よりずっと短く/.test(f.prompt));
+    s.yes('しまった日は数えない', /しまった日は数えない/.test(f.prompt));
+    s.yes('傷みやすい食材の例を挙げている', /ひき肉/.test(f.prompt) && /もやし/.test(f.prompt));
+
+    const g = await ask({ name: '鶏むね肉', kind: 'food', where: 'freezer' });
+    s.yes('未開封なら、そう伝える', /封は開けていません/.test(g.prompt));
+    s.yes('冷凍なら、そう伝える', /冷凍庫/.test(g.prompt));
+
+    s.yes('作り置きのほうは、これまでどおり',
+      /家庭で作った料理の日もち/.test((await ask({ name: '肉じゃが' })).prompt));
+    s.yes('知らない種別は、作り置きとして扱う',
+      /家庭で作った料理の日もち/.test((await ask({ name: '肉じゃが', kind: 'たべもの' })).prompt));
+
     /* ---- 断るところ ---- */
     s.ok('料理名が無ければ断る', (await ask({ name: '   ' })).status, 400);
     s.ok('GET では受けない', await (async () => {

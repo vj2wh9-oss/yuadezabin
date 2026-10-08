@@ -131,6 +131,52 @@ export default {
     s.yes('数え直しでも、その料理だけに要る調味料を入れてもらう',
       /カレールウ/.test(it.prompt) && /必ず items に入れてください/.test(it.prompt));
 
+    /* ---- 冷蔵庫の食材は渡し、作り置きは渡さない ---- */
+    const h = await ask('/v1/menu', {
+      budget: 1200, slots: ['dinner'], servings: 1,
+      have: [
+        { name: 'ウィンナー', qty: '1袋', until: '2026-10-10' },
+        { name: 'にんじん', qty: '2本' }
+      ]
+    });
+    s.yes('冷蔵庫の食材として伝わっている',
+      /冷蔵庫に次の食材があります/.test(h.prompt));
+    s.yes('名前と量と期限が入っている',
+      /ウィンナー（1袋）\s*2026-10-10まで/.test(h.prompt));
+    s.yes('家にあるぶんは買わせない',
+      /家にある食材で足りるところは、新しく買わないでください/.test(h.prompt));
+    s.yes('「残り物」とは言わなくなった', !/残り物/.test(h.prompt));
+    s.yes('作り置きの断り書きも出さない', !/作り置き。そのまま出せます/.test(h.prompt));
+
+    /* 古いアプリから来た leftovers も、同じものとして読む */
+    s.yes('前の呼び名でも読める', /冷蔵庫に次の食材があります/.test((await ask('/v1/menu', {
+      budget: 1200, slots: ['dinner'], servings: 1,
+      leftovers: [{ name: 'ひじきの煮物', qty: '1パック' }]
+    })).prompt));
+
+    /* ---- 残る一品で使っている食材は、差し替える一品に使わせない ---- */
+    const k = await ask('/v1/menu/dish', {
+      budget: 1200, slot: 'dinner', role: '副菜', old: 'ほうれん草のおひたし',
+      keep: [{ role: '主菜', name: '鶏の照り焼き' }],
+      keepItems: ['鶏もも肉', '長ねぎ'],
+      servings: 1
+    });
+    s.ok('一品の出し直しが通る', k.status, 200);
+    s.yes('残る一品の食材を挙げている',
+      /残る一品で次の食材を使っています/.test(k.prompt)
+        && /鶏もも肉、長ねぎ/.test(k.prompt));
+    s.yes('この一品には使わせない', /この一品には使わないでください/.test(k.prompt));
+    s.yes('主役は別のものに、と言っている',
+      /主役になる食材は必ず別のものにしてください/.test(k.prompt));
+    s.yes('調味料が重なるのは構わない、と断っている',
+      /味つけ（調味料）が重なるのは構いません/.test(k.prompt));
+
+    s.yes('食材を渡していなければ、その話はしない',
+      !/残る一品で次の食材を使っています/.test((await ask('/v1/menu/dish', {
+        budget: 1200, slot: 'dinner', role: '副菜', old: 'おひたし',
+        keep: [{ role: '主菜', name: '鶏の照り焼き' }], servings: 1
+      })).prompt));
+
     return s;
   }
 };

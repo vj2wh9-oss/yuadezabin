@@ -812,12 +812,14 @@ function menuCommonLines(o, one) {
       : '献立は' + GENRE_JA[o.genre] + 'でまとめてください。'
         + '主菜も副菜も' + GENRE_JA[o.genre] + 'にそろえ、ほかの系統の料理は混ぜないでください。');
   }
-  if (o.leftovers && o.leftovers.length) {
-    lines.push('家に次の残り物があります。日もちしないので、できるだけ先に使い切ってください：'
-      + o.leftovers.map((x) => x.name + (x.qty ? '（' + x.qty + '）' : '')
-        + (x.until ? ' ' + x.until + 'まで' : '')
-        + (x.kept ? '（作り置き。そのまま出せます）' : '')).join('、'));
-    lines.push('残り物で足りるところは、新しく買わないでください。');
+  /* 冷蔵庫にある食材。切れそうなものから先に使ってほしい。
+     作り置き（もう料理になっているもの）はここへ入れない——
+     献立は「これから作るもの」を決める場なので、出来合いを混ぜない */
+  if (o.have && o.have.length) {
+    lines.push('冷蔵庫に次の食材があります。日もちしないので、できるだけ先に使い切ってください：'
+      + o.have.map((x) => x.name + (x.qty ? '（' + x.qty + '）' : '')
+        + (x.until ? ' ' + x.until + 'まで' : '')).join('、'));
+    lines.push('家にある食材で足りるところは、新しく買わないでください。');
   }
   /* 使いたい食材。入れてあれば、ここがいちばん強い縛りになる。
      予算に収まらないときは、量を減らすか安い部位に替えて、
@@ -956,6 +958,15 @@ function dishPrompt(o) {
       + o.keep.map((x) => (x.role ? x.role + '「' + x.name + '」' : '「' + x.name + '」')).join('、'));
     lines.push('残る一品と、食材や味つけが重ならないようにしてください。');
   }
+  /* 残る一品で使っている食材は、こちらでは使わない。
+     主菜で鶏もも肉を使っているのに副菜でも鶏もも肉、では
+     同じ皿が2つ並んだようになるし、買う量も読めなくなる */
+  if (o.keepItems && o.keepItems.length) {
+    lines.push('残る一品で次の食材を使っています。この一品には使わないでください：'
+      + o.keepItems.join('、'));
+    lines.push('味つけ（調味料）が重なるのは構いませんが、'
+      + '主役になる食材は必ず別のものにしてください。');
+  }
   if (o.role === '主菜') {
     lines.push('主菜なので、肉か魚か卵を主にした、食べごたえのある一品にしてください。');
   } else if (o.role === '副菜') {
@@ -1030,13 +1041,15 @@ function menuOptsRaw(body) {
         name: String((w && w.name) || '').trim().slice(0, 40),
         role: DISH_ROLES.indexOf(String(w && w.role)) >= 0 ? String(w.role) : ''
       })).filter((w) => w.name),
-    // 家の残り物。先に使い切ってもらう
-    leftovers: (Array.isArray(body.leftovers) ? body.leftovers : []).slice(0, 12)
+    /* 冷蔵庫にある食材。先に使い切ってもらう。
+       作り置きは渡さない（献立は、これから作るものを決める場なので）。
+       leftovers は前の呼び名。古いアプリから来たものも受ける */
+    have: (Array.isArray(body.have) ? body.have
+      : Array.isArray(body.leftovers) ? body.leftovers : []).slice(0, 12)
       .map((x) => ({
         name: String((x && x.name) || '').slice(0, 40),
         qty: String((x && x.qty) || '').slice(0, 20),
-        until: /^\d{4}-\d{2}-\d{2}$/.test(String(x && x.until)) ? x.until : '',
-        kept: !!(x && x.kept)
+        until: /^\d{4}-\d{2}-\d{2}$/.test(String(x && x.until)) ? x.until : ''
       })).filter((x) => x.name),
     season: String(body.season || '').slice(0, 10),
     // 口に合わなかった料理。避けてもらう
@@ -1130,6 +1143,9 @@ async function menuDish(request, env, cors) {
         role: DISH_ROLES.indexOf(String(x && x.role)) >= 0 ? String(x.role) : '',
         name: String((x && x.name) || '').slice(0, 60)
       })).filter((x) => x.name),
+    // 残る一品で使っている食材。この一品では使わせない
+    keepItems: (Array.isArray(body.keepItems) ? body.keepItems : []).slice(0, 24)
+      .map((x) => String(x || '').trim().slice(0, 40)).filter(Boolean),
     // いまの買い物リスト。そのまま残る一品のぶんは、この値段のまま残してもらう
     shopping: (Array.isArray(body.shopping) ? body.shopping : []).slice(0, 40)
       .map((x) => ({
@@ -1289,7 +1305,25 @@ const KEEP_SCHEMA = {
 const KEEP_WHERE = { fridge: '冷蔵庫（4℃前後）', freezer: '冷凍庫（-18℃前後）', room: '常温' };
 
 function keepPrompt(o) {
-  const lines = [
+  const food = o.kind === 'food';
+  const lines = food ? [
+    '買ってきた食材の日もちを見てください。',
+    '食材：' + o.name,
+    '置き場：' + (KEEP_WHERE[o.where] || KEEP_WHERE.fridge),
+    o.opened ? '封は開けてあります。' : '封は開けていません（未開封）。',
+    o.memo ? 'メモ：' + o.memo : '',
+    '',
+    '決まりごと',
+    '・日数は「しまった翌日から数えて何日まで食べられるか」。しまった日は数えない',
+    '・迷ったら短いほうにしてください。腹をこわすより早く食べるほうがいいので',
+    '・封を開けたものは、未開封よりずっと短くしてください'
+      + '（ウィンナーやハムは開封後2〜3日、牛乳は開封後2〜3日など）',
+    '・ひき肉・魚の切り身・もやし・葉物は特に短く。根菜・卵は長めで構いません',
+    '・冷凍は、味が落ちるところまでを日数にしてください',
+    '・袋の表示が分からない前提で、家庭でのふつうの持ちを答えてください',
+    '・note は「開けたら早めに」「水気を切って」のような、短い注意だけ。'
+      + '無ければ空にしてください。言い訳や前置きは書かないでください'
+  ] : [
     '家庭で作った料理の日もちを見てください。',
     '料理：' + o.name,
     '置き場：' + (KEEP_WHERE[o.where] || KEEP_WHERE.fridge),
@@ -1317,7 +1351,10 @@ async function keepDays(request, env, cors) {
   if (!name) return json({ error: 'empty' }, 400, cors);
   const o = {
     name,
+    // 食材（買ってきたもの）か、作り置き（作ったもの）か
+    kind: String(body.kind) === 'food' ? 'food' : 'cooked',
     where: KEEP_WHERE[String(body.where)] ? String(body.where) : 'fridge',
+    opened: !!body.opened,
     memo: String(body.memo == null ? '' : body.memo).trim().slice(0, 120)
   };
 

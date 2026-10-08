@@ -1118,12 +1118,31 @@
     setTimeout(leave, soft ? 3400 : 1000);
   }
 
-  /* 背面から戻るたびに、起動の一枚を出す。
-     立ち上げたばかりのうちは出さない（最初の一枚と重なってしまう） */
+  /* 背面から戻ったときに、起動の一枚をもう一度出す。
+     ただし毎回ではなく、しばらく離れていたときだけ。
+     ちょっと通知を見て戻るたびに幕が降りるのは、じきに煩わしくなる。
+     「ひと区切りついて戻ってきた」と言える長さとして2分にしてある。 */
+  var AWAY_MIN = 2 * 60 * 1000;
+  var hiddenAt = 0;
+
   document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState !== 'visible') return;
+    if (document.visibilityState !== 'visible') {
+      hiddenAt = Date.now();
+      return;
+    }
+    var away = hiddenAt ? Date.now() - hiddenAt : 0;
+    hiddenAt = 0;
+    if (away < AWAY_MIN) return;      // すぐ戻ってきたぶんは、そのまま続ける
     replaySplash();
   });
+
+  /* テストと、設定から確かめるため。離れていた時間を入れて呼べる */
+  DL.replaySplash = function (awayMs) {
+    if (U.num(awayMs, AWAY_MIN) < AWAY_MIN) return false;
+    replaySplash();
+    return true;
+  };
+  DL.SPLASH_AWAY_MIN = AWAY_MIN;
 
   function init() {
     mountIcons();
@@ -1199,7 +1218,7 @@
 
   /* この端末がいま動かしている版。sw.js の CACHE と揃えて上げる。
      2台で見比べて、片方だけ古いままになっていないか確かめるためのもの */
-  DL.VERSION = 'v243';
+  DL.VERSION = 'v244';
 
   DL.app = { render: render, init: init, get route() { return route; } };
   document.addEventListener('DOMContentLoaded', init);

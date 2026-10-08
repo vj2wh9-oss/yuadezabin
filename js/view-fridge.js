@@ -162,25 +162,34 @@
       });
     }));
 
-    /* 作り置きは、日もちを見てもらえる */
+    /* 日もちを見てもらう。作り置きだけでなく、買ってきた食材も。
+       食材は「封を開けたか」で持ちがまるで変わるので、それも渡す */
     var keepNote = el('p', { class: 'muted small' });
     function askKeep() {
       var name = nameIn.value.trim();
-      if (!name) { ui.toast('料理の名前を入れてください', 'warn'); return; }
+      if (!name) {
+        ui.toast(kind === 'cooked' ? '料理の名前を入れてください' : '食材の名前を入れてください', 'warn');
+        return;
+      }
       if (keepBtn) keepBtn.disabled = true;
       keepNote.textContent = '聞いています…';
-      F.keep(name, { where: wh, madeOn: fromIn.value, memo: memoIn.value })
-        .then(function (r) {
-          if (keepBtn) keepBtn.disabled = false;
-          untilIn.value = r.until;
-          keepNote.textContent = (r.guess ? '（見当）' : '')
-            + name + 'は ' + F.whereLabel(wh) + 'で ' + r.days + '日ぶん。'
-            + U.fmtYMD(r.until) + ' までにしました'
-            + (r.note ? '　' + r.note : '');
-        });
+      F.keep(name, {
+        kind: kind === 'cooked' ? 'cooked' : 'food',
+        where: wh, madeOn: fromIn.value,
+        opened: kind === 'food' && U.isISO(openedIn.value),
+        memo: memoIn.value
+      }).then(function (r) {
+        if (keepBtn) keepBtn.disabled = false;
+        untilIn.value = r.until;
+        keepNote.textContent = (r.guess ? '（見当）' : '')
+          + name + 'は ' + F.whereLabel(wh) + 'で ' + r.days + '日ぶん。'
+          + U.fmtYMD(r.until) + ' までにしました'
+          + (r.note ? '　' + r.note : '');
+      });
     }
-    var keepBtn = kind === 'cooked'
-      ? ui.btn('日もちを見てもらう', 'ghost', askKeep, 'idea') : null;
+    // 調味料は「あるか無いか」を見るもので、日もちは見ない
+    var keepBtn = kind === 'season' ? null
+      : ui.btn('日もちを見てもらう', 'ghost', askKeep, 'idea');
 
     var close = ui.sheet({
       title: (isNew ? '入れる' : '直す') + '（' + KIND[kind].label + '）',
@@ -193,7 +202,7 @@
         ui.block('どこにしまうか', whereSeg),
         ui.field(kind === 'cooked' ? '作った日' : '買った日', fromIn),
         kind === 'food' ? ui.field('袋を開けた日', openedIn,
-          '開けたら入れておくと、残りの見当が付きます') : null,
+          '開けたら入れておくと、日もちを見てもらうときに効きます（開けたものは短く見ます）') : null,
         ui.field('いつまで', untilIn),
         ui.block('今日から', quick),
         keepBtn ? el('div', {}, [keepBtn, keepNote]) : null,

@@ -175,8 +175,11 @@
      決めるのはこちらではなく OpenAI（Worker 経由）。
      つながらないときは、下の見当（KEEP_GUESS）で間に合わせる。 */
 
-  /* つながらないときの、ざっくりした見当。日数 */
+  /* つながらないときの、ざっくりした見当。日数。
+     食材と作り置きでは持ちが違うので、分けて持つ */
   var KEEP_GUESS = { fridge: 3, freezer: 21, room: 1 };
+  var KEEP_GUESS_FOOD = { fridge: 4, freezer: 30, room: 7 };
+  var KEEP_GUESS_OPEN = { fridge: 2, freezer: 14, room: 3 };
 
   function conf() { return S.syncSettings ? S.syncSettings() : (S.settings.sync || {}); }
   function base() { return String(conf().url || '').replace(/\/+$/, ''); }
@@ -185,23 +188,30 @@
   /**
    * 何日もつか、聞く。
    *
-   * @param {string} name 料理名
-   * @param {object} [o] {where:'fridge'|'freezer'|'room', madeOn, memo}
+   * 作り置き（作ったもの）だけでなく、買ってきた食材も見てもらう。
+   * 食材は「封を開けたか」で持ちがまるで変わるので、それも渡す。
+   *
+   * @param {string} name 料理名、または食材の名前
+   * @param {object} [o] {kind:'cooked'|'food', where, madeOn, opened, memo}
    * @returns {Promise<{days:number, until:string, note:string, guess:boolean}>}
    */
   function keep(name, o) {
     o = o || {};
+    var kind = o.kind === 'food' ? 'food' : 'cooked';
     var where = S.FOOD_WHERE.indexOf(o.where) >= 0 ? o.where : 'fridge';
     var madeOn = U.isISO(o.madeOn) ? o.madeOn : U.today();
+    var opened = !!o.opened;
     var fallback = function (why) {
-      var days = KEEP_GUESS[where] || 3;
+      var table = kind !== 'food' ? KEEP_GUESS
+        : opened ? KEEP_GUESS_OPEN : KEEP_GUESS_FOOD;
+      var days = table[where] || 3;
       return {
         days: days, until: U.addDays(madeOn, days),
         note: why || 'つながらなかったので、よくある日もちで置いています',
         guess: true
       };
     };
-    if (!String(name || '').trim()) return Promise.resolve(fallback('料理名がありません'));
+    if (!String(name || '').trim()) return Promise.resolve(fallback('名前がありません'));
     if (!ready()) return Promise.resolve(fallback('同期の接続先が未設定です'));
 
     return fetch(base() + '/v1/keep', {
@@ -210,7 +220,10 @@
         authorization: 'Bearer ' + conf().token,
         'content-type': 'application/json'
       },
-      body: JSON.stringify({ name: String(name).slice(0, 60), where: where, memo: String(o.memo || '').slice(0, 120) })
+      body: JSON.stringify({
+        name: String(name).slice(0, 60), kind: kind, where: where,
+        opened: opened, memo: String(o.memo || '').slice(0, 120)
+      })
     }).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (b) {
         if (!res.ok || !b || !b.data) {
@@ -229,7 +242,8 @@
   }
 
   DL.fridge = {
-    SOON: SOON, WATCH: WATCH, WHERE: WHERE, KEEP_GUESS: KEEP_GUESS,
+    SOON: SOON, WATCH: WATCH, WHERE: WHERE,
+    KEEP_GUESS: KEEP_GUESS, KEEP_GUESS_FOOD: KEEP_GUESS_FOOD, KEEP_GUESS_OPEN: KEEP_GUESS_OPEN,
     whereLabel: whereLabel,
     all: all, byWhere: byWhere, watch: watch, summary: summary, alerts: alerts,
     useSoon: useSoon,

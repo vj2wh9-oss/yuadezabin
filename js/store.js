@@ -97,6 +97,16 @@
     '#0f766e', '#a16207', '#9d174d', '#1d4ed8'
   ];
 
+  /* ---- 行き来する地点 ----
+
+     東京都港区と中野区を行ったり来たりするので、探し直さずに
+     押すだけで切り替えられるよう、はじめから並べておく。 */
+
+  var WEATHER_SEED = [
+    { id: 'wp-minato', name: '東京都港区', lat: 35.6581, lon: 139.7515 },
+    { id: 'wp-nakano', name: '東京都中野区', lat: 35.7045, lon: 139.6695 }
+  ];
+
   var DEFAULT_SETTINGS = {
     holidays: [],          // 休業日 'YYYY-MM-DD'（カレンダーの日別画面から指定する）
     // そのうち「泊まり勤務」で自動的に付いたぶん。勤務を外したらこれだけ戻す
@@ -272,8 +282,15 @@
     // 残り物 [{id, name, qty, unit, until, kept}]。kept＝食材ではない作り置き
     leftovers: [],
     // 天気を出す地点（Open-Meteo）。予報そのものは端末ごとに持つ
-    weather: { name: '', lat: null, lon: null },
-    weatherCache: null,    // { at, key, name, days:[{date,code,max,min,pop}], now }
+    /* いま見ている地点。はじめは港区 */
+    weather: { name: WEATHER_SEED[0].name,
+      lat: WEATHER_SEED[0].lat, lon: WEATHER_SEED[0].lon },
+    /* 行き来する地点。押すだけで切り替える（位置情報は使わない）
+       [{id, name, lat, lon}] */
+    weatherPlaces: U.clone(WEATHER_SEED),
+    weatherPlacesInit: true,    // 前からある端末に入れ直したか（1度きり）
+    // 予報は地点ごとに取っておく { '緯度,経度': { at, key, name, days, now } }
+    weatherCache: {},
     docSeq: { estimate: {}, invoice: {}, receipt: {} },  // 書類番号の連番（年ごと）
     taxRate: 10,           // 消費税率(%)
     withholdingRate: 10.21,// 源泉徴収税率(%)
@@ -414,6 +431,12 @@
     s.settings.expenses = (s.settings.expenses || []).map(normalizeExpense);
     s.settings.recurring = (s.settings.recurring || []).map(normalizeRecurring);
     migrateCloseDay(s);
+    s.settings.weatherPlaces = normalizeWeatherPlaces(s.settings.weatherPlaces);
+    migrateWeatherPlaces(s);
+    /* 予報は地点ごとの入れものに変えた。前の形（1つぶんの予報）は捨てる
+       （取り直せばいいもので、形を合わせる値打ちがない） */
+    var wc = s.settings.weatherCache;
+    if (!wc || typeof wc !== 'object' || wc.days) s.settings.weatherCache = {};
     s.settings.outgo = (s.settings.outgo || []).map(normalizeOutgo);
     s.settings.outgoPaid = normalizeOutgoPaid(s.settings.outgoPaid);
     s.settings.meds = (s.settings.meds || []).map(normalizeMed);
@@ -689,6 +712,62 @@
       if (r.reviewedYm) r.reviewedYm = back(r.reviewedYm);
       r.skipYm = (r.skipYm || []).map(back);
     });
+  }
+
+  function normalizeWeatherPlace(o) {
+    o = o || {};
+    var lat = Number(o.lat), lon = Number(o.lon);
+    if (!isFinite(lat) || !isFinite(lon)) return null;
+    return {
+      id: String(o.id || U.uid()).slice(0, 40),
+      name: String(o.name || '').trim().slice(0, 40) || '(名称未設定)',
+      lat: Math.round(lat * 10000) / 10000,
+      lon: Math.round(lon * 10000) / 10000
+    };
+  }
+
+  function normalizeWeatherPlaces(list) {
+    return (Array.isArray(list) ? list : []).map(normalizeWeatherPlace)
+      .filter(Boolean)
+      .filter(function (x, i, a) {
+        // 同じところを二度持たない
+        return a.map(function (o) { return o.lat + ',' + o.lon; })
+          .indexOf(x.lat + ',' + x.lon) === i;
+      }).slice(0, 12);
+  }
+
+  function weatherPlaces() { return (state.settings.weatherPlaces || []).slice(); }
+
+  function addWeatherPlace(o) {
+    var x = normalizeWeatherPlace(o);
+    if (!x) return null;
+    var list = weatherPlaces();
+    var had = list.filter(function (p2) { return p2.lat === x.lat && p2.lon === x.lon; })[0];
+    if (had) return had;
+    state.settings.weatherPlaces = normalizeWeatherPlaces(list.concat([x]));
+    save();
+    return x;
+  }
+
+  function removeWeatherPlace(id) {
+    state.settings.weatherPlaces = weatherPlaces()
+      .filter(function (x) { return x.id !== id; });
+    save();
+    return state.settings.weatherPlaces;
+  }
+
+  /* はじめの2つを入れる（1度きり）。地点をまだ決めていなければ、港区にしておく */
+  function migrateWeatherPlaces(s) {
+    if (s.settings.weatherPlacesInit) return;
+    s.settings.weatherPlacesInit = true;
+    if (!(s.settings.weatherPlaces || []).length) {
+      s.settings.weatherPlaces = U.clone(WEATHER_SEED);
+    }
+    var w = s.settings.weather || {};
+    if (typeof w.lat !== 'number' || typeof w.lon !== 'number') {
+      s.settings.weather = { name: WEATHER_SEED[0].name,
+        lat: WEATHER_SEED[0].lat, lon: WEATHER_SEED[0].lon };
+    }
   }
 
   function migrateDocSeq(seq) {
@@ -5687,6 +5766,8 @@
     removeTag: removeTag, reorderTags: reorderTags, tagUseCount: tagUseCount,
     recurring: recurring, getRecurring: getRecurring, addRecurring: addRecurring,
     updateRecurring: updateRecurring, removeRecurring: removeRecurring, postRecurring: postRecurring, skipRecurring: skipRecurring, unskipRecurring: unskipRecurring,
+    weatherPlaces: weatherPlaces, addWeatherPlace: addWeatherPlace,
+    removeWeatherPlace: removeWeatherPlace, WEATHER_SEED: WEATHER_SEED,
     outgo: outgo, getOutgo: getOutgo, addOutgo: addOutgo, updateOutgo: updateOutgo,
     removeOutgo: removeOutgo, outgoPaid: outgoPaid, setOutgoPaid: setOutgoPaid,
     OUTGO_KINDS: OUTGO_KINDS,

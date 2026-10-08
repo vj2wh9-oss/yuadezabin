@@ -45,6 +45,11 @@ export async function withPage(base, opts, fn) {
   const errors = [];
   page.on('pageerror', (e) => errors.push('画面のエラー: ' + e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
+  /* 外のサーバーへは出ない。天気（Open-Meteo）は地点を決めてあると
+     開いた拍子に取りに行くので、ここで受け止めて空の返事にしておく。
+     つながらなくてもアプリは前の値のまま動く作りなので、これで困らない */
+  await page.route(/open-meteo\.com/, (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
   try {
     return await fn(page, errors, { base, browser, ctx });
   } finally {

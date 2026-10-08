@@ -1652,6 +1652,18 @@ a.alert-main { text-decoration: none; }
 .due-card { display: flex; flex-direction: column; gap: 7px; border-left: 3px solid var(--accent); }
 .due-card .row-title { align-items: center; gap: 6px; font-weight: 700; }
 
+/* ---------------- 行き来する地点 ---------------- */
+.wx-pick { display: flex; flex-wrap: wrap; gap: 6px; }
+.wx-pick-b {
+  display: flex; flex-direction: column; gap: 2px; align-items: flex-start;
+  font: inherit; color: inherit; cursor: pointer; text-align: left;
+  padding: 8px 11px; min-width: 104px;
+  background: var(--card2); border: 1px solid var(--line2); border-radius: var(--radius-s);
+}
+.wx-pick-b b { font-size: 13.5px; }
+.wx-pick-b.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.wx-pick-b.on .muted { color: var(--accent-ink); opacity: .8; }
+
 /* ---------------- 表紙の工程 ----------------
    本文はページごとのマス目、表紙は1枚なので割合の帯で出す */
 .cv-off { flex-direction: row; align-items: center; gap: 10px; }
