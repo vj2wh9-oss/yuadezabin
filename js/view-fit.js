@@ -1331,12 +1331,9 @@
     return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   }
 
-  /* 幕を出してよいか。動きを控えめにしている人と、
-     起動の幕がまだ出ているあいだは、何もしない */
+  /* 幕を出してよいか。動きを控えめにしている人には、何もしない */
   function mayPlay() {
-    if (calmly()) return false;
-    var splash = document.getElementById('splash');
-    return !(splash && !splash.classList.contains('out'));
+    return !calmly();
   }
 
   function later(fn, ms) { fxTimers.push(setTimeout(fn, ms)); }

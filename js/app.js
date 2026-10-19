@@ -292,7 +292,7 @@
   }
 
   /* アプリの名前のところだけロゴの組みにする。ほかの画面は画面名の文字のまま。
-     ロゴはそのまま置かず、最初の一枚（splash）と同じように 365 を1桁ずつ弾ませる。
+     ロゴはそのまま置かず、365 を1桁ずつ弾ませる。
      ホームに入ったときだけ弾ませ、保存のたびの描き直しでは動かさない
      （組み直すと、そのたびに弾んでしまうので、すでにロゴなら触らない） */
   function setTitle(text) {
@@ -302,10 +302,7 @@
     titleEl.classList.toggle('is-logo', isLogo);
     if (!isLogo) { titleEl.textContent = text; return; }
     titleEl.appendChild(logoWord());
-    /* 起動の一枚が出ているあいだは、その裏で弾んでも見えない。
-       そのときは弾ませず、幕が開くとき（startSplash）に弾ませる */
-    var sp = document.getElementById('splash');
-    if (!sp || sp.classList.contains('out')) spinTitle();
+    spinTitle();
   }
 
   /* 肩に乗る 365 の3桁。左から順に弾ませるので、--i に順番を入れる。
@@ -999,157 +996,11 @@
     checkBars = fresh;
   }
 
-  /* 起動の一枚を、そろそろ開ける。
-
-     絵と弾みは CSS と index.html の側にあるので、ここは幕を引くだけ。
-     読み込みが終わるのを待つが、数字が弾み終わるまでは開けない。
-     押せば飛ばせるし、読み込みでつまずいても必ず開く。
-     @returns {function} 読み込みが終わったときに呼ぶ */
-  /* 起動の一枚の控え。背面から戻ったときに、同じものをもう一度出すため。
-     元の節を消す前に、そっくり写しておく */
-  var splashCopy = null;
-  var splashBusy = false;
-  var READY_HOLD = 260;   // 溜まりきってから幕を開けるまで（合図を見せる間）
-
-  function softly() {
-    return !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  }
-
-  /**
-   * 目盛りを 0 から 100 まで動かす。
-   * @param {Element} box 幕
-   * @param {number} ms 溜まりきるまで
-   * @param {function} onFull 溜まりきったとき
-   * @returns {function} 途中でやめるとき
-   */
-  function fillGauge(box, ms, onFull) {
-    var num = box.querySelector('.sp-num');
-    var bar = box.querySelector('.sp-bar-in');
-    if (!num || !bar) { onFull(); return function () {}; }
-    var t0 = 0, raf = 0, done = false;
-    var step = function (now) {
-      if (!t0) t0 = now;
-      var t = Math.min(1, (now - t0) / ms);
-      /* 終わりぎわを少しだけゆるめる。ここを強くしすぎると、
-         早々に 100 に達して、幕が開くまで止まって見えてしまう */
-      var v = Math.round(100 * (1 - Math.pow(1 - t, 1.5)));
-      num.textContent = String(v);
-      bar.style.width = v + '%';
-      if (t < 1) { raf = requestAnimationFrame(step); return; }
-      if (done) return;
-      done = true;
-      box.classList.add('full');
-      onFull();
-    };
-    raf = requestAnimationFrame(step);
-    return function () { if (raf) cancelAnimationFrame(raf); };
-  }
-
-  /* 幕を開けて、片づける */
-  function dropSplash(box, intro) {
-    if (intro) {
-      /* 幕の裏で描き終わってしまっているので、もう一度動かす。
-         空にするのは幕が下りているいまのうちに済ませ、動きだすのは
-         幕が開ききるころ。あとから空にすると、埋まった状態が
-         幕ごしに一瞬見えてしまう */
-      ui.introduce(view, 220);
-    }
-    box.classList.add('out');
-    // ヘッダーのロゴは、幕の裏では見えない。開きだすいま弾ませる
-    spinTitle();
-    setTimeout(function () {
-      if (box.parentNode) box.parentNode.removeChild(box);
-    }, 320);
-  }
-
-  function startSplash() {
-    var box = U.$('#splash');
-    if (!box) return function () {};
-    splashCopy = box.cloneNode(true);       // 背面から戻ったとき用の控え
-    var soft = softly();
-    /* 目盛りが溜まりきるまで。ロゴが開ききる（1.34秒）より後になるよう、
-       ゆっくり溜める。ここを縮めると、開く前に幕が上がってしまう */
-    var least = soft ? 1800 : 450;
-    var gone = false, full = false, ready = false;
-
-    var leave = function () {
-      if (gone) return;
-      gone = true;
-      if (stop) stop();
-      dropSplash(box, true);
-    };
-    /* 目盛りが溜まりきって、読み込みも終わっていたら開ける。
-       溜まりきった合図（READY と、水色に変わる目盛り）が一瞬で消えて
-       しまわないよう、ひと呼吸だけ置いてから幕を開ける */
-    var maybe = function () { if (full && ready) setTimeout(leave, soft ? READY_HOLD : 0); };
-    var stop = fillGauge(box, least, function () { full = true; maybe(); });
-
-    box.addEventListener('click', leave);          // 押せば飛ばせる
-    setTimeout(leave, soft ? 4600 : 1400);         // 何があっても開く
-
-    return function () { ready = true; maybe(); };
-  }
-
-  /**
-   * 背面から戻ってきたときに、起動の一枚をもう一度出す。
-   * 読み込みはもう終わっているので、目盛りが溜まりきったらすぐ開ける。
-   */
-  function replaySplash() {
-    if (!splashCopy || splashBusy) return;
-    if (document.getElementById('splash')) return;   // まだ出ている
-    splashBusy = true;
-    var soft = softly();
-    var box = splashCopy.cloneNode(true);
-    document.body.insertBefore(box, document.body.firstChild);
-    var gone = false;
-
-    var leave = function () {
-      if (gone) return;
-      gone = true;
-      splashBusy = false;
-      if (stop) stop();
-      // 中身は描いたままでよいので、出し直しはしない
-      dropSplash(box, false);
-    };
-    var stop = fillGauge(box, soft ? 1450 : 350, function () {
-      setTimeout(leave, soft ? READY_HOLD : 0);   // 合図をひと呼吸見せてから
-    });
-    box.addEventListener('click', leave);
-    setTimeout(leave, soft ? 3400 : 1000);
-  }
-
-  /* 背面から戻ったときに、起動の一枚をもう一度出す。
-     ただし毎回ではなく、しばらく離れていたときだけ。
-     ちょっと通知を見て戻るたびに幕が降りるのは、じきに煩わしくなる。
-     「ひと区切りついて戻ってきた」と言える長さとして2分にしてある。 */
-  var AWAY_MIN = 2 * 60 * 1000;
-  var hiddenAt = 0;
-
-  document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState !== 'visible') {
-      hiddenAt = Date.now();
-      return;
-    }
-    var away = hiddenAt ? Date.now() - hiddenAt : 0;
-    hiddenAt = 0;
-    if (away < AWAY_MIN) return;      // すぐ戻ってきたぶんは、そのまま続ける
-    replaySplash();
-  });
-
-  /* テストと、設定から確かめるため。離れていた時間を入れて呼べる */
-  DL.replaySplash = function (awayMs) {
-    if (U.num(awayMs, AWAY_MIN) < AWAY_MIN) return false;
-    replaySplash();
-    return true;
-  };
-  DL.SPLASH_AWAY_MIN = AWAY_MIN;
-
   function init() {
     mountIcons();
     watchKeyboard();
     watchBars();
     watchPull();
-    var splashDone = startSplash();
     if (!location.hash) location.hash = '#/home';
 
     // 本体は IndexedDB。読み込みが終わってから描画する
@@ -1163,7 +1014,6 @@
     // 絵は state と別に持っているので、描く前に手元のぶんを読み込む
     S.init().then(function () { return DL.imgbank.init(); }).then(function () {
       render();
-      splashDone();
       DL.sync.start();
       // 送り損ねている絵があれば、ここで追いつかせる
       DL.imgbank.pushAll()
@@ -1185,7 +1035,6 @@
       console.error('読み込みに失敗しました', e);
       S.load();
       render();
-      splashDone();
     });
 
     // 日付が変わったら再描画して、その日ぶんの自動バックアップを取る
@@ -1218,7 +1067,7 @@
 
   /* この端末がいま動かしている版。sw.js の CACHE と揃えて上げる。
      2台で見比べて、片方だけ古いままになっていないか確かめるためのもの */
-  DL.VERSION = 'v244';
+  DL.VERSION = 'v245';
 
   DL.app = { render: render, init: init, get route() { return route; } };
   document.addEventListener('DOMContentLoaded', init);

@@ -116,147 +116,6 @@ h1, h2, h3, p { margin: 0; }
    上回ってしまい、隠したつもりが出たままになる。ここでまとめて押さえる */
 [hidden] { display: none !important; }
 
-/* ---------------- 起動の一枚 ----------------
-
-   ロゴを大きく出して、365 の数字を1桁ずつ弾ませる。
-   index.html に直に書いてあるので、読み込みを待たずに出る。
-   弾むのは CSS のアニメーションなので、絵が出たその場から動き始める。 */
-.splash {
-  position: fixed; inset: 0; z-index: 100; overflow: hidden;
-  display: flex; align-items: center; justify-content: center;
-  /* 色は足さない。地の色と文字の色だけで、線と枠を作る。
-     藍や光り物を混ぜると柔らかくなるので、石造りのように硬いまま置く */
-  --hud: color-mix(in srgb, var(--text) 40%, transparent);
-  --hud-soft: color-mix(in srgb, var(--text) 9%, transparent);
-  background: var(--bg);
-  /* 下へ向かって、ほんの少しだけ沈ませる。まん中に光は置かない。
-     濃くすると、明るい画面で下半分がくすんで見える */
-  background-image: linear-gradient(180deg, transparent 0 58%, rgba(0, 0, 0, .12) 100%);
-  transition: opacity .3s ease, transform .3s ease;
-  /* 何かあって JS が消しそこねても、ここで必ず開く */
-  animation: splash-bye .4s ease 4.6s forwards;
-}
-.splash.out { opacity: 0; transform: scale(1.04); pointer-events: none; }
-@keyframes splash-bye { to { opacity: 0; visibility: hidden; } }
-
-/* 四隅のかぎ括弧。警告カードと同じ組みで、画を切り取る枠に見せる */
-.splash::after {
-  content: ''; position: absolute; inset: 18px; pointer-events: none;
-  background-image:
-    linear-gradient(var(--hud), var(--hud)), linear-gradient(var(--hud), var(--hud)),
-    linear-gradient(var(--hud), var(--hud)), linear-gradient(var(--hud), var(--hud)),
-    linear-gradient(var(--hud), var(--hud)), linear-gradient(var(--hud), var(--hud)),
-    linear-gradient(var(--hud), var(--hud)), linear-gradient(var(--hud), var(--hud));
-  background-size: 38px 2px, 2px 38px, 38px 2px, 2px 38px, 38px 2px, 2px 38px, 38px 2px, 2px 38px;
-  background-position:
-    left top, left top, right top, right top,
-    left bottom, left bottom, right bottom, right bottom;
-  background-repeat: no-repeat;
-}
-
-/* 方眼。画面に格子を渡す。端はぼかして消す。
-   走査線（細かい横縞）はやめた。画面らしさが出て、硬さが逃げるため */
-.sp-grid {
-  position: absolute; inset: 0; pointer-events: none;
-  background-image:
-    repeating-linear-gradient(90deg, var(--hud-soft) 0 1px, transparent 1px 30px),
-    repeating-linear-gradient(0deg, var(--hud-soft) 0 1px, transparent 1px 30px);
-  -webkit-mask-image: radial-gradient(86% 66% at 50% 45%, #000 26%, transparent 86%);
-  mask-image: radial-gradient(86% 66% at 50% 45%, #000 26%, transparent 86%);
-}
-
-/* ロゴと目盛りを縦に積む */
-.splash-body {
-  position: relative; z-index: 1;
-  display: flex; flex-direction: column; align-items: center; gap: 22px;
-}
-
-/* 自作のロゴ（SVG）を縦に積む。
-   METEO と 365 は同じ高さで描いてあるので、幅の比だけで組める。
-   CORESYSTEM は細身の一行で、上下いっぱいに渡す。
-
-   --logo-w がロゴぜんたいの幅。METEO と CORESYSTEM はこの幅いっぱい、
-   365 はその 58.3%（224.71 ÷ 385.2）で、METEO と同じ高さになる。 */
-.splash-logo {
-  --logo-w: min(440px, 88vw);
-  /* CORESYSTEM の一行ぶんの高さ（221.21 : 21.5 なので幅の 9.72%）と、その上下の余白 */
-  --core-gap: .052;
-  /* 開くときに片側が動く量。ちょうど半分ずつ動いて、
-     はじめは METEO と 365 がぴたりと合わさって見える */
-  --logo-open: calc(var(--logo-w) * (.0486 + var(--core-gap)));
-  display: flex; flex-direction: column; align-items: center;
-  width: var(--logo-w);
-}
-/* 色は付けず、濃さの段だけで組む。光も回さない */
-.sp-mark { display: block; width: 100%; height: auto; }
-.sp-meteo { color: var(--text); }
-.sp-365 { width: 58.3%; color: color-mix(in srgb, var(--text) 72%, transparent); }
-/* 上下の隙間に入る一行。METEO と 365 の間を渡す */
-.sp-core {
-  margin: calc(var(--logo-w) * var(--core-gap)) 0;
-  color: color-mix(in srgb, var(--text) 46%, transparent);
-}
-
-/* 出ぎわ。まず METEO と 365 が合わさったまま浮かび上がり、
-   ひと呼吸おいてから上下に開く。
-   空いた隙間を、左から右へ CORESYSTEM が埋めていく */
-.sp-meteo { animation: sp-open-up 1.16s cubic-bezier(.22, .9, .28, 1) both; }
-.sp-365 { animation: sp-open-down 1.16s cubic-bezier(.22, .9, .28, 1) both; }
-.sp-core { animation: sp-wipe .6s cubic-bezier(.3, .8, .35, 1) .74s both; }
-
-/* 0〜18% で浮かび上がり、42% まで合わさったまま留まり、そこから開く */
-@keyframes sp-open-up {
-  0% { transform: translateY(var(--logo-open)); opacity: 0; }
-  18% { transform: translateY(var(--logo-open)); opacity: 1; }
-  42% { transform: translateY(var(--logo-open)); opacity: 1; }
-  100% { transform: translateY(0); opacity: 1; }
-}
-@keyframes sp-open-down {
-  0% { transform: translateY(calc(var(--logo-open) * -1)); opacity: 0; }
-  18% { transform: translateY(calc(var(--logo-open) * -1)); opacity: 1; }
-  42% { transform: translateY(calc(var(--logo-open) * -1)); opacity: 1; }
-  100% { transform: translateY(0); opacity: 1; }
-}
-@keyframes sp-wipe {
-  0% { clip-path: inset(0 100% 0 0); opacity: 0; }
-  18% { opacity: 1; }
-  100% { clip-path: inset(0 0 0 0); opacity: 1; }
-}
-
-/* 読み込みの目盛り。0 から 100 まで溜まったら、幕が開く。
-   目盛りは細かく刻んで、なめらかな棒ではなく計器の目盛りに見せる */
-.splash-meter { display: flex; align-items: center; gap: 12px; width: min(250px, 66vw); }
-.sp-bar {
-  position: relative; flex: 1; height: 11px; display: block; overflow: hidden;
-  background: transparent;
-  border: 1px solid var(--hud);
-}
-.sp-bar-in {
-  display: block; height: 100%; width: 0;
-  background: color-mix(in srgb, var(--text) 66%, transparent);
-}
-/* 溜まったぶんを地の色で刻んで、目盛りに割る */
-.sp-bar::after {
-  content: ''; position: absolute; inset: 0; pointer-events: none;
-  background: repeating-linear-gradient(90deg, transparent 0 5px, var(--bg) 5px 7px);
-}
-.sp-read {
-  display: flex; align-items: baseline; gap: 1px;
-  color: color-mix(in srgb, var(--text) 66%, transparent);
-  font-variant-numeric: tabular-nums; min-width: 54px; justify-content: flex-end;
-}
-.sp-num { font-size: 23px; font-weight: 800; line-height: 1; letter-spacing: -.02em; }
-.sp-pct { font-size: 11px; font-weight: 700; }
-/* 溜まりきった合図。光らせず、濃さだけ上げる */
-.splash.full .sp-bar-in { background: var(--text); }
-.splash.full .sp-read { color: var(--text); }
-
-@media (prefers-reduced-motion: reduce) {
-  /* 開かせずに、はじめから3つとも出す */
-  .splash { animation-delay: 1.4s; }
-  .sp-meteo, .sp-365, .sp-core { animation: none; }
-}
-
 /* ---------------- ヘッダー ---------------- */
 .appbar {
   position: fixed; top: 0; left: 0; right: 0; z-index: 40;
@@ -275,8 +134,7 @@ h1, h2, h3, p { margin: 0; }
 /* 弾んだ 365 が上で切れないように、ロゴのときだけ はみ出しを許す */
 .appbar-title.is-logo { flex: none; overflow: visible; }
 /* ロゴ（文字だけ）。アプリの名前を出すところで、365 をインディゴにする。
-   最初の一枚（splash）と同じように、365 は1桁ずつ弾ませる。
-   ホームに入るたびに弾み、押すともう一度弾む */
+   365 は1桁ずつ弾ませる。ホームに入るたびに弾み、押すともう一度弾む */
 .logo-word {
   /* 365 は METEO の右肩に小さく乗せる。上でそろえたいので baseline にしない */
   display: inline-flex; align-items: flex-start; gap: 0;
@@ -1285,6 +1143,11 @@ a.alert-main { text-decoration: none; }
 }
 .tpl-summary:last-child { border-bottom: 0; }
 .tpl-summary strong { display: flex; align-items: center; gap: 6px; }
+/* 内容ごとのひと揃いと、自分で作ったぶんの境目 */
+.tpl-mine {
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line);
+  font-size: 11px; font-weight: 800; letter-spacing: .08em; color: var(--muted);
+}
 
 .menu { display: flex; flex-direction: column; }
 .menu-item {
@@ -1429,7 +1292,7 @@ a.alert-main { text-decoration: none; }
 
 /* ---------------- 印刷 ---------------- */
 @media print {
-  .splash, .appbar, .tabbar, .fab, .toast-root, #sheetRoot,
+  .appbar, .tabbar, .fab, .toast-root, #sheetRoot,
   .doc-actions, .section, .card, .actions, .doc-head { display: none !important; }
   .view { padding: 0 !important; min-height: 0 !important; height: auto !important; overflow: visible !important; }
   .page { padding: 0 !important; max-width: none !important; gap: 0 !important; }
@@ -1778,7 +1641,8 @@ a.alert-main { text-decoration: none; }
 }
 .cc-cell:nth-child(7n) { border-right: 0; }
 .cc-cell.out { opacity: .4; }
-.cc-cell.today { background: var(--accent-soft); }
+/* 今日は枠で示す。塗ると、下のゴミの帯や献立の字が読みにくくなる */
+.cc-cell.today { box-shadow: inset 0 0 0 2px var(--accent); }
 .cc-d { font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .cc-cell.sun .cc-d { color: var(--danger); }
 .cc-cell.sat .cc-d { color: var(--accent2); }
@@ -4794,59 +4658,19 @@ body.cal-new .cal-cell.out .cal-lines { opacity: .4; }
 body.cal-new .cal-cell.out .cal-big { opacity: 0; }
 
 /* ---- 今日 ---- */
-/* 四方を太い枠で囲い、日付の行は色の帯にする。
-   点滅はうるさかったのでやめた。太い枠と帯だけで、十分ひと目で分かる。 */
+/* 四方を太い枠で囲うだけ。塗りも、日付の帯も置かない。
+   下地にもう色が付いている日（締切・入稿・イベント・休み・勤務）があるので、
+   その上に青を重ねると濁る。枠だけなら、どの日に来ても同じ見え方になる。
+   枠があれば十分ひと目で分かるので、日付の数字もふだんの色のままでよい。 */
 body.cal-new .cal-cell.today { border: 0; box-shadow: none; }
 body.cal-new .cal-cell.today::before {
   content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none;
   border: 3px solid var(--accent);
-  background: color-mix(in srgb, var(--accent) 11%, transparent);
 }
-/* 下地にもう色が付いている日（締切・入稿・イベント・休み・勤務）は、
-   その上に青を重ねると濁る。塗りはやめて、枠と日付の帯だけで示す。
-   枠はそのぶん太くする */
-body.cal-new .cal-cell.today.has-due::before,
-body.cal-new .cal-cell.today.has-event::before,
-body.cal-new .cal-cell.today.off::before,
-body.cal-new .cal-cell.today.duty-office::before,
-body.cal-new .cal-cell.today.duty-remote::before,
-body.cal-new .cal-cell.today.duty-stay::before {
-  background: none;
-  border-width: 4px;
-}
-/* 日付の行ぜんたいを、色の帯にする。
-   帯はマスの左端から右端までいっぱいに伸ばす（左右の余白ぶんだけ外へ出す）。
-   出てくるときのひと跳ねだけは残す（画面を開いた合図になるので） */
-body.cal-new .cal-cell.today .cal-top {
-  position: relative; z-index: 1;
-  margin: -3px -3px 1px;            /* .cal-cell の余白ぶん */
-  padding: 1px 4px;
-  transform-origin: left center;
-  animation: cal-today-pop .48s cubic-bezier(.3, 1.5, .5, 1) both;
-}
-body.cal-new .cal-cell.today .cal-top::before {
-  content: ''; position: absolute; inset: 0; z-index: -1;
-  background: var(--accent);
-}
-body.cal-new .cal-cell.today .cal-n,
-body.cal-new .cal-cell.today .cal-duty { color: var(--accent-ink); font-weight: 900; }
-body.cal-new .cal-cell.today .cal-duty { opacity: .9; font-weight: 700; }
-@keyframes cal-today-pop {
-  0% { transform: scale(.4); }
-  60% { transform: scale(1.14); }
-  100% { transform: scale(1); }
-}
-/* 日曜・土曜でも、今日は帯の色を優先する */
-body.cal-new .cal-cell.today.sun .cal-n,
-body.cal-new .cal-cell.today.sat .cal-n { color: var(--accent-ink); }
+/* 枠の内側に文字が隠れないよう、日付の行だけ前に出す */
+body.cal-new .cal-cell.today .cal-top { position: relative; z-index: 1; }
 /* 右下のうっすら大きな日付も、今日だけ少し濃くする */
 body.cal-new .cal-cell.today .cal-big { opacity: .1; }
-
-/* 端末の「動きを減らす」と、設定の「動き：控える」では動かさない */
-@media (prefers-reduced-motion: reduce) {
-  body.cal-new .cal-cell.today .cal-top { animation: none; }
-}
-body.calm.cal-new .cal-cell.today .cal-top { animation: none; }
 
 /* 買い物の1行から、要らないものを外すボタン。
    ふだんは目立たせず、押せることだけ分かる程度に置く */

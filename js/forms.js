@@ -207,11 +207,15 @@
     }
 
     /* --- タスクの自動割り当て --- */
+    /* どのテンプレートから基本タスクを作るか。
+       空なら内容（漫画・イラスト・デザイン）のひと揃いをそのまま使う。
+       種別を変えると組み直すので、選んだものはここで覚えておく */
     var autoCheck;
+    var tplKey = '';
     function renderAuto() {
       U.clear(autoWrap);
       autoCheck = el('input', { type: 'checkbox', class: 'check', checked: true });
-      autoWrap.appendChild(el('div', { class: 'panel' }, [
+      var rows = [
         el('label', { class: 'row-check' }, [
           autoCheck,
           el('span', { text: isNew ? '基本タスクを自動生成してスケジュールを割り振る' : '開始日・締切を変えたらタスクを再計算する' })
@@ -220,7 +224,18 @@
           class: 'field-hint',
           text: 'タスクの期間と1日のノルマを配分します'
         })
-      ]));
+      ];
+      /* 自分で作ったテンプレートがあれば、ここから選べるようにする。
+         無いうちは欄を出さない（選びようがないので） */
+      var mine = S.taskTemplates();
+      if (isNew && mine.length) {
+        var sel = ui.select([{ value: '', label: '内容に合わせる' }]
+          .concat(mine.map(function (t) { return { value: t.id, label: t.name }; })), tplKey);
+        sel.addEventListener('change', function () { tplKey = sel.value; });
+        rows.push(ui.field('使うテンプレート', sel,
+          '設定の「基本タスクのテンプレート」で作ったものから選べます'));
+      }
+      autoWrap.appendChild(el('div', { class: 'panel' }, rows));
     }
 
     renderCat();
@@ -275,7 +290,7 @@
             if (opts.preset && opts.preset.ticketId) data.ticketId = opts.preset.ticketId;
             var np = S.createProject(data);
             if (autoCheck && autoCheck.checked) {
-              np.tasks = S.templateTasks(np.category, np.qty);
+              np.tasks = S.templateTasks(tplKey || np.category, np.qty);
               if (np.tasks.length) {
                 var r = sc.autoSchedule(np, { start: np.startDate, end: np.deadline });
                 if (!r.ok) ui.toast(r.reason, 'warn');
@@ -1111,19 +1126,23 @@
   function templateSheet(pid) {
     var p = S.getProject(pid);
     if (!p) return;
-    var catSeg = ui.segmented([
-      { value: 'manga', label: '漫画', icon: 'manga' },
-      { value: 'illust', label: 'イラスト', icon: 'illust' },
-      { value: 'design', label: 'デザイン', icon: 'design' }
-    ], p.category, function (v) { render(v); });
+    /* 内容ごとのひと揃いと、自分で作ったぶんを、ひとつの並びから選ぶ。
+       3つだけなら札の並びでよかったが、自分のぶんが増えると収まらない */
+    var mine = S.taskTemplates();
+    var sel = ui.select([
+      { value: 'manga', label: '漫画（基本）' },
+      { value: 'illust', label: 'イラスト（基本）' },
+      { value: 'design', label: 'デザイン（基本）' }
+    ].concat(mine.map(function (t) { return { value: t.id, label: t.name }; })), p.category);
+    sel.addEventListener('change', function () { render(sel.value); });
     var list = el('div', { class: 'tpl-list' });
     var picked = {};
 
-    function render(cat) {
+    function render(key) {
       U.clear(list); picked = {};
-      var tpl = S.settings.templates[cat] || [];
+      var tpl = S.templateSteps(key);
       if (!tpl.length) {
-        list.appendChild(el('p', { class: 'muted small', text: 'この内容のテンプレートはまだありません。' }));
+        list.appendChild(el('p', { class: 'muted small', text: 'このテンプレートには、まだ工程がありません。' }));
         return;
       }
       tpl.forEach(function (tp, i) {
@@ -1138,9 +1157,9 @@
     render(p.category);
 
     var body = el('div', { class: 'form' }, [
-      ui.field('テンプレート', catSeg),
-      list,
-
+      ui.field('テンプレート', sel,
+        mine.length ? null : '自分のテンプレートは、設定の「基本タスクのテンプレート」で作れます'),
+      list
     ]);
 
     var close = ui.sheet({

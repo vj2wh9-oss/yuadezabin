@@ -57,7 +57,7 @@ export async function withPage(base, opts, fn) {
   }
 }
 
-/** アプリを開いて、DL が立ち上がるまで待つ。起動の一枚は飛ばす */
+/** アプリを開いて、DL が立ち上がるまで待つ */
 export async function open(page, base, hash = '#/home') {
   await page.goto(base + '/' + hash, { waitUntil: 'load' });
   /* settings は state がまだ無いと投げる。waitForFunction は中で投げられると
@@ -66,19 +66,6 @@ export async function open(page, base, hash = '#/home') {
     try { return !!(window.DL && window.DL.store && window.DL.store.settings); }
     catch (e) { return false; }
   }, null, { timeout: 15000 });
-  // 起動の一枚は押せば飛ばせる。出ていなければ何もしない
-  await page.evaluate(() => {
-    const sp = document.getElementById('splash');
-    if (sp) sp.click();
-  });
-  await page.waitForFunction(() => !document.getElementById('splash'), null, { timeout: 8000 });
   await page.waitForTimeout(150);
-  return page;
-}
-
-/** 起動の一枚を見たいときは、これで開く（飛ばさない） */
-export async function openRaw(page, base, hash = '#/home') {
-  await page.goto(base + '/' + hash, { waitUntil: 'commit' });
-  await page.waitForSelector('#splash', { timeout: 8000 });
   return page;
 }

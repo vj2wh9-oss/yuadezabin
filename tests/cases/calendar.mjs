@@ -9,27 +9,29 @@ import { sheet, withPage, open, IPHONE } from '../lib/harness.mjs';
 
 /** 今日のマスの見え方を、いくつかの値で取る */
 const todayLook = (page) => page.evaluate(() => {
+  const cells = [].slice.call(document.querySelectorAll('.cal-cell'));
   const cell = document.querySelector('.cal-cell.today');
   if (!cell) return null;
   const n = cell.querySelector('.cal-n');
   const top = cell.querySelector('.cal-top');
   const cs = getComputedStyle(cell);
-  const ns = getComputedStyle(n);
-  // 日付の帯は .cal-top の疑似要素、マスの枠は .cal-cell の疑似要素
+  // マスの枠は .cal-cell の疑似要素。日付の行に敷いていた帯は .cal-top の疑似要素
   const chip = getComputedStyle(top, '::before');
   const band = getComputedStyle(cell, '::before');
-  const cr = cell.getBoundingClientRect();
-  const tr = top.getBoundingClientRect();
+  /* 日付の色を見くらべる相手。日曜・土曜・祝日は赤や青で出すので、
+     今日と同じ扱いの日（どれでもない日どうし、など）を選ぶ */
+  const mark = (c) => (c.classList.contains('sun') ? 'sun' : c.classList.contains('sat') ? 'sat' : '');
+  const mate = cells.filter((c) =>
+    c !== cell && !c.classList.contains('out') && mark(c) === mark(cell))[0];
   return {
-    帯の左: Math.round(tr.left - cr.left),
-    帯の右: Math.round(cr.right - tr.right),
     マスの囲い: cs.borderTopWidth,
     今日の枠: band.content === 'none' ? '0px' : band.borderTopWidth,
     枠の四面: band.content === 'none' ? '0px' : [band.borderTopWidth, band.borderRightWidth,
       band.borderBottomWidth, band.borderLeftWidth].join('/'),
-    日付の色: ns.color,
-    帯の傾き: chip.transform,
-    帯の背景: chip.content === 'none' ? 'rgba(0, 0, 0, 0)' : chip.backgroundColor
+    かぶせの塗り: band.content === 'none' ? 'rgba(0, 0, 0, 0)' : band.backgroundColor,
+    帯の塗り: chip.content === 'none' ? 'rgba(0, 0, 0, 0)' : chip.backgroundColor,
+    日付の色: getComputedStyle(n).color,
+    ふだんの日付の色: mate ? getComputedStyle(mate.querySelector('.cal-n')).color : ''
   };
 });
 
@@ -46,16 +48,17 @@ export default {
       s.yes('はじめは新しい見た目', await page.evaluate(() => document.body.classList.contains('cal-new')));
       s.ok('今日のマスがある', await page.locator('.cal-cell.today').count(), 1);
 
-      // 出てくるときのひと跳ね（cal-today-pop）が終わってから測る
       await page.waitForTimeout(600);
       const now = await todayLook(page);
       s.note('今日のマス: ' + JSON.stringify(now));
-      s.ok('帯は長方形（傾けない）', now && now.帯の傾き, 'none');
-      s.yes('帯がマスの左端に付いている', now && now.帯の左 <= 1);
-      s.yes('帯がマスの右端まで伸びている', now && now.帯の右 <= 1);
-      s.yes('帯に色が付いている', now && now.帯の背景 !== 'rgba(0, 0, 0, 0)');
+      /* 示すのは枠だけ。塗りも、日付の帯も置かない。
+         下地にもう色が付いている日に当たると濁るし、枠があれば十分分かる */
       s.yes('マスを太い枠で囲う（3px）', now && parseFloat(now.今日の枠) >= 3);
       s.ok('枠は四方すべてに付く', now && now.枠の四面, '3px/3px/3px/3px');
+      s.ok('マスは塗らない', now && now.かぶせの塗り, 'rgba(0, 0, 0, 0)');
+      s.ok('日付の行にも帯を敷かない', now && now.帯の塗り, 'rgba(0, 0, 0, 0)');
+      s.ok('日付の字も、ふだんの色のまま',
+        now && now.日付の色, now && now.ふだんの日付の色);
 
       /* 日付の右に、その日の働きかたを小さく添える。
          決めていない日は「休日」。今日の帯の中にも入る */
@@ -94,7 +97,7 @@ export default {
           return !!f && !!o
             && parseFloat(getComputedStyle(f).opacity) < parseFloat(getComputedStyle(o).opacity);
         }));
-      s.yes('今日の帯の中にも入っている',
+      s.yes('今日のマスにも入っている',
         await page.evaluate(() => !!document.querySelector('.cal-cell.today .cal-top .cal-duty')));
 
       /* 上の「案件 / 日常」の切り替えボタンは置かない（下のタブで入れ替わる） */
@@ -105,16 +108,8 @@ export default {
       s.ok('今日の曜日の見出しが1つだけ光る',
         await page.locator('.cal-hd.is-today').count(), 1);
 
-      /* 動きは必ず終わる（v208 の電池の決まり） */
-      const anims = await page.evaluate(() => window.document.getAnimations()
-        .filter((a) => /^cal-today/.test(a.animationName || ''))
-        .map((a) => ({ n: a.animationName, c: a.effect.getTiming().iterations })));
-      s.note('今日のマスの動き: ' + anims.map((a) => a.n + '×' + a.c).join(' / '));
-      s.ok('終わらない動きが無い', anims.filter((a) => a.c === Infinity).map((a) => a.n), []);
-      s.yes('動きが付いている', anims.length > 0);
-
-      /* 点滅はうるさかったのでやめた。
-         枠も帯も、ずっと濃いまま出しっぱなしにする */
+      /* 今日のマスは、もう動かさない（点滅も、出てくるときのひと跳ねも無い）。
+         枠だけ、ずっと濃いまま出しっぱなしにする */
       const still = await page.evaluate(() => {
         const cell = document.querySelector('.cal-cell.today');
         const top = cell.querySelector('.cal-top');
@@ -123,23 +118,21 @@ export default {
           return Number(m[3] === undefined ? 1 : m[3]);
         };
         return {
-          点滅: document.getAnimations()
-            .filter((x) => /^cal-today-(blink|band|ink)/.test(x.animationName || ''))
+          今日の動き: document.getAnimations()
+            .filter((x) => /^cal-today/.test(x.animationName || ''))
             .map((x) => x.animationName),
           枠の動き: getComputedStyle(cell, '::before').animationName,
-          帯の動き: getComputedStyle(top, '::before').animationName,
+          日付の行の動き: getComputedStyle(top).animationName,
           字の動き: getComputedStyle(cell.querySelector('.cal-n')).animationName,
-          枠の濃さ: alpha(getComputedStyle(cell, '::before').borderTopColor),
-          帯の濃さ: alpha(getComputedStyle(top, '::before').backgroundColor)
+          枠の濃さ: alpha(getComputedStyle(cell, '::before').borderTopColor)
         };
       });
       s.note('今日の見せかた: ' + JSON.stringify(still));
-      s.ok('点滅する動きは、もう無い', still.点滅, []);
+      s.ok('今日のマスで動いているものは無い', still.今日の動き, []);
       s.ok('枠は動かさない', still.枠の動き, 'none');
-      s.ok('帯も動かさない', still.帯の動き, 'none');
+      s.ok('日付の行も動かさない', still.日付の行の動き, 'none');
       s.ok('字の色も動かさない', still.字の動き, 'none');
       s.yes('枠はずっと濃いまま', still.枠の濃さ > 0.9);
-      s.yes('帯もずっと濃いまま', still.帯の濃さ > 0.9);
 
       /* 「動き：控える」では動かない */
       await page.evaluate(() => { window.DL.store.updateSettings({ calm: true }); window.DL.app.render(); });
@@ -175,7 +168,7 @@ export default {
       s.yes('今日に締切が重なっている', due.締切あり);
       s.ok('青の塗りを重ねない', due.かぶせの塗り, 'rgba(0, 0, 0, 0)');
       s.ok('ここでも動かさない', due.かぶせの動き, 'none');
-      s.ok('そのぶん枠を太くする', due.枠の太さ, '4px');
+      s.ok('枠の太さは、どの日でも同じ', due.枠の太さ, '3px');
 
       /* ここが肝心。「前のまま」で、元の見た目に戻ること */
       await page.evaluate(() => { window.DL.store.updateSettings({ calSkin: 'classic' }); window.DL.app.render(); });
@@ -184,7 +177,6 @@ export default {
         !(await page.evaluate(() => document.body.classList.contains('cal-new'))));
       const old = await todayLook(page);
       s.note('戻したあと: ' + JSON.stringify(old));
-      s.yes('帯の塗りが無くなる', old && old.帯の背景 === 'rgba(0, 0, 0, 0)');
       s.yes('元どおり、今日は囲い線で示される', old && parseFloat(old.マスの囲い) <= 1.5);
       s.ok('今日の枠も消える', old && old.今日の枠, '0px');
       s.ok('曜日の見出しの印も消える（元の組みには無い飾り）',

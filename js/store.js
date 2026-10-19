@@ -33,6 +33,14 @@
 
   var UNIT_LABEL = { page: 'P', cut: '枚', item: '点', none: '' };
 
+  /* ------- 自分で作るテンプレート -------
+     上の TEMPLATES は内容（漫画・イラスト・デザイン）ごとの決まったひと揃いだが、
+     案件の形は人それぞれで、同じ「漫画」でも寄稿と新刊では工程が違う。
+     そこで、名前を付けたテンプレートを自分で何本でも作れるようにしてある。
+     設定の「基本タスクのテンプレート」で作り、案件を作るときに選ぶ。 */
+  var TASK_TEMPLATE_MAX = 40;        // これ以上は作らない（選ぶのが大変になる）
+  var TASK_TEMPLATE_STEP_MAX = 40;   // 1本に入れられる工程の数
+
   // 支援サイトのよく使う投稿先
   var SUPPORT_SITES = ['pixivFANBOX', 'Fantia', 'Ci-en', 'Patreon'];
 
@@ -294,7 +302,9 @@
     docSeq: { estimate: {}, invoice: {}, receipt: {} },  // 書類番号の連番（年ごと）
     taxRate: 10,           // 消費税率(%)
     withholdingRate: 10.21,// 源泉徴収税率(%)
-    templates: U.clone(TEMPLATES)
+    templates: U.clone(TEMPLATES),
+    // 自分で作ったテンプレート [{ id, name, steps:[{name,weight,unit}], at }]
+    taskTemplates: []
   };
 
   /* 端末ごとの設定。同期・読み込み・復元で持ち込まず、この端末のものを守る */
@@ -423,6 +433,7 @@
     delete s.settings.offDays;   // 曜日単位の休みは廃止した（古いデータから取り除く）
     delete s.settings.fanboxIssuerId;   // 支援金は名義で分けなくなった
     s.settings.templates = Object.assign(U.clone(TEMPLATES), s.settings.templates || {});
+    s.settings.taskTemplates = (s.settings.taskTemplates || []).map(normalizeTaskTemplate);
     s.settings.sync = Object.assign(U.clone(DEFAULT_SETTINGS.sync), s.settings.sync || {});
     s.settings.clients = (s.settings.clients || []).map(normalizeClient);
     s.settings.folders = (s.settings.folders || []).map(normalizeFolder);
@@ -664,6 +675,24 @@
         seen[v] = 1;
         return true;
       }).slice(0, PREP_SET_ITEM_MAX),
+      at: x.at || new Date().toISOString()
+    };
+  }
+
+  /* 自分で作ったテンプレート。名前のない工程は落とす（選べないため） */
+  function normalizeTaskTemplate(x) {
+    x = x || {};
+    return {
+      id: x.id || U.uid(),
+      name: String(x.name == null ? '' : x.name).trim().slice(0, 40) || 'テンプレート',
+      steps: (x.steps || []).map(function (t) {
+        t = t || {};
+        return {
+          name: String(t.name == null ? '' : t.name).trim().slice(0, 40),
+          weight: Math.max(1, U.num(t.weight, 10)),
+          unit: UNIT_LABEL[t.unit] === undefined ? 'none' : t.unit
+        };
+      }).filter(function (t) { return !!t.name; }).slice(0, TASK_TEMPLATE_STEP_MAX),
       at: x.at || new Date().toISOString()
     };
   }
@@ -5259,10 +5288,60 @@
     return p.pages.cover;
   }
 
+  /* ---------------- テンプレート ---------------- */
+
+  function taskTemplates() { return (state.settings.taskTemplates || []).slice(); }
+
+  function getTaskTemplate(id) {
+    if (!id) return null;
+    return taskTemplates().filter(function (x) { return x.id === id; })[0] || null;
+  }
+
+  /**
+   * 自分のテンプレートを足す・書き換える。id があれば書き換え、なければ足す。
+   * いっぱいのときは足さずに null を返す。
+   */
+  function putTaskTemplate(v) {
+    var list = state.settings.taskTemplates || (state.settings.taskTemplates = []);
+    var x = normalizeTaskTemplate(v);
+    var i = list.map(function (o) { return o.id; }).indexOf(x.id);
+    if (i >= 0) {
+      x.at = list[i].at;               // 作った日はそのまま
+      list[i] = x;
+    } else {
+      if (list.length >= TASK_TEMPLATE_MAX) return null;
+      list.push(x);
+    }
+    save();
+    return x;
+  }
+
+  function removeTaskTemplate(id) {
+    state.settings.taskTemplates = (state.settings.taskTemplates || [])
+      .filter(function (x) { return x.id !== id; });
+    save();
+  }
+
+  /**
+   * テンプレートの工程を取る。
+   * @param {string} key 'manga'|'illust'|'design'、または自分で作ったテンプレートの id
+   */
+  function templateSteps(key) {
+    var own = getTaskTemplate(key);
+    if (own) return own.steps.slice();
+    return (state.settings.templates[key] || TEMPLATES[key] || []).slice();
+  }
+
+  /** そのテンプレートの名前。選び直す画面で使う */
+  function templateName(key) {
+    var own = getTaskTemplate(key);
+    if (own) return own.name;
+    return { manga: '漫画', illust: 'イラスト', design: 'デザイン' }[key] || '';
+  }
+
   // テンプレートからタスクを生成
-  function templateTasks(category, qty) {
-    var tpl = state.settings.templates[category] || TEMPLATES[category] || [];
-    return tpl.map(function (t) {
+  function templateTasks(key, qty) {
+    return templateSteps(key).map(function (t) {
       return normalizeTask({
         name: t.name, weight: t.weight, unit: t.unit,
         qty: t.unit === 'none' ? null : U.num(qty, 0)
@@ -5838,7 +5917,11 @@
     knowsFileFolder: knowsFileFolder, applyFolderHints: applyFolderHints,
     docs: docs, getDoc: getDoc, addDoc: addDoc, updateDoc: updateDoc, removeDoc: removeDoc,
     issueNumber: issueNumber, peekNumber: peekNumber, allDocs: allDocs,
-    templateTasks: templateTasks, updateSettings: updateSettings,
+    templateTasks: templateTasks, templateSteps: templateSteps, templateName: templateName,
+    taskTemplates: taskTemplates, getTaskTemplate: getTaskTemplate,
+    putTaskTemplate: putTaskTemplate, removeTaskTemplate: removeTaskTemplate,
+    TASK_TEMPLATE_MAX: TASK_TEMPLATE_MAX,
+    updateSettings: updateSettings,
     exportJSON: exportJSON, importJSON: importJSON, inspectBackup: inspectBackup,
     clearAll: clearAll, seedSample: seedSample,
     backupAgeDays: backupAgeDays,

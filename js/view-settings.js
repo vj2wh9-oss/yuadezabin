@@ -72,12 +72,11 @@
     at.appendChild(weatherCard());
 
     /* ---- テンプレート ---- */
-    at.appendChild(ui.section('基本タスクのテンプレート'));
-    at.appendChild(el('div', { class: 'card' }, [
-      tplSummary('manga', '漫画', 'manga'),
-      tplSummary('illust', 'イラスト', 'illust'),
-      tplSummary('design', 'デザイン', 'design')
-    ]));
+    at.appendChild(ui.section('基本タスクのテンプレート',
+      S.taskTemplates().length
+        ? el('span', { class: 'muted small', text: '自分のぶん ' + S.taskTemplates().length + '件' })
+        : null));
+    at.appendChild(tplCard());
 
     /* ---- 準備のプリセット ---- */
     /* チケットの「準備」から、まとめて呼び出すもの。中身はここで直す */
@@ -2102,6 +2101,42 @@
     return i;
   }
 
+  /* 内容ごとのひと揃い（漫画・イラスト・デザイン）と、
+     自分で名前を付けて作ったぶんを、ひとつの並びに出す */
+  function tplCard() {
+    var box = el('div', { class: 'card' }, [
+      tplSummary('manga', '漫画', 'manga'),
+      tplSummary('illust', 'イラスト', 'illust'),
+      tplSummary('design', 'デザイン', 'design')
+    ]);
+    var mine = S.taskTemplates();
+    box.appendChild(el('div', { class: 'tpl-mine', text: '自分で作ったもの' }));
+    if (!mine.length) {
+      box.appendChild(el('p', { class: 'muted small',
+        text: 'まだありません。案件を作るときや、あとから基本タスクを足すときに選べます。' }));
+    }
+    mine.forEach(function (t) {
+      box.appendChild(el('button', {
+        type: 'button', class: 'tpl-summary', onclick: function () { ownSheet(t); }
+      }, [
+        el('div', {}, [
+          el('strong', { text: t.name }),
+          el('div', {
+            class: 'muted small',
+            text: t.steps.length
+              ? t.steps.map(function (x) { return x.name; }).join(' → ')
+              : 'まだ工程がありません'
+          })
+        ]),
+        el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+      ]));
+    });
+    if (mine.length < S.TASK_TEMPLATE_MAX) {
+      box.appendChild(ui.btn('テンプレートを作る', 'ghost full', function () { ownSheet(null); }, 'plus'));
+    }
+    return box;
+  }
+
   function tplSummary(cat, label, iconName) {
     var names = (S.settings.templates[cat] || []).map(function (t) { return t.name; });
     var list = names.length ? names.join(' → ') : 'まだ設定なし（自分の工程を登録できます）';
@@ -2114,11 +2149,13 @@
     ]);
   }
 
-  /* テンプレート編集 */
-  function tplSheet(cat, label) {
-    var items = U.clone(S.settings.templates[cat] || []);
+  /**
+   * 工程の並びを直す箱。items をその場で書き換える（入れ替えも削除も）。
+   * 丸ごと入れ替えるときは items.length = 0 してから push し、redraw() を呼ぶ。
+   * @returns {object} { node, redraw }
+   */
+  function stepList(items, defUnit) {
     var list = el('div', { class: 'tpl-edit' });
-
     function render() {
       U.clear(list);
       items.forEach(function (t, i) {
@@ -2144,16 +2181,25 @@
         ]));
       });
       list.appendChild(ui.btn('行を追加', 'ghost full', function () {
-        items.push({ name: '新しい工程', weight: 10, unit: cat === 'manga' ? 'page' : 'cut' });
+        items.push({ name: '新しい工程', weight: 10, unit: defUnit || 'none' });
         render();
       }));
     }
     render();
+    return { node: list, redraw: render };
+  }
+
+  /* 内容ごとのテンプレート編集（漫画・イラスト・デザイン） */
+  function tplSheet(cat, label) {
+    var items = U.clone(S.settings.templates[cat] || []);
+    var ed = stepList(items, cat === 'manga' ? 'page' : 'cut');
 
     var body = el('div', { class: 'form' }, [
-      list,
+      ed.node,
       ui.btn('初期設定に戻す', 'ghost full', function () {
-        items = U.clone(S.TEMPLATES[cat]); render();
+        items.length = 0;
+        U.clone(S.TEMPLATES[cat]).forEach(function (t) { items.push(t); });
+        ed.redraw();
       })
     ]);
 
@@ -2165,9 +2211,73 @@
           var t = U.clone(S.settings.templates);
           t[cat] = items;
           S.updateSettings({ templates: t });
-          close(); ui.toast('保存しました');
+          close(); DL.app.render(); ui.toast('保存しました');
         })
       ]
+    });
+  }
+
+  /* 自分で作るテンプレート。名前を付けて、工程を好きに並べる。
+     同じ「漫画」でも寄稿と新刊では工程が違うので、内容の3つだけでは足りない */
+  function ownSheet(tpl) {
+    var isNew = !tpl;
+    var x = tpl ? U.clone(tpl) : { name: '', steps: [] };
+    var nameIn = ui.input({ value: x.name || '', maxlength: 40, placeholder: '例）寄稿イラスト' });
+    var items = (x.steps || []).map(function (t) { return U.clone(t); });
+    var ed = stepList(items, 'cut');
+    var close;
+
+    /* まっさらから並べるのは骨なので、どれかを写してから直せるようにする */
+    var sources = [['manga', '漫画'], ['illust', 'イラスト'], ['design', 'デザイン']]
+      .concat(S.taskTemplates()
+        .filter(function (o) { return isNew || o.id !== x.id; })
+        .map(function (o) { return [o.id, o.name]; }));
+    var from = el('div', { class: 'presets' }, sources.map(function (pair) {
+      return el('button', {
+        type: 'button', class: 'preset', text: pair[1],
+        onclick: function () {
+          items.length = 0;
+          S.templateSteps(pair[0]).forEach(function (t) { items.push(U.clone(t)); });
+          ed.redraw();
+          if (!nameIn.value.trim()) nameIn.value = pair[1] + 'の写し';
+        }
+      });
+    }));
+
+    var body = el('div', { class: 'form' }, [
+      ui.field('名前', nameIn, '案件を作るときに、この名前で選びます'),
+      el('div', { class: 'field' }, [
+        el('span', { class: 'field-label', text: 'ほかから写す' }), from,
+        el('span', { class: 'field-hint', text: '写してから直すと早く作れます' })
+      ]),
+      ed.node
+    ]);
+
+    var actions = [ui.btn('キャンセル', 'ghost', function () { close(); })];
+    if (!isNew) {
+      actions.push(ui.btn('削除', 'ghost danger', function () {
+        ui.confirm('「' + x.name + '」を削除します。すでに作った案件のタスクはそのままです。',
+          { danger: true, okText: '削除' }).then(function (ok) {
+          if (!ok) return;
+          S.removeTaskTemplate(x.id);
+          close(); DL.app.render(); ui.toast('削除しました');
+        });
+      }));
+    }
+    actions.push(ui.btn('保存', 'primary', function () {
+      var name = nameIn.value.trim();
+      if (!name) { ui.toast('名前を入れてください', 'warn'); return; }
+      var ok = items.filter(function (t) { return String(t.name || '').trim(); });
+      if (!ok.length) { ui.toast('工程を1つ以上入れてください', 'warn'); return; }
+      if (!S.putTaskTemplate({ id: x.id, name: name, steps: items, at: x.at })) {
+        ui.toast('テンプレートはこれ以上作れません', 'warn'); return;
+      }
+      close(); DL.app.render(); ui.toast('保存しました');
+    }));
+
+    close = ui.sheet({
+      title: isNew ? 'テンプレートを作る' : 'テンプレートを直す',
+      body: body, actions: actions
     });
   }
 

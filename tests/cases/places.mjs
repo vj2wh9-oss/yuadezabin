@@ -1,17 +1,15 @@
 /**
- * 行き来する地点と、起動の一枚の出しかた。
+ * 行き来する地点。
  *
  *  ・天気の地点は、港区と中野区をはじめから持ち、押すだけで切り替わること
  *    （位置情報は使わない）。予報は地点ごとに取っておき、戻っても取り直さないこと
- *  ・起動の一枚は、しばらく離れていたときだけ出すこと
- *    （ちょっと通知を見て戻るたびに幕が降りると、じきに煩わしくなる）
  */
 import { sheet, withPage, open, IPHONE } from '../lib/harness.mjs';
 
 export default {
-  name: '地点と起動の一枚',
+  name: '天気の地点',
   async run({ base }) {
-    const s = sheet('地点と起動の一枚');
+    const s = sheet('天気の地点');
     await withPage(base, IPHONE, async (page, errors) => {
       await open(page, base);
 
@@ -100,23 +98,6 @@ export default {
       await page.waitForTimeout(500);
       s.ok('押すと切り替わる',
         await page.evaluate(() => window.DL.weather.place().name), '東京都中野区');
-
-      /* ---- 起動の一枚 ---- */
-      s.ok('2分という決まり',
-        await page.evaluate(() => window.DL.SPLASH_AWAY_MIN), 120000);
-      s.ok('すぐ戻ったぶんでは出さない', await page.evaluate(() => {
-        return window.DL.replaySplash(30 * 1000);
-      }), false);
-      s.ok('そのとき幕は出ていない',
-        await page.locator('#splash').count(), 0);
-      s.ok('2分以上あいたら出す', await page.evaluate(() => {
-        return window.DL.replaySplash(3 * 60 * 1000);
-      }), true);
-      s.ok('幕が出ている', await page.locator('#splash').count(), 1);
-      // 押せば飛ばせる。次の確かめのために閉じておく
-      await page.locator('#splash').click();
-      await page.waitForTimeout(600);
-      s.ok('押せば閉じる', await page.locator('#splash').count(), 0);
 
       s.ok('画面のエラー', errors, []);
     });

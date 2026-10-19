@@ -56,6 +56,11 @@ export default {
         const real = () => errors.filter((e) => !/Failed to load resource/.test(e));
 
         await open(page, base);
+        /* 起動の幕はもう出さない（毎回おりるのが煩わしかったので外した）。
+           開いたらそのまま中身が出ていること */
+        s.ok(label + '・起動の幕は出さない', await page.locator('#splash').count(), 0);
+        s.yes(label + '・開いてすぐ中身が出ている',
+          (await page.locator('#view .page').count()) >= 1);
         const at = await seed(page);
         const routes = routesFor(at);
 
