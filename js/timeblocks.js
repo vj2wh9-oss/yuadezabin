@@ -281,37 +281,30 @@
     return out;
   }
 
-  /* ---------------- 出勤形態からのひな型 ---------------- */
+  /* ---------------- 1日の予定のひな型 ----------------
 
-  /* 起床の時刻までを睡眠にして、そのあとの通勤と仕事を並べる。
-     泊まり勤務は翌朝までまたぐので、24時を超える値のまま持つ */
-  var PRESETS = {
-    remote: [
-      { label: '睡眠', start: 0, end: 450 },              // 〜7:30 起床
-      { label: '仕事', start: 480, end: 990 }             // 8:00〜16:30
-    ],
-    office: [
-      { label: '睡眠', start: 0, end: 355 },              // 〜5:55 起床
-      { label: '通勤', start: 390, end: 480 },            // 6:30〜8:00
-      { label: '仕事', start: 480, end: 990 },            // 8:00〜16:30
-      { label: '通勤', start: 990, end: 1065 }            // 16:30〜17:45
-    ],
-    stay: [
-      { label: '睡眠', start: 0, end: 840 },              // 〜14:00 起床
-      { label: '通勤', start: 870, end: 960 },            // 14:30〜16:00
-      { label: '仕事', start: 960, end: 1950 },           // 16:00〜翌8:30
-      { label: '通勤', start: 1950, end: 2025 }           // 翌8:30〜翌9:45
-    ]
-  };
+     中身は store が持つ（settings.dayPresets）。設定で作り・直し・消せる。
+     はじめの3本（出社・リモート・泊まり）は勤務に結びつけてあり、
+     その勤務を選んだ日に、まとめて入れるか聞く。 */
 
-  /** その出勤形態のひな型。無ければ null */
+  /** 作ってあるひな型ぜんぶ */
+  function presets() { return S.dayPresets(); }
+
+  /** その出勤形態に結びついたひな型の帯。無ければ null */
   function presetFor(duty) {
-    var list = PRESETS[duty];
-    return list ? list.map(function (b) { return { label: b.label, start: b.start, end: b.end }; }) : null;
+    var p = S.dayPresetFor(duty);
+    return p ? blocksOf(p) : null;
   }
 
   /** ひな型があるか（勤務を選んだときに聞くかどうかの判断に使う） */
-  function hasPreset(duty) { return !!PRESETS[duty]; }
+  function hasPreset(duty) { return !!S.dayPresetFor(duty); }
+
+  /** ひな型の帯の控え（そのまま渡すと、呼んだ先で書き換えられてしまう） */
+  function blocksOf(p) {
+    return ((p && p.blocks) || []).map(function (b) {
+      return { label: b.label, start: b.start, end: b.end };
+    });
+  }
 
   /**
    * 出勤形態のひな型をその日に入れる。
@@ -319,20 +312,36 @@
    * @param {boolean} [replace] true なら、その日の帯を入れ替える
    */
   function applyPreset(date, duty, replace) {
-    var list = presetFor(duty);
+    return applyBlocks(date, presetFor(duty), replace);
+  }
+
+  /** ひな型を id で指して、その日に入れる */
+  function applyPresetId(date, id, replace) {
+    var p = S.getDayPreset(id);
+    return applyBlocks(date, p ? blocksOf(p) : null, replace);
+  }
+
+  function applyBlocks(date, list, replace) {
     if (!list) return null;
     if (replace) return S.setTimeblocks(date, list);
     list.forEach(function (b) { S.putTimeblock(date, b); });
     return S.timeblocks(date);
   }
 
-  /** ひな型の中身を、そのまま読める文にする（入れる前の確認に使う） */
-  function presetText(duty) {
-    var list = presetFor(duty);
-    if (!list) return '';
-    return list.map(function (b) {
+  /** 帯の並びを、そのまま読める文にする（入れる前の確認に使う） */
+  function blocksText(list) {
+    return (list || []).map(function (b) {
       return b.label + ' ' + fmtDay(b.start) + '〜' + fmtDay(b.end);
     }).join('　');
+  }
+
+  /** その出勤形態のひな型を、読める文にする */
+  function presetText(duty) { return blocksText(presetFor(duty)); }
+
+  /** ひな型を id で指して、読める文にする */
+  function presetTextOf(id) {
+    var p = S.getDayPreset(id);
+    return p ? blocksText(blocksOf(p)) : '';
   }
 
   /* ---------------- 勤務実績を入れる頃合い ----------------
@@ -347,8 +356,18 @@
     stay: 1950       // 翌8:30（夜勤明け）
   };
 
-  /** その勤務にうながす時刻（0時からの分）。無ければ null */
+  /**
+   * その勤務にうながす時刻（0時からの分）。無ければ null。
+   * ひな型を直して仕事の終わりがずれたら、うながす時刻もついていく
+   * （ひな型だけ直して、知らせが前のままだと噛み合わないため）。
+   * ひな型に「仕事」が無ければ、上の決め打ちに戻る。
+   */
   function remindMin(duty) {
+    var list = presetFor(duty);
+    if (list) {
+      var work = list.filter(function (b) { return b.label === '仕事'; });
+      if (work.length) return work[work.length - 1].end;
+    }
     return REMIND[duty] === undefined ? null : REMIND[duty];
   }
 
@@ -397,6 +416,8 @@
     projectMinutes: projectMinutes, byProject: byProject, projectsOfDay: projectsOfDay,
     blockProjects: blockProjects,
     hours: hours,
-    presetFor: presetFor, hasPreset: hasPreset, applyPreset: applyPreset, presetText: presetText
+    presets: presets, presetFor: presetFor, hasPreset: hasPreset,
+    applyPreset: applyPreset, applyPresetId: applyPresetId,
+    presetText: presetText, presetTextOf: presetTextOf, blocksText: blocksText
   };
 })(window.DL);

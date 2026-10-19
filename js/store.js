@@ -115,6 +115,44 @@
     { id: 'wp-nakano', name: '東京都中野区', lat: 35.7045, lon: 139.6695 }
   ];
 
+  /* ---- 1日の予定のひな型 ----
+
+     勤務を選んだ日に、その日の帯をまとめて入れるためのもの。
+     起床の時刻までを睡眠にして、そのあとの通勤と仕事を並べる。
+     泊まり勤務は翌朝までまたぐので、24時（1440分）を超える値のまま持つ。
+     はじめはこの3本を入れておき、あとは設定で好きに直せる・増やせる。 */
+
+  var DAY_PRESET_SEED = [
+    {
+      id: 'dp-office', name: '出社の日', duty: 'office',
+      blocks: [
+        { label: '睡眠', start: 0, end: 355 },              // 〜5:55 起床
+        { label: '通勤', start: 390, end: 480 },            // 6:30〜8:00
+        { label: '仕事', start: 480, end: 990 },            // 8:00〜16:30
+        { label: '通勤', start: 990, end: 1065 }            // 16:30〜17:45
+      ]
+    },
+    {
+      id: 'dp-remote', name: 'リモートの日', duty: 'remote',
+      blocks: [
+        { label: '睡眠', start: 0, end: 450 },              // 〜7:30 起床
+        { label: '仕事', start: 480, end: 990 }             // 8:00〜16:30
+      ]
+    },
+    {
+      id: 'dp-stay', name: '泊まり勤務の日', duty: 'stay',
+      blocks: [
+        { label: '睡眠', start: 0, end: 840 },              // 〜14:00 起床
+        { label: '通勤', start: 870, end: 960 },            // 14:30〜16:00
+        { label: '仕事', start: 960, end: 1950 },           // 16:00〜翌8:30
+        { label: '通勤', start: 1950, end: 2025 }           // 翌8:30〜翌9:45
+      ]
+    }
+  ];
+
+  var DAY_PRESET_MAX = 30;        // これ以上は作らない（選ぶのが大変になる）
+  var DAY_PRESET_BLOCK_MAX = 40;  // 1本に入れられる帯の数（その日の帯と同じ上限）
+
   var DEFAULT_SETTINGS = {
     holidays: [],          // 休業日 'YYYY-MM-DD'（カレンダーの日別画面から指定する）
     // そのうち「泊まり勤務」で自動的に付いたぶん。勤務を外したらこれだけ戻す
@@ -304,7 +342,10 @@
     withholdingRate: 10.21,// 源泉徴収税率(%)
     templates: U.clone(TEMPLATES),
     // 自分で作ったテンプレート [{ id, name, steps:[{name,weight,unit}], at }]
-    taskTemplates: []
+    taskTemplates: [],
+    // 1日の予定のひな型 [{ id, name, duty, blocks:[{label,start,end}], at }]
+    dayPresets: U.clone(DAY_PRESET_SEED),
+    dayPresetsInit: true    // 前からある端末に入れ直したか（1度きり）
   };
 
   /* 端末ごとの設定。同期・読み込み・復元で持ち込まず、この端末のものを守る */
@@ -444,6 +485,7 @@
     migrateCloseDay(s);
     s.settings.weatherPlaces = normalizeWeatherPlaces(s.settings.weatherPlaces);
     migrateWeatherPlaces(s);
+    migrateDayPresets(s);
     /* 予報は地点ごとの入れものに変えた。前の形（1つぶんの予報）は捨てる
        （取り直せばいいもので、形を合わせる値打ちがない） */
     var wc = s.settings.weatherCache;
@@ -697,6 +739,32 @@
     };
   }
 
+  /* 1日の予定のひな型。
+     帯は「名前・始まり・終わり」だけ持つ（色は名前から決まる）。
+     長さの無いものと、名前の無いものは落とす。並びは始まりの早い順。 */
+  function normalizeDayPreset(x) {
+    x = x || {};
+    var duty = isDuty(x.duty) ? x.duty : '';
+    return {
+      id: x.id || U.uid(),
+      name: String(x.name == null ? '' : x.name).trim().slice(0, 40) || 'ひな型',
+      // どの勤務に当てるひな型か。空なら、どの勤務にも結びつかない（手で選ぶ）
+      duty: duty,
+      blocks: (x.blocks || []).map(function (b) {
+        b = b || {};
+        var start = Math.max(0, Math.min(BLOCK_MAX, Math.round(U.num(b.start, 0))));
+        var end = Math.max(0, Math.min(BLOCK_MAX, Math.round(U.num(b.end, 0))));
+        return {
+          label: String(b.label == null ? '' : b.label).trim().slice(0, 20),
+          start: start, end: end
+        };
+      }).filter(function (b) { return b.label && b.end > b.start; })
+        .sort(function (a, b) { return a.start - b.start; })
+        .slice(0, DAY_PRESET_BLOCK_MAX),
+      at: x.at || new Date().toISOString()
+    };
+  }
+
   /* 絵の指し先。鍵（img:16進）か、dataURL そのもの。それ以外は空にする */
   function normalizeImageRef(v) {
     var s = String(v == null ? '' : v);
@@ -797,6 +865,18 @@
       s.settings.weather = { name: WEATHER_SEED[0].name,
         lat: WEATHER_SEED[0].lat, lon: WEATHER_SEED[0].lon };
     }
+  }
+
+  /* 1日の予定のひな型。前からある端末には、はじめの3本を入れる（1度きり）。
+     そのあとは本人が直したぶんをそのまま使う */
+  function migrateDayPresets(s) {
+    if (!s.settings.dayPresetsInit) {
+      s.settings.dayPresetsInit = true;
+      if (!(s.settings.dayPresets || []).length) {
+        s.settings.dayPresets = U.clone(DAY_PRESET_SEED);
+      }
+    }
+    s.settings.dayPresets = (s.settings.dayPresets || []).map(normalizeDayPreset);
   }
 
   function migrateDocSeq(seq) {
@@ -5349,6 +5429,52 @@
     });
   }
 
+  /* ---------------- 1日の予定のひな型 ----------------
+     勤務を選んだ日にまとめて入れる。設定で作り・直し・消せる。 */
+
+  function dayPresets() { return (state.settings.dayPresets || []).slice(); }
+
+  function getDayPreset(id) {
+    if (!id) return null;
+    return dayPresets().filter(function (x) { return x.id === id; })[0] || null;
+  }
+
+  /** その勤務に当ててあるひな型。無ければ null（同じ勤務が2本あれば先のほう） */
+  function dayPresetFor(duty) {
+    if (!duty) return null;
+    return dayPresets().filter(function (x) { return x.duty === duty; })[0] || null;
+  }
+
+  /**
+   * ひな型を足す・書き換える。id があれば書き換え、なければ足す。
+   * 同じ勤務を2本に当てると、どちらが出るか分からなくなるので、
+   * あとから当てたほうを残して、前のぶんの結びつきは外す。
+   * いっぱいのときは足さずに null を返す。
+   */
+  function putDayPreset(v) {
+    var list = state.settings.dayPresets || (state.settings.dayPresets = []);
+    var x = normalizeDayPreset(v);
+    var i = list.map(function (o) { return o.id; }).indexOf(x.id);
+    if (i >= 0) {
+      x.at = list[i].at;               // 作った日はそのまま
+      list[i] = x;
+    } else {
+      if (list.length >= DAY_PRESET_MAX) return null;
+      list.push(x);
+    }
+    if (x.duty) {
+      list.forEach(function (o) { if (o.id !== x.id && o.duty === x.duty) o.duty = ''; });
+    }
+    save();
+    return x;
+  }
+
+  function removeDayPreset(id) {
+    state.settings.dayPresets = (state.settings.dayPresets || [])
+      .filter(function (x) { return x.id !== id; });
+    save();
+  }
+
   /* ---------------- 設定 ---------------- */
 
   /**
@@ -5917,6 +6043,9 @@
     knowsFileFolder: knowsFileFolder, applyFolderHints: applyFolderHints,
     docs: docs, getDoc: getDoc, addDoc: addDoc, updateDoc: updateDoc, removeDoc: removeDoc,
     issueNumber: issueNumber, peekNumber: peekNumber, allDocs: allDocs,
+    DAY_PRESET_SEED: DAY_PRESET_SEED, DAY_PRESET_MAX: DAY_PRESET_MAX,
+    dayPresets: dayPresets, getDayPreset: getDayPreset, dayPresetFor: dayPresetFor,
+    putDayPreset: putDayPreset, removeDayPreset: removeDayPreset,
     templateTasks: templateTasks, templateSteps: templateSteps, templateName: templateName,
     taskTemplates: taskTemplates, getTaskTemplate: getTaskTemplate,
     putTaskTemplate: putTaskTemplate, removeTaskTemplate: removeTaskTemplate,

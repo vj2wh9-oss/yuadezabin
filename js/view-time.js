@@ -581,34 +581,78 @@
     wrap.appendChild(card);
   }
 
-  /* 勤務のプリセットを入れるボタン。勤務を選んでいる日だけ出す。
-     3つ並べても1行に収めたいので、ボタンの字は「プリセット」だけにして、
-     どの勤務のものかは読み上げと長押しの説明に持たせる */
+  /* プリセットを入れるボタン。1本でも作ってあれば出す。
+     3つ並べても1行に収めたいので、ボタンの字は「プリセット」だけにする */
   function presetBtn(date) {
-    var duty = S.duty(date);
-    if (!T.hasPreset(duty)) return null;
-    var b = ui.btn('プリセット', 'ghost', function () { offerPreset(date, duty, true); }, 'refresh');
-    b.setAttribute('aria-label', S.dutyLabel(duty) + 'のプリセットを入れる');
-    b.setAttribute('title', S.dutyLabel(duty) + 'のプリセットを入れる');
+    if (!T.presets().length) return null;
+    var b = ui.btn('プリセット', 'ghost', function () { pickPreset(date); }, 'refresh');
+    b.setAttribute('aria-label', '1日の予定のプリセットを入れる');
+    b.setAttribute('title', '1日の予定のプリセットを入れる');
     return b;
   }
 
+  /* どのプリセットを入れるか選ぶ。
+     その日の勤務に結びついたものがあれば、先頭に出して印を付ける */
+  function pickPreset(date) {
+    var list = T.presets();
+    if (!list.length) return;
+    var duty = S.duty(date);
+    var mine = duty ? list.filter(function (p) { return p.duty === duty; }) : [];
+    var rest = list.filter(function (p) { return mine.indexOf(p) < 0; });
+    var had = S.timeblocks(date).length;
+    var close;
+
+    var rows = mine.concat(rest).map(function (p) {
+      return el('button', {
+        type: 'button', class: 'row' + (mine.indexOf(p) >= 0 ? ' on' : ''),
+        onclick: function () { close(); putPreset(date, p); }
+      }, [
+        el('div', {}, [
+          el('strong', { text: p.name }),
+          el('div', { class: 'muted small',
+            text: T.presetTextOf(p.id) || 'まだ中身がありません' })
+        ]),
+        mine.indexOf(p) >= 0 ? ui.chip(S.dutyLabel(duty), 'soft') : null
+      ]);
+    });
+
+    close = ui.sheet({
+      title: 'プリセットを入れる',
+      body: el('div', { class: 'form' }, [
+        el('p', { class: 'muted small', text: had
+          ? 'すでに書いてあるぶんは、置き換わります。'
+          : '押すと、その日の予定がまとめて入ります。' }),
+        el('div', { class: 'card' }, rows),
+        ui.btn('プリセットを直す', 'ghost full',
+          function () { close(); location.hash = '#/settings'; }, 'settings')
+      ]),
+      actions: [ui.btn('やめる', 'ghost', function () { close(); })]
+    });
+  }
+
+  function putPreset(date, p) {
+    T.applyPresetId(date, p.id, true);
+    ui.toast('「' + p.name + '」を入れました');
+  }
+
   /**
-   * プリセットを入れるか聞いてから入れる。
+   * 勤務に結びついたプリセットを入れるか聞いてから入れる。
+   * （勤務を選んだ拍子に呼ばれる。選ぶ画面は出さず、その1本だけを当てる）
    * @param {boolean} [ask] すでに書いてあるときも聞く
    */
   function offerPreset(date, duty, ask) {
-    if (!T.hasPreset(duty)) return Promise.resolve(false);
+    var p = S.dayPresetFor(duty);
+    if (!p) return Promise.resolve(false);
     var had = S.timeblocks(date).length;
-    var msg = S.dutyLabel(duty) + 'のプリセットを入れます。\n\n' + T.presetText(duty)
+    var msg = '「' + p.name + '」を入れます。\n\n' + T.presetTextOf(p.id)
       + (had ? '\n\nすでに書いてあるぶんは、置き換わります。' : '');
     if (!ask && !had) {
-      T.applyPreset(date, duty, true);
+      T.applyPresetId(date, p.id, true);
       return Promise.resolve(true);
     }
     return ui.confirm(msg, { title: '今日の予定', okText: '入れる' }).then(function (ok) {
       if (!ok) return false;
-      T.applyPreset(date, duty, true);
+      T.applyPresetId(date, p.id, true);
       ui.toast('プリセットを入れました');
       return true;
     });

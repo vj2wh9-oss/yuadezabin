@@ -78,6 +78,13 @@
         : null));
     at.appendChild(tplCard());
 
+    /* ---- 1日の予定のプリセット ---- */
+    /* 勤務を選んだ日に、睡眠・通勤・仕事の帯をまとめて入れるひな型。
+       日別の画面の「プリセット」からも選べる。中身はここで直す */
+    at.appendChild(ui.section('1日の予定のプリセット',
+      el('span', { class: 'muted small', text: S.dayPresets().length + '件' })));
+    at.appendChild(dayPresetCard());
+
     /* ---- 準備のプリセット ---- */
     /* チケットの「準備」から、まとめて呼び出すもの。中身はここで直す */
     at.appendChild(ui.section('準備のプリセット',
@@ -324,6 +331,155 @@
   /* ---------------- 通知 ---------------- */
 
   /* FANBOX のページから送るための、ブックマークレットの作り方 */
+  /* ---------------- 1日の予定のプリセット ---------------- */
+
+  function dayPresetCard() {
+    var box = el('div', { class: 'card' });
+    var list = S.dayPresets();
+    if (!list.length) {
+      box.appendChild(el('p', { class: 'muted small',
+        text: 'まだありません。日別の画面の「プリセット」から入れられます。' }));
+    }
+    list.forEach(function (p) {
+      box.appendChild(el('button', {
+        type: 'button', class: 'tpl-summary', onclick: function () { dayPresetSheet(p); }
+      }, [
+        el('div', {}, [
+          el('strong', {}, [
+            el('span', { text: p.name }),
+            p.duty ? ui.chip(S.dutyLabel(p.duty), 'soft') : null
+          ]),
+          el('div', { class: 'muted small',
+            text: DL.timeblocks.presetTextOf(p.id) || 'まだ中身がありません' })
+        ]),
+        el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+      ]));
+    });
+    if (list.length < S.DAY_PRESET_MAX) {
+      box.appendChild(ui.btn('プリセットを作る', 'ghost full',
+        function () { dayPresetSheet(null); }, 'plus'));
+    }
+    return box;
+  }
+
+  /* ひな型の中身を直す。帯は「名前・始まり・終わり」だけ。
+     時刻は 8:00 / 830 / 33:45（翌9:45）のどれでも読む */
+  function dayPresetSheet(p) {
+    var T = DL.timeblocks;
+    var isNew = !p;
+    var x = p ? U.clone(p) : { name: '', duty: '', blocks: [] };
+    var seeded = !isNew && S.DAY_PRESET_SEED.some(function (o) { return o.id === x.id; });
+    var nameIn = ui.input({ value: x.name || '', maxlength: 40, placeholder: '例）在宅で描く日' });
+    var dutySel = ui.select([{ value: '', label: '結びつけない' }]
+      .concat(S.DUTIES.map(function (d) { return { value: d.value, label: d.label }; })), x.duty || '');
+    var blocks = (x.blocks || []).map(function (b) {
+      return { label: b.label, start: b.start, end: b.end };
+    });
+    var list = el('div', { class: 'tpl-edit' });
+    var close;
+
+    function render() {
+      U.clear(list);
+      blocks.forEach(function (b, i) {
+        var name = ui.input({ value: b.label, maxlength: 20, placeholder: '例）仕事' });
+        var from = ui.input({ value: T.fmt(b.start), inputmode: 'numeric', placeholder: '8:00' });
+        var to = ui.input({ value: T.fmt(b.end), inputmode: 'numeric', placeholder: '16:30' });
+        name.addEventListener('input', function () { b.label = name.value; });
+        from.addEventListener('change', function () {
+          var v = T.parse(from.value);
+          if (v === null) { from.value = T.fmt(b.start); return; }
+          b.start = v; from.value = T.fmt(v);
+        });
+        to.addEventListener('change', function () {
+          var v = T.parse(to.value);
+          if (v === null) { to.value = T.fmt(b.end); return; }
+          b.end = v; to.value = T.fmt(v);
+        });
+        list.appendChild(el('div', { class: 'tpl-row' }, [
+          name,
+          el('div', { class: 'grid3' }, [
+            from, to,
+            el('div', { class: 'row-end' }, [
+              el('button', { class: 'iconbtn small', text: '↑', onclick: function () {
+                if (i > 0) { var t = blocks[i - 1]; blocks[i - 1] = blocks[i]; blocks[i] = t; render(); }
+              } }),
+              el('button', { class: 'iconbtn small', text: '↓', onclick: function () {
+                if (i < blocks.length - 1) { var t = blocks[i + 1]; blocks[i + 1] = blocks[i]; blocks[i] = t; render(); }
+              } }),
+              el('button', { class: 'iconbtn small danger', 'aria-label': '削除',
+                onclick: function () { blocks.splice(i, 1); render(); } }, ui.icon('close', 16))
+            ])
+          ]),
+          /* よく使う名前は押すだけで入る（色もその名前から決まる） */
+          el('div', { class: 'presets' }, T.labels().map(function (k) {
+            return el('button', {
+              type: 'button', class: 'preset', text: k.label,
+              style: { borderColor: k.color },
+              onclick: function () { b.label = k.label; name.value = k.label; }
+            });
+          }))
+        ]));
+      });
+      // 足すときは、いちばん後ろの終わりから1時間ぶん
+      list.appendChild(ui.btn('時間を足す', 'ghost full', function () {
+        var last = blocks.length ? blocks[blocks.length - 1].end : 480;
+        blocks.push({ label: '仕事', start: last, end: Math.min(S.BLOCK_MAX, last + 60) });
+        render();
+      }, 'plus'));
+    }
+    render();
+
+    var body = el('div', { class: 'form' }, [
+      ui.field('名前', nameIn),
+      ui.field('この勤務の日に出す', dutySel,
+        '結びつけると、その勤務を選んだ日に「入れますか」と聞きます'),
+      el('p', { class: 'muted small',
+        text: '時刻は 8:00 / 830 / 33:45（翌9:45）のどれでも書けます。'
+          + '夜勤のように翌日へまたぐぶんは、24時を足した数で書きます' }),
+      list,
+      seeded ? ui.btn('初期設定に戻す', 'ghost full', function () {
+        var seed = S.DAY_PRESET_SEED.filter(function (o) { return o.id === x.id; })[0];
+        blocks.length = 0;
+        U.clone(seed.blocks).forEach(function (b) { blocks.push(b); });
+        nameIn.value = seed.name;
+        dutySel.value = seed.duty;
+        render();
+      }) : null
+    ]);
+
+    var actions = [ui.btn('キャンセル', 'ghost', function () { close(); })];
+    if (!isNew) {
+      actions.push(ui.btn('削除', 'ghost danger', function () {
+        ui.confirm('「' + x.name + '」を削除します。すでに入れてある日の予定はそのままです。',
+          { danger: true, okText: '削除' }).then(function (ok) {
+          if (!ok) return;
+          S.removeDayPreset(x.id);
+          close(); DL.app.render(); ui.toast('削除しました');
+        });
+      }));
+    }
+    actions.push(ui.btn('保存', 'primary', function () {
+      var name = nameIn.value.trim();
+      if (!name) { ui.toast('名前を入れてください', 'warn'); return; }
+      var ok = blocks.filter(function (b) {
+        return String(b.label || '').trim() && b.end > b.start;
+      });
+      if (!ok.length) { ui.toast('時間を1つ以上入れてください', 'warn'); return; }
+      if (ok.length < blocks.length) {
+        ui.toast('終わりが始まりより前の行は、落として保存します', 'warn');
+      }
+      if (!S.putDayPreset({ id: x.id, name: name, duty: dutySel.value, blocks: blocks, at: x.at })) {
+        ui.toast('プリセットはこれ以上作れません', 'warn'); return;
+      }
+      close(); DL.app.render(); ui.toast('保存しました');
+    }));
+
+    close = ui.sheet({
+      title: isNew ? 'プリセットを作る' : 'プリセットを直す',
+      body: body, actions: actions
+    });
+  }
+
   /* ---------------- 天気の地点 ---------------- */
 
   /* ---------------- ジャンルごとの見出し ----------------
