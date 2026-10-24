@@ -2406,6 +2406,8 @@
     return (r.days === 0 ? '当日' : r.days + '日前') + ' ' + r.time;
   }
 
+  var EVENT_IMG_MAX = 8;        // 1つの予定に付けられる絵の数
+
   function normalizeEvent(e) {
     e = e || {};
     e.id = e.id || U.uid();
@@ -2416,6 +2418,11 @@
     e.end = HHMM.test(String(e.end)) ? e.end : '';
     if (!e.start) e.end = '';                            // 開始が無いのに終了だけは持たせない
     e.memo = String(e.memo || '').slice(0, 400);
+    /* 貼り付けた絵（地図・チケット・案内のはがきなど）。
+       中身そのものではなく置き場の鍵（img:…）が入る。
+       同期を使っていない端末では、これまでどおり dataURL のまま入る */
+    e.images = (Array.isArray(e.images) ? e.images : [])
+      .map(normalizeImageRef).filter(Boolean).slice(0, EVENT_IMG_MAX);
     e.color = HEX.test(String(e.color)) ? e.color : EVENT_COLORS[0].value;
     if (OLD_EVENT_COLORS[e.color]) e.color = OLD_EVENT_COLORS[e.color];   // 旧配色はそのまま置き換える
     // 重要：その日にホームのいちばん上（アラート欄）へ出す
@@ -5908,6 +5915,7 @@
     KEY: KEY, TEMPLATES: TEMPLATES, UNIT_LABEL: UNIT_LABEL, PRINT_PRESETS: PRINT_PRESETS,
     SUPPORT_SITES: SUPPORT_SITES, BACKUP_KIND_LABEL: KIND_LABEL,
     PALETTE: PALETTE, EVENT_COLORS: EVENT_COLORS, DUTIES: DUTIES,
+    EVENT_IMG_MAX: EVENT_IMG_MAX,
     load: load, init: init, save: save, flush: flush, subscribe: subscribe,
     get state() { return state; },
     get settings() { return state.settings; },

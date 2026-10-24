@@ -93,7 +93,8 @@
             ? ui.iconChip('clock', '通知' + o.ev.reminders.length, 'soft') : null,
           withCheck && done ? ui.chip('ホームから外し中', 'ghosty') : null
         ]),
-        o.ev.memo ? el('p', { class: 'muted small ev-memo', text: o.ev.memo }) : null
+        o.ev.memo ? el('p', { class: 'muted small ev-memo', text: o.ev.memo }) : null,
+        thumbs(o.ev)
       ]),
       withCheck
         ? el('button', {
@@ -106,6 +107,21 @@
           }, ui.icon('check', 17))
         : el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
     ]);
+  }
+
+  /* 行に並べる小さな絵。押すと大きく見える（行そのものは入力が開くので、
+     絵のほうは押したときに上へ伝えない） */
+  function thumbs(ev) {
+    var refs = (ev.images || []).filter(Boolean);
+    if (!refs.length) return null;
+    return el('div', { class: 'ev-thumbs' }, refs.map(function (ref, i) {
+      var url = DL.imgbank.src(ref);
+      if (!url) return el('span', { class: 'ev-thumb wait' });
+      return el('button', {
+        type: 'button', class: 'ev-thumb', 'aria-label': '画像を大きく見る',
+        onclick: function (e) { e.stopPropagation(); viewImage(refs, i); }
+      }, el('img', { src: url, alt: '' }));
+    }));
   }
 
   /* ---------------- 月の一覧（月名をタップしたとき） ---------------- */
@@ -150,6 +166,133 @@
     var memoIn = ui.textarea({ value: v.memo, maxlength: 400, placeholder: '持ち物・場所など' });
     var importantIn = el('input', { type: 'checkbox', checked: !!v.important });
     var untilIn = ui.input({ type: 'date', value: v.until });
+
+    /* ---- 絵 ----
+       案内のはがき・会場の地図・チケットの写真など、
+       文字で書き写すより1枚あったほうが早いものを持たせる。
+       貼り付け（⌘V）・ドラッグ・ファイル選びの3つで入る */
+    var images = (v.images || []).slice();
+    var imgBox = el('div', { class: 'ev-imgs' });
+    var imgFile = el('input', {
+      type: 'file', accept: 'image/*', multiple: true, style: { display: 'none' }
+    });
+    var imgDrop = el('div', { class: 'ev-drop' }, [
+      imgBox,
+      el('div', { class: 'row-wrap' }, [
+        ui.btn('画像を選ぶ', 'ghost tiny', function () { imgFile.click(); }, 'plus'),
+        ui.btn('貼り付け', 'ghost tiny', function () { pasteFromClipboard(); })
+      ]),
+      imgFile
+    ]);
+
+    function drawImgs() {
+      U.clear(imgBox);
+      if (!images.length) {
+        imgBox.appendChild(el('p', { class: 'muted small',
+          text: 'コピーした画像をそのまま貼り付けられます（ここへドラッグしても入ります）' }));
+        return;
+      }
+      images.forEach(function (ref, i) {
+        var url = DL.imgbank.src(ref);
+        imgBox.appendChild(el('div', { class: 'ev-img' }, [
+          el('button', {
+            type: 'button', class: 'ev-img-b', 'aria-label': '大きく見る',
+            onclick: function () { viewImage(images, i); }
+          }, url
+            ? el('img', { src: url, alt: '' })
+            : el('span', { class: 'ev-img-wait muted small', text: '読み込み中' })),
+          el('button', {
+            type: 'button', class: 'iconbtn ev-img-x', 'aria-label': 'この画像を外す',
+            onclick: function () { images.splice(i, 1); drawImgs(); }
+          }, ui.icon('close', 15))
+        ]));
+      });
+    }
+
+    /* 読み込んで、置き場へ預ける。預けられたら鍵が、だめなら絵そのものが返る */
+    function takeFiles(files) {
+      var list = [].slice.call(files || []).filter(function (f) {
+        return f && /^image\//.test(f.type || '');
+      });
+      if (!list.length) return;
+      var room = S.EVENT_IMG_MAX - images.length;
+      if (room <= 0) { ui.toast('画像は' + S.EVENT_IMG_MAX + '枚までです', 'warn'); return; }
+      if (list.length > room) {
+        ui.toast('画像は' + S.EVENT_IMG_MAX + '枚までなので、' + room + '枚だけ入れます', 'warn');
+        list = list.slice(0, room);
+      }
+      list.reduce(function (p, f) {
+        return p.then(function () {
+          return U.readPhoto(f)
+            .then(function (url) { return DL.imgbank.put(url); })
+            .then(function (ref) { if (ref) images.push(ref); })
+            .catch(function (e) { ui.toast(e.message, 'danger'); });
+        });
+      }, Promise.resolve()).then(function () {
+        drawImgs();
+        ui.toast('画像を入れました');
+      });
+    }
+
+    imgFile.addEventListener('change', function () {
+      /* FileList は入力欄と地続きなので、先に配列へ写してから空にする。
+         順を逆にすると、写したはずの中身まで一緒に消える */
+      var fs = [].slice.call(imgFile.files || []);
+      imgFile.value = '';
+      takeFiles(fs);
+    });
+
+    /* この入力を開いているあいだの貼り付けを拾う。
+       （⌘V は、どこを触っていても効いてほしい） */
+    function onPaste(e) {
+      var items = (e.clipboardData || {}).items;
+      if (!items) return;
+      var files = [];
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].kind !== 'file') continue;
+        var f = items[i].getAsFile();
+        if (f && /^image\//.test(f.type || '')) files.push(f);
+      }
+      if (!files.length) return;      // 文字の貼り付けは、そのまま入力欄へ通す
+      e.preventDefault();
+      takeFiles(files);
+    }
+    document.addEventListener('paste', onPaste);
+
+    /* iPhone の Safari には「貼り付け」の口が無いことがあるので、
+       ボタンからも読みにいけるようにしておく */
+    function pasteFromClipboard() {
+      var nav = window.navigator;
+      if (!nav.clipboard || !nav.clipboard.read) {
+        ui.toast('この端末では、⌘V か「画像を選ぶ」をお使いください', 'warn');
+        return;
+      }
+      nav.clipboard.read().then(function (items) {
+        var jobs = [];
+        (items || []).forEach(function (it) {
+          (it.types || []).forEach(function (t) {
+            if (/^image\//.test(t)) jobs.push(it.getType(t));
+          });
+        });
+        if (!jobs.length) { ui.toast('コピーした画像が見つかりませんでした', 'warn'); return; }
+        Promise.all(jobs).then(takeFiles);
+      }).catch(function () {
+        ui.toast('貼り付けを許してもらえませんでした。⌘V をお試しください', 'warn');
+      });
+    }
+
+    ['dragover', 'dragenter'].forEach(function (k) {
+      imgDrop.addEventListener(k, function (e) {
+        e.preventDefault(); imgDrop.classList.add('over');
+      });
+    });
+    ['dragleave', 'drop'].forEach(function (k) {
+      imgDrop.addEventListener(k, function (e) {
+        e.preventDefault(); imgDrop.classList.remove('over');
+        if (k === 'drop') takeFiles(e.dataTransfer && e.dataTransfer.files);
+      });
+    });
+    drawImgs();
 
     /* 終日 / 時間を決める */
     var timeRow = el('div', { class: 'grid2' }, [
@@ -298,6 +441,7 @@
         title: title, date: dateIn.value, days: daysIn.getValue(),
         start: allDay ? '' : startIn.value, end: allDay ? '' : endIn.value,
         memo: memoIn.value, color: color, important: importantIn.checked,
+        images: images,
         // 重要をやめたら鳴らさない。書いたものは消さずに取っておく
         reminders: reminders,
         repeat: repeat, until: repeat ? untilIn.value : ''
@@ -311,7 +455,7 @@
       ui.toast(isNew ? '予定を追加しました' : '予定を直しました');
     }
 
-    var close = ui.sheet({
+    var sheetClose = ui.sheet({
       title: isNew ? '日常の予定を追加' : '日常の予定',
       body: el('div', { class: 'form' }, [
         ui.field('予定', titleIn),
@@ -335,6 +479,7 @@
         ]),
         ui.block('リマインダー', remWrap),
         ui.field('メモ', memoIn),
+        ui.block('画像', imgDrop),
         !isNew ? ui.btn('この予定を削除', 'danger full mt', function () {
           var msg = ev.repeat
             ? 'この予定を削除します。繰り返している回もまとめて消えます。'
@@ -349,6 +494,41 @@
         ui.btn('キャンセル', 'ghost', function () { close(); }),
         ui.btn('保存', 'primary', save)
       ]
+    });
+
+    /* 閉じるときに、貼り付けの耳を外す。
+       付けっぱなしにすると、ほかの画面での⌘Vまで拾ってしまう */
+    function close() {
+      document.removeEventListener('paste', onPaste);
+      sheetClose();
+    }
+  }
+
+  /* 絵を大きく見る。何枚かあれば、めくって見られる */
+  function viewImage(refs, at) {
+    var i = Math.max(0, Math.min(refs.length - 1, at || 0));
+    var box = el('div', { class: 'ev-view' });
+    var close;
+
+    function draw() {
+      U.clear(box);
+      var url = DL.imgbank.src(refs[i]);
+      box.appendChild(url
+        ? el('img', { src: url, alt: '' })
+        : el('p', { class: 'muted small', text: '読み込み中です' }));
+      if (refs.length > 1) {
+        box.appendChild(el('div', { class: 'ev-view-nav' }, [
+          ui.btn('前', 'ghost tiny', function () { i = (i - 1 + refs.length) % refs.length; draw(); }, 'chevronLeft'),
+          el('span', { class: 'muted small', text: (i + 1) + ' / ' + refs.length }),
+          ui.btn('次', 'ghost tiny', function () { i = (i + 1) % refs.length; draw(); }, 'chevronRight')
+        ]));
+      }
+    }
+    draw();
+
+    close = ui.sheet({
+      title: '画像', body: box,
+      actions: [ui.btn('閉じる', 'ghost', function () { close(); })]
     });
   }
 

@@ -197,15 +197,22 @@ export default {
       await open(page, base);
       await page.evaluate(() => {
         const S = window.DL.store, U = window.DL.util, T = U.today();
-        // 券が2つ。どちらも今月に締切がある
+        /* 券が2つ。どちらも「いま開いている月のマス目に出る日」にする。
+           ただ T+12 などとすると、月末に近い日に走らせたとき来月へはみ出し、
+           マス目に出ないまま落ちる（カレンダーは今日の月を開くので、
+           はみ出したぶんは描かれない）。月の終わりで止めておく */
+        const p = T.split('-');
+        const endDay = new Date(+p[0], +p[1], 0).getDate();
+        const inMonth = (n) => p[0] + '-' + p[1] + '-'
+          + String(Math.min(endDay, +p[2] + n)).padStart(2, '0');
         S.createProject({
           kind: 'event', category: 'manga', title: '新刊',
-          eventName: '冬の即売会', eventDate: U.addDays(T, 12),
-          deadline: U.addDays(T, 4), startDate: T, qty: 8, status: 'active'
+          eventName: '冬の即売会', eventDate: inMonth(12),
+          deadline: inMonth(4), startDate: T, qty: 8, status: 'active'
         });
         S.createProject({
           kind: 'work', category: 'illust', title: '表紙', client: 'B社',
-          deadline: U.addDays(T, 6), startDate: T, qty: 4, status: 'active'
+          deadline: inMonth(6), startDate: T, qty: 4, status: 'active'
         });
       });
       await open(page, base, '#/calendar');

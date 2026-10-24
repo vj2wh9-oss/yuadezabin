@@ -158,7 +158,7 @@
    * state に dataURL のまま入っている絵を、置き場へ移して鍵に置き換える。
    * サーバー側がまだ絵の受け口を持っていなかったころに登録したぶんを、
    * deploy のあとに追いつかせるためのもの。
-   * いまのところ絵を持つのはチケットのロゴだけなので、そこだけ見る。
+   * 絵を持つのは、チケットのロゴと、日常の予定に貼った絵。
    */
   function relink() {
     if (!ready() || !S.tickets) return Promise.resolve(0);
@@ -172,6 +172,19 @@
       if (/^data:image\//.test(x.ref || '')) {
         todo.push({ url: x.ref, put: function (ref) { S.removeLogo(x.id); S.addLogo(ref, x.name); } });
       }
+    });
+    /* 予定に貼った絵。1つの予定に何枚か付くので、入れ替えたぶんだけ書き戻す */
+    (S.events ? S.events() : []).forEach(function (ev) {
+      (ev.images || []).forEach(function (ref, i) {
+        if (!/^data:image\//.test(ref || '')) return;
+        todo.push({ url: ref, put: function (next) {
+          var cur = S.getEvent(ev.id);
+          if (!cur) return;
+          var list = (cur.images || []).slice();
+          list[i] = next;
+          S.updateEvent(ev.id, { images: list });
+        } });
+      });
     });
     if (!todo.length) return Promise.resolve(0);
     return todo.reduce(function (p, o) {

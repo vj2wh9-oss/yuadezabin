@@ -195,6 +195,67 @@ window.DL = window.DL || {};
     return m;
   }
 
+  /* 写真を預かるときの段。上から順に試して、収まったところで止める。
+     ロゴのように小さく決め打ちできないので、長辺と画質を少しずつ落とす */
+  var PHOTO_STEPS = [
+    { size: 1400, q: 0.84 },
+    { size: 1100, q: 0.78 },
+    { size: 900, q: 0.7 },
+    { size: 700, q: 0.62 }
+  ];
+  /* dataURL のまま持つときの上限（store の normalizeImageRef が 400000 で切る）。
+     切られると絵が壊れるので、そこへ届く前に小さくしておく */
+  var PHOTO_MAX_CHARS = 380000;
+
+  /**
+   * 写真を1枚読み込む。長辺と画質を落としながら、収まる大きさまで縮める。
+   * 透かしのある絵（PNG）は、白地に置いてから JPEG にする
+   * （そのまま JPEG にすると、抜けたところが黒くなる）。
+   * @param {File|Blob} file
+   * @returns {Promise<string>} JPEG の dataURL
+   */
+  function readPhoto(file) {
+    return loadImage(file).then(function (img) {
+      for (var i = 0; i < PHOTO_STEPS.length; i++) {
+        var url = drawTo(img, PHOTO_STEPS[i].size, PHOTO_STEPS[i].q);
+        if (url && url.length <= PHOTO_MAX_CHARS) return url;
+      }
+      throw new Error('画像が大きすぎます');
+    });
+
+    function drawTo(img, maxSize, q) {
+      var w = img.naturalWidth, h = img.naturalHeight;
+      var scale = Math.min(1, maxSize / Math.max(w, h));
+      var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+      var cv = document.createElement('canvas');
+      cv.width = cw; cv.height = ch;
+      var ctx = cv.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, cw, ch);
+      ctx.drawImage(img, 0, 0, cw, ch);
+      try { return cv.toDataURL('image/jpeg', q); } catch (e) { return ''; }
+    }
+  }
+
+  /** ファイルを <img> として読む（大きさを測ってから縮めるため） */
+  function loadImage(file) {
+    return new Promise(function (resolve, reject) {
+      if (!file || !/^image\//.test(file.type || '')) {
+        reject(new Error('画像ではありません')); return;
+      }
+      if (file.size > 20 * 1024 * 1024) { reject(new Error('画像が大きすぎます')); return; }
+      var reader = new FileReader();
+      reader.onerror = function () { reject(new Error('読み込めませんでした')); };
+      reader.onload = function () {
+        var img = new Image();
+        img.onerror = function () { reject(new Error('画像として読めませんでした')); };
+        img.onload = function () { resolve(img); };
+        img.src = String(reader.result);
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
   /**
    * 画像ファイルを読み込み、長辺を maxSize に縮小した dataURL を返す。
    * localStorage に入れるので、大きな写真をそのまま抱えないようにする。
@@ -345,6 +406,6 @@ window.DL = window.DL || {};
     wdName: wdName, untilLabel: untilLabel,
     el: el, append: append, clear: clear, $: $, $$: $$,
     uid: uid, clone: clone, num: num, sum: sum, groupBy: groupBy, readImage: readImage,
-    readImageBox: readImageBox, fitImageURL: fitImageURL, inkOn: inkOn
+    readImageBox: readImageBox, readPhoto: readPhoto, fitImageURL: fitImageURL, inkOn: inkOn
   };
 })(window.DL);
