@@ -167,6 +167,39 @@ export default {
       r = await run(page);
       s.ok('締切は入れない', r.足した, 0);
 
+      /* ---- 見張りが拾ったものを、ホームに出す ----
+         見に行くのは同期サーバーの役目なので、ここで確かめるのは
+         「届いたものをホームに出せること」と「片づけられること」 */
+      await page.evaluate(() => {
+        window.DL.store.setRoomWatch({
+          lastAt: new Date().toISOString(), lastOk: true, enabled: true,
+          mail: true, mailReady: true, count: 3,
+          changes: [
+            { at: new Date().toISOString(), what: 'changed', date: '2026-11-02',
+              line: '変更　2026-11-02 13:00〜15:00（在宅 なし → 不可）' },
+            { at: new Date().toISOString(), what: 'added', date: '2026-11-05',
+              line: '追加　2026-11-05 10:00〜11:00' }
+          ]
+        });
+      });
+      await open(page, base, '#/home');
+      const txt = await page.locator('.alerts').innerText();
+      s.note('ホームの知らせ: ' + txt.replace(/\n+/g, ' / '));
+      s.yes('ホームに出る', txt.indexOf('ROOM RESERVE の予定が変わりました（2件）') >= 0);
+      s.yes('いちばん新しいぶんの中身も添える', txt.indexOf('2026-11-02') >= 0);
+
+      s.ok('押すと設定へ行く', await page.locator(
+        '.alerts a[href="#/settings"]:has-text("ROOM RESERVE")').count(), 1);
+
+      /* 溜まっていなければ、出さない */
+      await page.evaluate(() => {
+        const S = window.DL.store;
+        S.setRoomWatch(Object.assign({}, S.roomWatch(), { changes: [] }));
+      });
+      await open(page, base, '#/home');
+      s.ok('片づけると出なくなる', await page.locator(
+        '.alerts:has-text("ROOM RESERVE")').count(), 0);
+
       s.ok('画面のエラー', errors, []);
     });
     return s;

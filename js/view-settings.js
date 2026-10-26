@@ -1285,8 +1285,102 @@
             DL.app.render();
           });
       }, 'trash'));
+
+      card.appendChild(ui.section('1時間ごとの見張り'));
+      card.appendChild(roomWatchBox(R));
     }
     return card;
+  }
+
+  /* ---- 1時間ごとの見張り ----
+
+     向こうは人と共有の予定表なので、こちらが見ていないうちに動く。
+     アプリは閉じているあいだ動けないので、見に行くのは同期サーバーの役目。
+     変わっていたら、メールと、このアプリのホームで知らせる。 */
+
+  function roomWatchBox(R) {
+    var cur = R.conf();
+    var w = R.watch();
+    var box = el('div', {});
+
+    var onIn = el('input', { type: 'checkbox', class: 'check', checked: !!cur.watch });
+    var mailIn = ui.input({
+      type: 'email', value: cur.mail || '', maxlength: 254,
+      placeholder: 'you@example.com', inputmode: 'email'
+    });
+
+    box.appendChild(el('label', { class: 'row-check' }, [
+      onIn, el('span', { text: '1時間ごとに向こうを見に行き、変わっていたら知らせる' })
+    ]));
+    box.appendChild(ui.field('知らせるメールアドレス', mailIn,
+      '空にすると、メールは出さずホームにだけ出します'));
+
+    box.appendChild(ui.btn('見張りの設定を保存', 'primary full', function () {
+      var m = mailIn.value.trim();
+      if (m && !/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(m)) {
+        ui.toast('メールアドレスの形になっていません', 'danger'); return;
+      }
+      R.pushWatch({ enabled: onIn.checked, mail: m }).then(function (b) {
+        ui.toast(onIn.checked ? '見張りを入れました' : '見張りを切りました');
+        if (onIn.checked && m && b && b.mailReady === false) {
+          ui.toast('同期サーバーにメールの出し口がまだありません（下の説明を見てください）', 'warn');
+        }
+        DL.app.render();
+      }).catch(function (e) { ui.toast(e.message, 'danger'); });
+    }, 'check'));
+
+    if (!cur.watch) return box;
+
+    box.appendChild(el('div', { class: 'info-row' }, [
+      el('span', { class: 'info-k', text: '最後に見に行った時刻' }),
+      el('span', { class: 'info-v',
+        text: w.lastAt ? DL.sync.fmtAt(w.lastAt) : 'まだありません' })
+    ]));
+    if (w.lastAt && !w.lastOk) {
+      box.appendChild(el('p', { class: 'muted small', text: 'うまく見に行けませんでした：' + w.why }));
+    }
+    box.appendChild(el('div', { class: 'info-row' }, [
+      el('span', { class: 'info-k', text: 'メールの出し口' }),
+      el('span', { class: 'info-v',
+        text: w.mailReady ? '使えます' : 'まだありません（ホームには出します）' })
+    ]));
+
+    var changes = w.changes || [];
+    if (changes.length) {
+      box.appendChild(el('p', { class: 'muted small',
+        text: '前に見たときから、次のところが変わっています。'
+          + '上の「いま取り込む」で、こちらのカレンダーにも入ります。' }));
+      box.appendChild(el('div', { class: 'card rw-list' }, changes.slice(0, 20).map(function (c) {
+        return el('div', { class: 'rw-row' }, [
+          el('span', { class: 'rw-what ' + c.what, text: c.line })
+        ]);
+      })));
+      if (changes.length > 20) {
+        box.appendChild(el('p', { class: 'muted small', text: 'ほか ' + (changes.length - 20) + '件' }));
+      }
+      box.appendChild(ui.btn('読んだことにする（ホームから下ろす）', 'ghost full', function () {
+        R.clearWatch().then(function () {
+          ui.toast('ホームから下ろしました');
+          DL.app.render();
+        }).catch(function (e) { ui.toast(e.message, 'danger'); });
+      }, 'check'));
+    } else {
+      box.appendChild(el('p', { class: 'muted small',
+        text: w.lastAt ? '前に見たときから、変わったところはありません。' : '' }));
+    }
+
+    box.appendChild(ui.btn('いますぐ見に行ってもらう', 'ghost full', function () {
+      ui.toast('見に行っています…');
+      R.runWatch().then(function (r) {
+        ui.toast(!r.ok ? '見に行けませんでした：' + (r.why || '')
+          : r.first ? 'いまの姿を控えました（' + r.total + '件）。次からは、こことの違いを知らせます'
+            : r.changed ? '変わったところが ' + r.changed + '件 ありました'
+              + (r.mailed ? '（メールも出しました）' : '') : '変わったところはありませんでした');
+        DL.app.render();
+      }).catch(function (e) { ui.toast(e.message, 'danger'); });
+    }, 'refresh'));
+
+    return box;
   }
 
   /* 向こうの勤務種別が、こちらでどう見えているか。

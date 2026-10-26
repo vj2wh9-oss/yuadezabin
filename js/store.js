@@ -227,7 +227,10 @@
     duties: {},            // その日の働き方 { 'YYYY-MM-DD': 'office'|'remote'|'stay' }
     // ROOM RESERVE（ルームシェアの予定表）の取り込み。
     // seen は、一度入れた向こうの予定の id（二度入れないため）
-    roomReserve: { url: '', color: '#00b3d4', lastAt: '', seen: {} },
+    roomReserve: { url: '', color: '#00b3d4', lastAt: '', watch: false, mail: '', seen: {} },
+    /* 見張りの様子（同期サーバーから取ってきたもの）。
+       端末ごとに持つ。もとは向こうにあるので、持ち出さなくてよい */
+    roomWatch: { at: '', lastAt: '', lastOk: true, why: '', mailReady: false, changes: [] },
     // 1日の時間の振り分け { 'YYYY-MM-DD': [{id,kind,start,end,memo}] }。
     // start/end は 0時からの分。夜勤で日をまたぐぶんは 1440 を超える値で持つ
     timeblocks: {},
@@ -355,6 +358,7 @@
     'calSkin',         // カレンダーの見た目も、端末ごとに決める
     'weatherCache',    // 取ってきた予報は端末ごと。地点（weather）のほうは同期する
     'crmFace',         // 顔での解錠は、その端末に入っている鍵なので持ち出さない
+    'roomWatch',       // 見張りの様子は、同期サーバーから取ってくるので持ち出さない
     /* METEO LOCK。金庫そのもの（settings.lock）は暗号のまま同期するが、
        この3つは端末のものなので持ち出さない。
        lockFace … 顔で開けるための、この端末だけの包み
@@ -509,6 +513,7 @@
     s.settings.duties = normalizeDuties(s.settings.duties);
     s.settings.timeblocks = normalizeTimeblocks(s.settings.timeblocks);
     s.settings.roomReserve = normalizeRoomReserve(s.settings.roomReserve);
+    s.settings.roomWatch = normalizeRoomWatch(s.settings.roomWatch);
     s.settings.holidays = (s.settings.holidays || []).filter(U.isISO);
     // 手で休みを外した日は、自動で付けた記録のほうも落とす（また付け直さないため）
     s.settings.stayHolidays = (s.settings.stayHolidays || []).filter(function (d) {
@@ -4623,6 +4628,11 @@
       url: String(r.url || '').trim().slice(0, 300),
       color: HEX.test(String(r.color)) ? r.color : EVENT_COLORS[1].value,
       lastAt: String(r.lastAt || ''),
+      /* 1時間ごとの見張り。向こうの予定表が変わったら、
+         メールとホームで知らせる。見に行くのは同期サーバーの役目
+         （アプリは閉じているあいだ動けないため） */
+      watch: !!r.watch,
+      mail: String(r.mail || '').trim().slice(0, 254),
       seen: seen
     };
   }
@@ -4649,6 +4659,45 @@
     state.settings.roomReserve = normalizeRoomReserve(next);
     save();
     return state.settings.roomReserve;
+  }
+
+  /* ---- 見張りの様子 ----
+     同期サーバーが1時間ごとに見に行った結果の控え。
+     ホームに出すためだけに持つので、端末ごとでよい */
+
+  function normalizeRoomWatch(w) {
+    w = (w && typeof w === 'object') ? w : {};
+    return {
+      at: String(w.at || ''),              // こちらが取ってきた時刻
+      lastAt: String(w.lastAt || ''),      // 向こうを見に行った時刻
+      lastOk: w.lastOk !== false,
+      why: String(w.why || '').slice(0, 200),
+      enabled: !!w.enabled,
+      mail: !!w.mail,
+      mailReady: !!w.mailReady,
+      count: U.num(w.count, 0),
+      changedAt: String(w.changedAt || ''),
+      mailedAt: String(w.mailedAt || ''),
+      changes: (Array.isArray(w.changes) ? w.changes : []).slice(0, 60).map(function (c) {
+        return {
+          at: String((c && c.at) || ''),
+          what: String((c && c.what) || ''),
+          date: String((c && c.date) || ''),
+          line: String((c && c.line) || '').slice(0, 200)
+        };
+      })
+    };
+  }
+
+  function roomWatch() {
+    return state.settings.roomWatch
+      || (state.settings.roomWatch = normalizeRoomWatch({}));
+  }
+
+  function setRoomWatch(v) {
+    state.settings.roomWatch = normalizeRoomWatch(v);
+    save({ quiet: true });      // 端末ごとの控えなので、同期の「変更あり」にはしない
+    return state.settings.roomWatch;
   }
 
   function duty(date) { return (state.settings.duties || {})[date] || ''; }
@@ -6010,6 +6059,7 @@
     timeLabels: timeLabels, timeColor: timeColor,
     timeblocks: timeblocks, setTimeblocks: setTimeblocks,
     roomReserve: roomReserve, updateRoomReserve: updateRoomReserve,
+    roomWatch: roomWatch, setRoomWatch: setRoomWatch,
     putTimeblock: putTimeblock, removeTimeblock: removeTimeblock,
     getLog: getLog, setLog: setLog, logDates: logDates, MOODS: MOODS,
     getMenu: getMenu, setMenu: setMenu, removeMenu: removeMenu,

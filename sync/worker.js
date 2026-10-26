@@ -117,9 +117,11 @@ export default {
           bank: bankReady(env),
           plotWebhook: !!env.DISCORD_PLOT_WEBHOOK,
           fitbit: fitbitReady(env),
-          menuWebhook: !!env.DISCORD_MENU_WEBHOOK
+          menuWebhook: !!env.DISCORD_MENU_WEBHOOK,
+          // メールの出し口（宛先そのものは出さない）
+          mail: mailReady(env)
         },
-        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/img', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/inbox/weights', '/v1/inbox/weight/key', '/v1/inbox/card', '/v1/inbox/cards', '/v1/inbox/card/key', '/v1/ocr', '/v1/roomreserve', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/menu/dish', '/v1/menu/items', '/v1/menu/send', '/v1/keep',
+        endpoints: ['/v1/meta', '/v1/state', '/v1/files', '/v1/img', '/v1/push', '/v1/inbox/fanbox', '/v1/inbox/orders', '/v1/inbox/weights', '/v1/inbox/weight/key', '/v1/inbox/card', '/v1/inbox/cards', '/v1/inbox/card/key', '/v1/ocr', '/v1/roomreserve', '/v1/roomwatch', '/v1/backup', '/v1/memo/send', '/v1/doc/send', '/v1/menu', '/v1/menu/dish', '/v1/menu/items', '/v1/menu/send', '/v1/keep',
           '/v1/event/key', '/v1/event/list', '/v1/event/one', '/v1/event/img', '/v1/event/close', '/v1/inbox/events', '/v1/reschedule', '/v1/bank/balance', '/v1/plot', '/v1/plot/send', '/v1/spend', '/v1/fit/plan', '/v1/fitbit'],
         // どの食事に対応しているか。deploy を忘れると古いままなのが分かる
         menuSlots: MENU_SLOTS,
@@ -368,6 +370,11 @@ export default {
       if (url.pathname === '/v1/roomreserve') {
         return roomReserve(request, env, cors, url);
       }
+
+      // ROOM RESERVE の見張り（1時間ごとの確かめと、溜まった変更）
+      if (url.pathname === '/v1/roomwatch' || url.pathname.startsWith('/v1/roomwatch/')) {
+        return roomWatchApi(request, env, cors, url, id);
+      }
     } catch (e) {
       return json({ error: 'server_error', message: String(e && e.message || e) }, 500, cors);
     }
@@ -380,6 +387,7 @@ export default {
     ctx.waitUntil(sendDue(env));
     ctx.waitUntil(dailyBackup(env));
     ctx.waitUntil(dailyBank(env));
+    ctx.waitUntil(roomWatchAll(env));
   }
 };
 
@@ -3625,6 +3633,378 @@ async function roomReserve(request, env, cors, url) {
 
 /* 「日付に付けた印」がありそうな入口。/events に入っていないときだけ見に行く */
 const ROOM_MARK_PATHS = ['day-marks', 'daymarks', 'marks', 'day-mark'];
+
+/* ---------------- ROOM RESERVE の見張り ----------------
+
+   1時間ごとに向こうの予定表を見に行き、前に見たときと違っていたら
+   ・持ち主のメールへ知らせる
+   ・アプリのホームに出すぶんを、ここに溜めておく
+   の2つをする。アプリは閉じているあいだ動けないので、ここの役目になる。
+
+   向こうのアプリには一切さわらない（読むだけ）のは、取り込みと同じ。
+
+   KV
+     roomwatch:<id>        見張りの設定と、前に見たときの姿、溜めてある変更
+     roomwatch:<id>:hour   その時間ぶんを見たかどうかの印（1時間に1回にする）
+
+   メールの出し口は2つ。どちらか片方が入っていれば送る。
+     1) env.MAIL        … Cloudflare Email Routing の send_email バインド（無料）
+     2) env.RESEND_KEY  … Resend の API キー（env.MAIL_FROM に差出人）
+   どちらも無いときは、メールは送らずホームに出すぶんだけ溜める。 */
+
+const RW_MAX_CHANGES = 60;      // 溜めておく変更の数（これを超えたら古いほうから捨てる）
+const RW_KEEP_DAYS = 30;        // 見張りの控えを置いておく日数（触られなければ消える）
+
+function rwKey(id) { return 'roomwatch:' + id; }
+
+/** 見張りの設定を読む。無ければ null */
+async function rwGet(env, id) {
+  return (await env.SYNC.get(rwKey(id), 'json')) || null;
+}
+
+async function rwPut(env, id, v) {
+  await env.SYNC.put(rwKey(id), JSON.stringify(v),
+    { expirationTtl: 60 * 60 * 24 * RW_KEEP_DAYS });
+}
+
+/**
+ * 向こうの1件を、見くらべられる形にする。
+ * 取り込みのほう（js/roomreserve.js の toPlan）は「時間の登録」だけを見るが、
+ * 見張りは何が変わっても知らせたいので、締切やイベントも入れる。
+ */
+function rwItem(e) {
+  if (!e || typeof e !== 'object') return null;
+  const id = String(e.id || '');
+  if (!id) return null;
+  const home = rwHome(e);
+  return {
+    id,
+    kind: String(e.kind || '').slice(0, 20),
+    date: String(e.date || e.dateKey || '').slice(0, 10),
+    start: String(e.startTime || e.start || '').slice(0, 5),
+    min: Number.isFinite(+e.durationMin) ? Math.round(+e.durationMin) : 0,
+    title: String(e.title || e.name || '').slice(0, 60),
+    home
+  };
+}
+
+/* 在宅の可否。アプリ側と同じ見かたをする（ok / ng と、日本語の「可」「不可」） */
+const RW_HOME_FIELDS = ['homeStatus', 'home', 'homeOk', 'stayHome', '在宅'];
+
+function rwHome(e) {
+  for (const k of RW_HOME_FIELDS) {
+    const v = e[k];
+    if (v === true) return 'ok';
+    if (v === false) return 'ng';
+    const t = String(v == null ? '' : v).trim();
+    if (!t || t.length > 20) continue;
+    if (/^(ng|no|false)$/i.test(t) || t.includes('不可')) return 'ng';
+    if (/^(ok|yes|true)$/i.test(t) || t.includes('可')) return 'ok';
+  }
+  return '';
+}
+
+/** 見くらべるときの持ち物。中身が同じなら同じ字になる */
+function rwFinger(x) {
+  return [x.kind, x.date, x.start, x.min, x.title, x.home].join('\u0001');
+}
+
+/**
+ * 前に見たときと、いまの姿のちがい。
+ * @returns {Array} [{what:'added'|'changed'|'removed', now, was}]
+ */
+function rwDiff(before, after) {
+  const was = {};
+  (before || []).forEach((x) => { if (x && x.id) was[x.id] = x; });
+  const out = [];
+  (after || []).forEach((x) => {
+    const b = was[x.id];
+    if (!b) { out.push({ what: 'added', now: x }); return; }
+    if (rwFinger(b) !== rwFinger(x)) out.push({ what: 'changed', now: x, was: b });
+    delete was[x.id];
+  });
+  Object.keys(was).forEach((k) => out.push({ what: 'removed', was: was[k] }));
+  return out;
+}
+
+/** 変更1つを、人が読める1行にする */
+function rwLine(c) {
+  const x = c.now || c.was || {};
+  const when = rwWhen(x);
+  if (c.what === 'added') return '追加　' + when + rwTail(x);
+  if (c.what === 'removed') return '取消　' + when + rwTail(x);
+  const b = c.was || {};
+  const parts = [];
+  if (rwWhen(b) !== when) parts.push(rwWhen(b) + ' → ' + when);
+  if ((b.home || '') !== (x.home || '')) {
+    parts.push('在宅 ' + (rwHomeJa(b.home) || 'なし') + ' → ' + (rwHomeJa(x.home) || 'なし'));
+  }
+  if ((b.title || '') !== (x.title || '')) parts.push('名前 ' + (b.title || '(なし)') + ' → ' + (x.title || '(なし)'));
+  if ((b.kind || '') !== (x.kind || '')) parts.push('種類 ' + (b.kind || '-') + ' → ' + (x.kind || '-'));
+  return '変更　' + when + '（' + (parts.join(' / ') || '中身') + '）';
+}
+
+function rwWhen(x) {
+  if (!x) return '';
+  const t = x.start ? ' ' + x.start + (x.min > 0 ? '〜' + rwEnd(x.start, x.min) : '〜') : '';
+  return (x.date || '日付なし') + t;
+}
+
+function rwTail(x) {
+  const bits = [];
+  if (x.home) bits.push('在宅' + rwHomeJa(x.home));
+  if (x.title) bits.push(x.title);
+  if (x.kind && x.kind !== 'normal') bits.push(x.kind);
+  return bits.length ? '（' + bits.join(' / ') + '）' : '';
+}
+
+function rwHomeJa(v) { return v === 'ok' ? '可能' : v === 'ng' ? '不可' : ''; }
+
+function rwEnd(hhmm, min) {
+  const p = String(hhmm).split(':');
+  const t = (((+p[0] * 60 + +p[1] + min) % 1440) + 1440) % 1440;
+  const two = (n) => (n < 10 ? '0' : '') + n;
+  return two(Math.floor(t / 60)) + ':' + two(t % 60);
+}
+
+/** 向こうの予定表を取ってきて、見くらべられる形にして返す */
+async function rwFetch(base, room) {
+  if (!ROOM_ID.test(String(room || ''))) throw new Error('bad_room');
+  let origin;
+  try { origin = new URL(String(base || '')); } catch (e) { throw new Error('bad_base'); }
+  if (origin.protocol !== 'https:' || !ROOM_HOST.test(origin.hostname)) {
+    throw new Error('base_not_allowed');
+  }
+  const target = origin.origin + '/api/rooms/' + encodeURIComponent(room) + '/events';
+  const res = await fetch(target, { headers: { accept: 'application/json' }, cf: { cacheTtl: 0 } });
+  if (!res.ok) throw new Error('room_error_' + res.status);
+  const text = await res.text();
+  let data;
+  try { data = JSON.parse(text); } catch (e) { throw new Error('room_not_json'); }
+  const raw = Array.isArray(data) ? data : (Array.isArray(data.events) ? data.events : []);
+  const out = [];
+  raw.forEach((e) => { const x = rwItem(e); if (x) out.push(x); });
+  // 並びは向こう任せなので、こちらでそろえる（並びだけの違いを変更と見ないため）
+  out.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  return out;
+}
+
+/**
+ * 1人ぶんを見に行く。
+ * @param {boolean} [force] 1時間の決まりを飛ばす（手で確かめるとき）
+ * @returns {Promise<object>} 何が起きたか（画面に出すため）
+ */
+async function roomWatchOne(env, id, now, force) {
+  const w = await rwGet(env, id);
+  if (!w || !w.enabled || !w.base || !w.room) return { ran: false, why: 'off' };
+
+  const hourKey = rwKey(id) + ':hour';
+  const hour = new Date(now).toISOString().slice(0, 13);
+  if (!force) {
+    if ((await env.SYNC.get(hourKey, 'text')) === hour) return { ran: false, why: 'done' };
+    // 先に印を付ける。同じ時間にもう一度呼ばれても二度見に行かない
+    await env.SYNC.put(hourKey, hour, { expirationTtl: 60 * 60 * 3 });
+  }
+
+  let after;
+  try {
+    after = await rwFetch(w.base, w.room);
+  } catch (e) {
+    w.lastAt = new Date(now).toISOString();
+    w.lastOk = false;
+    w.why = String((e && e.message) || e).slice(0, 200);
+    await rwPut(env, id, w);
+    return { ran: true, ok: false, why: w.why };
+  }
+
+  const first = !Array.isArray(w.snap);
+  const found = first ? [] : rwDiff(w.snap, after);
+
+  w.snap = after;
+  w.lastAt = new Date(now).toISOString();
+  w.lastOk = true;
+  w.why = '';
+  w.count = after.length;
+
+  let mailed = false;
+  if (found.length) {
+    /* 溜めるのは新しいものから。同じ予定の続けざまの変更も、
+       そのまま並べる（あとで見て経緯が分かるように） */
+    const at = new Date(now).toISOString();
+    const rows = found.map((c) => ({ at, what: c.what, line: rwLine(c), date: (c.now || c.was || {}).date || '' }));
+    w.changes = rows.concat(Array.isArray(w.changes) ? w.changes : []).slice(0, RW_MAX_CHANGES);
+    w.changedAt = at;
+    mailed = await rwMail(env, w, rows);
+    if (mailed) w.mailedAt = at;
+  }
+  await rwPut(env, id, w);
+
+  return {
+    ran: true, ok: true, first,
+    changed: found.length, total: after.length, mailed,
+    lines: found.map(rwLine).slice(0, 20)
+  };
+}
+
+/** 溜まった変更をメールにして送る。送れたかどうかだけ返す */
+async function rwMail(env, w, rows) {
+  const to = String(w.email || env.MAIL_TO || '').trim();
+  if (!to || !/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(to)) return false;
+  const subject = 'ROOM RESERVE の予定が変わりました（' + rows.length + '件）';
+  const body = [
+    'ROOM RESERVE の予定表に変更がありました。',
+    '',
+    ...rows.map((r) => '・' + r.line),
+    '',
+    'METEO365 を開いて「取り込む」を押すと、こちらのカレンダーにも反映されます。',
+    '',
+    '（この知らせは METEO365 の同期サーバーから自動で送っています）'
+  ].join('\n');
+  try {
+    return await sendMail(env, to, subject, body);
+  } catch (e) {
+    return false;
+  }
+}
+
+/** メールを出せる支度があるか（/health で出す。宛先そのものは出さない） */
+function mailReady(env) {
+  return !!(env && (env.MAIL || (env.RESEND_KEY && env.MAIL_FROM)));
+}
+
+/**
+ * メールを1通送る。出し口は2つ。
+ *   1) Cloudflare Email Routing の send_email バインド（env.MAIL）
+ *      宛先は、Cloudflare 側で「確認済みの宛先」になっていること
+ *   2) Resend（env.RESEND_KEY と env.MAIL_FROM）
+ * どちらも無ければ false。
+ */
+async function sendMail(env, to, subject, text) {
+  if (env.MAIL) {
+    /* cloudflare:email は Workers の上にしかない。
+       手元（Node）で worker.js を読み込むときに落ちないよう、
+       バインドがあるときだけ、そのとき読み込む */
+    const { EmailMessage } = await import('cloudflare:email');
+    const from = String(env.MAIL_FROM || 'meteo365@localhost').trim();
+    const msg = new EmailMessage(from, to, mime(from, to, subject, text));
+    await env.MAIL.send(msg);
+    return true;
+  }
+  if (env.RESEND_KEY && env.MAIL_FROM) {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer ' + env.RESEND_KEY,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({ from: env.MAIL_FROM, to: [to], subject, text })
+    });
+    return res.ok;
+  }
+  return false;
+}
+
+/* いちばん素朴な形の本文（RFC 5322）。
+   日本語がそのまま通るよう、題も本文も UTF-8 のまま base64 にする */
+function mime(from, to, subject, text) {
+  const b64 = (s) => {
+    const bytes = new TextEncoder().encode(s);
+    let bin = '';
+    bytes.forEach((b) => { bin += String.fromCharCode(b); });
+    return btoa(bin);
+  };
+  return [
+    'From: ' + from,
+    'To: ' + to,
+    'Subject: =?UTF-8?B?' + b64(subject) + '?=',
+    'MIME-Version: 1.0',
+    'Content-Type: text/plain; charset=UTF-8',
+    'Content-Transfer-Encoding: base64',
+    '',
+    b64(text)
+  ].join('\r\n');
+}
+
+/** 毎分の Cron から。見張りを登録してある人ぶんだけ回る */
+async function roomWatchAll(env) {
+  if (!env.SYNC) return;
+  const now = Date.now();
+  const list = await env.SYNC.list({ prefix: 'roomwatch:' });
+  for (const k of list.keys) {
+    if (k.name.endsWith(':hour')) continue;
+    const id = k.name.slice('roomwatch:'.length);
+    try { await roomWatchOne(env, id, now, false); } catch (e) { /* 1人で止めない */ }
+  }
+}
+
+/* アプリとのやりとり。
+     GET    /v1/roomwatch        いまの様子と、溜まっている変更
+     PUT    /v1/roomwatch        見張りの登録（URL・宛先・入切）
+     POST   /v1/roomwatch/run    いますぐ1回見に行く
+     POST   /v1/roomwatch/seen   溜まっている変更を片づける */
+async function roomWatchApi(request, env, cors, url, id) {
+  if (!env.SYNC) return json({ error: 'kv_not_bound' }, 500, cors);
+  const tail = url.pathname.slice('/v1/roomwatch'.length);
+
+  if (tail === '' && request.method === 'GET') {
+    const w = (await rwGet(env, id)) || {};
+    return json({
+      enabled: !!w.enabled,
+      base: w.base || '', room: w.room || '',
+      // 宛先は控えてあるかどうかだけ出す（そのまま返さない）
+      mail: !!w.email,
+      mailReady: mailReady(env),
+      lastAt: w.lastAt || '', lastOk: w.lastOk !== false, why: w.why || '',
+      count: w.count || 0,
+      changedAt: w.changedAt || '', mailedAt: w.mailedAt || '',
+      changes: Array.isArray(w.changes) ? w.changes : []
+    }, 200, cors);
+  }
+
+  if (tail === '' && request.method === 'PUT') {
+    const body = await request.json().catch(() => ({}));
+    const w = (await rwGet(env, id)) || {};
+    if (body.base !== undefined || body.room !== undefined) {
+      const base = String(body.base || '').trim();
+      const room = String(body.room || '').trim();
+      if (!ROOM_ID.test(room)) return json({ error: 'bad_room' }, 400, cors);
+      let origin;
+      try { origin = new URL(base); } catch (e) { return json({ error: 'bad_base' }, 400, cors); }
+      if (origin.protocol !== 'https:' || !ROOM_HOST.test(origin.hostname)) {
+        return json({ error: 'base_not_allowed' }, 400, cors);
+      }
+      // 見る先が変わったら、前の姿は当てにならない
+      if (w.base !== origin.origin || w.room !== room) { delete w.snap; w.changes = []; }
+      w.base = origin.origin;
+      w.room = room;
+    }
+    if (body.email !== undefined) {
+      const m = String(body.email || '').trim().slice(0, 254);
+      if (m && !/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(m)) {
+        return json({ error: 'bad_email' }, 400, cors);
+      }
+      w.email = m;
+    }
+    if (body.enabled !== undefined) w.enabled = !!body.enabled;
+    if (!w.base || !w.room) return json({ error: 'bad_room' }, 400, cors);
+    await rwPut(env, id, w);
+    return json({ ok: true, enabled: !!w.enabled, mail: !!w.email, mailReady: mailReady(env) }, 200, cors);
+  }
+
+  if (tail === '/run' && request.method === 'POST') {
+    const r = await roomWatchOne(env, id, Date.now(), true);
+    return json(r, 200, cors);
+  }
+
+  if (tail === '/seen' && request.method === 'POST') {
+    const w = await rwGet(env, id);
+    if (w) { w.changes = []; w.seenAt = new Date().toISOString(); await rwPut(env, id, w); }
+    return json({ ok: true }, 200, cors);
+  }
+
+  return json({ error: 'not_found' }, 404, cors);
+}
+
 
 /* ---------------- レシートの読み取り（OpenAI） ----------------
 

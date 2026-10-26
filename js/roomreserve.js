@@ -486,6 +486,123 @@
     return '時間の登録がありませんでした';
   }
 
+  /* ---------------- 1時間ごとの見張り ----------------
+
+     アプリは閉じているあいだ動けないので、見に行くのは同期サーバーの役目。
+     こちらがするのは3つだけ。
+       ・見張りの設定（URL・宛先・入切）を向こうへ預ける
+       ・向こうが溜めた「変わったこと」を取ってくる
+       ・ホームに出す・片づける
+
+     向こうの ROOM RESERVE には、ここでも一切さわらない（読むだけ）。 */
+
+  function watchUrl(path) {
+    var c = syncConf();
+    return String(c.url).replace(/\/+$/, '') + '/v1/roomwatch' + (path || '');
+  }
+
+  function watchReq(path, opts) {
+    opts = opts || {};
+    if (!DL.sync.active()) {
+      return Promise.reject(new Error('先に「PC・iPhone の同期」を設定してください'));
+    }
+    var c = syncConf();
+    return fetch(watchUrl(path), {
+      method: opts.method || 'GET',
+      headers: Object.assign({ authorization: 'Bearer ' + c.token },
+        opts.body ? { 'content-type': 'application/json' } : {}),
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+      cache: 'no-store'
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (b) {
+        if (res.status === 404 && !b.error) {
+          throw new Error('同期サーバーが見張りに未対応です。Worker を deploy し直してください');
+        }
+        if (!res.ok) throw new Error(watchReason(res.status, b));
+        return b;
+      });
+    });
+  }
+
+  function watchReason(status, b) {
+    var k = b && b.error;
+    if (k === 'bad_email') return 'メールアドレスを読み取れませんでした';
+    if (k === 'bad_room' || k === 'bad_base') return '予定表の URL を読み取れませんでした';
+    if (k === 'base_not_allowed') return 'この URL の置き場所には取りに行けません';
+    if (status === 401) return '合鍵が違います';
+    return '見張りの設定を送れませんでした（' + status + '）';
+  }
+
+  /** いまの見張りの様子（この端末に控えてあるぶん） */
+  function watch() { return S.roomWatch(); }
+
+  /** 溜まっている変更の数 */
+  function watchCount() { return (watch().changes || []).length; }
+
+  /**
+   * 見張りの設定を向こうへ預ける。URL は取り込みの設定から取る。
+   * @param {object} [patch] {enabled, mail}
+   */
+  function pushWatch(patch) {
+    var at = parseUrl(conf().url);
+    if (!at) return Promise.reject(new Error('予定表の URL が入っていません。設定から入れてください'));
+    var c = conf();
+    var body = {
+      base: at.base, room: at.room,
+      enabled: patch && patch.enabled !== undefined ? !!patch.enabled : !!c.watch,
+      email: patch && patch.mail !== undefined ? String(patch.mail || '') : String(c.mail || '')
+    };
+    return watchReq('', { method: 'PUT', body: body }).then(function (b) {
+      S.updateRoomReserve({ watch: body.enabled, mail: body.email });
+      return b;
+    });
+  }
+
+  /** 向こうが溜めたものを取ってくる。取れたら、この端末に控える */
+  function fetchWatch() {
+    return watchReq('').then(function (b) {
+      return S.setRoomWatch(Object.assign({}, b, { at: new Date().toISOString() }));
+    });
+  }
+
+  /** いますぐ1回見に行ってもらう（1時間の決まりを飛ばす） */
+  function runWatch() {
+    return watchReq('/run', { method: 'POST' }).then(function (r) {
+      return fetchWatch().then(function () { return r; });
+    });
+  }
+
+  /** 溜まっている変更を片づける（取り込んだあと・読んだあと） */
+  function clearWatch() {
+    return watchReq('/seen', { method: 'POST' }).then(function () {
+      return S.setRoomWatch(Object.assign({}, watch(), { changes: [] }));
+    });
+  }
+
+  /**
+   * 開いたときに、そっと取ってくる。
+   * 見張りを入れていないときと、同期がまだのときは何もしない。
+   * つながらなくても黙って諦める（前の控えのまま出す）。
+   */
+  function refreshWatch() {
+    if (!conf().watch || !DL.sync.active()) return Promise.resolve(null);
+    return fetchWatch().catch(function () { return null; });
+  }
+
+  /** ホームに出す知らせ。溜まっている変更があるときだけ */
+  function alerts() {
+    var w = watch();
+    var n = (w.changes || []).length;
+    if (!n) return [];
+    var head = w.changes[0];
+    return [{
+      level: 'warn',
+      href: '#/settings',
+      text: 'ROOM RESERVE の予定が変わりました（' + n + '件）'
+        + (head && head.line ? '　' + head.line : '')
+    }];
+  }
+
   /** 何がどう見えているかを確かめる（設定画面用） */
   function check() {
     return fetchAll().then(function (got) {
@@ -512,6 +629,8 @@
     conf: conf, ready: ready, parseUrl: parseUrl,
     fetchEvents: fetchEvents, fetchAll: fetchAll, toPlan: toPlan, pull: pull, addMin: addMin,
     dutiesFrom: dutiesFrom, applyDuties: applyDuties, check: check, pullText: pullText,
-    homeText: homeText
+    homeText: homeText,
+    watch: watch, watchCount: watchCount, pushWatch: pushWatch, fetchWatch: fetchWatch,
+    runWatch: runWatch, clearWatch: clearWatch, refreshWatch: refreshWatch, alerts: alerts
   };
 })(window.DL);

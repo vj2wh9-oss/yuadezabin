@@ -94,7 +94,10 @@
       .concat(DL.chores.alerts(today))
       /* ゴミは前の晩に思い出せることがいちばん効くので、上のほうに置く */
       .concat(DL.trash.alerts(today))
-      .concat(DL.fridge.alerts(today));
+      .concat(DL.fridge.alerts(today))
+      /* ROOM RESERVE で予定が変わっていたら。向こうは人と共有の予定表なので、
+         こちらが見ていないうちに動く。いちばん気づきたいもののひとつ */
+      .concat(DL.roomreserve.alerts());
     var urgent = plans.filter(function (o) { return o.ev.important; });
     if (al.length || urgent.length) {
       var box = el('div', { class: 'alerts' });

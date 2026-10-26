@@ -1030,6 +1030,11 @@
       DL.notify.check().then(function (r) {
         if (r && r.fixed) queueNotify();
       }).catch(function () { /* つながらないときは、次に開いたときに */ });
+      /* ROOM RESERVE の見張りが何か拾っていないか、開いたときに1度だけ見る。
+         見に行くのは同期サーバーなので、ここは受け取るだけ */
+      DL.roomreserve.refreshWatch().then(function (w) {
+        if (w && (w.changes || []).length) render();
+      });
       return S.autoBackupIfDue();
     }).catch(function (e) {
       console.error('読み込みに失敗しました', e);
@@ -1067,7 +1072,7 @@
 
   /* この端末がいま動かしている版。sw.js の CACHE と揃えて上げる。
      2台で見比べて、片方だけ古いままになっていないか確かめるためのもの */
-  DL.VERSION = 'v247';
+  DL.VERSION = 'v248';
 
   DL.app = { render: render, init: init, get route() { return route; } };
   document.addEventListener('DOMContentLoaded', init);

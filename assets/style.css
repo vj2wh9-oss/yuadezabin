@@ -904,6 +904,15 @@ a.alert-main { text-decoration: none; }
 }
 .ev-repeat { display: flex; flex-direction: column; gap: 8px; }
 
+/* ROOM RESERVE の見張りが拾った変更。追加・変更・取消を頭の色で分ける */
+.rw-list { padding: 2px 8px; }
+.rw-row { padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+.rw-row:last-child { border-bottom: 0; }
+.rw-what { display: block; padding-left: 8px; border-left: 3px solid var(--muted); }
+.rw-what.added { border-left-color: var(--ok); }
+.rw-what.changed { border-left-color: var(--warn); }
+.rw-what.removed { border-left-color: var(--danger); }
+
 /* ---- 予定に付ける絵 ----
    案内のはがき・会場の地図・チケットの写真など。
    貼り付け・ドラッグ・ファイル選びのどれでも入る */
