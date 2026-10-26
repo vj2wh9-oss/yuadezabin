@@ -244,27 +244,33 @@ npx wrangler email sending enable yuadezabin.com
 
 #### 手順3　Worker に出し口をつなぐ
 
-`sync/wrangler.jsonc` に **`send_email`** を足します。
-`kv_namespaces` や `r2_buckets` と同じ並びです。
+**もう入れてあります。** `sync/wrangler.jsonc` の終わりのほうに、
+`observability` の次として置いてあるので、`git pull` すれば付いてきます。
 
 ```jsonc
-  // メールの出し口。宛先は Cloudflare で確認済みのものに限る
   "send_email": [
-    { "name": "MAIL", "destination_address": "ここに自分のアドレス" }
-  ],
+    { "name": "MAIL" }
+  ]
 ```
 
-- **`name` は `MAIL` のままにしてください。** worker.js がこの名前で探します
-- `destination_address` を書くと、**そのアドレスにしか出せなく**なります。
-  鍵が漏れても、ほかの誰かへ送りつけられないので、こうしておくほうが安全です
-- 宛先を増やしたいときは、代わりに
-  `"allowed_destination_addresses": ["a@…", "b@…"]` と並べます
-- 何も書かなければ、アカウントの確認済みの宛先すべてに出せます
+ここで気をつけるのは2つだけです。
 
-**この行にはメールアドレスが入ります。このリポジトリは公開なので、
-`wrangler.jsonc` のこの変更は push しないでください。**
-`git update-index --skip-worktree sync/wrangler.jsonc` を一度打っておくと、
-うっかり混ざるのを防げます（戻すときは `--no-skip-worktree`）。
+- **`name` は `MAIL` のままにしてください。** worker.js がこの名前で探します
+- **入れる場所は、いちばん外側の `{ }` の中**です。
+  いちばん最後の `}` より下に書くと、ファイルが読めなくなって
+  `deploy` が止まります（`Unexpected non-whitespace character` と出ます）
+
+**宛先はここに書きません。** 書かなくても、出せるのは Cloudflare で
+「確認済み」にした自分の宛先だけなので、これで十分に狭いためです。
+このリポジトリは公開なので、アドレスは置かないでおきます。
+
+どうしても1つに絞りたいときは、**手元でだけ**こう足して、
+`git update-index --skip-worktree sync/wrangler.jsonc` を一度打ち、
+この変更は push しないでください（戻すときは `--no-skip-worktree`）。
+
+```jsonc
+    { "name": "MAIL", "destination_address": "自分のアドレス" }
+```
 
 #### 手順4　差出人のアドレスを入れる
 
@@ -349,6 +355,7 @@ wrangler secret put RESEND_KEY      # Resend の API キー
 | `E_SENDER_NOT_VERIFIED` | 手順2（`wrangler email sending enable`）がまだ |
 | `E_SENDER_DOMAIN_NOT_AVAILABLE` | 差出人のドメインが Cloudflare の DNS になっていない |
 | `E_RECIPIENT_NOT_ALLOWED` | 宛先が未確認、または `destination_address` と食い違っている |
+| `deploy` が `Unexpected non-whitespace character` で止まる | `send_email` を、いちばん最後の `}` より下に書いている。外側の `{ }` の中へ移す |
 | 届かないが、エラーも出ない | 迷惑メールに入っていないか見る（はじめの数通は入りがち） |
 | `wrangler email sending enable` が `Subdomain already exists [code: 2040]` | **もう通してあります。** 手順2は飛ばして手順3へ。`cf-bounce.<ドメイン>` に MX が立っているかで確かめられます |
 | 宛先が `p=reject` の DMARC で弾かれる | DMARC に `aspf=s` を付けていないか見る。付けていると、`cf-bounce` からの SPF が揃わなくなります |

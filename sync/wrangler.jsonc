@@ -42,8 +42,19 @@
   // 失敗したときにダッシュボードでログを追えるようにする
   "observability": {
     "enabled": true
-  }
-}
+  },
+
+  /* メールの出し口（ROOM RESERVE の見張りが使う）。
+     名前は worker.js が MAIL で探すので、変えないこと。
+
+     ここに宛先は書かない。書かなくても、出せるのは
+     Cloudflare で「確認済み」にした自分の宛先だけで、十分に狭い。
+     （このリポジトリは公開なので、アドレスは置かない）
+
+     どうしても1つに絞りたいときは、手元でだけ
+       { "name": "MAIL", "destination_address": "…" }
+     として、この変更は push しないこと。 */
   "send_email": [
-    { "name": "MAIL", "destination_address": "akamaze1997@gmail.com" }
-  ],
+    { "name": "MAIL" }
+  ]
+}
