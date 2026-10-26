@@ -1309,9 +1309,17 @@
       placeholder: 'you@example.com', inputmode: 'email'
     });
 
+    var autoIn = el('input', { type: 'checkbox', class: 'check', checked: cur.watchAuto !== false });
+
     box.appendChild(el('label', { class: 'row-check' }, [
       onIn, el('span', { text: '1時間ごとに向こうを見に行き、変わっていたら知らせる' })
     ]));
+    box.appendChild(el('label', { class: 'row-check' }, [
+      autoIn, el('span', { text: '見つけたぶんを、そのままカレンダーに入れる' })
+    ]));
+    box.appendChild(el('span', { class: 'field-hint',
+      text: '入れておくと、アプリを開いたときにはもう入っています。'
+        + '手で入れた予定には触りません（取り込みと同じ決まりで動きます）' }));
     box.appendChild(ui.field('知らせるメールアドレス', mailIn,
       '空にすると、メールは出さずホームにだけ出します'));
 
@@ -1320,7 +1328,7 @@
       if (m && !/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(m)) {
         ui.toast('メールアドレスの形になっていません', 'danger'); return;
       }
-      R.pushWatch({ enabled: onIn.checked, mail: m }).then(function (b) {
+      R.pushWatch({ enabled: onIn.checked, auto: autoIn.checked, mail: m }).then(function (b) {
         ui.toast(onIn.checked ? '見張りを入れました' : '見張りを切りました');
         if (onIn.checked && m && b && b.mailReady === false) {
           ui.toast('同期サーバーにメールの出し口がまだありません（下の説明を見てください）', 'warn');
@@ -1338,6 +1346,12 @@
     ]));
     if (w.lastAt && !w.lastOk) {
       box.appendChild(el('p', { class: 'muted small', text: 'うまく見に行けませんでした：' + w.why }));
+    }
+    if (w.importedAt) {
+      box.appendChild(el('div', { class: 'info-row' }, [
+        el('span', { class: 'info-k', text: '最後にカレンダーへ入れた時刻' }),
+        el('span', { class: 'info-v', text: DL.sync.fmtAt(w.importedAt) })
+      ]));
     }
     box.appendChild(el('div', { class: 'info-row' }, [
       el('span', { class: 'info-k', text: 'メールの出し口' }),
@@ -1372,11 +1386,15 @@
     box.appendChild(ui.btn('いますぐ見に行ってもらう', 'ghost full', function () {
       ui.toast('見に行っています…');
       R.runWatch().then(function (r) {
+        var put = r.put || {};
         ui.toast(!r.ok ? '見に行けませんでした：' + (r.why || '')
           : r.first ? 'いまの姿を控えました（' + r.total + '件）。次からは、こことの違いを知らせます'
             : r.changed ? '変わったところが ' + r.changed + '件 ありました'
-              + (r.mailed ? '（メールも出しました）' : '') : '変わったところはありませんでした');
-        DL.app.render();
+              + (put.wrote ? '・カレンダーに入れました' : '')
+              + (r.mailed ? '・メールを出しました' : '') : '変わったところはありませんでした');
+        /* カレンダーへ入れたぶんは、同期で手元へ持ってくる */
+        if (put.wrote) DL.sync.run({ silent: true }).then(function () { DL.app.render(); });
+        else DL.app.render();
       }).catch(function (e) { ui.toast(e.message, 'danger'); });
     }, 'refresh'));
 

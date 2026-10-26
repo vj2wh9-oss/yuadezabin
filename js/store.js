@@ -227,7 +227,7 @@
     duties: {},            // その日の働き方 { 'YYYY-MM-DD': 'office'|'remote'|'stay' }
     // ROOM RESERVE（ルームシェアの予定表）の取り込み。
     // seen は、一度入れた向こうの予定の id（二度入れないため）
-    roomReserve: { url: '', color: '#00b3d4', lastAt: '', watch: false, mail: '', seen: {} },
+    roomReserve: { url: '', color: '#00b3d4', lastAt: '', watch: false, watchAuto: true, mail: '', seen: {} },
     /* 見張りの様子（同期サーバーから取ってきたもの）。
        端末ごとに持つ。もとは向こうにあるので、持ち出さなくてよい */
     roomWatch: { at: '', lastAt: '', lastOk: true, why: '', mailReady: false, changes: [] },
@@ -4632,6 +4632,8 @@
          メールとホームで知らせる。見に行くのは同期サーバーの役目
          （アプリは閉じているあいだ動けないため） */
       watch: !!r.watch,
+      // 見つけたぶんを、そのままカレンダーへ入れるか（既定は入れる）
+      watchAuto: r.watchAuto !== false,
       mail: String(r.mail || '').trim().slice(0, 254),
       seen: seen
     };
@@ -4673,11 +4675,13 @@
       lastOk: w.lastOk !== false,
       why: String(w.why || '').slice(0, 200),
       enabled: !!w.enabled,
+      auto: w.auto !== false,
       mail: !!w.mail,
       mailReady: !!w.mailReady,
       count: U.num(w.count, 0),
       changedAt: String(w.changedAt || ''),
       mailedAt: String(w.mailedAt || ''),
+      importedAt: String(w.importedAt || ''),
       changes: (Array.isArray(w.changes) ? w.changes : []).slice(0, 60).map(function (c) {
         return {
           at: String((c && c.at) || ''),

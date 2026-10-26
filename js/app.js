@@ -1031,9 +1031,13 @@
         if (r && r.fixed) queueNotify();
       }).catch(function () { /* つながらないときは、次に開いたときに */ });
       /* ROOM RESERVE の見張りが何か拾っていないか、開いたときに1度だけ見る。
-         見に行くのは同期サーバーなので、ここは受け取るだけ */
+         見に行くのは同期サーバーなので、ここは受け取るだけ。
+         向こうがカレンダーへも入れていたら、その場で同期して手元に出す
+         （放っておいても次の見回りで届くが、開いた直後に出したい） */
       DL.roomreserve.refreshWatch().then(function (w) {
-        if (w && (w.changes || []).length) render();
+        if (!w || !(w.changes || []).length) return;
+        if (!w.importedAt) { render(); return; }
+        DL.sync.run({ silent: true }).then(function () { render(); });
       });
       return S.autoBackupIfDue();
     }).catch(function (e) {
@@ -1072,7 +1076,7 @@
 
   /* この端末がいま動かしている版。sw.js の CACHE と揃えて上げる。
      2台で見比べて、片方だけ古いままになっていないか確かめるためのもの */
-  DL.VERSION = 'v248';
+  DL.VERSION = 'v249';
 
   DL.app = { render: render, init: init, get route() { return route; } };
   document.addEventListener('DOMContentLoaded', init);

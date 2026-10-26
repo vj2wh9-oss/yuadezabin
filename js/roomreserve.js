@@ -550,10 +550,11 @@
     var body = {
       base: at.base, room: at.room,
       enabled: patch && patch.enabled !== undefined ? !!patch.enabled : !!c.watch,
+      auto: patch && patch.auto !== undefined ? !!patch.auto : c.watchAuto !== false,
       email: patch && patch.mail !== undefined ? String(patch.mail || '') : String(c.mail || '')
     };
     return watchReq('', { method: 'PUT', body: body }).then(function (b) {
-      S.updateRoomReserve({ watch: body.enabled, mail: body.email });
+      S.updateRoomReserve({ watch: body.enabled, watchAuto: body.auto, mail: body.email });
       return b;
     });
   }
@@ -595,10 +596,14 @@
     var n = (w.changes || []).length;
     if (!n) return [];
     var head = w.changes[0];
+    /* 見つけたぶんはカレンダーにもう入っている（見張りが入れる）。
+       そのときは「入れました」と言い、押したらカレンダーへ行く */
+    var done = !!w.importedAt;
     return [{
       level: 'warn',
-      href: '#/settings',
+      href: done ? '#/calendar' : '#/settings',
       text: 'ROOM RESERVE の予定が変わりました（' + n + '件）'
+        + (done ? '・カレンダーに入れました' : '')
         + (head && head.line ? '　' + head.line : '')
     }];
   }

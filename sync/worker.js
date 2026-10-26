@@ -3826,42 +3826,97 @@ async function roomWatchOne(env, id, now, force) {
   w.why = '';
   w.count = after.length;
 
-  let mailed = false;
+  const at = new Date(now).toISOString();
+  let mailed = false, pushed = false, put = null;
+
+  /* カレンダーへは先に入れる。知らせを見てアプリを開いたときには、
+     もう入っているようにしたい。
+     はじめの1回でも入れる——知らせないだけで、向こうにいま載っているぶんは
+     こちらにも要る（入れないと、最初の一式はずっと入らないままになる）。
+     二度入れは seen が止めるので、押し直しても増えない */
+  if (w.auto !== false && (first || found.length)) {
+    try { put = await rwImport(env, id, after, now); } catch (e) { put = null; }
+    if (put && put.wrote) w.importedAt = at;
+  }
+
   if (found.length) {
     /* 溜めるのは新しいものから。同じ予定の続けざまの変更も、
        そのまま並べる（あとで見て経緯が分かるように） */
-    const at = new Date(now).toISOString();
     const rows = found.map((c) => ({ at, what: c.what, line: rwLine(c), date: (c.now || c.was || {}).date || '' }));
     w.changes = rows.concat(Array.isArray(w.changes) ? w.changes : []).slice(0, RW_MAX_CHANGES);
     w.changedAt = at;
-    mailed = await rwMail(env, w, rows);
+    mailed = await rwMail(env, w, found);
     if (mailed) w.mailedAt = at;
+    pushed = await rwPush(env, id, found);
   }
   await rwPut(env, id, w);
 
   return {
     ran: true, ok: true, first,
-    changed: found.length, total: after.length, mailed,
+    changed: found.length, total: after.length, mailed, pushed,
+    put: put || null,
     lines: found.map(rwLine).slice(0, 20)
   };
 }
 
+/* 知らせの題。持ち主が決めた文言をそのまま使う */
+const RW_SUBJECT = '[要確認]ROOM RESARVEに更新';
+
+/**
+ * 変更1つを、メールに並べる3行にする。
+ *   ・追加　
+ *   2026-11-05 10:00〜11:00
+ *   （在宅不可）
+ * メモ（在宅の可否）が付いていない回は、3行目を出さない。
+ */
+function rwMailBlock(c) {
+  const x = c.now || c.was || {};
+  const label = c.what === 'added' ? '追加' : c.what === 'removed' ? '取消' : '変更';
+  const when = c.what === 'changed' && c.was && rwWhen(c.was) !== rwWhen(x)
+    ? rwWhen(c.was) + ' → ' + rwWhen(x)
+    : rwWhen(x);
+  const memo = rwHomeJa(x.home) ? '在宅' + rwHomeJa(x.home) : '';
+  const lines = ['・' + label + '　', when];
+  if (memo) lines.push('（' + memo + '）');
+  return lines.join('\n');
+}
+
 /** 溜まった変更をメールにして送る。送れたかどうかだけ返す */
-async function rwMail(env, w, rows) {
+async function rwMail(env, w, found) {
   const to = String(w.email || env.MAIL_TO || '').trim();
   if (!to || !/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(to)) return false;
-  const subject = 'ROOM RESERVE の予定が変わりました（' + rows.length + '件）';
   const body = [
-    'ROOM RESERVE の予定表に変更がありました。',
+    'ROOM RESERVE の予定表に',
+    '変更がありました。(自動検知)',
     '',
-    ...rows.map((r) => '・' + r.line),
+    found.map(rwMailBlock).join('\n\n'),
     '',
-    'METEO365 を開いて「取り込む」を押すと、こちらのカレンダーにも反映されます。',
     '',
-    '（この知らせは METEO365 の同期サーバーから自動で送っています）'
+    '（このメールはMETEO365 のサーバから自動で送信しています）'
   ].join('\n');
   try {
-    return await sendMail(env, to, subject, body);
+    return await sendMail(env, to, RW_SUBJECT, body);
+  } catch (e) {
+    return false;
+  }
+}
+
+/** 端末へも知らせる（通知を登録してあるときだけ） */
+async function rwPush(env, id, found) {
+  if (!env.VAPID_PUBLIC || !env.VAPID_PRIVATE) return false;
+  const subs = (await env.SYNC.get('push:' + id + ':subs', 'json')) || [];
+  if (!subs.length) return false;
+  const head = rwLine(found[0]);
+  const item = {
+    id: 'roomwatch-' + Date.now(),
+    title: RW_SUBJECT,
+    body: found.length > 1 ? head + '　ほか' + (found.length - 1) + '件' : head,
+    tag: 'roomwatch',
+    url: '#/calendar'
+  };
+  try {
+    const r = await deliver(env, subs, item);
+    return r.sent > 0;
   } catch (e) {
     return false;
   }
@@ -3903,6 +3958,142 @@ async function sendMail(env, to, subject, text) {
   return false;
 }
 
+/* ---------------- 見つけたぶんを、そのままカレンダーへ ----------------
+
+   見張りが変更を見つけたら、こちらのカレンダー（同期の中身）にも入れる。
+   アプリを開くのを待たなくてよいように、ここで書き込む。
+
+   アプリ側の取り込み（js/roomreserve.js の pull）と同じ決まりで動く。
+     ・入れるのは「時間の登録」（kind が normal）だけ
+     ・向こうの id とこちらの予定の id を roomReserve.seen で結び付ける
+     ・手で入れた予定には触らない（題が ROOM RESERVE のものだけ直す）
+     ・向こうから消えたものは、今日からあとのぶんだけ下ろす
+   同じ控え（seen）を使うので、アプリ側で取り込み直しても二重にならない。
+
+   勤務種別（日付に付けた印）はここでは写さない。
+   どのキーで来るかが向こう任せで、見分けはアプリ側に置いてあるため。 */
+
+const RW_TITLE = 'ROOM RESERVE';
+
+function rwUid() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+/** 向こうの1件を、日常の予定の形にする。時間の登録でなければ null */
+function rwPlan(x) {
+  if (!x || x.kind !== 'normal') return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(x.date)) return null;
+  if (!/^([01]?\d|2[0-3]):([0-5]\d)$/.test(x.start)) return null;
+  const p = x.start.split(':');
+  const start = (p[0].length < 2 ? '0' : '') + p[0] + ':' + p[1];
+  const open = !(x.min > 0);
+  return {
+    srcId: x.id,
+    date: x.date,
+    start,
+    end: open ? '' : rwEnd(start, x.min),
+    memo: rwHomeJa(x.home) ? '在宅' + rwHomeJa(x.home) : ''
+  };
+}
+
+/**
+ * 見つけたぶんを、同期の中身へ書き込む。
+ * @returns {Promise<object|null>} 入れた数など。中身がまだ無ければ null
+ */
+async function rwImport(env, id, after, now) {
+  const raw = await env.SYNC.get('state:' + id, 'text');
+  if (!raw) return null;
+  let st;
+  try { st = JSON.parse(raw); } catch (e) { return null; }
+  if (!st || !st.settings) return null;
+
+  const list = Array.isArray(st.settings.events) ? st.settings.events : (st.settings.events = []);
+  const rr = st.settings.roomReserve || (st.settings.roomReserve = {});
+  const link = (rr.seen && typeof rr.seen === 'object') ? rr.seen : {};
+  const color = /^#[0-9a-fA-F]{6}$/.test(String(rr.color)) ? rr.color : '#00b3d4';
+
+  const plans = [];
+  after.forEach((x) => { const p = rwPlan(x); if (p) plans.push(p); });
+
+  const mark = {}, used = {};
+  let added = 0, changed = 0, removed = 0;
+
+  const mine = (ev) => ev && ev.title === RW_TITLE;
+  const byId = (eid) => list.filter((ev) => ev.id === eid)[0] || null;
+
+  plans.forEach((p) => {
+    let was = null;
+    if (typeof link[p.srcId] === 'string') was = byId(link[p.srcId]);
+    if (was && used[was.id]) was = null;
+    if (!was) {
+      // 控えに無いぶんは、日と時刻で探す（手で入れてあったものと重ねないため）
+      was = list.filter((ev) => !used[ev.id] && ev.date === p.date
+        && String(ev.start || '') === p.start
+        && (!p.end || !ev.end || ev.end === p.end))[0] || null;
+    }
+
+    if (was) {
+      used[was.id] = true;
+      if (mine(was)) {
+        let hit = false;
+        if (was.date !== p.date) { was.date = p.date; hit = true; }
+        if (String(was.start || '') !== p.start) { was.start = p.start; hit = true; }
+        if (String(was.end || '') !== p.end) { was.end = p.end; hit = true; }
+        if (String(was.memo || '') !== p.memo) { was.memo = p.memo; hit = true; }
+        if (hit) changed++;
+        mark[p.srcId] = was.id;
+      } else {
+        // 手で入れてあったぶん。重ねて入れないだけで、中身には触らない
+        mark[p.srcId] = true;
+      }
+      return;
+    }
+
+    const ev = {
+      id: rwUid(), date: p.date, days: 1, title: RW_TITLE,
+      start: p.start, end: p.end, memo: p.memo, color,
+      important: false, reminders: [], repeat: '', until: '', images: [],
+      createdAt: new Date(now).toISOString()
+    };
+    list.push(ev);
+    used[ev.id] = true;
+    mark[p.srcId] = ev.id;
+    added++;
+  });
+
+  // 向こうで消されたぶんを下ろす。過ぎた日は記録として残す
+  const today = jstDate(now);
+  Object.keys(link).forEach((src) => {
+    if (mark[src]) return;
+    const eid = link[src];
+    if (typeof eid !== 'string') return;
+    const ev = byId(eid);
+    if (!ev || !mine(ev)) return;
+    if (ev.date < today) { mark[src] = eid; return; }
+    st.settings.events = st.settings.events.filter((o) => o.id !== ev.id);
+    removed++;
+  });
+
+  if (!added && !changed && !removed) return { added: 0, changed: 0, removed: 0, wrote: false };
+
+  rr.seen = mark;
+  rr.lastAt = new Date(now).toISOString();
+  st.savedAt = new Date(now).toISOString();
+
+  const payload = JSON.stringify(st);
+  if (payload.length > MAX_BYTES) return { added, changed, removed, wrote: false, why: 'too_large' };
+  const cur = (await env.SYNC.get('meta:' + id, 'json')) || { rev: 0 };
+  await env.SYNC.put('state:' + id, payload);
+  await env.SYNC.put('meta:' + id, JSON.stringify({
+    rev: (cur.rev || 0) + 1,
+    savedAt: st.savedAt,
+    updatedAt: new Date(now).toISOString(),
+    size: payload.length,
+    by: '見張り'
+  }));
+  return { added, changed, removed, wrote: true };
+}
+
 /** 毎分の Cron から。見張りを登録してある人ぶんだけ回る */
 async function roomWatchAll(env) {
   if (!env.SYNC) return;
@@ -3928,6 +4119,8 @@ async function roomWatchApi(request, env, cors, url, id) {
     const w = (await rwGet(env, id)) || {};
     return json({
       enabled: !!w.enabled,
+      // 見つけたぶんを、そのままカレンダーへ入れるか（既定は入れる）
+      auto: w.auto !== false,
       base: w.base || '', room: w.room || '',
       // 宛先は控えてあるかどうかだけ出す（そのまま返さない）
       mail: !!w.email,
@@ -3935,6 +4128,7 @@ async function roomWatchApi(request, env, cors, url, id) {
       lastAt: w.lastAt || '', lastOk: w.lastOk !== false, why: w.why || '',
       count: w.count || 0,
       changedAt: w.changedAt || '', mailedAt: w.mailedAt || '',
+      importedAt: w.importedAt || '',
       changes: Array.isArray(w.changes) ? w.changes : []
     }, 200, cors);
   }
@@ -3964,9 +4158,11 @@ async function roomWatchApi(request, env, cors, url, id) {
       w.email = m;
     }
     if (body.enabled !== undefined) w.enabled = !!body.enabled;
+    if (body.auto !== undefined) w.auto = !!body.auto;
     if (!w.base || !w.room) return json({ error: 'bad_room' }, 400, cors);
     await rwPut(env, id, w);
-    return json({ ok: true, enabled: !!w.enabled, mail: !!w.email, mailReady: mailReady(env) }, 200, cors);
+    return json({ ok: true, enabled: !!w.enabled, auto: w.auto !== false,
+      mail: !!w.email, mailReady: mailReady(env) }, 200, cors);
   }
 
   if (tail === '/run' && request.method === 'POST') {

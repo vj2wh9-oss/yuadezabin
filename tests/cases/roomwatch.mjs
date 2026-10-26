@@ -22,6 +22,12 @@ import worker from '../../sync/worker.js';
 const KEY = 'test-token-0123456789abcdefghij';
 const ROOM = 'https://room-test.vercel.app/c/abc123';
 
+/** worker と同じ、合鍵から持ち主の名前を作るやりかた */
+async function sha256(text) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 /** KV の代わり。頭が同じキーを並べられるようにしておく（Cron が使う） */
 function memKV() {
   const box = new Map();
@@ -146,13 +152,23 @@ export default {
       s.yes('取り消されたぶんが書いてある',
         r.body.lines.some((x) => x.startsWith('取消') && x.includes('2026-11-03')));
 
-      /* ---- メール ---- */
+      /* ---- メール。題も本文も、持ち主が決めた形そのまま ---- */
       s.ok('メールを1通出した', state.mails.length, 1);
       const mail = state.mails[0];
       s.ok('宛先は登録したところ', mail.to, ['watcher@example.com']);
-      s.yes('題に件数が入っている', /ROOM RESERVE の予定が変わりました（3件）/.test(mail.subject));
-      s.yes('本文に中身が並ぶ', mail.text.includes('2026-11-05') && mail.text.includes('取消'));
-      s.yes('取り込みのしかたも書いてある', mail.text.includes('取り込む'));
+      s.ok('題', mail.subject, '[要確認]ROOM RESARVEに更新');
+      s.note('本文:\n' + mail.text);
+      s.yes('決まった書き出し',
+        mail.text.startsWith('ROOM RESERVE の予定表に\n変更がありました。(自動検知)\n'));
+      s.yes('決まった結び',
+        mail.text.endsWith('\n\n\n（このメールはMETEO365 のサーバから自動で送信しています）'));
+      s.yes('追加のぶんは「・追加　」＋時間＋（メモ）の3行',
+        mail.text.includes('・追加　\n2026-11-05 10:00〜11:00\n（在宅不可）'));
+      s.yes('メモが無い回は、その行を出さない',
+        mail.text.includes('・取消　\n2026-11-03 09:00〜\n\n')
+        || mail.text.endsWith('・取消　\n2026-11-03 09:00〜\n\n\n（このメールはMETEO365 のサーバから自動で送信しています）'));
+      s.yes('変更のぶんは、前と後ろを矢印でつなぐ',
+        /・変更　\n2026-11-02 13:00〜15:00 → 2026-11-02 15:00〜17:00/.test(mail.text));
 
       /* ---- アプリが取ってくる・片づける ---- */
       let got = await call(env, '/v1/roomwatch');
@@ -210,6 +226,83 @@ export default {
       const got2 = await call(env2, '/v1/roomwatch');
       s.ok('ホームに出すぶんは溜まっている', got2.body.changes.length, 1);
 
+      /* ---- 見つけたぶんは、そのままカレンダーへ ----
+         アプリを開くのを待たずに、同期の中身（state）へ書き込む。
+         アプリ側の取り込みと同じ決まりで動くこと */
+      const env5 = { SYNC: memKV() };
+      // 手で入れた予定と、前に取り込んだぶんが、すでにある形から始める
+      await env5.SYNC.put('state:' + (await sha256(KEY)), JSON.stringify({
+        savedAt: '2026-10-01T00:00:00.000Z',
+        settings: {
+          roomReserve: { url: '', color: '#00b3d4', seen: {} },
+          events: [
+            { id: 'mine-1', date: '2026-12-20', title: '歯医者', start: '11:00',
+              end: '12:00', memo: '自分で入れた', color: '#111827' }
+          ]
+        }
+      }));
+      await env5.SYNC.put('meta:' + (await sha256(KEY)), JSON.stringify({ rev: 7 }));
+      await call(env5, '/v1/roomwatch', {
+        method: 'PUT',
+        body: { base: 'https://room-test.vercel.app', room: 'abc123', enabled: true }
+      });
+
+      state.events = [
+        ev('c1', '2026-12-10', '13:00', 120, { homeStatus: 'ok' }),
+        ev('c2', '2026-12-20', '11:00', 60),        // 手で入れた予定と同じ日・同じ時刻
+        ev('c3', '2026-12-25', '09:00', 0)          // 長さなし（終わりを持たない）
+      ];
+      r = await call(env5, '/v1/roomwatch/run', { method: 'POST' });   // はじめの控え
+      /* はじめの1回は知らせないが、カレンダーには入れる。
+         入れないと、向こうにいま載っている一式がずっと入らないままになる */
+      s.ok('はじめの1回でも、知らせはしない', r.body.changed, 0);
+      s.ok('でもカレンダーには入れる', r.body.put.added, 2);   // c2 は手で入れたぶんと重なる
+      state.events = [
+        ev('c1', '2026-12-10', '16:00', 120, { homeStatus: 'ng' }),  // 動いた
+        ev('c2', '2026-12-20', '11:00', 60),
+        ev('c4', '2026-12-28', '19:00', 90)                          // 足された
+        // c3 は向こうから消えた
+      ];
+      r = await call(env5, '/v1/roomwatch/run', { method: 'POST' });
+      s.note('入れたぶん: ' + JSON.stringify(r.body.put));
+      s.ok('書き込んだ', r.body.put.wrote, true);
+      s.ok('足した', r.body.put.added, 1);
+      s.ok('直した', r.body.put.changed, 1);
+      s.ok('下ろした', r.body.put.removed, 1);
+
+      const st = JSON.parse(await env5.SYNC.get('state:' + (await sha256(KEY)), 'text'));
+      const evs = st.settings.events;
+      const find = (d) => evs.filter((x) => x.date === d);
+      s.note('予定: ' + JSON.stringify(evs.map((x) => x.title + '/' + x.date + ' ' + x.start)));
+      s.ok('動いたぶんは、いまの時刻になっている', find('2026-12-10')[0].start, '16:00');
+      s.ok('在宅の可否もメモに入る', find('2026-12-10')[0].memo, '在宅不可');
+      s.ok('足したぶんは題が ROOM RESERVE', find('2026-12-28')[0].title, 'ROOM RESERVE');
+      s.ok('長さなしのぶんは、終わりを持たない',
+        (find('2026-12-25')[0] || {}).title, undefined);      // 向こうから消えたので無い
+      s.ok('手で入れた予定は、そのまま残る', find('2026-12-20').length, 1);
+      s.ok('その中身にも触らない', find('2026-12-20')[0].memo, '自分で入れた');
+      s.ok('控えも入れ替える', Object.keys(st.settings.roomReserve.seen).sort(),
+        ['c1', 'c2', 'c4']);
+      /* 版は書き込むたびに1つ上がる（はじめの控えで8、いまの直しで9）。
+         上がるから、アプリ側が「相手が進んでいる」と気づいて取りに来る */
+      s.ok('同期の版が上がる',
+        (await env5.SYNC.get('meta:' + (await sha256(KEY)), 'json')).rev, 9);
+
+      /* もう一度走らせても、同じものを二度入れない */
+      const n1 = evs.length;
+      await call(env5, '/v1/roomwatch/run', { method: 'POST' });
+      const st2 = JSON.parse(await env5.SYNC.get('state:' + (await sha256(KEY)), 'text'));
+      s.ok('変わっていなければ、何も足さない', st2.settings.events.length, n1);
+
+      /* 切ってあれば、カレンダーには触らない */
+      await call(env5, '/v1/roomwatch', { method: 'PUT', body: { auto: false } });
+      state.events = state.events.concat([ev('c9', '2026-12-30', '07:00', 30)]);
+      r = await call(env5, '/v1/roomwatch/run', { method: 'POST' });
+      s.ok('見つけはする', r.body.changed, 1);
+      s.ok('でもカレンダーには入れない', r.body.put, null);
+      const st3 = JSON.parse(await env5.SYNC.get('state:' + (await sha256(KEY)), 'text'));
+      s.ok('予定の数も変わらない', st3.settings.events.length, n1);
+
       /* ---- Cloudflare の send_email バインドのほう ----
          Resend と違って外へ出ないので、バインドの形だけ真似て中を見る */
         const sent = [];
@@ -231,7 +324,7 @@ export default {
       s.ok('1通だけ', sent.length, 1);
       s.ok('宛先', sent[0].to, 'watcher@example.com');
       s.ok('差出人は MAIL_FROM', sent[0].from, 'bot@mydomain.test');
-      s.yes('日本語の題がそのまま乗る', /予定が変わりました/.test(sent[0].subject));
+      s.ok('題は決めた文言のまま', sent[0].subject, '[要確認]ROOM RESARVEに更新');
       s.yes('本文もそのまま', sent[0].text.includes('2026-12-01'));
 
       /* 差出人が無いと、どちらの出し口でも出せない */
