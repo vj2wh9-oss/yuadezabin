@@ -26,6 +26,12 @@ function fakeRoom() {
         status: 200, contentType: 'application/json',
         body: JSON.stringify({ ok: true, events, extra: {}, keys: ['events'], tried: [] })
       }));
+      /* 見張りの受け口。ここでは「溜まっていない」と答えるだけでよい
+         （溜まったぶんの出しかたは、下で手で入れて確かめる） */
+      await page.route(/\/v1\/roomwatch/, (route) => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: '{"ok":true,"enabled":false,"changes":[]}'
+      }));
       // 預かりの問い合わせは、空の返事でいなす
       await page.route(/\/v1\/(inbox|meta|state|files)\b/, (route) => route.fulfill({
         status: 200, contentType: 'application/json', body: '{"items":[]}'
@@ -191,13 +197,34 @@ export default {
       s.ok('押すと設定へ行く', await page.locator(
         '.alerts a[href="#/settings"]:has-text("ROOM RESERVE")').count(), 1);
 
-      /* 溜まっていなければ、出さない */
+      /* カレンダーへ入れてあるときは、押し先もカレンダーにする */
       await page.evaluate(() => {
         const S = window.DL.store;
-        S.setRoomWatch(Object.assign({}, S.roomWatch(), { changes: [] }));
+        S.setRoomWatch(Object.assign({}, S.roomWatch(),
+          { importedAt: new Date().toISOString() }));
       });
       await open(page, base, '#/home');
-      s.ok('片づけると出なくなる', await page.locator(
+      s.yes('入れたことが書いてある',
+        (await page.locator('.alerts').innerText()).indexOf('カレンダーに入れました') >= 0);
+      s.ok('押すとカレンダーへ行く', await page.locator(
+        '.alerts a[href="#/calendar"]:has-text("ROOM RESERVE")').count(), 1);
+
+      /* ---- 重要な予定と同じで、チェックで消せる ---- */
+      s.ok('チェックが付いている', await page.locator(
+        '.alerts .plan-alert:has-text("ROOM RESERVE") .checkbtn').count(), 1);
+      await page.locator('.alerts .plan-alert:has-text("ROOM RESERVE") .checkbtn').click();
+      await page.waitForTimeout(500);
+      s.ok('押すとホームから消える', await page.locator(
+        '.alerts:has-text("ROOM RESERVE")').count(), 0);
+      s.ok('控えからも消えている', await page.evaluate(
+        () => window.DL.store.roomWatch().changes.length), 0);
+      /* 消すのは知らせだけ。カレンダーに入ったぶんは残す */
+      s.yes('カレンダーの予定までは消さない', await page.evaluate(
+        () => window.DL.store.events().some((e) => e.title === 'ROOM RESERVE')));
+
+      /* 開き直しても、出てこない */
+      await open(page, base, '#/home');
+      s.ok('開き直しても出ない', await page.locator(
         '.alerts:has-text("ROOM RESERVE")').count(), 0);
 
       s.ok('画面のエラー', errors, []);

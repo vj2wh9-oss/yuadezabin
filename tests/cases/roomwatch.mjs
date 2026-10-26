@@ -76,11 +76,15 @@ const call = (env, path, opts = {}) => worker.fetch(new Request(
   }
 ), env, { waitUntil() {} }).then(async (r) => ({ status: r.status, body: await r.json() }));
 
-const cron = (env) => {
+/** Cron を1回ぶん起こす。at に「何時何分ぶんの回か」を渡せる */
+const cron = (env, at) => {
   const waits = [];
-  return worker.scheduled({ cron: '* * * * *', scheduledTime: Date.now() }, env,
+  return worker.scheduled({ cron: '* * * * *', scheduledTime: at || Date.now() }, env,
     { waitUntil: (p) => waits.push(p) }).then(() => Promise.all(waits));
 };
+
+/** 'YYYY-MM-DDTHH:MM' を、その回の時刻（ミリ秒）にする */
+const tick = (hhmm) => Date.parse('2026-11-10T' + hhmm + ':00.000Z');
 
 /** 向こうの予定1件 */
 const ev = (id, date, start, min, extra = {}) =>
@@ -179,13 +183,25 @@ export default {
       s.ok('読んだことにすると空になる', got.body.changes.length, 0);
       s.yes('控えた姿までは消さない', got.body.count === 2);
 
-      /* ---- 1時間に1回 ---- */
-      const before = state.hits;
-      await cron(env);
-      s.ok('Cron で1回だけ見に行く', state.hits, before + 1);
-      await cron(env);
-      await cron(env);
-      s.ok('同じ時間のうちは、もう見に行かない', state.hits, before + 1);
+      /* ---- 毎時00分に、1回だけ ----
+         Cron は毎分来る。そのうち「その時間の最初の回」＝00分の回でだけ走る。
+         00分ちょうどでなければ走らない、にはしていない——Cron は遅れて
+         起きることがあり、そうするとその時間ぶんが丸ごと抜けるため */
+      let before = state.hits;
+      await cron(env, tick('09:58'));
+      s.ok('09:58 の回で、9時ぶんが走る', state.hits, before + 1);
+      await cron(env, tick('09:59'));
+      s.ok('同じ9時のうちは、もう走らない', state.hits, before + 1);
+
+      before = state.hits;
+      await cron(env, tick('10:00'));
+      s.ok('10:00 の回で、10時ぶんが走る', state.hits, before + 1);
+      for (const m of ['10:01', '10:17', '10:30', '10:59']) await cron(env, tick(m));
+      s.ok('10時のあいだは、もう走らない', state.hits, before + 1);
+      await cron(env, tick('11:00'));
+      s.ok('11:00 でまた走る', state.hits, before + 2);
+      await cron(env, tick('12:00'));
+      s.ok('12:00 でも走る', state.hits, before + 3);
 
       /* ---- 見に行けなかったとき ---- */
       state.down = true;

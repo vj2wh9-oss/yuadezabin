@@ -387,7 +387,11 @@ export default {
     ctx.waitUntil(sendDue(env));
     ctx.waitUntil(dailyBackup(env));
     ctx.waitUntil(dailyBank(env));
-    ctx.waitUntil(roomWatchAll(env));
+    /* 見張りは「毎時00分」に動かしたい。Cron は毎分来るので、
+       その回が属する時間（UTC の時）で1回だけにする。
+       event.scheduledTime は、Cloudflare が「この回は何時何分ぶん」と
+       言ってきた時刻。遅れて起きても、同じ時間ぶんは1回で済む */
+    ctx.waitUntil(roomWatchAll(env, event && event.scheduledTime));
   }
 };
 
@@ -3798,8 +3802,13 @@ async function roomWatchOne(env, id, now, force) {
   const w = await rwGet(env, id);
   if (!w || !w.enabled || !w.base || !w.room) return { ran: false, why: 'off' };
 
+  /* 見に行くのは、その時間のうち1回だけ。
+     Cron は毎分来るので、00分の回で走り、01分から59分の回は見送る。
+     「00分ちょうどでなければ走らない」にはしない——Cloudflare の Cron は
+     少し遅れて起きることがあり、そうすると、その時間ぶんが丸ごと
+     抜け落ちてしまうため。その時間の最初の回で走る、としてある */
   const hourKey = rwKey(id) + ':hour';
-  const hour = new Date(now).toISOString().slice(0, 13);
+  const hour = new Date(now).toISOString().slice(0, 13);   // 'YYYY-MM-DDTHH'
   if (!force) {
     if ((await env.SYNC.get(hourKey, 'text')) === hour) return { ran: false, why: 'done' };
     // 先に印を付ける。同じ時間にもう一度呼ばれても二度見に行かない
@@ -4095,9 +4104,9 @@ async function rwImport(env, id, after, now) {
 }
 
 /** 毎分の Cron から。見張りを登録してある人ぶんだけ回る */
-async function roomWatchAll(env) {
+async function roomWatchAll(env, scheduledTime) {
   if (!env.SYNC) return;
-  const now = Date.now();
+  const now = Number(scheduledTime) || Date.now();
   const list = await env.SYNC.list({ prefix: 'roomwatch:' });
   for (const k of list.keys) {
     if (k.name.endsWith(':hour')) continue;

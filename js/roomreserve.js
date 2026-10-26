@@ -604,7 +604,18 @@
       href: done ? '#/calendar' : '#/settings',
       text: 'ROOM RESERVE の予定が変わりました（' + n + '件）'
         + (done ? '・カレンダーに入れました' : '')
-        + (head && head.line ? '　' + head.line : '')
+        + (head && head.line ? '　' + head.line : ''),
+      /* 重要な予定と同じで、読んだらチェックで消せる。
+         消すのは知らせだけ。カレンダーに入ったぶんはそのまま残る */
+      checkLabel: '読んだ（ホームから消す）',
+      check: function () {
+        /* 先に手元から消す。向こうへ届かなくても、押した手ごたえは出す
+           （次に取ってきたときに、また出てくるだけ） */
+        S.setRoomWatch(Object.assign({}, watch(), { changes: [] }));
+        if (DL.app && DL.app.render) DL.app.render();
+        DL.ui.toast('ホームから消しました');
+        clearWatch().catch(function () { /* つながらなければ、次に取ってきたときに */ });
+      }
     }];
   }
 

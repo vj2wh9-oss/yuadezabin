@@ -105,14 +105,27 @@
       al.slice(0, 5).forEach(function (a) {
         var href = a.href || (a.project ? '#/project/' + a.project.id : a.date ? '#/day/' + a.date : '#/settings');
         var pulse = a.overdue ? ' overdue' : a.behind ? ' behind' : '';
-        box.appendChild(el('a', { class: 'alert ' + a.level + pulse, href: href }, [
+        var inner = [
           el('span', { class: 'alert-icon' }, ui.icon(a.level === 'info' ? 'info' : 'alert', 17)),
           /* 案件名を1行目、中身を2行目に分ける */
           el('span', { class: 'alert-body' }, [
             a.project ? el('b', { class: 'alert-name', text: a.project.title }) : null,
             el('span', { class: 'alert-text', text: a.text })
           ])
-        ]));
+        ];
+        /* 読んだら消せるものには、重要な予定と同じチェックを付ける。
+           ボタンの中にボタンは置けないので、そのときだけ組み方を変える */
+        if (a.check) {
+          box.appendChild(el('div', { class: 'alert ' + a.level + pulse + ' plan-alert' }, [
+            el('a', { class: 'alert-main', href: href }, inner),
+            el('button', {
+              class: 'checkbtn small', 'aria-label': a.checkLabel || '読んだ（ホームから消す）',
+              onclick: function () { a.check(); }
+            }, ui.icon('check', 15))
+          ]));
+          return;
+        }
+        box.appendChild(el('a', { class: 'alert ' + a.level + pulse, href: href }, inner));
       });
       if (al.length > 5) box.appendChild(el('div', { class: 'muted small pad', text: 'ほか ' + (al.length - 5) + '件' }));
       wrap.appendChild(box);
