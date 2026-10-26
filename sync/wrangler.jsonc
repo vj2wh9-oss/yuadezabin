@@ -44,3 +44,6 @@
     "enabled": true
   }
 }
+  "send_email": [
+    { "name": "MAIL", "destination_address": "akamaze1997@gmail.com" }
+  ],
