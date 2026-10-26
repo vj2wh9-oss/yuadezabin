@@ -210,21 +210,37 @@ Worker 自体は、何もしなければメールを出せません。出し口�
 #### 手順2　差出人のドメインを通す
 
 差出人（`from`）に使うドメインを、Email Service に通します。
-**手元の git bash で1行**です。
+
+**まず、済んでいないか見てください。**
+ダッシュボードの **Compute** → **Email Service** → **Email Sending** に
+そのドメインが並んでいれば、この手順は終わっています。次へ進んでください。
+
+まだなら、同じ画面の **Onboard Domain** から、ドメインを選んで **Done**。
+これで、送るために要る DNS のレコードが自動で足されます
+（`cf-bounce` の MX、SPF、DKIM と、`_dmarc` の DMARC）。
+反映はたいてい5〜15分です。
+
+コマンドでもできますが、**開いたばかりのβ版**で、
+すでに通してあるとやり直せずに止まります（下の「うまくいかないとき」を見てください）。
 
 ```sh
 cd ~/yuadezabin/sync
 npx wrangler email sending enable yuadezabin.com
 ```
 
-ドメインのところは、**ご自身の Cloudflare にあるドメイン**に置き換えてください。
-これで、送るために要る DNS のレコードが自動で足されます
-（`cf-bounce` の MX、SPF、DKIM、DMARC）。
-ダッシュボードの **Email Service → Email Sending** からも同じことができます。
-
 > ドメインが Cloudflare の DNS を使っていないと通せません。
 > また、**この手順を踏むまでは「確認済みの宛先」にしか出せません**——
 > 今回はまさにそれで足りるので、ここで止めても構いません。
+
+> **もとから使っているメールは止まりません。**
+> 送信の記録は `cf-bounce` という別の名前の下に入り、
+> ドメインそのもの（apex）の MX には触らないためです。
+> Google Workspace などをそのまま使っていて構いません。
+
+> **DMARC を `p=reject` にしてあるときは、1通目が届くかを必ず確かめてください。**
+> 送るときの Return-Path は `cf-bounce.<ドメイン>` になるので、
+> `aspf=s`（厳密）を付けていなければ組織ドメインが揃い、SPF で通ります。
+> `aspf=s` にしてあると弾かれます。
 
 #### 手順3　Worker に出し口をつなぐ
 
@@ -307,6 +323,8 @@ wrangler secret put RESEND_KEY      # Resend の API キー
 | `E_SENDER_DOMAIN_NOT_AVAILABLE` | 差出人のドメインが Cloudflare の DNS になっていない |
 | `E_RECIPIENT_NOT_ALLOWED` | 宛先が未確認、または `destination_address` と食い違っている |
 | 届かないが、エラーも出ない | 迷惑メールに入っていないか見る（はじめの数通は入りがち） |
+| `wrangler email sending enable` が `Subdomain already exists [code: 2040]` | **もう通してあります。** 手順2は飛ばして手順3へ。`cf-bounce.<ドメイン>` に MX が立っているかで確かめられます |
+| 宛先が `p=reject` の DMARC で弾かれる | DMARC に `aspf=s` を付けていないか見る。付けていると、`cf-bounce` からの SPF が揃わなくなります |
 
 **確認済みでない宛先へ出すには Workers の有料プランが要ります。**
 自分のアドレスへ送るだけなら、無料のままで足ります。
