@@ -3869,60 +3869,38 @@ async function rwMail(env, w, rows) {
 
 /** メールを出せる支度があるか（/health で出す。宛先そのものは出さない） */
 function mailReady(env) {
-  return !!(env && (env.MAIL || (env.RESEND_KEY && env.MAIL_FROM)));
+  if (!env || !env.MAIL_FROM) return false;      // 差出人はどちらの出し口でも要る
+  return !!(env.MAIL || env.RESEND_KEY);
 }
 
 /**
- * メールを1通送る。出し口は2つ。
- *   1) Cloudflare Email Routing の send_email バインド（env.MAIL）
- *      宛先は、Cloudflare 側で「確認済みの宛先」になっていること
- *   2) Resend（env.RESEND_KEY と env.MAIL_FROM）
+ * メールを1通送る。出し口は2つ。どちらも差出人（MAIL_FROM）が要る。
+ *   1) Cloudflare の send_email バインド（env.MAIL）
+ *      確認済みの宛先（Destination address）へ出すぶんは、どの料金帯でも無料。
+ *      差出人のドメインは Email Service に通しておくこと
+ *      （wrangler email sending enable <ドメイン>）
+ *   2) Resend（env.RESEND_KEY）
  * どちらも無ければ false。
  */
 async function sendMail(env, to, subject, text) {
+  const from = String((env && env.MAIL_FROM) || '').trim();
+  if (!from) return false;
   if (env.MAIL) {
-    /* cloudflare:email は Workers の上にしかない。
-       手元（Node）で worker.js を読み込むときに落ちないよう、
-       バインドがあるときだけ、そのとき読み込む */
-    const { EmailMessage } = await import('cloudflare:email');
-    const from = String(env.MAIL_FROM || 'meteo365@localhost').trim();
-    const msg = new EmailMessage(from, to, mime(from, to, subject, text));
-    await env.MAIL.send(msg);
+    await env.MAIL.send({ from, to, subject, text });
     return true;
   }
-  if (env.RESEND_KEY && env.MAIL_FROM) {
+  if (env.RESEND_KEY) {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
         authorization: 'Bearer ' + env.RESEND_KEY,
         'content-type': 'application/json'
       },
-      body: JSON.stringify({ from: env.MAIL_FROM, to: [to], subject, text })
+      body: JSON.stringify({ from, to: [to], subject, text })
     });
     return res.ok;
   }
   return false;
-}
-
-/* いちばん素朴な形の本文（RFC 5322）。
-   日本語がそのまま通るよう、題も本文も UTF-8 のまま base64 にする */
-function mime(from, to, subject, text) {
-  const b64 = (s) => {
-    const bytes = new TextEncoder().encode(s);
-    let bin = '';
-    bytes.forEach((b) => { bin += String.fromCharCode(b); });
-    return btoa(bin);
-  };
-  return [
-    'From: ' + from,
-    'To: ' + to,
-    'Subject: =?UTF-8?B?' + b64(subject) + '?=',
-    'MIME-Version: 1.0',
-    'Content-Type: text/plain; charset=UTF-8',
-    'Content-Transfer-Encoding: base64',
-    '',
-    b64(text)
-  ].join('\r\n');
 }
 
 /** 毎分の Cron から。見張りを登録してある人ぶんだけ回る */

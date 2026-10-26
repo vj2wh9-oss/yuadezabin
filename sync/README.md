@@ -180,39 +180,136 @@ ROOM RESERVE の予定表を **1時間ごとに見に行き、前に見たとき
 **宛先はアプリの設定に持ちます。** このリポジトリは公開なので、
 メールアドレスはここにも `wrangler.jsonc` にも書きません。
 
-### メールの出し口（どちらか片方）
+### メールの出し口（Cloudflare 側の設定）
 
-Worker 自体はメールを出せないので、出し口をひとつ用意します。
-**どちらも無くても見張りは動きます**（ホームには出ます。メールだけ出ません）。
+Worker 自体は、何もしなければメールを出せません。出し口をひとつ用意します。
+**出し口が無くても見張りは動きます**（アプリのホームには出て、メールだけ出ません）。
 
-#### A. Cloudflare Email Routing（無料・おすすめ）
+おすすめは **Cloudflare の Email Service**（旧 Email Routing）です。
+**自分の「確認済みの宛先」へ出すぶんは、どの料金帯でも無料**で、
+毎月の上限にも数えられません。第三者のサービスも要りません。
 
-Cloudflare に持っているドメインの **Email Routing** を有効にし、
-受け取りたいアドレスを **Destination addresses** に足して確認を済ませます
-（確認メールのリンクを押すだけ）。そのうえで `wrangler.jsonc` に足します。
+必要なものは2つだけです。
 
-```jsonc
-"send_email": [
-  { "name": "MAIL", "destination_address": "ここに宛先" }
-],
-"vars": {
-  "MAIL_FROM": "meteo365@あなたのドメイン"
-}
-```
+1. **Cloudflare で DNS を見ているドメイン**（`yuadezabin.com` など）
+2. **受け取りたいメールアドレス**（Gmail でかまいません）
 
-`destination_address` を書くと、そのアドレスにしか出せません（それで困りません）。
-**宛先を書き込むので、この行だけは手元で足して、push しないでください。**
-ダッシュボードの Settings → Variables から `MAIL_FROM` を入れるぶんには、
-リポジトリに残りません。
+---
 
-#### B. Resend（ドメインの用意ができているとき）
+#### 手順1　宛先を「確認済み」にする
+
+1. Cloudflare のダッシュボードへ入る
+2. 左の **Compute** → **Email Service** → **Email Routing** → **Destination addresses**
+3. 入力欄に、受け取りたいメールアドレスを入れて追加する
+4. そのアドレスに Cloudflare から確認のメールが届くので、
+   **Verify email address** のリンクを押す
+5. 一覧で **Verified** になれば終わり
+
+ここで確認したアドレスは、**アカウント全体で使えます**（ドメインごとではありません）。
+
+#### 手順2　差出人のドメインを通す
+
+差出人（`from`）に使うドメインを、Email Service に通します。
+**手元の git bash で1行**です。
 
 ```sh
-cd sync
-wrangler secret put RESEND_KEY      # Resend の API キー
-# MAIL_FROM は、ダッシュボードの Settings → Variables に入れる
-#   （差出人。Resend で確認済みのドメインのもの）
+cd ~/yuadezabin/sync
+npx wrangler email sending enable yuadezabin.com
 ```
+
+ドメインのところは、**ご自身の Cloudflare にあるドメイン**に置き換えてください。
+これで、送るために要る DNS のレコードが自動で足されます
+（`cf-bounce` の MX、SPF、DKIM、DMARC）。
+ダッシュボードの **Email Service → Email Sending** からも同じことができます。
+
+> ドメインが Cloudflare の DNS を使っていないと通せません。
+> また、**この手順を踏むまでは「確認済みの宛先」にしか出せません**——
+> 今回はまさにそれで足りるので、ここで止めても構いません。
+
+#### 手順3　Worker に出し口をつなぐ
+
+`sync/wrangler.jsonc` に **`send_email`** を足します。
+`kv_namespaces` や `r2_buckets` と同じ並びです。
+
+```jsonc
+  // メールの出し口。宛先は Cloudflare で確認済みのものに限る
+  "send_email": [
+    { "name": "MAIL", "destination_address": "ここに自分のアドレス" }
+  ],
+```
+
+- **`name` は `MAIL` のままにしてください。** worker.js がこの名前で探します
+- `destination_address` を書くと、**そのアドレスにしか出せなく**なります。
+  鍵が漏れても、ほかの誰かへ送りつけられないので、こうしておくほうが安全です
+- 宛先を増やしたいときは、代わりに
+  `"allowed_destination_addresses": ["a@…", "b@…"]` と並べます
+- 何も書かなければ、アカウントの確認済みの宛先すべてに出せます
+
+**この行にはメールアドレスが入ります。このリポジトリは公開なので、
+`wrangler.jsonc` のこの変更は push しないでください。**
+`git update-index --skip-worktree sync/wrangler.jsonc` を一度打っておくと、
+うっかり混ざるのを防げます（戻すときは `--no-skip-worktree`）。
+
+#### 手順4　差出人のアドレスを入れる
+
+ダッシュボードの **Workers → anken-portal-sync → 設定 → 変数とシークレット** で、
+**変数（Variable）** として足します。シークレットではなく、ふつうの変数で結構です。
+
+| 名前 | 中身 |
+|---|---|
+| `MAIL_FROM` | `meteo365@yuadezabin.com`（手順2 で通したドメインのアドレス） |
+
+このアドレスの受信箱は無くて構いません。差出人として名乗るだけです。
+**ダッシュボードで入れた変数は、deploy しても消えません**（`keep_vars` が立ててあります）。
+
+#### 手順5　deploy して、確かめる
+
+```sh
+cd ~/yuadezabin
+git pull
+bash sync/deploy.sh
+```
+
+終わったら、**Worker の URL をブラウザで開いて** `bindings` の中を見ます。
+
+```json
+"bindings": { "kv": true, "r2": true, …, "mail": true }
+```
+
+`mail` が **`true`** なら、出し口の支度はできています。
+`false` のときは、`MAIL_FROM` が入っていないか、`send_email` が付いていないかです。
+
+---
+
+### 別の道：Resend を使う
+
+すでに Resend を使っているなら、そちらでも構いません。
+Cloudflare 側の設定は要りません。
+
+```sh
+cd ~/yuadezabin/sync
+wrangler secret put RESEND_KEY      # Resend の API キー
+```
+
+`MAIL_FROM`（Resend で確認済みのドメインのアドレス）は、
+手順4 と同じくダッシュボードの変数に入れます。
+
+`MAIL`（Cloudflare）と `RESEND_KEY` の両方があるときは、**Cloudflare のほうを使います**。
+
+---
+
+### うまくいかないとき
+
+| 出かた | ところ |
+|---|---|
+| `bindings.mail` が `false` | `MAIL_FROM` が入っていない／`send_email` が `wrangler.jsonc` に無い |
+| `E_SENDER_NOT_VERIFIED` | 手順2（`wrangler email sending enable`）がまだ |
+| `E_SENDER_DOMAIN_NOT_AVAILABLE` | 差出人のドメインが Cloudflare の DNS になっていない |
+| `E_RECIPIENT_NOT_ALLOWED` | 宛先が未確認、または `destination_address` と食い違っている |
+| 届かないが、エラーも出ない | 迷惑メールに入っていないか見る（はじめの数通は入りがち） |
+
+**確認済みでない宛先へ出すには Workers の有料プランが要ります。**
+自分のアドレスへ送るだけなら、無料のままで足ります。
 
 ### 動きかた
 

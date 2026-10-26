@@ -210,6 +210,36 @@ export default {
       const got2 = await call(env2, '/v1/roomwatch');
       s.ok('ホームに出すぶんは溜まっている', got2.body.changes.length, 1);
 
+      /* ---- Cloudflare の send_email バインドのほう ----
+         Resend と違って外へ出ないので、バインドの形だけ真似て中を見る */
+        const sent = [];
+      const env3 = {
+        SYNC: memKV(), MAIL_FROM: 'bot@mydomain.test',
+        MAIL: { send: async (m) => { sent.push(m); return { messageId: 'x' }; } }
+      };
+      await call(env3, '/v1/roomwatch', {
+        method: 'PUT',
+        body: {
+          base: 'https://room-test.vercel.app', room: 'abc123',
+          email: 'watcher@example.com', enabled: true
+        }
+      });
+      await call(env3, '/v1/roomwatch/run', { method: 'POST' });     // はじめの控え
+      state.events = state.events.concat([ev('b1', '2026-12-01', '08:00', 45)]);
+      r = await call(env3, '/v1/roomwatch/run', { method: 'POST' });
+      s.ok('バインドからも出せる', r.body.mailed, true);
+      s.ok('1通だけ', sent.length, 1);
+      s.ok('宛先', sent[0].to, 'watcher@example.com');
+      s.ok('差出人は MAIL_FROM', sent[0].from, 'bot@mydomain.test');
+      s.yes('日本語の題がそのまま乗る', /予定が変わりました/.test(sent[0].subject));
+      s.yes('本文もそのまま', sent[0].text.includes('2026-12-01'));
+
+      /* 差出人が無いと、どちらの出し口でも出せない */
+      const env4 = { SYNC: memKV(), MAIL: { send: async () => ({}) } };
+      const h4 = await (await worker.fetch(new Request('https://x.test/health'), env4,
+        { waitUntil() {} })).json();
+      s.ok('差出人が無ければ、支度ができていないと出す', h4.bindings.mail, false);
+
       /* ---- /health にも出す ---- */
       const h = await (await worker.fetch(new Request('https://x.test/health'), env,
         { waitUntil() {} })).json();
