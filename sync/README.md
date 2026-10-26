@@ -268,15 +268,42 @@ npx wrangler email sending enable yuadezabin.com
 
 #### 手順4　差出人のアドレスを入れる
 
-ダッシュボードの **Workers → anken-portal-sync → 設定 → 変数とシークレット** で、
-**変数（Variable）** として足します。シークレットではなく、ふつうの変数で結構です。
+`MAIL_FROM` は、メールの「差出人」欄に出す名前です。
+**このアドレスの受信箱は作らなくて構いません。** 名乗るだけで、誰も返信しません。
+名前のところ（`meteo365@` の部分）は好きに決めてよく、
+ドメインだけ 手順2 で通したものにします。
 
-| 名前 | 中身 |
-|---|---|
-| `MAIL_FROM` | `meteo365@yuadezabin.com`（手順2 で通したドメインのアドレス） |
+**方法A　コマンドで入れる（おすすめ）**
 
-このアドレスの受信箱は無くて構いません。差出人として名乗るだけです。
-**ダッシュボードで入れた変数は、deploy しても消えません**（`keep_vars` が立ててあります）。
+`DISCORD_WEBHOOK` などを入れたときと同じやりかたです。
+
+```sh
+cd ~/yuadezabin/sync
+wrangler secret put MAIL_FROM
+```
+
+`Enter a secret value:` と聞かれるので、`meteo365@yuadezabin.com` と打って Enter。
+`secret` で入れていますが、コードから見れば変数と同じです。
+公開リポジトリに残らないぶん、こちらが楽で安全です。
+
+**方法B　ダッシュボードで入れる**
+
+1. **dash.cloudflare.com** を開く
+2. 左の **Compute（Workers & Pages）** → **anken-portal-sync**
+3. 上のタブの **Settings（設定）**
+4. **Variables and Secrets（変数とシークレット）** で **＋ Add**
+5. 入れる
+
+   | 欄 | 入れるもの |
+   |---|---|
+   | Type（種類） | **Text**（平文）でも Secret でも、どちらでも動きます |
+   | Variable name（名前） | `MAIL_FROM` |
+   | Value（値） | `meteo365@yuadezabin.com` |
+
+6. **Deploy / Save** を押す
+
+押した時点で効きます。
+**ダッシュボードで入れた変数は、あとで deploy しても消えません**（`keep_vars` が立ててあります）。
 
 #### 手順5　deploy して、確かめる
 
