@@ -1347,12 +1347,41 @@
     save();
   }
 
-  /** チケットだけ捨てる。中の案件は残す（紐付けを外すだけ） */
+  /** チケットだけ捨てる。中の案件と経費は残す（紐付けを外すだけ） */
   function removeTicket(id) {
     state.settings.tickets = (state.settings.tickets || [])
       .filter(function (t) { return t.id !== id; });
     ticketProjects(id).forEach(function (p) { p.ticketId = ''; });
+    // 経費そのものは帳簿に残す。どの券のぶんだったか、だけを落とす
+    (state.settings.expenses || []).forEach(function (x) {
+      if (x.ticketId === id) x.ticketId = '';
+    });
     save();
+  }
+
+  /**
+   * その券に紐づいた経費。
+   * 券そのものに付けたぶんと、その券の案件に付けたぶんの両方を集める
+   * （印刷費は案件に、交通費は券に付ける、という使いかたになるため）。
+   * @returns {Array} 日付の新しい順
+   */
+  function ticketExpenses(id) {
+    if (!id) return [];
+    var pids = {};
+    ticketProjects(id).forEach(function (p) { pids[p.id] = true; });
+    return (state.settings.expenses || []).filter(function (x) {
+      if (x.book === 'life') return false;        // 日常の帳簿は混ぜない
+      /* 券を名指ししてあれば、それが答え。
+         案件ごしに引くのは、名指ししていないぶんだけにする——
+         でないと、別の券の案件を選んだ経費が2枚の券に二重で数えられる */
+      if (x.ticketId) return x.ticketId === id;
+      return !!(x.projectId && pids[x.projectId]);
+    }).sort(function (a, b) { return U.cmp(b.date, a.date) || U.cmp(b.createdAt, a.createdAt); });
+  }
+
+  /** その券にかかったお金の合計 */
+  function ticketExpenseTotal(id) {
+    return ticketExpenses(id).reduce(function (n, x) { return n + U.num(x.amount, 0); }, 0);
   }
 
   /* 準備の1つ。名前だけ渡せば足す、id も渡せば書き換える */
@@ -1927,6 +1956,10 @@
     x.vendor = x.vendor || '';        // 支払先
     x.memo = x.memo || '';
     x.projectId = x.projectId || '';  // どの案件のための出費か（印刷費など）
+    /* どの券（即売会・まとめ）のための出費か。
+       案件より1つ上のくくり。交通費・宿・設営のように、
+       どれか1つの案件には寄せられないものをここで束ねる */
+    x.ticketId = x.ticketId || '';
     x.issuerId = x.issuerId || '';    // どの名義の経費か
     x.fileId = x.fileId || '';        // レシートの写真（共有ファイルのID）
     x.recurringId = x.recurringId || '';  // 固定費から起こしたものか
@@ -4858,6 +4891,7 @@
       if (q.to && U.cmp(x.date, q.to) > 0) return false;
       if (q.category && x.category !== q.category) return false;
       if (q.projectId && x.projectId !== q.projectId) return false;
+      if (q.ticketId && x.ticketId !== q.ticketId) return false;
       if (scope && x.issuerId && x.issuerId !== scope) return false;
       return true;
     }).sort(function (a, b) { return U.cmp(b.date, a.date) || U.cmp(b.createdAt, a.createdAt); });
@@ -6062,6 +6096,7 @@
     TIME_LABELS: TIME_LABELS, DAY_MIN: DAY_MIN, BLOCK_MAX: BLOCK_MAX,
     timeLabels: timeLabels, timeColor: timeColor,
     timeblocks: timeblocks, setTimeblocks: setTimeblocks,
+    ticketExpenses: ticketExpenses, ticketExpenseTotal: ticketExpenseTotal,
     roomReserve: roomReserve, updateRoomReserve: updateRoomReserve,
     roomWatch: roomWatch, setRoomWatch: setRoomWatch,
     putTimeblock: putTimeblock, removeTimeblock: removeTimeblock,

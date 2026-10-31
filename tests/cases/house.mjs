@@ -134,12 +134,22 @@ export default {
       }), [1, 0]);
 
       /* ---- 家事タブのカレンダー ---- */
-      await page.evaluate(async (a) => {
-        const S = window.DL.store;
-        S.addChore({ name: '風呂の排水口', every: 7, lastAt: a.m9, place: '風呂' });
+      /* 家事の次の日は、いま開いている月のマスに出ないと見られない。
+         前にやった日から数えて決まるので、次の日が今月に入るよう逆算する
+         （「今日から−2日」などにすると、月の始めに走らせたとき先月へ落ちる） */
+      await page.evaluate(async () => {
+        const S = window.DL.store, U = window.DL.util, T = U.today();
+        const p = T.split('-');
+        const endDay = new Date(+p[0], +p[1], 0).getDate();
+        // 今月のうちの、今日から2日ちがいの日（月末なら手前へ）
+        const day = +p[2] + 2 <= endDay ? +p[2] + 2 : Math.max(1, +p[2] - 2);
+        const next = p[0] + '-' + p[1] + '-' + String(day).padStart(2, '0');
+        const every = 7;
+        S.addChore({ name: '風呂の排水口', every: every,
+          lastAt: U.addDays(next, -every), place: '風呂' });
         location.hash = '#/chores';
         await new Promise((r) => setTimeout(r, 500));
-      }, { m9: await d(-9) });
+      });
 
       s.yes('家事タブにカレンダーが出る', (await page.locator('.cc-cell').count()) >= 28);
       s.yes('ゴミの日に色の帯が出る', (await page.locator('.cc-tr').count()) >= 4);

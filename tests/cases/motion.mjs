@@ -63,11 +63,19 @@ export default {
       await page.evaluate(() => {
         const S = window.DL.store, U = window.DL.util, T = U.today();
         S.addEvent({ date: T, title: '合同誌の打ち合わせと原稿の受け渡し（渋谷）' });
-        // 今日が締切のもの（マスが明滅する）
+        /* 締切のマス（明滅する）。
+           今日を締切にすると、下のイベントと同じマスになり、
+           そのマスはイベントの色が勝つので has-due が1つも無くなる。
+           イベントとは別の日で、かつ いま開いている月のうちに入る日を選ぶ
+           （今月から出ると、カレンダーに描かれないので見られない） */
+        const p = T.split('-');
+        const endDay = new Date(+p[0], +p[1], 0).getDate();
+        const day = +p[2] + 2 <= endDay ? +p[2] + 2 : Math.max(1, +p[2] - 2);
+        const dueDay = p[0] + '-' + p[1] + '-' + String(day).padStart(2, '0');
         const pr = S.createProject({ name: '入稿するもの', category: 'manga', qty: 4,
-          deadline: T, status: 'active' });
+          deadline: dueDay, status: 'active' });
         const t = S.addTask(pr.id, { name: '入稿', unit: 'page', qty: 4 });
-        S.updateTask(pr.id, t.id, { start: U.addDays(T, -2), end: T });
+        S.updateTask(pr.id, t.id, { start: U.addDays(dueDay, -2), end: dueDay });
         // 当日のイベント（マスが別の色で明滅する）
         S.createProject({ kind: 'event', category: 'manga', title: '新刊',
           eventName: '秋の即売会', eventDate: T, deadline: T, qty: 4, status: 'active' });

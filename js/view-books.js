@@ -1215,6 +1215,10 @@
 
   function expenseRow(x) {
     var p = (x.book !== 'life' && x.projectId) ? S.getProject(x.projectId) : null;
+    /* 券は、案件ごしに分かるぶんは出さない（案件の札と二重になるため）。
+       券だけに付けたもの（交通費など）のときに出す */
+    var tk = (x.book !== 'life' && x.ticketId && !(p && p.ticketId === x.ticketId))
+      ? S.getTicket(x.ticketId) : null;
     // 固定費ぶんは、1日の予算から引いていない。その印を出しておく
     var isFixed = E.isFixedExpense(x);
     var issuer = (x.book !== 'life' && x.issuerId) ? S.getIssuer(x.issuerId) : null;
@@ -1234,6 +1238,7 @@
           ui.chip(x.category, 'ghosty'),
           isFixed ? ui.chip('固定費', 'ok') : null,
           p ? ui.chip(p.title, 'ghosty') : null,
+          tk ? ui.iconChip('event', tk.name, 'ghosty') : null,
           issuer ? ui.chip(issuer.name || '名義', 'ghosty') : null,
           // レシートから読み取った品目があれば、件数だけ添える（中身は開けば見える）
           (x.items || []).length ? ui.chip((x.items.length) + '品目', 'ghosty') : null,
@@ -1879,6 +1884,7 @@
       vendor: x ? x.vendor : '',
       memo: x ? x.memo : '',
       projectId: x ? x.projectId : '',
+      ticketId: x ? x.ticketId : '',
       issuerId: x ? x.issuerId : (S.scopeId() || S.settings.defaultIssuerId || ''),
       fileId: x ? x.fileId : ''
     };
@@ -1932,6 +1938,24 @@
         S.projects().filter(function (p) { return p.status !== 'archived'; })
           .map(function (p) { return { value: p.id, label: p.title }; })
       ), v.projectId);
+
+    /* 券（即売会・まとめ）。案件より1つ上のくくり。
+       交通費・宿・設営のように、どれか1つの案件には寄せられないものをここへ。
+       案件を選べば、その案件が入っている券を自動で入れる（打ち直さなくて済む） */
+    var tkSel = isLife ? null : ui.select(
+      [{ value: '', label: '（紐づけない）' }].concat(
+        S.tickets().map(function (t) {
+          return { value: t.id, label: t.name + (t.date ? '（' + U.fmtMD(t.date) + '）' : '') };
+        })
+      ), v.ticketId);
+
+    if (projSel && tkSel) {
+      projSel.addEventListener('change', function () {
+        var p = projSel.value && S.getProject(projSel.value);
+        // すでに選んである券は、勝手に差し替えない
+        if (p && p.ticketId && !tkSel.value) tkSel.value = p.ticketId;
+      });
+    }
 
     var issuerSel = null;
     if (!isLife && S.issuers().length > 1) {
@@ -2055,7 +2079,11 @@
         catSel.value = patch.category;
         v.category = patch.category;
       }
-      if (projSel && patch.projectId) projSel.value = patch.projectId;
+      if (projSel && patch.projectId) {
+        projSel.value = patch.projectId;
+        var pp = S.getProject(patch.projectId);
+        if (tkSel && pp && pp.ticketId && !tkSel.value) tkSel.value = pp.ticketId;
+      }
       vItems.length = 0;
       patch.items.forEach(function (i) { vItems.push(i); });
       drawItems();
@@ -2150,6 +2178,8 @@
         ui.field('支払先', vendorIn),
         ui.field('メモ', memoIn),
         projSel ? ui.field('案件', projSel) : null,
+        tkSel ? ui.field('券（即売会など）', tkSel,
+          'その即売会にかかったお金としてまとめます。案件を選ぶと、その券が入ります') : null,
         issuerSel ? ui.field('名義', issuerSel) : null,
         ui.block('レシート', shotBox),
         itemsWrap,
@@ -2211,6 +2241,7 @@
         vendor: vendorIn.value.trim(), memo: memoIn.value.trim(),
         // 日常は案件にも名義にも紐づけない
         projectId: isLife ? '' : (projSel ? projSel.value : ''),
+        ticketId: isLife ? '' : (tkSel ? tkSel.value : ''),
         issuerId: isLife ? '' : (issuerSel ? issuerSel.value : v.issuerId),
         fileId: v.fileId,
         items: vItems

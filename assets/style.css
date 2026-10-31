@@ -904,6 +904,13 @@ a.alert-main { text-decoration: none; }
 }
 .ev-repeat { display: flex; flex-direction: column; gap: 8px; }
 
+/* 券にかかったお金。1件ずつ並べて、下に合計と差し引き */
+.tk-cost-row { width: 100%; text-align: left; }
+.tk-cost-foot {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+  padding: 8px 2px 2px; margin-top: 4px; border-top: 1px solid var(--line);
+}
+
 /* ROOM RESERVE の見張りが拾った変更。追加・変更・取消を頭の色で分ける */
 .rw-list { padding: 2px 8px; }
 .rw-row { padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; }

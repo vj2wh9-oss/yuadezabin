@@ -55,10 +55,16 @@ export default {
       s.ok('これから先の日には出さない', await namesOn(page, at.tm), []);
       s.ok('今日のぶんも、やることとしては出さない', await namesOn(page, at.today), []);
 
-      /* カレンダーのマスでも、昨日の行が残っていること */
+      /* カレンダーのマスでも、昨日の行が残っていること。
+         昨日と明日は月をまたぐことがある（今日が1日・月末のとき）。
+         カレンダーはひと月ぶんしか描かないので、それぞれの月を開いて見る */
       await open(page, base, '#/calendar/' + at.y.slice(0, 7));
       await page.waitForSelector('.cal-grid');
       const y = await cellLines(page, at.y);
+      if (at.tm.slice(0, 7) !== at.y.slice(0, 7)) {
+        await open(page, base, '#/calendar/' + at.tm.slice(0, 7));
+        await page.waitForSelector('.cal-grid');
+      }
       const tm = await cellLines(page, at.tm);
       s.note('昨日のマス: ' + JSON.stringify(y));
       s.note('明日のマス: ' + JSON.stringify(tm));

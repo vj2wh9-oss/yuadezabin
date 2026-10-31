@@ -84,6 +84,17 @@
     ])));
     wrap.appendChild(prepCard(t));
 
+    /* ---- かかったお金 ----
+       交通費・宿・設営のように、どれか1つの案件には寄せられないものを
+       券ごと束ねて見る。券そのものに付けたぶんと、
+       その券の案件に付けたぶん（印刷費など）の両方を数える */
+    wrap.appendChild(ui.section('かかったお金', el('div', { class: 'row-wrap' }, [
+      ui.btn('経費を足す', 'ghost tiny', function () {
+        DL.views.books.addExpense({ book: 'work', preset: { ticketId: t.id } });
+      }, 'plus')
+    ])));
+    wrap.appendChild(costCard(t, projects));
+
     /* ---- 当日モード（即売会だけ） ---- */
     var main = projects[0];
     if (t.kind === 'event' && main) {
@@ -332,6 +343,56 @@
    * 持ち帰った部数を入れると、販売数と売上が出る。
    * 記録すると、まだ記録していないぶんだけが頒布として在庫から引かれる。
    */
+  /* 券にかかったお金。1件ずつと、合計。
+     頒布の売上が出ているときは、差し引きも添える */
+  function costCard(t, projects) {
+    var list = S.ticketExpenses(t.id);
+    if (!list.length) {
+      return ui.empty('まだありません。交通費・宿・設営などをここへ。');
+    }
+    var box = el('div', { class: 'card tk-cost' });
+    list.slice(0, 20).forEach(function (x) {
+      var p = x.projectId ? S.getProject(x.projectId) : null;
+      box.appendChild(el('button', {
+        class: 'row tk-cost-row',
+        onclick: function () { DL.views.books.editExpense(x.id); }
+      }, [
+        el('div', { class: 'row-main' }, [
+          el('div', { class: 'row-title' }, [
+            el('span', { text: x.vendor || x.category }),
+            el('b', { class: 'ex-amount', text: DL.docs.yen(x.amount) })
+          ]),
+          el('div', { class: 'row-sub' }, [
+            ui.chip(U.fmtMD(x.date), 'soft'),
+            ui.chip(x.category, 'ghosty'),
+            /* 案件ごしに紐づいているぶんは、どの案件のぶんかも出す */
+            p ? ui.chip(p.title, 'ghosty') : null
+          ])
+        ]),
+        el('span', { class: 'chev' }, ui.icon('chevronRight', 16))
+      ]));
+    });
+    if (list.length > 20) {
+      box.appendChild(el('div', { class: 'muted small pad',
+        text: 'ほか ' + (list.length - 20) + '件' }));
+    }
+
+    var cost = list.reduce(function (n, x) { return n + U.num(x.amount, 0); }, 0);
+    var foot = el('div', { class: 'tk-cost-foot' }, [
+      ui.chip('かかったお金 ' + DL.docs.yen(cost), 'soft')
+    ]);
+    /* 売上が立っていれば、差し引きも出す。
+       集計を記録する前の見込みではなく、いま数えられているぶんで出す */
+    var tl = K.ticketTally(t, projects);
+    if (tl && tl.total && tl.total.revenue) {
+      var left = tl.total.revenue - cost;
+      foot.appendChild(ui.chip('頒布 ' + DL.docs.yen(tl.total.revenue), 'soft'));
+      foot.appendChild(ui.chip('差し引き ' + DL.docs.yen(left), left >= 0 ? 'ok' : 'warn'));
+    }
+    box.appendChild(foot);
+    return box;
+  }
+
   function tallyCard(t, projects) {
     var box = el('div', { class: 'card tk-tally' });
     var rows = el('div', { class: 'tk-tally-list' });
